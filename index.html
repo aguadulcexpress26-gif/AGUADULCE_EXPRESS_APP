@@ -82,4 +82,125 @@
 
     <script>
         const scriptURL = 'https://script.google.com/macros/s/AKfycbysDVL_3M-2AfW5eGS8chw3KB3uFIXJU9kVltWHOQF0Lo9mzcBBn6nQwVy1mrkaH2tZ/exec';
-        let db = { restaurantes
+        let db = { restaurantes: [], menu: [] };
+
+        async function cargarSistema() {
+            try {
+                const res = await fetch(scriptURL);
+                const data = await res.json();
+                const find = (n) => data[Object.keys(data).find(k => k.toLowerCase().trim() === n.toLowerCase())] || [];
+                db.restaurantes = find('RESTAURANTES');
+                db.menu = find('MENU_GENERAL');
+                renderRestaurantes();
+            } catch (e) { document.getElementById('app-container').innerHTML = "Error de enlace."; }
+        }
+
+        function renderRestaurantes() {
+            let html = `<div class="mb-6 ml-1 text-left"><h2 class="text-[10px] tracking-[0.2em] text-slate-500 uppercase font-extrabold">Descubre sabores locales</h2></div>`;
+            db.restaurantes.forEach(r => {
+                html += `
+                <div class="card-rest mb-5 shadow-2xl" onclick="verMenu('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
+                    <img src="${r.FOTO}" class="card-img">
+                    <div class="card-gradient"></div>
+                    <div class="absolute top-4 left-5 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/5 text-[10px] font-bold">⭐ ${r.CALIFICACION || '4.8'}</div>
+                    <div class="absolute bottom-6 left-7 text-left">
+                        <p class="text-[8px] text-cyan-400 font-black uppercase tracking-widest mb-1">${r.CATEGORIA || 'PREMIUM'}</p>
+                        <h3 class="brand text-xl text-white italic uppercase">${r.NOMBRE_RESTAURANTE}</h3>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('app-container').innerHTML = html;
+        }
+
+        function verMenu(nombre, id) {
+            const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(id));
+            let html = `
+                <div class="flex items-center gap-4 mb-8 text-left">
+                    <button onclick="renderRestaurantes()" class="w-11 h-11 rounded-xl bg-white/5 text-cyan-400 border border-white/10 flex items-center justify-center">←</button>
+                    <div><h2 class="brand text-lg uppercase">${nombre}</h2><p class="text-[9px] text-cyan-400/60 font-black uppercase tracking-widest">Menú Principal</p></div>
+                </div>
+                <div class="grid gap-4">`;
+            
+            platos.forEach(p => {
+                html += `
+                <div class="bg-gradient-to-br from-white/10 to-transparent p-4 rounded-[1.8rem] flex justify-between items-center border border-white/5 active:scale-95 transition-all shadow-xl" 
+                     onclick='abrirDetalle(${JSON.stringify(p).replace(/'/g, "&apos;")})'>
+                    <div class="text-left flex-1 pr-4">
+                        <h4 class="font-bold text-white text-xs uppercase mb-1.5 tracking-wide">${p.PLATO}</h4>
+                        <p class="text-cyan-400 font-black text-xl italic">${parseFloat(p.PRECIO).toFixed(2)}€</p>
+                    </div>
+                    <img src="${p.FOTO_PLATO}" class="w-16 h-16 rounded-2xl object-cover border border-white/10 shadow-lg">
+                </div>`;
+            });
+            document.getElementById('app-container').innerHTML = html + `</div>`;
+        }
+
+        function abrirDetalle(p) {
+            const modal = document.getElementById('modal-plato');
+            document.getElementById('modal-titulo').innerText = p.PLATO;
+            document.getElementById('modal-desc').innerText = p.DESCRIPCION || "Preparado con ingredientes frescos de la mejor calidad.";
+            document.getElementById('modal-img').src = p.FOTO_PLATO;
+            document.getElementById('modal-precio-base').innerText = parseFloat(p.PRECIO).toFixed(2) + '€';
+            document.getElementById('modal-total').innerText = parseFloat(p.PRECIO).toFixed(2);
+            
+            let htmlPasos = "";
+            
+            // PASO 1: OBLIGATORIAS (v61)
+            if(p.OPCIONES_OBLIGATORIAS) {
+                htmlPasos += `<div class="mb-10 text-left"><span class="step-title">1. Selección Obligatoria</span><div class="grid grid-cols-2 gap-3">`;
+                p.OPCIONES_OBLIGATORIAS.split(',').forEach((opt, i) => {
+                    htmlPasos += `<div class="opcion-unica ${i===0?'active':''}" onclick="toggleActive(this, 'opcion-unica')">${opt.trim()}</div>`;
+                });
+                htmlPasos += `</div></div>`;
+            }
+
+            // PASO 2: CHIPS (v61)
+            if(p.INGREDIENTES_SELECCION) {
+                htmlPasos += `<div class="mb-10 text-left"><span class="step-title">2. Elige tus opciones</span><div class="grid grid-cols-2 gap-3">`;
+                p.INGREDIENTES_SELECCION.split(',').forEach(ing => {
+                    htmlPasos += `<div class="ingrediente-chip" onclick="this.classList.toggle('selected')">✓ ${ing.trim()}</div>`;
+                });
+                htmlPasos += `</div></div>`;
+            }
+
+            // PASO 3: EXTRAS CON CONTADOR (v61)
+            if(p.EXTRAS_ADICIONALES) {
+                htmlPasos += `<div class="mb-10 text-left"><span class="step-title">3. Extras Adicionales</span><div class="space-y-3">`;
+                p.EXTRAS_ADICIONALES.split(',').forEach(ex => {
+                    htmlPasos += `
+                    <div class="extra-row">
+                        <span class="text-xs uppercase font-bold tracking-tight">${ex.trim()}</span>
+                        <div class="contador-box"><span class="btn-control">−</span><span class="font-bold">0</span><span class="btn-control">+</span></div>
+                    </div>`;
+                });
+                htmlPasos += `</div></div>`;
+            }
+
+            // PASO 4: BEBIDAS (v61)
+            if(p.BEBIDAS) {
+                htmlPasos += `<div class="mb-10 text-left"><span class="step-title">4. Selecciona tu Bebida</span><div class="space-y-2">`;
+                p.BEBIDAS.split(',').forEach(beb => {
+                    htmlPasos += `<div class="bebida-item" onclick="toggleActive(this, 'bebida-item')"><span class="uppercase font-bold text-[11px] tracking-tight">${beb.trim()}</span><span class="text-[10px] font-black">+1.50€</span></div>`;
+                });
+                htmlPasos += `</div></div>`;
+            }
+
+            document.getElementById('contenedor-pasos').innerHTML = htmlPasos;
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function toggleActive(el, cls) {
+            el.parentElement.querySelectorAll('.'+cls).forEach(o => o.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function cerrarModal() { 
+            document.getElementById('modal-plato').style.display = 'none'; 
+            document.body.style.overflow = 'auto';
+        }
+
+        cargarSistema();
+    </script>
+</body>
+</html>

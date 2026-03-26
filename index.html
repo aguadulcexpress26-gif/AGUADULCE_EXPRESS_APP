@@ -357,34 +357,37 @@
             b.className = c.checked ? "w-full bg-cyan-400 text-dark font-black py-6 rounded-2xl uppercase text-sm shadow-xl shadow-cyan-400/20" : "w-full bg-white/10 text-white/20 py-6 rounded-2xl font-black uppercase text-sm";
         }
 
-       async function enviarPedidoFinal() {
+     async function enviarPedidoFinal() {
     const btn = document.getElementById('btn-final');
     if(btn) {
         btn.disabled = true;
         btn.innerText = "PROCESANDO...";
     }
 
-    // Preparamos los datos EXACTOS para que caigan en A, B, C, D, E, F, G, H, I
-    // Calculamos los valores antes de enviar
-    // --- 1. CÁLCULOS Y CAPTURA DE PAGO ---
-    const costoEnvioFijo = parseFloat(rActivo.COSTO_ENVIO || 0);
+    // --- REPARACIÓN QUIRÚRGICA AQUÍ ---
+    
+    // 1. Buscamos el restaurante completo en la base de datos para obtener el COSTO_ENVIO real
+    const restauranteInfo = db.restaurantes.find(r => String(r.NOMBRE_RESTAURANTE) === String(rActivo.nombre));
+    const costoEnvioReal = restauranteInfo ? parseFloat(restauranteInfo.COSTO_ENVIO || 0) : 3.50;
+    
     const subtotalCesta = cesta.reduce((acc, i) => acc + i.total, 0);
     
-    // Captura el radio button que tenga el name="pago"
-    const radioChecked = document.querySelector('input[name="pago"]:checked');
-    const metodoPagoSeleccionado = radioChecked ? radioChecked.value : "EFECTIVO";
+    // 2. Corregimos la captura del selector de pago (usamos el ID 'pago-cli' que ya tienes en tu HTML)
+    const selectPago = document.getElementById('pago-cli');
+    const metodoPagoSeleccionado = selectPago ? selectPago.value.toUpperCase() : "EFECTIVO";
 
-    // --- 2. PREPARACIÓN DE DATOS (Mapeo exacto con Excel) ---
+    // 3. Mapeo de datos (Aseguramos que coincida con lo que rActivo guarda en la línea 249)
     const datosPedido = {
-        id_restaurante: rActivo.NOMBRE_RESTAURANTE || "S/N", 
+        id_restaurante: rActivo.nombre || "S/N", 
         cliente: document.getElementById('nombre-cli').value.toUpperCase(),
         direccion: document.getElementById('dir-cli').value.toUpperCase(),
-        detalle: cesta.map(i => `${i.cantidad}x ${i.nombre}`).join(" | "), 
-        total: (subtotalCesta + costoEnvioFijo).toFixed(2), 
+        detalle: cesta.map(i => `1x ${i.nombre}`).join(" | "), 
+        total: (subtotalCesta + costoEnvioReal).toFixed(2), 
         telefono: document.getElementById('tel-cli').value.trim(),
-        envio: costoEnvioFijo.toFixed(2),
-       metodo_pago: metodoPagoSeleccionado
+        envio: costoEnvioReal.toFixed(2),
+        metodo_pago: metodoPagoSeleccionado
     };
+    // --- FIN DE LA REPARACIÓN ---
 
     try {
         // Envío Real a tu Google Sheets (usando tu scriptURL definida arriba)
@@ -399,7 +402,7 @@
         // Pantalla de Éxito Profesional v104
         const app = document.getElementById('app-container');
         app.innerHTML = `
-            <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-8 animate-fade-in">
+            <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-8">
                 <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-cyan-400/20">
                     <span class="text-dark text-2xl">✔</span>
                 </div>
@@ -425,7 +428,3 @@
         }
     }
 }
-        init();
-    </script>
-</body>
-</html>

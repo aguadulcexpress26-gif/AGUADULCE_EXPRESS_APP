@@ -116,14 +116,83 @@
         </div>
     </div>
 
-    <script>
-        function abrirSimulacion() { document.getElementById('modal-plato').style.display = 'flex'; }
-        function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; }
-        
-        function toggleActive(el, className) { 
-            el.parentElement.querySelectorAll('.' + className).forEach(opt => opt.classList.remove('active'));
-            el.classList.add('active'); 
+   <script>
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbyutzaHTfEwHGnoWVy_ptlNg5vTU1GvwflEwU4-KIRt2q7CvU0tr_SacmnhakPTTJ_l/exec';
+    
+    let db = { restaurantes: [], menu: [] };
+
+    // 1. CARGA DE DATOS DESDE TU URL
+    async function cargarDatos() {
+        try {
+            const respuesta = await fetch(scriptURL);
+            const data = await respuesta.json();
+            
+            db.restaurantes = data.RESTAURANTES || [];
+            db.menu = data.MENU_GENERAL || [];
+
+            renderizarRestaurantes();
+        } catch (error) {
+            console.error("Error:", error);
+            document.getElementById('app-container').innerHTML = `<p class="text-center text-red-500 brand text-[10px]">ERROR DE CONEXIÓN AL EXCEL</p>`;
         }
-    </script>
-</body>
-</html>
+    }
+
+    // 2. DIBUJAR LOS RESTAURANTES REALES (DELICIOUS FOOD, CHUHAN, ETC)
+    function renderizarRestaurantes() {
+        const contenedor = document.getElementById('app-container');
+        let html = `<h2 class="brand text-[10px] tracking-[0.3em] text-slate-500 uppercase mb-6 text-center">Locales Disponibles</h2>`;
+        
+        db.restaurantes.forEach(rest => {
+            const nombre = rest.NOMBRE_RESTAURANTE;
+            const img = rest.FOTO || 'https://via.placeholder.com/150?text=Logo';
+            const estado = rest.ESTADO || 'Abierto';
+
+            html += `
+            <div class="bg-gradient-to-br from-slate-800/40 to-slate-900/80 p-5 rounded-[2.2rem] flex items-center justify-between border border-white/5 mb-4 active:scale-95 transition-all shadow-lg" 
+                 onclick="verMenuRestaurante('${nombre}', '${rest.ID_RESTAURANTE}')">
+                <div class="flex items-center gap-5">
+                    <img src="${img}" class="w-16 h-16 rounded-2xl object-cover border border-cyan-400/20 shadow-inner">
+                    <div class="text-left">
+                        <h3 class="font-bold text-lg uppercase tracking-tight text-white">${nombre}</h3>
+                        <p class="text-[9px] ${estado === 'Abierto' ? 'text-cyan-400' : 'text-red-400'} font-bold uppercase tracking-widest">${estado}</p>
+                    </div>
+                </div>
+                <div class="bg-cyan-500/10 w-9 h-9 rounded-full flex items-center justify-center">
+                    <span class="text-cyan-400 text-xl">→</span>
+                </div>
+            </div>`;
+        });
+        
+        contenedor.innerHTML = html;
+    }
+
+    // 3. DIBUJAR EL MENÚ FILTRADO POR RESTAURANTE
+    function verMenuRestaurante(nombreRest, idRest) {
+        const contenedor = document.getElementById('app-container');
+        const platos = db.menu.filter(p => p.ID_RESTAURANTE === idRest);
+        
+        let html = `
+            <button onclick="renderizarRestaurantes()" class="text-cyan-400 text-[10px] brand mb-6 tracking-widest flex items-center gap-2">
+                <span class="text-lg">←</span> VOLVER A LOCALES
+            </button>
+            <h2 class="brand text-2xl text-white mb-6 uppercase tracking-tight text-left">${nombreRest}</h2>
+            <div class="grid gap-4">`;
+
+        platos.forEach(plato => {
+            html += `
+            <div class="bg-white/5 p-4 rounded-[1.8rem] flex justify-between items-center border border-white/5 shadow-sm active:scale-95 transition-all" 
+                 onclick="alert('Estamos configurando el Punto 3 para: ${plato.PLATO}')">
+                <div class="flex-1 pr-4 text-left">
+                    <div class="font-bold text-white text-sm uppercase leading-tight">${plato.PLATO}</div>
+                    <div class="text-cyan-400 font-bold mt-1 text-lg">$${parseFloat(plato.PRECIO || 0).toFixed(2)}</div>
+                </div>
+                <img src="${plato.FOTO_PLATO || 'https://via.placeholder.com/100?text=Comida'}" class="w-20 h-20 rounded-2xl object-cover shadow-md">
+            </div>`;
+        });
+
+        contenedor.innerHTML = html + `</div>`;
+    }
+
+    // INICIAR TODO
+    cargarDatos();
+</script>

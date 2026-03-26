@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express Pro v105</title>
+    <title>Aguadulce Express Pro v106 - Fix 2026</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -100,7 +100,7 @@
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzL2MFTF1-K4OIGuvpPuWYNENt5_DIe7oLYN_0Y39M23BjwwVDNJLnTsw9NOygu84sF/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbysDVL_3M-2AfW5eGS8chw3KB3uFIXJU9kVltWHOQF0Lo9mzcBBn6nQwVy1mrkaH2tZ/exec';
         let db = { menu: [], restaurantes: [] };
         let cesta = [];
         let rActivo = { id: null, nombre: "" };
@@ -274,12 +274,13 @@
         function actualizarCestaBar() {
             const bar = document.getElementById('cesta-flotante');
             if(cesta.length > 0) {
-                bar.classList.replace('hidden', 'flex');
+                bar.classList.remove('hidden');
+                bar.classList.add('flex');
                 const totalCesta = cesta.reduce((acc, i) => acc + i.total, 0);
                 document.getElementById('cesta-info').innerText = `🛒 ${cesta.length} PRODUCTOS`;
                 document.getElementById('cesta-total').innerText = `${totalCesta.toFixed(2).replace('.', ',')}€ TOTAL`;
             } else {
-                bar.classList.replace('flex', 'hidden');
+                bar.classList.add('hidden');
             }
         }
 
@@ -301,24 +302,23 @@
         }
 
         async function enviarPedidoFinal() {
-            // Buscamos info del restaurante para el nombre real
             const restauranteInfo = db.restaurantes.find(r => String(r.ID_RESTAURANTE) === String(rActivo.id)) || {};
             const nombreRestauranteReal = restauranteInfo.NOMBRE_RESTAURANTE || "S/N";
             
-            // Calculamos costos
             const costoEnvioRaw = restauranteInfo.COSTO_ENVIO ? String(restauranteInfo.COSTO_ENVIO).replace(',', '.') : "3.50";
             const costoEnvioReal = parseFloat(costoEnvioRaw);
             const subtotalCesta = cesta.reduce((acc, i) => acc + Number(i.total || 0), 0);
             const totalFinal = (subtotalCesta + costoEnvioReal).toFixed(2);
 
+            // MAPEO CON EL TRUCO DEL APÓSTROFE (') PARA BLOQUEAR EL ERROR 2026
             const datosPedido = {
                 id_restaurante: nombreRestauranteReal.toUpperCase(),
                 cliente: document.getElementById('nombre-cli').value.toUpperCase(),
                 direccion: document.getElementById('dir-cli').value.toUpperCase(),
                 detalle: cesta.map(i => `1x ${i.nombre}`).join(" | "),
-                total: totalFinal.replace('.', ','), // COMA PARA EVITAR ERROR FECHA
-                telefono: document.getElementById('tel-cli').value,
-                envio: costoEnvioReal.toString().replace('.', ','),
+                total: "'" + totalFinal.toString().replace('.', ','), // Forzado como texto
+                telefono: "'" + document.getElementById('tel-cli').value.trim(), // Forzado como texto
+                envio: "'" + costoEnvioReal.toString().replace('.', ','), // Forzado como texto
                 metodo_pago: document.getElementById('pago-cli').value.toUpperCase()
             };
 
@@ -335,11 +335,13 @@
                 });
 
                 document.getElementById('app-container').innerHTML = `
-                    <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-8">
-                        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mb-6"><span class="text-dark text-2xl">✔</span></div>
-                        <h2 class="text-2xl font-black italic uppercase mb-2 text-white">¡Recibido!</h2>
-                        <p class="opacity-60 text-xs mb-10 text-white">Tu pedido está en camino.</p>
-                        <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest">Volver</button>
+                    <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-8 text-white">
+                        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-cyan-400/20">
+                            <span class="text-dark text-2xl font-black">✔</span>
+                        </div>
+                        <h2 class="text-2xl font-black italic uppercase mb-2">¡Pedido Recibido!</h2>
+                        <p class="opacity-60 text-xs leading-relaxed mb-10">Gracias <b>${datosPedido.cliente.split(' ')[0]}</b>. Tu pedido ha sido enviado con éxito.</p>
+                        <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cerrar y Volver</button>
                     </div>`;
                 vaciarCesta(false);
                 cerrarCheckout();

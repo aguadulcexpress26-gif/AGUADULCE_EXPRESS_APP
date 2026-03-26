@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express Pro v100</title>
+    <title>Aguadulce Express Pro v102</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -25,9 +25,11 @@
         .plato-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; margin-bottom: 12px; }
         #modal-plato, #panel-checkout { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
         
-        .step-tag { font-[800] text-[9px] uppercase tracking-[0.2em] text-cyan-400 mb-4 block text-left; }
-        .grid-option { border: 2px solid rgba(255,255,255,0.05); padding: 14px; rounded-xl: 1rem; text-align: center; font-size: 10px; font-weight: 800; text-transform: uppercase; border-radius: 15px; }
+        .step-tag { font-weight: 800; font-size: 9px; uppercase; tracking-wider: 0.2em; color: #22d3ee; margin-bottom: 1rem; display: block; text-align: left; }
+        .grid-option { border: 2px solid rgba(255,255,255,0.05); padding: 14px; text-align: center; font-size: 10px; font-weight: 800; text-transform: uppercase; border-radius: 15px; }
         .grid-option.selected { border-color: var(--cyan); background: rgba(6,182,212,0.1); color: var(--cyan); }
+        
+        .price-plus { font-size: 8px; color: var(--red); display: block; margin-top: 4px; }
         
         input, select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 16px; border-radius: 15px; color: white; width: 100%; margin-bottom: 15px; font-size: 13px; }
         .btn-qty { width: 34px; height: 34px; background: rgba(255,255,255,0.05); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--cyan); font-weight: bold; }
@@ -96,7 +98,7 @@
                 <input type="checkbox" id="check-legal" onchange="validarCheck()" style="width:22px; height:22px; margin:0">
                 <label for="check-legal" class="text-[10px] opacity-60 leading-tight">Acepto la normativa española de protección de datos (RGPD) y el tratamiento de mi información para este pedido.</label>
             </div>
-            <button id="btn-final" disabled class="w-full bg-white/10 text-white/20 py-5 rounded-2xl font-black uppercase text-sm shadow-xl">Efectuar Pedido</button>
+            <button id="btn-final" onclick="enviarPedidoFinal()" disabled class="w-full bg-white/10 text-white/20 py-5 rounded-2xl font-black uppercase text-sm shadow-xl">Efectuar Pedido</button>
         </div>
     </div>
 
@@ -105,7 +107,7 @@
         let db = { menu: [], restaurantes: [] };
         let cesta = [];
         let rActivo = { id: null, nombre: "" };
-        let itemActual = { pBase: 0, pTotal: 0, obligatorioOk: false };
+        let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, obligatorioOk: false, data: null };
 
         async function init() {
             try {
@@ -180,9 +182,11 @@
             rActivo.nombre = p.NOMBRE_RESTAURANTE;
             rActivo.id = String(p.ID_RESTAURANTE);
 
+            itemActual.data = p;
             itemActual.pBase = parseFloat(p.PRECIO);
-            itemActual.pTotal = itemActual.pBase;
-            itemActual.obligatorioOk = !p.SELECCION_OBLIGATORIA; // Si no hay, ya está OK
+            itemActual.pOpciones = 0;
+            itemActual.pExtras = 0;
+            itemActual.obligatorioOk = !p.SELECCION_OBLIGATORIA;
 
             document.getElementById('modal-titulo').innerText = p.PLATO;
             document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
@@ -192,11 +196,18 @@
             let html = "";
             const renderSeccion = (titulo, datos, tipo, idCheck) => {
                 if(!datos || datos === "") return "";
-                let res = `<div class="text-left" id="sec-${idCheck}"><span class="step-tag">${titulo}</span>`;
+                let res = `<div class="text-left"><span class="step-tag">${titulo}</span>`;
                 if(tipo === 'grid') {
                     res += `<div class="grid grid-cols-2 gap-2">`;
                     datos.split(',').forEach(d => {
-                        res += `<div class="grid-option" onclick="toggleSeleccion(this, '${tipo}')">${d.trim()}</div>`;
+                        let nombreOpt = d.trim();
+                        let precioOpt = 0;
+                        if(d.includes(':+')) {
+                            const partes = d.split(':+');
+                            nombreOpt = partes[0].trim();
+                            precioOpt = parseFloat(partes[1]) || 0;
+                        }
+                        res += `<div class="grid-option" onclick="toggleSeleccion(this, ${precioOpt}, '${idCheck}')">${nombreOpt} ${precioOpt > 0 ? `<span class="price-plus">+${precioOpt.toFixed(2)}€</span>` : ''}</div>`;
                     });
                     res += `</div>`;
                 } else {
@@ -229,10 +240,11 @@
             actualizarBarraModal();
         }
 
-        function toggleSeleccion(el, tipo) {
+        function toggleSeleccion(el, precio, idCheck) {
             el.parentElement.querySelectorAll('.grid-option').forEach(o => o.classList.remove('selected'));
             el.classList.add('selected');
-            itemActual.obligatorioOk = true; 
+            if(idCheck === 'oblig') itemActual.obligatorioOk = true;
+            itemActual.pOpciones = precio;
             actualizarBarraModal();
         }
 
@@ -241,7 +253,7 @@
             let val = parseInt(qtySpan.innerText) + change;
             if(val >= 0) {
                 qtySpan.innerText = val;
-                itemActual.pTotal += (change * price);
+                itemActual.pExtras += (change * price);
                 actualizarBarraModal();
             }
         }
@@ -249,7 +261,8 @@
         function actualizarBarraModal() {
             const btn = document.getElementById('btn-anadir-modal');
             const txt = document.getElementById('txt-anadir');
-            document.getElementById('total-modal-btn').innerText = itemActual.pTotal.toFixed(2) + "€";
+            const total = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
+            document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€";
             
             if(itemActual.obligatorioOk) {
                 btn.className = "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center shadow-lg shadow-cyan-400/20";
@@ -259,6 +272,29 @@
                 btn.className = "w-full bg-white/10 text-white/20 font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center";
                 txt.innerText = "Selecciona obligatorio";
                 btn.disabled = true;
+            }
+        }
+
+        function confirmarAnadir() {
+            const totalItem = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
+            cesta.push({
+                nombre: itemActual.data.PLATO,
+                total: totalItem
+            });
+            actualizarCestaBar();
+            cerrarModal();
+        }
+
+        function actualizarCestaBar() {
+            const bar = document.getElementById('cesta-flotante');
+            if(cesta.length > 0) {
+                bar.classList.remove('hidden');
+                bar.classList.add('flex');
+                const totalCesta = cesta.reduce((acc, i) => acc + i.total, 0);
+                document.getElementById('cesta-info').innerText = `🛒 ${cesta.length} PRODUCTOS`;
+                document.getElementById('cesta-total').innerText = `${totalCesta.toFixed(2)}€ TOTAL`;
+            } else {
+                bar.classList.add('hidden');
             }
         }
 
@@ -276,7 +312,14 @@
             const b = document.getElementById('btn-final');
             const c = document.getElementById('check-legal');
             b.disabled = !c.checked;
-            b.className = c.checked ? "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl mt-8 uppercase text-sm shadow-xl" : "w-full bg-white/10 text-white/20 py-5 rounded-2xl font-black uppercase text-sm";
+            b.className = c.checked ? "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl mt-8 uppercase text-sm shadow-xl shadow-cyan-400/20" : "w-full bg-white/10 text-white/20 py-5 rounded-2xl font-black uppercase text-sm";
+        }
+
+        function enviarPedidoFinal() {
+            const total = cesta.reduce((acc, i) => acc + i.total, 0);
+            alert(`Pedido simulado de ${total.toFixed(2)}€ enviado correctamente.`);
+            vaciarCesta();
+            cerrarCheckout();
         }
 
         init();

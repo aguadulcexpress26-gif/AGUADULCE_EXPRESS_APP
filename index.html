@@ -3,97 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express v78</title>
+    <title>Aguadulce Express v79</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         :root { --cyan: #06b6d4; --dark: #020617; }
-        body { font-family: 'Inter', sans-serif; background: var(--dark); color: white; margin: 0; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background: var(--dark); color: white; margin: 0; }
         header { background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.1); }
         .card-rest { position: relative; overflow: hidden; border-radius: 1.5rem; height: 150px; border: 1px solid rgba(255,255,255,0.08); }
         .card-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
         #modal-plato { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
-        .btn-primary { background: var(--cyan); color: var(--dark); font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; }
     </style>
 </head>
 <body>
 
     <header class="sticky top-0 z-50 px-6 py-4 flex items-center gap-4">
         <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center font-black text-dark text-xl">A</div>
-        <div class="text-left leading-none">
-            <span class="block font-black text-xl uppercase">Aguadulce</span>
+        <div class="text-left">
+            <span class="block font-black text-xl uppercase leading-none">Aguadulce</span>
             <span class="text-[8px] font-bold tracking-[0.4em] text-cyan-400 uppercase">Express</span>
         </div>
     </header>
 
     <main id="app-container" class="px-5 py-6 pb-24 text-center">
-        <div class="py-32">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-cyan-400"></div>
-        </div>
+        <div class="py-32"><div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-cyan-400"></div></div>
     </main>
 
     <div id="modal-plato">
-        <button onclick="cerrarModal()" class="absolute top-6 left-6 z-[1010] bg-black/50 w-10 h-10 rounded-xl text-white border border-white/10 text-xl">✕</button>
+        <button onclick="cerrarModal()" class="absolute top-6 left-6 z-[1010] bg-black/50 w-10 h-10 rounded-xl text-white">✕</button>
         <img id="modal-img" src="" class="w-full h-[35vh] object-cover">
         <div class="px-7 py-8 pb-40 text-left">
             <div id="modal-info"></div>
-            <div class="mt-10 flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/10">
-                <span class="text-[10px] font-black uppercase text-slate-500">Unidades</span>
-                <div class="flex items-center gap-5">
-                    <button onclick="updateQty(-1)" class="w-10 h-10 rounded-lg bg-white/10 font-bold">-</button>
-                    <span id="qty-num" class="text-xl font-black text-cyan-400">1</span>
-                    <button onclick="updateQty(1)" class="w-10 h-10 rounded-lg bg-cyan-500 text-dark font-bold">+</button>
-                </div>
-            </div>
         </div>
-        <div class="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-dark via-dark to-transparent">
-            <button class="w-full btn-primary py-5 rounded-2xl text-xs">Añadir • <span id="total-price">0.00</span>€</button>
+        <div class="fixed bottom-0 left-0 right-0 p-6">
+            <button class="w-full bg-cyan-500 text-dark font-black py-5 rounded-2xl uppercase text-xs">Añadir • <span id="total-price">0.00</span>€</button>
         </div>
     </div>
 
     <script>
         const scriptURL = 'https://script.google.com/macros/s/AKfycbyutzaHTfEwHGnoWVy_ptlNg5vTU1GvwflEwU4-KIRt2q7CvU0tr_SacmnhakPTTJ_l/exec';
         let db = { rest: [], menu: [] };
-        let activeP = null, qty = 1;
 
-        // LIMPIEZA TOTAL: Convierte a texto, quita espacios y pone en mayúsculas
-        const superClean = (val) => String(val || '').toString().trim().toUpperCase();
+        const clean = (v) => String(v || '').trim().toUpperCase();
 
         async function init() {
             try {
                 const res = await fetch(scriptURL);
                 const data = await res.json();
                 
-                // Buscar hojas ignorando mayúsculas/minúsculas en el nombre de la pestaña
-                const getSheet = (name) => {
-                    const key = Object.keys(data).find(k => k.trim().toLowerCase() === name.toLowerCase());
-                    return data[key] || [];
-                };
-
+                // Extraer hojas
+                const getSheet = (n) => data[Object.keys(data).find(k => clean(k) === clean(n))] || [];
                 db.rest = getSheet('RESTAURANTES');
                 db.menu = getSheet('MENU_GENERAL');
                 
-                console.log("Restaurantes cargados:", db.rest.length);
-                console.log("Platos cargados:", db.menu.length);
-                
                 renderHome();
             } catch (e) {
-                document.getElementById('app-container').innerHTML = `<p class="py-20 text-red-500 font-bold text-xs uppercase">Error de sincronización con Excel</p>`;
+                document.getElementById('app-container').innerHTML = "Error de conexión.";
             }
         }
 
         function renderHome() {
             const container = document.getElementById('app-container');
-            let html = `<div class="mb-6 text-left ml-1 uppercase text-[10px] font-black text-slate-500 tracking-widest">Establecimientos</div>`;
+            let html = `<h2 class="text-left text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Restaurantes</h2>`;
             db.rest.forEach(r => {
-                const idLimpio = superClean(r.ID_RESTAURANTE);
                 html += `
-                <div class="card-rest mb-5 shadow-xl" onclick="verMenu('${r.NOMBRE_RESTAURANTE}', '${idLimpio}')">
+                <div class="card-rest mb-5" onclick="verMenu('${r.NOMBRE_RESTAURANTE}', '${clean(r.ID_RESTAURANTE)}')">
                     <img src="${r.FOTO || 'https://via.placeholder.com/600x400'}" class="card-img">
                     <div class="absolute inset-0 bg-gradient-to-t from-black to-transparent"></div>
                     <div class="absolute bottom-5 left-6 text-left">
-                        <p class="text-[8px] text-cyan-400 font-black uppercase mb-1 tracking-widest">${r.CATEGORIA || 'CARTA'}</p>
-                        <h2 class="text-xl font-black text-white uppercase tracking-tighter">${r.NOMBRE_RESTAURANTE}</h2>
+                        <h2 class="text-xl font-black text-white uppercase">${r.NOMBRE_RESTAURANTE}</h2>
                     </div>
                 </div>`;
             });
@@ -103,62 +81,50 @@
         function verMenu(nombre, id) {
             const container = document.getElementById('app-container');
             
-            // FILTRO DE SEGURIDAD MÁXIMA
-            const platos = db.menu.filter(m => {
-                const idMenu = superClean(m.ID_RESTAURANTE);
-                return idMenu === id;
-            });
+            // BUSQUEDA HÍBRIDA: Intenta por ID, si no, intenta por NOMBRE_RESTAURANTE
+            let platos = db.menu.filter(m => clean(m.ID_RESTAURANTE) === id);
+            
+            if (platos.length === 0) {
+                platos = db.menu.filter(m => clean(m.NOMBRE_RESTAURANTE) === clean(nombre));
+            }
 
             let html = `
                 <div class="flex items-center gap-4 mb-8 text-left">
-                    <button onclick="renderHome()" class="bg-white/10 w-10 h-10 rounded-xl text-cyan-400 font-bold">←</button>
-                    <div><h2 class="text-xl font-black text-white uppercase">${nombre}</h2><p class="text-[9px] text-cyan-400 font-bold uppercase tracking-widest">Menú Online</p></div>
-                </div>`;
+                    <button onclick="renderHome()" class="bg-white/10 w-10 h-10 rounded-xl text-cyan-400">←</button>
+                    <div><h2 class="text-xl font-black text-white uppercase leading-none">${nombre}</h2></div>
+                </div>
+                <div class="grid gap-3">`;
 
             if(platos.length === 0) {
-                // Si falla el ID, mostramos un mensaje que nos ayude a depurar
-                html += `
-                <div class="py-20 px-10 border border-dashed border-white/10 rounded-3xl">
-                    <p class="text-slate-500 uppercase text-[10px] font-black mb-4 tracking-widest leading-relaxed">
-                        No se han encontrado platos vinculados al ID: ${id} en la hoja MENU_GENERAL.
-                    </p>
-                    <button onclick="renderHome()" class="text-cyan-400 text-[10px] font-bold border-b border-cyan-400">VOLVER A INTENTAR</button>
-                </div>`;
+                html += `<div class="py-20 text-slate-500 text-[10px] font-black uppercase tracking-widest">No hay platos registrados</div>`;
             } else {
-                html += `<div class="grid gap-3">`;
                 platos.forEach(p => {
                     html += `
-                    <div class="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/5 active:scale-95 transition-all" onclick='abrirPlato(${JSON.stringify(p).replace(/'/g, "&apos;")})'>
+                    <div class="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/5" onclick='abrirPlato(${JSON.stringify(p).replace(/'/g, "&apos;")})'>
                         <div class="text-left flex-1 pr-4">
                             <div class="font-bold text-white text-[11px] uppercase mb-1">${p.PLATO}</div>
                             <div class="text-cyan-400 font-black text-lg">${parseFloat(p.PRECIO || 0).toFixed(2)}€</div>
                         </div>
-                        <img src="${p.FOTO_PLATO || 'https://via.placeholder.com/150'}" class="w-16 h-16 rounded-xl object-cover border border-white/10">
+                        <img src="${p.FOTO_PLATO || 'https://via.placeholder.com/150'}" class="w-16 h-16 rounded-xl object-cover">
                     </div>`;
                 });
-                html += `</div>`;
             }
-            container.innerHTML = html;
+            container.innerHTML = html + `</div>`;
             window.scrollTo(0,0);
         }
 
         function abrirPlato(p) {
-            activeP = p; qty = 1;
             const modal = document.getElementById('modal-plato');
-            document.getElementById('modal-img').src = p.FOTO_PLATO || 'https://via.placeholder.com/800x600';
+            document.getElementById('modal-img').src = p.FOTO_PLATO || '';
             document.getElementById('modal-info').innerHTML = `
-                <h2 class="text-2xl font-black text-white uppercase leading-none mb-2">${p.PLATO}</h2>
-                <p class="text-slate-400 text-xs leading-relaxed mb-6">${p.DESCRIPCION || 'Calidad garantizada Aguadulce Express.'}</p>
+                <h2 class="text-2xl font-black text-white uppercase mb-2">${p.PLATO}</h2>
                 <div class="text-2xl font-black text-cyan-400">${parseFloat(p.PRECIO || 0).toFixed(2)}€</div>
             `;
-            recalc();
+            document.getElementById('total-price').innerText = parseFloat(p.PRECIO || 0).toFixed(2);
             modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
         }
 
-        function updateQty(v) { qty = Math.max(1, qty + v); document.getElementById('qty-num').innerText = qty; recalc(); }
-        function recalc() { document.getElementById('total-price').innerText = (parseFloat(activeP.PRECIO || 0) * qty).toFixed(2); }
-        function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; document.body.style.overflow = 'auto'; }
+        function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; }
 
         init();
     </script>

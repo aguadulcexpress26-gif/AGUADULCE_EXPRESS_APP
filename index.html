@@ -246,6 +246,190 @@
             itemActual.pExtras = 0;
             itemActual.obligatorioOk = !p.SELECCION_OBLIGATORIA;
 
-            document.getElementById('modal-titulo').innerText = p.PLATO;
-            document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
-            document
+            document.getElementById('modal-img').src = p.FOTO_PLATO;
+document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
+
+let html = "";
+const renderSeccion = (titulo, datos, tipo, idCheck) => {
+    if (!datos || datos === "") return "";
+    let res = `<div class="text-left"><span class="step-tag">${titulo}</span>`;
+    if (tipo === 'grid') {
+        res += `<div class="grid grid-cols-2 gap-2">`;
+        datos.split(',').forEach(d => {
+            let n = d.trim(), pr = 0;
+            if (d.includes(':+')) { n = d.split(':+')[0].trim(); pr = parseFloat(d.split(':+')[1]) || 0; }
+            res += `<div class="grid-option" onclick="toggleSeleccion(this, ${pr}, '${idCheck}')">${n} ${pr > 0 ? `<span class="block text-[8px] text-red-500 mt-1">+${pr.toFixed(2)}€</span>` : ''}</div>`;
+        });
+        res += `</div>`;
+    } else {
+        res += `<div class="space-y-2">`;
+        datos.split(',').forEach(d => {
+            const [n, pr] = d.split(':'); const price = parseFloat(pr || 0);
+            res += `
+            <div class="flex justify-between items-center py-3 border-b border-white/5">
+                <div class="flex flex-col"><span class="text-[11px] font-bold uppercase">${n.trim()}</span><span class="text-[9px] font-bold text-red-500">+${price.toFixed(2)}€</span></div>
+                <div class="flex items-center gap-4 bg-white/5 p-1 rounded-xl">
+                    <div class="btn-qty" onclick="updExtra(this, -1, ${price})">−</div>
+                    <span class="text-xs font-black qty">0</span>
+                    <div class="btn-qty" onclick="updExtra(this, 1, ${price})">+</div>
+                </div>
+            </div>`;
+        });
+        res += `</div>`;
+    }
+    return res + `</div>`;
+};
+
+html += renderSeccion("Obligatorio (Elige 1)", p.SELECCION_OBLIGATORIA, 'grid', 'oblig');
+html += renderSeccion("Opciones", p.SELECCION_UNICA, 'grid', 'unica');
+html += renderSeccion("Extras", p.EXTRAS, 'lista', 'extras');
+
+document.getElementById('contenedor-pasos').innerHTML = html;
+document.getElementById('modal-plato').style.display = 'flex';
+document.body.style.overflow = 'hidden';
+actualizarBarraModal();
+}
+
+function toggleSeleccion(el, precio, idCheck) {
+    el.parentElement.querySelectorAll('.grid-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    if (idCheck === 'oblig') itemActual.obligatorioOk = true;
+    itemActual.pOpciones = precio;
+    actualizarBarraModal();
+}
+
+function updExtra(el, change, price) {
+    const qtySpan = el.parentElement.querySelector('.qty');
+    let val = parseInt(qtySpan.innerText) + change;
+    if (val >= 0) {
+        qtySpan.innerText = val;
+        itemActual.pExtras += (change * price);
+        actualizarBarraModal();
+    }
+}
+
+function actualizarBarraModal() {
+    const btn = document.getElementById('btn-anadir-modal');
+    const total = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
+    document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€";
+
+    if (itemActual.obligatorioOk) {
+        btn.className = "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center shadow-lg shadow-cyan-400/20";
+        document.getElementById('txt-anadir').innerText = "Añadir al pedido";
+        btn.disabled = false;
+    } else {
+        btn.className = "w-full bg-white/10 text-white/20 font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center";
+        document.getElementById('txt-anadir').innerText = "Selecciona obligatorio";
+        btn.disabled = true;
+    }
+}
+
+function confirmarAnadir() {
+    cesta.push({ nombre: itemActual.data.PLATO, total: itemActual.pBase + itemActual.pOpciones + itemActual.pExtras });
+    actualizarCestaBar();
+    cerrarModal();
+}
+
+function actualizarCestaBar() {
+    const bar = document.getElementById('cesta-flotante');
+    if (cesta.length > 0) {
+        bar.classList.replace('hidden', 'flex');
+        const total = cesta.reduce((acc, i) => acc + i.total, 0);
+        document.getElementById('cesta-info').innerText = `🛒 ${cesta.length} PRODUCTOS`;
+        document.getElementById('cesta-total').innerText = `${total.toFixed(2)}€ TOTAL`;
+    } else {
+        bar.classList.replace('flex', 'hidden');
+    }
+}
+
+function abrirCheckout() {
+    const lista = document.getElementById('lista-resumen');
+    lista.innerHTML = "";
+    let subtotal = 0;
+    cesta.forEach(i => {
+        subtotal += i.total;
+        lista.innerHTML += `<div class="flex justify-between text-[11px] font-bold uppercase"><span>${i.nombre}</span><span>${i.total.toFixed(2)}€</span></div>`;
+    });
+    document.getElementById('res-subtotal').innerText = subtotal.toFixed(2) + "€";
+    document.getElementById('res-total-final').innerText = (subtotal + COSTO_DOMICILIO).toFixed(2) + "€";
+    document.getElementById('panel-checkout').style.display = 'flex';
+}
+
+function vaciarCesta(render = true) {
+    cesta = [];
+    rActivo = { id: null, nombre: "" };
+    document.getElementById('cesta-flotante').classList.add('hidden');
+    if (render) renderHome();
+}
+
+function filtrarCat(cat, el) {
+    document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelectorAll('.plato-card').forEach(p => p.classList.toggle('hidden-plato', cat !== 'TODOS' && p.getAttribute('data-cat') !== cat));
+}
+
+function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
+function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; document.body.style.overflow = 'auto'; }
+
+function validarCheck() {
+    const b = document.getElementById('btn-final');
+    const c = document.getElementById('check-legal');
+    b.disabled = !c.checked;
+    b.className = c.checked
+        ? "w-full bg-cyan-400 text-dark font-black py-6 rounded-2xl uppercase text-sm shadow-xl shadow-cyan-400/20"
+        : "w-full bg-white/10 text-white/20 py-6 rounded-2xl font-black uppercase text-sm";
+}
+
+function enviarPedidoFinal() {
+
+    if (cesta.length === 0) {
+        alert("La cesta está vacía.");
+        return;
+    }
+
+    let cliente = document.getElementById("nombre-cli").value.trim();
+    let direccion = document.getElementById("dir-cli").value.trim();
+    let telefono = document.getElementById("tel-cli").value.trim();
+    let pago = document.getElementById("pago-cli").value;
+
+    if (!cliente || !direccion || !telefono) {
+        alert("Por favor completa todos los campos.");
+        return;
+    }
+
+    let descripcionPedido = cesta
+        .map(i => `${i.nombre} (${i.total.toFixed(2)}€)`)
+        .join(", ");
+
+    let totalFinal = Number(
+        document.getElementById("res-total-final").innerText.replace("€", "").trim()
+    );
+
+    let data = {
+        local_info: rActivo.nombre,
+        cliente_info: cliente,
+        dir_info: direccion,
+        pedido_info: descripcionPedido,
+        monto_info: totalFinal,
+        telf_info: telefono,
+        pago_info: pago
+    };
+
+    fetch(scriptURL, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" }
+    })
+    .then(res => res.text())
+    .then(r => {
+        alert("Pedido enviado correctamente.");
+        vaciarCesta();
+        cerrarCheckout();
+    })
+    .catch(err => {
+        alert("Error al enviar el pedido.");
+        console.error(err);
+    });
+}
+
+init();

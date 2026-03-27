@@ -301,57 +301,52 @@
             b.className = c.checked ? "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl mt-8 uppercase text-sm shadow-xl" : "w-full bg-white/10 text-white/20 py-5 rounded-2xl font-black uppercase text-sm";
         }
 
-        async function enviarPedidoFinal() {
-            const restauranteInfo = db.restaurantes.find(r => String(r.ID_RESTAURANTE) === String(rActivo.id)) || {};
-            const nombreRestauranteReal = restauranteInfo.NOMBRE_RESTAURANTE || "S/N";
-            
-            const costoEnvioRaw = restauranteInfo.COSTO_ENVIO ? String(restauranteInfo.COSTO_ENVIO).replace(',', '.') : "3.50";
-            const costoEnvioReal = parseFloat(costoEnvioRaw);
-            const subtotalCesta = cesta.reduce((acc, i) => acc + Number(i.total || 0), 0);
-            const totalFinal = (subtotalCesta + costoEnvioReal).toFixed(2);
+       async function enviarPedidoFinal() {
+            const b = document.getElementById('btn-final');
+            b.disabled = true; 
+            b.innerText = "PROCESANDO...";
 
-            // MAPEO CON EL TRUCO DEL APÓSTROFE (') PARA BLOQUEAR EL ERROR 2026
+            const resInfo = db.restaurantes.find(r => String(r.ID_RESTAURANTE) === String(rActivo.id)) || {};
+            const sub = cesta.reduce((acc, i) => acc + Number(i.total || 0), 0);
+            const env = parseFloat(String(resInfo.COSTO_ENVIO || "3.50").replace(',', '.'));
+            const totalFinal = (sub + env).toFixed(2);
+
+            // DATOS TOTALMENTE LIMPIOS
             const datosPedido = {
-                id_restaurante: nombreRestauranteReal.toUpperCase(),
+                id_restaurante: String(resInfo.NOMBRE_RESTAURANTE || "S/N").toUpperCase(),
                 cliente: document.getElementById('nombre-cli').value.toUpperCase(),
                 direccion: document.getElementById('dir-cli').value.toUpperCase(),
                 detalle: cesta.map(i => `1x ${i.nombre}`).join(" | "),
-                
-                // LA BOMBA ATÓMICA: Añadimos el símbolo € al principio del texto
-                total: "€ " + totalFinal.replace('.', ','), 
-                
-                telefono: "'" + document.getElementById('tel-cli').value.trim(),
-                
-                // Lo mismo para el envío
-                envio: "€ " + costoEnvioReal.toString().replace('.', ','),
-                
+                total: totalFinal.replace('.', ','), // Solo cambiamos punto por coma para Europa
+                telefono: document.getElementById('tel-cli').value,
+                envio: env.toFixed(2).replace('.', ','),
                 metodo_pago: document.getElementById('pago-cli').value.toUpperCase()
             };
 
             try {
-                const btn = document.getElementById('btn-final');
-                btn.disabled = true; btn.innerText = "PROCESANDO...";
-
-                await fetch(scriptURL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    cache: 'no-cache',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datosPedido)
+                // USA AQUÍ LA NUEVA URL QUE COPIASTE DEL PASO ANTERIOR
+                await fetch(scriptURL, { 
+                    method: 'POST', 
+                    mode: 'no-cors', 
+                    body: JSON.stringify(datosPedido) 
                 });
 
                 document.getElementById('app-container').innerHTML = `
                     <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-8 text-white">
-                        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-cyan-400/20">
-                            <span class="text-dark text-2xl font-black">✔</span>
+                        <div class="w-20 h-20 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-2xl">
+                            <span class="text-dark text-3xl font-black">✔</span>
                         </div>
-                        <h2 class="text-2xl font-black italic uppercase mb-2">¡Pedido Recibido!</h2>
-                        <p class="opacity-60 text-xs leading-relaxed mb-10">Gracias <b>${datosPedido.cliente.split(' ')[0]}</b>. Tu pedido ha sido enviado con éxito.</p>
-                        <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cerrar y Volver</button>
+                        <h2 class="text-2xl font-black italic uppercase mb-2">¡PEDIDO ENVIADO!</h2>
+                        <p class="opacity-60 text-xs mb-10">Tu registro ya está en el sistema.</p>
+                        <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-xs tracking-widest">VOLVER AL MENÚ</button>
                     </div>`;
                 vaciarCesta(false);
                 cerrarCheckout();
-            } catch (e) { alert("Error al enviar pedido"); btn.disabled = false; btn.innerText = "EFECTUAR PEDIDO"; }
+            } catch (e) { 
+                alert("Error de red"); 
+                b.disabled = false; 
+                b.innerText = "REINTENTAR";
+            }
         }
 
         init();

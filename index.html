@@ -139,7 +139,7 @@
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycby6AAIGwQvWdLb_Os1ZR7Dq60d_qZY_SL_MGQegHVyXBC7QC6bg4H5NiCZrLE-oT3nY/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbxqdJEU1NAiINmps_-yccF3qxCdsJtIK9ZHD2g-p8r_wPMOaJJLM-5rAC6FHrB401Cp/exec';
         let db = { menu: [], restaurantes: [] };
         let cesta = [];
         let rActivo = { id: null, nombre: "" };
@@ -358,11 +358,50 @@
             b.className = c.checked ? "w-full bg-cyan-400 text-dark font-black py-6 rounded-2xl uppercase text-sm shadow-xl shadow-cyan-400/20" : "w-full bg-white/10 text-white/20 py-6 rounded-2xl font-black uppercase text-sm";
         }
 
-        function enviarPedidoFinal() {
-            alert("Pedido enviado correctamente.");
-            vaciarCesta(); cerrarCheckout();
-        }
+        async function enviarPedidoFinal() {
+    const b = document.getElementById('btn-final');
+    b.disabled = true;
+    b.innerText = "REGISTRANDO...";
 
+    // Preparamos el paquete con los nombres que tu Script espera
+    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+    const totalConEnvio = (subtotal + COSTO_DOMICILIO).toFixed(2);
+
+    const paquete = {
+        local_info: rActivo.nombre,
+        cliente_info: document.getElementById('nombre-cli').value.toUpperCase(),
+        dir_info: document.getElementById('dir-cli').value.toUpperCase(),
+        pedido_info: cesta.map(i => `1x ${i.nombre}`).join(" | "),
+        monto_info: totalConEnvio.replace('.', ','), // Enviamos con coma para tu bloqueo de formato
+        telf_info: document.getElementById('tel-cli').value.trim()
+    };
+
+    try {
+        await fetch(scriptURL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify(paquete) 
+        });
+        
+        // El diseño que tenías en tus capturas para éxito
+        document.getElementById('app-container').innerHTML = `
+            <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-10">
+                <div class="w-20 h-20 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-2xl shadow-cyan-400/30">
+                    <span class="text-dark text-3xl font-black">✓</span>
+                </div>
+                <h2 class="text-2xl font-black italic uppercase mb-2">¡PEDIDO REGISTRADO!</h2>
+                <p class="opacity-50 text-xs leading-relaxed mb-10">La información se ha enviado correctamente a la base de datos.</p>
+                <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-xs">Nuevo Pedido</button>
+            </div>`;
+        
+        vaciarCesta(false);
+        cerrarCheckout();
+    } catch (e) {
+        alert("Error de conexión. Reintenta.");
+        b.disabled = false;
+        b.innerText = "EFECTUAR PEDIDO";
+    }
+}
         init();
     </script>
 </body>

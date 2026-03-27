@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Aguadulce Express Pro v103</title>
+
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Fuente -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
@@ -21,22 +25,58 @@
         .hidden-plato { display: none !important; }
 
         .plato-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; margin-bottom: 12px; }
-        #modal-plato, #panel-checkout, #confirm-cambio { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
 
-        #confirm-cambio { background: rgba(2, 6, 23, 0.95); backdrop-blur: 20px; justify-content: center; align-items: center; padding: 40px; text-align: center; }
+        #modal-plato, #panel-checkout, #confirm-cambio {
+            position: fixed; inset: 0; background: var(--dark);
+            z-index: 1000; display: none; flex-direction: column; overflow-y: auto;
+        }
+
+        #confirm-cambio {
+            background: rgba(2, 6, 23, 0.95);
+            backdrop-blur: 20px;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            text-align: center;
+        }
 
         .step-tag { font-weight: 800; font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: #22d3ee; margin-bottom: 1rem; display: block; text-align: left; }
-        .grid-option { border: 2px solid rgba(255,255,255,0.05); padding: 14px; text-align: center; font-size: 10px; font-weight: 800; text-transform: uppercase; border-radius: 15px; }
+
+        .grid-option {
+            border: 2px solid rgba(255,255,255,0.05);
+            padding: 14px;
+            text-align: center;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            border-radius: 15px;
+        }
         .grid-option.selected { border-color: var(--cyan); background: rgba(6,182,212,0.1); color: var(--cyan); }
 
-        input, select { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 16px; border-radius: 18px; color: white; width: 100%; margin-bottom: 12px; font-size: 13px; transition: all 0.3s; }
+        input, select {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 16px;
+            border-radius: 18px;
+            color: white;
+            width: 100%;
+            margin-bottom: 12px;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
         input:focus { border-color: var(--cyan); outline: none; background: rgba(255,255,255,0.06); }
-        .btn-qty { width: 34px; height: 34px; background: rgba(255,255,255,0.05); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--cyan); font-weight: bold; }
+
+        .btn-qty {
+            width: 34px; height: 34px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--cyan); font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
-
     <!-- LOADER -->
     <div id="loader">
         <div class="spinner mb-4"></div>
@@ -151,143 +191,118 @@
             <button id="btn-final" disabled onclick="enviarPedidoFinal()" class="w-full bg-white/10 text-white/20 py-6 rounded-2xl font-black uppercase text-sm shadow-xl transition-all">Efectuar Pedido</button>
         </div>
     </div>
+<script>
+const scriptURL = "https://script.google.com/macros/s/AKfycby65hLFgtfhwvI8pmMIpWP8p4nBch0hgq8VpZWVbUP7k8HTyR_zHDsOkFEEzQrAbsSO/exec";
 
-    <!-- SCRIPT PRINCIPAL -->
-    <script>
+let DATA = [];
+let cesta = [];
+let rActivo = { id: null, nombre: "" };
+let itemActual = {};
+const COSTO_DOMICILIO = 3.50;
 
-        const scriptURL = "https://script.google.com/macros/s/AKfycbx6xsQHCJ_COQvkBQEsFAfqOh5U4dXP1_3OLmqM-nwI2ybcjKbNvODm5jJs-dNek1ps/exec";
-        let db = { menu: [], restaurantes: [] };
-        let cesta = [];
-        let rActivo = { id: null, nombre: "" };
-        let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, obligatorioOk: false, data: null, tempP: null };
-        const COSTO_DOMICILIO = 3.50;
+async function init() {
+    try {
+        const res = await fetch(scriptURL);
+        DATA = await res.json();
+        renderHome();
+    } catch (e) {
+        alert("Error cargando datos.");
+        console.error(e);
+    }
+    document.getElementById("loader").style.display = "none";
+}
 
-        async function init() {
-            try {
-                const res = await fetch(scriptURL);
-                const data = await res.json();
-                db.restaurantes = data.RESTAURANTES || [];
-                db.menu = data.MENU_GENERAL || [];
-                document.getElementById('loader').style.display = 'none';
-                renderHome();
-            } catch (e) { console.error("Error cargando Bóveda"); }
-        }
+function renderHome() {
+    const cont = document.getElementById("app-container");
+    cont.innerHTML = "";
 
-        function renderHome() {
-            let html = `<p class="step-tag mb-6 ml-2">Restaurantes Disponibles</p>`;
-            db.restaurantes.forEach(r => {
-                html += `
-                <div class="relative rounded-[2.5rem] overflow-hidden h-[180px] mb-5 border border-white/5 shadow-2xl" onclick="verMenu('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
-                    <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-110">
-                    <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
-                    <div class="absolute bottom-6 left-8 text-left">
-                        <p class="text-cyan-400 text-[9px] font-black uppercase mb-1 tracking-widest">${r.CATEGORIA || 'Gourmet'}</p>
-                        <h2 class="text-2xl font-black italic uppercase text-white">${r.NOMBRE_RESTAURANTE}</h2>
+    const restaurantes = [...new Set(DATA.map(p => p.RESTAURANTE))];
+
+    let html = `<div class="category-bar">`;
+    html += `<div class="cat-chip active" onclick="filtrarCat('TODOS', this)">Todos</div>`;
+    restaurantes.forEach(r => {
+        html += `<div class="cat-chip" onclick="filtrarCat('${r}', this)">${r}</div>`;
+    });
+    html += `</div>`;
+
+    DATA.forEach((p, i) => {
+        html += `
+        <div class="plato-card" data-cat="${p.RESTAURANTE}" onclick="abrirPlato(${i})">
+            <img src="${p.FOTO_PLATO}" class="w-20 h-20 object-cover rounded-xl mr-4">
+            <div class="flex-1">
+                <h3 class="font-black uppercase italic text-sm">${p.PLATO}</h3>
+                <p class="text-[10px] opacity-50">${p.DESCRIPCION || ""}</p>
+                <span class="text-cyan-400 font-black text-xs">${p.PRECIO_BASE}€</span>
+            </div>
+        </div>`;
+    });
+
+    cont.innerHTML = html;
+}
+
+function abrirPlato(i) {
+    const p = DATA[i];
+
+    if (rActivo.id && rActivo.id !== p.RESTAURANTE) {
+        document.getElementById("confirm-cambio").style.display = "flex";
+        itemActual.pendiente = i;
+        return;
+    }
+
+    rActivo = { id: p.RESTAURANTE, nombre: p.RESTAURANTE };
+
+    itemActual = {
+        data: p,
+        pBase: parseFloat(p.PRECIO_BASE),
+        pOpciones: 0,
+        pExtras: 0,
+        obligatorioOk: false
+    };
+
+    document.getElementById("modal-titulo").innerText = p.PLATO;
+    document.getElementById("modal-desc").innerText = p.DESCRIPCION || "";
+    document.getElementById("modal-img").src = p.FOTO_PLATO;
+    document.getElementById("modal-precio-base").innerText = itemActual.pBase.toFixed(2) + "€";
+
+    let html = "";
+    const renderSeccion = (titulo, datos, tipo, idCheck) => {
+        if (!datos || datos === "") return "";
+        let res = `<div class="text-left"><span class="step-tag">${titulo}</span>`;
+        if (tipo === 'grid') {
+            res += `<div class="grid grid-cols-2 gap-2">`;
+            datos.split(',').forEach(d => {
+                let n = d.trim(), pr = 0;
+                if (d.includes(':+')) { n = d.split(':+')[0].trim(); pr = parseFloat(d.split(':+')[1]) || 0; }
+                res += `<div class="grid-option" onclick="toggleSeleccion(this, ${pr}, '${idCheck}')">${n} ${pr > 0 ? `<span class="block text-[8px] text-red-500 mt-1">+${pr.toFixed(2)}€</span>` : ''}</div>`;
+            });
+            res += `</div>`;
+        } else {
+            res += `<div class="space-y-2">`;
+            datos.split(',').forEach(d => {
+                const [n, pr] = d.split(':'); const price = parseFloat(pr || 0);
+                res += `
+                <div class="flex justify-between items-center py-3 border-b border-white/5">
+                    <div class="flex flex-col"><span class="text-[11px] font-bold uppercase">${n.trim()}</span><span class="text-[9px] font-bold text-red-500">+${price.toFixed(2)}€</span></div>
+                    <div class="flex items-center gap-4 bg-white/5 p-1 rounded-xl">
+                        <div class="btn-qty" onclick="updExtra(this, -1, ${price})">−</div>
+                        <span class="text-xs font-black qty">0</span>
+                        <div class="btn-qty" onclick="updExtra(this, 1, ${price})">+</div>
                     </div>
                 </div>`;
             });
-            document.getElementById('app-container').innerHTML = html;
+            res += `</div>`;
         }
+        return res + `</div>`;
+    };
 
-        function verMenu(nombre, id) {
-            const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(id));
-            const cats = [...new Set(platos.map(p => p.CATEGORIA || "General"))];
+    html += renderSeccion("Obligatorio (Elige 1)", p.SELECCION_OBLIGATORIA, 'grid', 'oblig');
+    html += renderSeccion("Opciones", p.SELECCION_UNICA, 'grid', 'unica');
+    html += renderSeccion("Extras", p.EXTRAS, 'lista', 'extras');
 
-            let html = `
-                <div class="flex items-center gap-4 mb-4 text-left">
-                    <button onclick="renderHome()" class="w-10 h-10 rounded-xl bg-white/5 border border-white/10 text-cyan-400">←</button>
-                    <h2 class="text-lg font-bold uppercase italic">${nombre}</h2>
-                </div>
-                <div class="category-bar">
-                    <div class="cat-chip active" onclick="filtrarCat('TODOS', this)">Todos</div>
-                    ${cats.map(c => `<div class="cat-chip" onclick="filtrarCat('${c}', this)">${c}</div>`).join('')}
-                </div>
-                <div id="lista-platos" class="mt-6">`;
-
-            cats.forEach(cat => {
-                platos.filter(p => (p.CATEGORIA || "General") === cat).forEach(p => {
-                    html += `
-                    <div class="plato-card" data-cat="${cat}" onclick='abrirDetalle(${JSON.stringify(p).replace(/'/g, "&apos;")})'>
-                        <div class="text-left flex-1 pr-4">
-                            <h4 class="font-bold text-[13px] uppercase mb-2 leading-tight">${p.PLATO}</h4>
-                            <span class="bg-cyan-400 text-dark px-3 py-1 rounded-lg font-black text-[10px]">${parseFloat(p.PRECIO).toFixed(2)}€</span>
-                        </div>
-                        <img src="${p.FOTO_PLATO}" class="w-20 h-20 rounded-2xl object-cover shadow-lg border border-white/5">
-                    </div>`;
-                });
-            });
-
-            document.getElementById('app-container').innerHTML = html + `</div>`;
-        }
-
-        function abrirDetalle(p) {
-            if (rActivo.id && rActivo.id !== String(p.ID_RESTAURANTE)) {
-                itemActual.tempP = p;
-                document.getElementById('confirm-cambio').style.display = 'flex';
-                return;
-            }
-            ejecutarApertura(p);
-        }
-
-        function procederCambio() {
-            vaciarCesta(false);
-            document.getElementById('confirm-cambio').style.display = 'none';
-            ejecutarApertura(itemActual.tempP);
-        }
-
-        function cancelarCambio() { document.getElementById('confirm-cambio').style.display = 'none'; }
-
-        function ejecutarApertura(p) {
-            rActivo.nombre = p.NOMBRE_RESTAURANTE;
-            rActivo.id = String(p.ID_RESTAURANTE);
-            itemActual.data = p;
-            itemActual.pBase = parseFloat(p.PRECIO);
-            itemActual.pOpciones = 0;
-            itemActual.pExtras = 0;
-            itemActual.obligatorioOk = !p.SELECCION_OBLIGATORIA;
-
-            document.getElementById('modal-img').src = p.FOTO_PLATO;
-document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
-
-let html = "";
-const renderSeccion = (titulo, datos, tipo, idCheck) => {
-    if (!datos || datos === "") return "";
-    let res = `<div class="text-left"><span class="step-tag">${titulo}</span>`;
-    if (tipo === 'grid') {
-        res += `<div class="grid grid-cols-2 gap-2">`;
-        datos.split(',').forEach(d => {
-            let n = d.trim(), pr = 0;
-            if (d.includes(':+')) { n = d.split(':+')[0].trim(); pr = parseFloat(d.split(':+')[1]) || 0; }
-            res += `<div class="grid-option" onclick="toggleSeleccion(this, ${pr}, '${idCheck}')">${n} ${pr > 0 ? `<span class="block text-[8px] text-red-500 mt-1">+${pr.toFixed(2)}€</span>` : ''}</div>`;
-        });
-        res += `</div>`;
-    } else {
-        res += `<div class="space-y-2">`;
-        datos.split(',').forEach(d => {
-            const [n, pr] = d.split(':'); const price = parseFloat(pr || 0);
-            res += `
-            <div class="flex justify-between items-center py-3 border-b border-white/5">
-                <div class="flex flex-col"><span class="text-[11px] font-bold uppercase">${n.trim()}</span><span class="text-[9px] font-bold text-red-500">+${price.toFixed(2)}€</span></div>
-                <div class="flex items-center gap-4 bg-white/5 p-1 rounded-xl">
-                    <div class="btn-qty" onclick="updExtra(this, -1, ${price})">−</div>
-                    <span class="text-xs font-black qty">0</span>
-                    <div class="btn-qty" onclick="updExtra(this, 1, ${price})">+</div>
-                </div>
-            </div>`;
-        });
-        res += `</div>`;
-    }
-    return res + `</div>`;
-};
-
-html += renderSeccion("Obligatorio (Elige 1)", p.SELECCION_OBLIGATORIA, 'grid', 'oblig');
-html += renderSeccion("Opciones", p.SELECCION_UNICA, 'grid', 'unica');
-html += renderSeccion("Extras", p.EXTRAS, 'lista', 'extras');
-
-document.getElementById('contenedor-pasos').innerHTML = html;
-document.getElementById('modal-plato').style.display = 'flex';
-document.body.style.overflow = 'hidden';
-actualizarBarraModal();
+    document.getElementById("contenedor-pasos").innerHTML = html;
+    document.getElementById("modal-plato").style.display = "flex";
+    document.body.style.overflow = "hidden";
+    actualizarBarraModal();
 }
 
 function toggleSeleccion(el, precio, idCheck) {
@@ -309,17 +324,17 @@ function updExtra(el, change, price) {
 }
 
 function actualizarBarraModal() {
-    const btn = document.getElementById('btn-anadir-modal');
+    const btn = document.getElementById("btn-anadir-modal");
     const total = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
-    document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€";
+    document.getElementById("total-modal-btn").innerText = total.toFixed(2) + "€";
 
     if (itemActual.obligatorioOk) {
         btn.className = "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center shadow-lg shadow-cyan-400/20";
-        document.getElementById('txt-anadir').innerText = "Añadir al pedido";
+        document.getElementById("txt-anadir").innerText = "Añadir al pedido";
         btn.disabled = false;
     } else {
         btn.className = "w-full bg-white/10 text-white/20 font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center";
-        document.getElementById('txt-anadir').innerText = "Selecciona obligatorio";
+        document.getElementById("txt-anadir").innerText = "Selecciona obligatorio";
         btn.disabled = true;
     }
 }
@@ -331,49 +346,49 @@ function confirmarAnadir() {
 }
 
 function actualizarCestaBar() {
-    const bar = document.getElementById('cesta-flotante');
+    const bar = document.getElementById("cesta-flotante");
     if (cesta.length > 0) {
-        bar.classList.replace('hidden', 'flex');
+        bar.classList.replace("hidden", "flex");
         const total = cesta.reduce((acc, i) => acc + i.total, 0);
-        document.getElementById('cesta-info').innerText = `🛒 ${cesta.length} PRODUCTOS`;
-        document.getElementById('cesta-total').innerText = `${total.toFixed(2)}€ TOTAL`;
+        document.getElementById("cesta-info").innerText = `🛒 ${cesta.length} PRODUCTOS`;
+        document.getElementById("cesta-total").innerText = `${total.toFixed(2)}€ TOTAL`;
     } else {
-        bar.classList.replace('flex', 'hidden');
+        bar.classList.replace("flex", "hidden");
     }
 }
 
 function abrirCheckout() {
-    const lista = document.getElementById('lista-resumen');
+    const lista = document.getElementById("lista-resumen");
     lista.innerHTML = "";
     let subtotal = 0;
     cesta.forEach(i => {
         subtotal += i.total;
         lista.innerHTML += `<div class="flex justify-between text-[11px] font-bold uppercase"><span>${i.nombre}</span><span>${i.total.toFixed(2)}€</span></div>`;
     });
-    document.getElementById('res-subtotal').innerText = subtotal.toFixed(2) + "€";
-    document.getElementById('res-total-final').innerText = (subtotal + COSTO_DOMICILIO).toFixed(2) + "€";
-    document.getElementById('panel-checkout').style.display = 'flex';
+    document.getElementById("res-subtotal").innerText = subtotal.toFixed(2) + "€";
+    document.getElementById("res-total-final").innerText = (subtotal + COSTO_DOMICILIO).toFixed(2) + "€";
+    document.getElementById("panel-checkout").style.display = "flex";
 }
 
 function vaciarCesta(render = true) {
     cesta = [];
     rActivo = { id: null, nombre: "" };
-    document.getElementById('cesta-flotante').classList.add('hidden');
+    document.getElementById("cesta-flotante").classList.add("hidden");
     if (render) renderHome();
 }
 
 function filtrarCat(cat, el) {
-    document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
-    document.querySelectorAll('.plato-card').forEach(p => p.classList.toggle('hidden-plato', cat !== 'TODOS' && p.getAttribute('data-cat') !== cat));
+    document.querySelectorAll(".cat-chip").forEach(c => c.classList.remove("active"));
+    el.classList.add("active");
+    document.querySelectorAll(".plato-card").forEach(p => p.classList.toggle("hidden-plato", cat !== "TODOS" && p.getAttribute("data-cat") !== cat));
 }
 
-function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
-function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; document.body.style.overflow = 'auto'; }
+function cerrarCheckout() { document.getElementById("panel-checkout").style.display = "none"; }
+function cerrarModal() { document.getElementById("modal-plato").style.display = "none"; document.body.style.overflow = "auto"; }
 
 function validarCheck() {
-    const b = document.getElementById('btn-final');
-    const c = document.getElementById('check-legal');
+    const b = document.getElementById("btn-final");
+    const c = document.getElementById("check-legal");
     b.disabled = !c.checked;
     b.className = c.checked
         ? "w-full bg-cyan-400 text-dark font-black py-6 rounded-2xl uppercase text-sm shadow-xl shadow-cyan-400/20"
@@ -381,7 +396,6 @@ function validarCheck() {
 }
 
 function enviarPedidoFinal() {
-
     if (cesta.length === 0) {
         alert("La cesta está vacía.");
         return;
@@ -432,4 +446,18 @@ function enviarPedidoFinal() {
     });
 }
 
+function procederCambio() {
+    cesta = [];
+    rActivo = { id: null, nombre: "" };
+    document.getElementById("confirm-cambio").style.display = "none";
+    abrirPlato(itemActual.pendiente);
+}
+
+function cancelarCambio() {
+    document.getElementById("confirm-cambio").style.display = "none";
+}
+
 init();
+</script>
+</body>
+</html>

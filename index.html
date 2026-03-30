@@ -139,7 +139,7 @@
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbxf1H4I1GIstOwR_IzLlQE5mz1mdgw8caDASGFzPQclbk6bFDBwvdslYioBt3VbLOY-/exec';
         let db = { menu: [], restaurantes: [] };
         let cesta = [];
         let rActivo = { id: null, nombre: "" };
@@ -202,24 +202,16 @@
             document.getElementById('app-container').innerHTML = html + `</div>`;
         }
 
-      function abrirDetalle(p) { // Cambiamos "datos" por "p" para que sea más claro
-    // BORRAMOS la línea del JSON.parse(datos)
-    
-    itemActual = {
-        data: p, // Ahora usamos "p" directamente
-        pBase: parseFloat(p.PRECIO) || 0,
-        pOpciones: 0,
-        pExtras: 0,
-        opcionesSeleccionadas: {},
-        extrasSeleccionados: {}
-    };
+        function abrirDetalle(p) {
+            if (rActivo.id && rActivo.id !== String(p.ID_RESTAURANTE)) {
+                itemActual.tempP = p;
+                document.getElementById('confirm-cambio').style.display = 'flex';
+                return;
+            }
+            ejecutarApertura(p);
+        }
 
-    ejecutarApertura(p);
-} 
-
-// Luego de esa llave ya puede seguir la siguiente función:
-function procederCambio() {
-    // ... tu código
+        function procederCambio() {
             vaciarCesta(false);
             document.getElementById('confirm-cambio').style.display = 'none';
             ejecutarApertura(itemActual.tempP);
@@ -315,18 +307,11 @@ function procederCambio() {
             }
         }
 
-       function confirmarAnadir() {
-    cesta.push({ 
-        nombre: itemActual.data.PLATO, 
-        id_plato: itemActual.data.ID_PLATO,
-        // ESTA ES LA LÍNEA CLAVE:
-        id_res: itemActual.data.ID_RESTAURANTE, 
-        total: itemActual.pBase + itemActual.pOpciones + itemActual.pExtras
-    });
-    
-    actualizarCestaBar();
-    cerrarModal();
-}
+        function confirmarAnadir() {
+            cesta.push({ nombre: itemActual.data.PLATO, total: itemActual.pBase + itemActual.pOpciones + itemActual.pExtras });
+            actualizarCestaBar();
+            cerrarModal();
+        }
 
         function actualizarCestaBar() {
             const bar = document.getElementById('cesta-flotante');
@@ -391,17 +376,14 @@ function procederCambio() {
     const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
     const totalConEnvio = (subtotal + COSTO_DOMICILIO).toFixed(2);
 
-   const paquete = {
-    cliente_info: nomCli.toUpperCase(),
-    telf_info: telCli,
-    dir_info: dirCli.toUpperCase(),
-    pedido_info: cesta.map(i => `1x ${i.nombre}`).join(" | "),
-    total_info: totalConEnvio,
-    pago_info: pagoCli,
-    
-    // Esta es la pieza que falta para llenar la Columna C y activar Twilio:
-    RESTAURANTE: cesta[0].id_res 
-};
+    const paquete = {
+        cliente_info: nomCli.toUpperCase(),
+        telf_info: telCli, 
+        dir_info: dirCli.toUpperCase(),
+        pedido_info: cesta.map(i => `1x ${i.nombre}`).join(" | "),
+        total_info: totalConEnvio,
+        pago_info: pagoCli 
+    };
 
     try {
         await fetch(scriptURL, { 
@@ -433,3 +415,116 @@ function procederCambio() {
     </script>
 </body>
 </html>
+
+
+RESUELTO URL
+// AGUADULCE EXPRESS - VERSIÓN 100 (OPTIMIZADA Y COMPLETA)
+
+function doGet() {
+  var ss = SpreadsheetApp.getActive();
+  try {
+    // Cargamos los datos para la web
+    var datos = {
+      "RESTAURANTES": obtenerDatosDeHoja(ss.getSheetByName("RESTAURANTES")),
+      "MENU_GENERAL": obtenerDatosDeHoja(ss.getSheetByName("MENU_GENERAL"))
+    };
+    return ContentService.createTextOutput(JSON.stringify(datos))
+        .setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({"error": e.toString()}))
+        .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName("PEDIDOS");
+  try {
+    var data = JSON.parse(e.postData.contents);
+    
+    // Extraemos la información del pedido
+    var nombre = data.cliente_info || "Sin nombre";
+    var telefono = data.telf_info || data.tel_info || "";
+    var total = data.total_info || "0.00";
+    
+    // 1. Anotamos en el Excel
+    var ultimaFila = [
+      "AE-" + Math.floor(1000 + Math.random() * 9000),
+      Utilities.formatDate(new Date(), "Europe/Madrid", "dd/MM/yyyy HH:mm:ss"),
+      "", 
+      nombre, 
+      data.dir_info || "", 
+      data.pedido_info || "", 
+      total, 
+      telefono, 
+      "PENDIENTE", 
+      "", 
+      data.pago_info || "", 
+      "Enviando..."
+    ];
+    sheet.appendRow(ultimaFila);
+
+    // 2. Disparamos el WhatsApp si hay teléfono
+    if (telefono && telefono !== "") {
+      enviarWhatsApp(nombre, total, telefono);
+    }
+
+    return ContentService.createTextOutput("Éxito").setMimeType(ContentService.MimeType.TEXT);
+  } catch (err) {
+    if (sheet) sheet.getRange(sheet.getLastRow(), 12).setValue("Error: " + err.toString());
+    return ContentService.createTextOutput("Error").setMimeType(ContentService.MimeType.TEXT);
+  }
+}
+
+function enviarWhatsApp(nombre, total, telefonoCliente) {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName("PEDIDOS");
+  var filaLog = sheet.getLastRow();
+  
+  var accountSid = 'ACfeb85480c10120f585e7383dc68da3ce';
+  var authToken  = '532f7a90d14a2601f9a7b974ee56ee84';
+  var numeroTwilio = '+14155238886'; 
+  
+  try {
+    var url = 'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Messages.json';
+    var t = telefonoCliente.toString().replace(/\D/g, '');
+    if (t.length === 9) t = '34' + t;
+    
+    var payload = {
+      "Body": "✅ *Aguadulce Express*\n\n¡Hola " + nombre + "! Pedido de " + total + "€ recibido. ¡Gracias!",
+      "From": "whatsapp:" + numeroTwilio,
+      "To": "whatsapp:+" + t
+    };
+
+    var options = {
+      "method" : "post",
+      "payload" : payload,
+      "headers" : { "Authorization" : "Basic " + Utilities.base64Encode(accountSid + ":" + authToken) },
+      "muteHttpExceptions": true
+    };
+
+    var response = UrlFetchApp.fetch(url, options);
+    var resText = response.getContentText();
+    
+    // Limpieza del log en Columna L (evita el error "C")
+    if (resText.indexOf('<') === 0) {
+      sheet.getRange(filaLog, 12).setValue("WhatsApp Enviado");
+    } else {
+      sheet.getRange(filaLog, 12).setValue("OK: " + resText.substring(0, 40));
+    }
+  } catch (e) {
+    sheet.getRange(filaLog, 12).setValue("Error envío: " + e.toString());
+  }
+}
+
+function obtenerDatosDeHoja(hoja) {
+  if (!hoja) return [];
+  var filas = hoja.getDataRange().getValues();
+  var cabeceras = filas.shift();
+  return filas.map(function(fila) {
+    var obj = {};
+    cabeceras.forEach(function(cab, i) { obj[cab] = fila[i]; });
+    return obj;
+  });
+}
+

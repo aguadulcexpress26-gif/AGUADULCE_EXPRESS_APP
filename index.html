@@ -390,37 +390,56 @@ const paquete = {
     };
 
     try {
-        // PASO 1: Quitamos el 'await' para que sea instantáneo
+        // Enviamos y nos olvidamos (Fire and forget)
         fetch(scriptURL, { 
             method: 'POST', 
             mode: 'no-cors', 
             body: JSON.stringify(paquete) 
         });
+
+        // Ocultamos el panel de checkout de inmediato
+        document.getElementById('panel-checkout').style.display = 'none';
         
-        // PASO 2: Mostramos el mensaje personalizado inmediatamente
+        // REEMPLAZAMOS TODO EL CONTENIDO DEL APP-CONTAINER
+        // Esto borrará cualquier rastro anterior y pondrá el mensaje limpio
+        const appContainer = document.getElementById('app-container');
+        appContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-10">
+                <div class="w-20 h-20 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-2xl shadow-cyan-400/30">
+                    <span class="text-dark text-3xl font-black">✓</span>
+                </div>
+                <h2 class="text-2xl font-black italic uppercase mb-2">¡PEDIDO RECIBIDO!</h2>
+                <p class="text-cyan-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-4">Aguadulce Express</p>
+                <p class="opacity-70 text-xs leading-relaxed mb-10">Tu pedido se ha registrado correctamente.<br><br><b>¡Gracias por tu compra!</b></p>
+                <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Hacer otro pedido</button>
+            </div>`;
+        
+       // Cerramos el panel de checkout e inyectamos el mensaje de éxito
         document.getElementById('panel-checkout').style.display = 'none';
         document.getElementById('app-container').innerHTML = `
             <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-10">
                 <div class="w-20 h-20 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-2xl shadow-cyan-400/30">
                     <span class="text-dark text-3xl font-black">✓</span>
                 </div>
-                
                 <h2 class="text-2xl font-black italic uppercase mb-2">¡PEDIDO RECIBIDO!</h2>
                 <p class="text-cyan-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-4">Aguadulce Express</p>
-                
                 <p class="opacity-70 text-xs leading-relaxed mb-10">
                     Tu pedido se ha registrado correctamente en nuestra bóveda.<br><br>
                     <span class="font-bold text-white">¡Gracias por confiar en nosotros!</span>
                 </p>
-                
                 <button onclick="location.reload()" class="w-full bg-white text-dark py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">
                     Hacer otro pedido
                 </button>
             </div>`;
         
-        vaciarCesta(false);
+        // Vaciamos la cesta local
+        cesta = [];
+        actualizarCestaBar();
+        
+        return; 
     } catch (e) {
         alert("Error de conexión. Reintenta.");
+        const b = document.getElementById('btn-final');
         b.disabled = false;
         b.innerText = "EFECTUAR PEDIDO";
     }
@@ -429,116 +448,4 @@ const paquete = {
     </script>
 </body>
 </html>
-
-
-RESUELTO URL
-// AGUADULCE EXPRESS - VERSIÓN 100 (OPTIMIZADA Y COMPLETA)
-
-function doGet() {
-  var ss = SpreadsheetApp.getActive();
-  try {
-    // Cargamos los datos para la web
-    var datos = {
-      "RESTAURANTES": obtenerDatosDeHoja(ss.getSheetByName("RESTAURANTES")),
-      "MENU_GENERAL": obtenerDatosDeHoja(ss.getSheetByName("MENU_GENERAL"))
-    };
-    return ContentService.createTextOutput(JSON.stringify(datos))
-        .setMimeType(ContentService.MimeType.JSON);
-  } catch (e) {
-    return ContentService.createTextOutput(JSON.stringify({"error": e.toString()}))
-        .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function doPost(e) {
-  var ss = SpreadsheetApp.getActive();
-  var sheet = ss.getSheetByName("PEDIDOS");
-  try {
-    var data = JSON.parse(e.postData.contents);
-    
-    // Extraemos la información del pedido
-    var nombre = data.cliente_info || "Sin nombre";
-    var telefono = data.telf_info || data.tel_info || "";
-    var total = data.total_info || "0.00";
-    
-    // 1. Anotamos en el Excel
-    var ultimaFila = [
-      "AE-" + Math.floor(1000 + Math.random() * 9000),
-      Utilities.formatDate(new Date(), "Europe/Madrid", "dd/MM/yyyy HH:mm:ss"),
-      "", 
-      nombre, 
-      data.dir_info || "", 
-      data.pedido_info || "", 
-      total, 
-      telefono, 
-      "PENDIENTE", 
-      "", 
-      data.pago_info || "", 
-      "Enviando..."
-    ];
-    sheet.appendRow(ultimaFila);
-
-    // 2. Disparamos el WhatsApp si hay teléfono
-    if (telefono && telefono !== "") {
-      enviarWhatsApp(nombre, total, telefono);
-    }
-
-    return ContentService.createTextOutput("Éxito").setMimeType(ContentService.MimeType.TEXT);
-  } catch (err) {
-    if (sheet) sheet.getRange(sheet.getLastRow(), 12).setValue("Error: " + err.toString());
-    return ContentService.createTextOutput("Error").setMimeType(ContentService.MimeType.TEXT);
-  }
-}
-
-function enviarWhatsApp(nombre, total, telefonoCliente) {
-  var ss = SpreadsheetApp.getActive();
-  var sheet = ss.getSheetByName("PEDIDOS");
-  var filaLog = sheet.getLastRow();
-  
-  var accountSid = 'ACfeb85480c10120f585e7383dc68da3ce';
-  var authToken  = '532f7a90d14a2601f9a7b974ee56ee84';
-  var numeroTwilio = '+14155238886'; 
-  
-  try {
-    var url = 'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Messages.json';
-    var t = telefonoCliente.toString().replace(/\D/g, '');
-    if (t.length === 9) t = '34' + t;
-    
-    var payload = {
-      "Body": "✅ *Aguadulce Express*\n\n¡Hola " + nombre + "! Pedido de " + total + "€ recibido. ¡Gracias!",
-      "From": "whatsapp:" + numeroTwilio,
-      "To": "whatsapp:+" + t
-    };
-
-    var options = {
-      "method" : "post",
-      "payload" : payload,
-      "headers" : { "Authorization" : "Basic " + Utilities.base64Encode(accountSid + ":" + authToken) },
-      "muteHttpExceptions": true
-    };
-
-    var response = UrlFetchApp.fetch(url, options);
-    var resText = response.getContentText();
-    
-    // Limpieza del log en Columna L (evita el error "C")
-    if (resText.indexOf('<') === 0) {
-      sheet.getRange(filaLog, 12).setValue("WhatsApp Enviado");
-    } else {
-      sheet.getRange(filaLog, 12).setValue("OK: " + resText.substring(0, 40));
-    }
-  } catch (e) {
-    sheet.getRange(filaLog, 12).setValue("Error envío: " + e.toString());
-  }
-}
-
-function obtenerDatosDeHoja(hoja) {
-  if (!hoja) return [];
-  var filas = hoja.getDataRange().getValues();
-  var cabeceras = filas.shift();
-  return filas.map(function(fila) {
-    var obj = {};
-    cabeceras.forEach(function(cab, i) { obj[cab] = fila[i]; });
-    return obj;
-  });
-}
 

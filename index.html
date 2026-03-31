@@ -31,8 +31,6 @@
         input, select { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 16px; border-radius: 18px; color: white; width: 100%; margin-bottom: 12px; font-size: 13px; transition: all 0.3s; }
         input:focus { border-color: var(--cyan); outline: none; background: rgba(255,255,255,0.06); }
         .btn-qty { width: 34px; height: 34px; background: rgba(255,255,255,0.05); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--cyan); font-weight: bold; }
-
-        /* Sombra especial para textos sobre imágenes */
         .shadow-text { text-shadow: 0 4px 12px rgba(0,0,0,0.8); }
     </style>
 </head>
@@ -141,7 +139,10 @@
                 db.menu = data.MENU_GENERAL || [];
                 document.getElementById('loader').style.display = 'none';
                 renderHome();
-            } catch (e) { console.error("Error cargando Bóveda"); }
+            } catch (e) { 
+                console.error("Error cargando Bóveda"); 
+                document.getElementById('loader').innerHTML = '<p class="text-red-500">Error de conexión con la base de datos.</p>';
+            }
         }
 
         function renderHome() {
@@ -160,7 +161,6 @@
             document.getElementById('app-container').innerHTML = html;
         }
 
-        // --- MEJORA 1: BANNER IMPONENTE ---
         function verMenu(nombre, id) {
             const resData = db.restaurantes.find(r => String(r.ID_RESTAURANTE) === String(id));
             const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(id));
@@ -214,7 +214,6 @@
 
         function cancelarCambio() { document.getElementById('confirm-cambio').style.display = 'none'; }
 
-        // --- MEJORA 2: SELECTOR DE CANTIDAD ---
         function ejecutarApertura(p) {
             rActivo.nombre = p.NOMBRE_RESTAURANTE;
             rActivo.id = String(p.ID_RESTAURANTE);
@@ -266,12 +265,11 @@
             html += renderSeccion("Opciones", p.SELECCION_UNICA, 'grid', 'unica');
             html += renderSeccion("Extras", p.EXTRAS, 'lista', 'extras');
 
-            // Insertamos el selector de cantidad del plato
             html += `
                 <div class="pt-8 mb-10 border-t border-white/10 text-left">
                     <span class="step-tag text-cyan-400">Cantidad del Plato</span>
                     <div class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span class="text-[10px] font-black uppercase italic opacity-60">¿Cuántos raciones quieres?</span>
+                        <span class="text-[10px] font-black uppercase italic opacity-60">¿Cuántas raciones quieres?</span>
                         <div class="flex items-center gap-5">
                             <button onclick="updCantPlato(-1)" class="w-10 h-10 bg-white/10 rounded-xl text-cyan-400 font-bold border border-white/10">−</button>
                             <span id="cant-plato-master" class="text-xl font-black min-w-[20px] text-center">1</span>
@@ -314,4 +312,114 @@
             const btn = document.getElementById('btn-anadir-modal');
             const totalUnitario = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
             const totalFinal = totalUnitario * itemActual.cantidad;
-            document.
+            document.getElementById('total-modal-btn').innerText = totalFinal.toFixed(2) + "€";
+            
+            if(itemActual.obligatorioOk) {
+                btn.className = "w-full bg-cyan-400 text-dark font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center shadow-lg shadow-cyan-400/20";
+                document.getElementById('txt-anadir').innerText = `Añadir ${itemActual.cantidad} al pedido`;
+                btn.disabled = false;
+            } else {
+                btn.className = "w-full bg-white/10 text-white/20 font-black py-5 rounded-2xl uppercase text-xs flex justify-between px-8 items-center";
+                document.getElementById('txt-anadir').innerText = "Selecciona obligatorio";
+                btn.disabled = true;
+            }
+        }
+
+        function confirmarAnadir() {
+            const totalUnitario = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
+            cesta.push({ 
+                nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}`, 
+                total: totalUnitario * itemActual.cantidad 
+            });
+            actualizarCestaBar();
+            cerrarModal();
+        }
+
+        function actualizarCestaBar() {
+            const bar = document.getElementById('cesta-flotante');
+            if(cesta.length > 0) {
+                bar.classList.replace('hidden', 'flex');
+                const total = cesta.reduce((acc, i) => acc + i.total, 0);
+                document.getElementById('cesta-info').innerText = `🛒 ${cesta.length} PRODUCTOS`;
+                document.getElementById('cesta-total').innerText = `${total.toFixed(2)}€ TOTAL`;
+            } else { bar.classList.replace('flex', 'hidden'); }
+        }
+
+        function abrirCheckout() {
+            const lista = document.getElementById('lista-resumen');
+            lista.innerHTML = "";
+            let subtotal = 0;
+            cesta.forEach(i => {
+                subtotal += i.total;
+                lista.innerHTML += `<div class="flex justify-between text-[11px] font-bold uppercase"><span>${i.nombre}</span><span>${i.total.toFixed(2)}€</span></div>`;
+            });
+            document.getElementById('res-subtotal').innerText = subtotal.toFixed(2) + "€";
+            document.getElementById('res-total-final').innerText = (subtotal + COSTO_DOMICILIO).toFixed(2) + "€";
+            document.getElementById('panel-checkout').style.display = 'flex';
+        }
+
+        function vaciarCesta(render = true) {
+            cesta = []; rActivo = { id: null, nombre: "" };
+            document.getElementById('cesta-flotante').classList.add('hidden');
+            if(render) renderHome();
+        }
+
+        function filtrarCat(cat, el) {
+            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            document.querySelectorAll('.plato-card').forEach(p => p.classList.toggle('hidden-plato', cat !== 'TODOS' && p.getAttribute('data-cat') !== cat));
+        }
+
+        function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
+        function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; document.body.style.overflow = 'auto'; }
+        
+        function validarCheck() {
+            const b = document.getElementById('btn-final');
+            const c = document.getElementById('check-legal');
+            b.disabled = !c.checked;
+            b.className = c.checked ? "w-full bg-cyan-400 text-dark font-black py-6 rounded-2xl uppercase text-sm shadow-xl shadow-cyan-400/20 mt-4" : "w-full bg-white/10 text-white/20 py-6 rounded-2xl font-black uppercase text-sm mt-4";
+        }
+
+        async function enviarPedidoFinal() {
+            const b = document.getElementById('btn-final');
+            const nomCli = document.getElementById('nombre-cli').value;
+            const telCli = document.getElementById('telefono').value; 
+            const dirCli = document.getElementById('dir-cli').value;
+            const pagoCli = document.getElementById('pago-cli').value; 
+
+            if(!nomCli || !telCli || !dirCli) { alert("Completa todos los datos"); return; }
+            b.disabled = true;
+            b.innerText = "REGISTRANDO...";
+
+            const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+            const totalConEnvio = (subtotal + COSTO_DOMICILIO).toFixed(2);
+
+            const paquete = {
+                cliente_info: nomCli.toUpperCase(),
+                telf_info: telCli, 
+                dir_info: dirCli.toUpperCase(),
+                pedido_info: cesta.map(i => i.nombre).join(" | "),
+                total_info: totalConEnvio,
+                pago_info: pagoCli,
+                id_res_info: rActivo.id 
+            };
+
+            try {
+                fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(paquete) });
+                document.getElementById('panel-checkout').style.display = 'none';
+                document.getElementById('app-container').innerHTML = `
+                    <div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-10">
+                        <div class="w-20 h-20 bg-cyan-400 rounded-full flex items-center justify-center mb-6 shadow-2xl shadow-cyan-400/30"><span class="text-dark text-3xl font-black">✓</span></div>
+                        <h2 class="text-2xl font-black italic uppercase mb-2">¡PEDIDO RECIBIDO!</h2>
+                        <p class="text-cyan-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-4">Aguadulce Express</p>
+                        <p class="opacity-70 text-xs leading-relaxed mb-10">Tu pedido se ha registrado correctamente.<br><br><b>¡Gracias por tu compra!</b></p>
+                        <button onclick="location.reload()" class="w-full bg-cyan-400 text-dark py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">VOLVER AL MENÚ</button>
+                    </div>`;
+                cesta = []; actualizarCestaBar();
+            } catch (e) { alert("Error de conexión"); b.disabled = false; b.innerText = "EFECTUAR PEDIDO"; }
+        }
+
+        init();
+    </script>
+</body>
+</html>

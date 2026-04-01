@@ -449,55 +449,66 @@ function filtrarCat(cat, el) {
 }
  
 async function enviarPedidoFinal() {
-        // 1. OBTENER DATOS (IDs sincronizados)
-        const nomCli = document.getElementById('cliente-nombre').value;
-        const telCli = document.getElementById('cliente-telf').value;
-        const dirCli = document.getElementById('cliente-dir').value;
-        const pagoCli = document.getElementById('metodo-pago').value;
+        console.log("Iniciando envío de pedido..."); // Esto nos servirá para ver si el botón "despierta"
 
-        // 2. VALIDACIÓN
-        if (!nomCli || !telCli || !dirCli) { 
-            alert("Completa tus datos de entrega"); 
+        // 1. OBTENER DATOS (IDs sincronizados con el diseño del Checkout)
+        const inputNombre = document.getElementById('cliente-nombre');
+        const inputTelf = document.getElementById('cliente-telf');
+        const inputDir = document.getElementById('cliente-dir');
+        const inputPago = document.getElementById('metodo-pago');
+
+        // 2. VALIDACIÓN DE CAMPOS VACÍOS
+        if (!inputNombre.value || !inputTelf.value || !inputDir.value) { 
+            alert("⚠️ Por favor, completa tu nombre, teléfono y dirección."); 
             return; 
         }
 
-        // 3. CÁLCULO (Subtotal + 3.50€ de cargos: 2.50 envío + 1.00 plataforma)
+        // 3. CÁLCULO DE TOTAL (Subtotal productos + 3.50€ de gastos)
+        // Usamos parseFloat y || 0 para evitar el error "NaN"
         const subtotal = cesta.reduce((acc, i) => acc + (parseFloat(i.total) || 0), 0);
         const cargosExtra = 3.50; 
         const totalConCargos = (subtotal + cargosExtra).toFixed(2);
 
-        // 4. PREPARACIÓN DEL PAQUETE PARA GOOGLE SHEETS
+        // 4. PREPARACIÓN DEL PAQUETE PARA EL EXCEL
         const paquete = {
-            cliente_info: nomCli.toUpperCase(),
-            telf_info: telCli,
-            dir_info: dirCli.toUpperCase(),
+            cliente_info: inputNombre.value.toUpperCase(),
+            telf_info: inputTelf.value,
+            dir_info: inputDir.value.toUpperCase(),
             pedido_info: cesta.map(i => `${i.cantidad}x ${i.nombre}`).join(" | "),
             total_info: totalConCargos + "€",
-            pago_info: pagoCli,
-            id_res_info: rActivo.id 
+            pago_info: inputPago.value,
+            id_res_info: typeof rActivo !== 'undefined' ? rActivo.id : "ID_DESCONOCIDO"
         };
 
-        // 5. DISPARO AL EXCEL
+        // 5. CONTROL DEL BOTÓN (Para evitar doble clic)
         const btn = document.getElementById('btn-enviar');
-        btn.innerText = "PROCESANDO...";
+        const textoOriginal = btn.innerText;
+        btn.innerText = "⏳ PROCESANDO...";
         btn.disabled = true;
 
         try {
+            // DISPARO A GOOGLE APPS SCRIPT
             await fetch(scriptURL, {
                 method: "POST",
                 mode: "no-cors",
+                cache: "no-cache",
                 body: JSON.stringify(paquete)
             });
             
-            alert("¡Pedido enviado con éxito!");
-            vaciarCesta(); // Esto limpia la cesta y cierra el panel
+            alert("✅ ¡Pedido enviado con éxito! Gracias por confiar en nosotros.");
+            
+            // Limpiamos todo
+            cesta = [];
+            if (typeof actualizarCestaBar === 'function') actualizarCestaBar();
+            cerrarCheckout();
             
         } catch (error) {
-            console.error("Error al enviar:", error);
-            alert("Error al conectar. Reintenta.");
-            btn.innerText = "EFECTUAR PEDIDO »";
+            console.error("Error en el envío:", error);
+            alert("❌ Error de conexión. Reintenta en unos segundos.");
+            btn.innerText = textoOriginal;
             btn.disabled = false;
         }
+    }
     init();
 
 </script>

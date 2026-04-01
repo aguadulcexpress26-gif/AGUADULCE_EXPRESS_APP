@@ -448,11 +448,55 @@ function filtrarCat(cat, el) {
     });
 }
  
-       async function enviarPedidoFinal() {
-           const nomCli = document.getElementById('nombre-cli').value;
-           const telCli = document.getElementById('telefono').value; 
-           const dirCli = document.getElementById('dir-cli').value;
-           if(!nomCli || !telCli || !dirCli) { alert("Completa tus datos"); return; }
+      async function enviarPedidoFinal() {
+    // 1. OBTENER DATOS (IDs sincronizados con el nuevo diseño)
+    const nomCli = document.getElementById('cliente-nombre').value;
+    const telCli = document.getElementById('cliente-telf').value;
+    const dirCli = document.getElementById('cliente-dir').value;
+    const pagoCli = document.getElementById('metodo-pago').value;
+
+    // 2. VALIDACIÓN
+    if (!nomCli || !telCli || !dirCli) { 
+        alert("Completa tus datos de entrega"); 
+        return; 
+    }
+
+    // 3. CÁLCULO CEREBRAL (Subtotal + 3.50€ de cargos)
+    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+    const cargosExtra = 3.50; // 2.50 Envío + 1.00 Plataforma
+    const totalConCargos = (subtotal + cargosExtra).toFixed(2);
+
+    // 4. PREPARACIÓN DEL PAQUETE
+    const paquete = {
+        cliente_info: nomCli.toUpperCase(),
+        telf_info: telCli,
+        dir_info: dirCli.toUpperCase(),
+        pedido_info: cesta.map(i => `${i.cantidad}x ${i.nombre}`).join(" | "),
+        total_info: totalConCargos + "€",
+        pago_info: pagoCli,
+        id_res_info: rActivo.id // Usamos rActivo.id como tienes en tu línea 465
+    };
+
+    // 5. DISPARO AL EXCEL
+    const btn = document.getElementById('btn-enviar');
+    btn.innerText = "PROCESANDO...";
+    btn.disabled = true;
+
+    try {
+        await fetch(scriptURL, {
+            method: "POST",
+            mode: "no-cors",
+            body: JSON.stringify(paquete)
+        });
+        
+        alert("¡Pedido enviado con éxito!");
+        vaciarCesta();
+        
+    } catch (error) {
+        alert("Error al conectar. Reintenta.");
+        btn.innerText = "EFECTUAR PEDIDO »";
+        btn.disabled = false;
+    }
            
            const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
            const paquete = {

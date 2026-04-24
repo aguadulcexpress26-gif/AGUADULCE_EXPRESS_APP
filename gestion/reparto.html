@@ -1,109 +1,75 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
-    <title>Reparto - Aguadulce Express</title>
+    <title>Reparto - Aguadulce</title>
 </head>
-<body class="bg-slate-50 p-4 font-sans pb-20">
+<body class="bg-slate-900 text-white p-4 pb-32">
+    <div class="flex justify-between items-center mb-6">
+        <div><p class="text-[10px] opacity-50 uppercase tracking-widest">Repartidor Activo</p><h1 id="nom" class="font-black text-emerald-400 text-xl tracking-tight">---</h1></div>
+        <button onclick="localStorage.clear(); location.href='index.html'" class="bg-slate-800 p-3 rounded-2xl border border-white/5 shadow-lg active:scale-90">🚪</button>
+    </div>
+    
+    <div id="lista" class="grid gap-4"></div>
 
-    <div class="max-w-md mx-auto">
-        <header class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-black text-slate-800 italic">LOGÍSTICA</h1>
-            <span class="bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">EN LÍNEA</span>
-        </header>
-
-        <div class="grid grid-cols-2 gap-3 mb-6">
-            <div class="bg-slate-900 text-white p-5 rounded-3xl shadow-xl border-b-4 border-emerald-500">
-                <p class="text-[10px] uppercase font-bold opacity-60 mb-1">Efectivo</p>
-                <h2 id="saldoEfectivo" class="text-2xl font-black text-emerald-400">0.00 €</h2>
-            </div>
-            <div class="bg-slate-900 text-white p-5 rounded-3xl shadow-xl border-b-4 border-cyan-500">
-                <p class="text-[10px] uppercase font-bold opacity-60 mb-1">Tarjeta (TPV)</p>
-                <h2 id="saldoTPV" class="text-2xl font-black text-cyan-400">0.00 €</h2>
-            </div>
-        </div>
-
-        <h3 class="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest text-center">Pedidos Disponibles</h3>
-
-        <div id="contenedor-reparto" class="space-y-4">
-            <div class="text-center py-10 opacity-40 italic">Buscando entregas...</div>
-        </div>
+    <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-slate-800/90 backdrop-blur-xl p-6 rounded-[2.5rem] flex gap-4 border border-white/10 shadow-2xl">
+        <div class="flex-1 text-center border-r border-white/5"><p class="text-[10px] opacity-50 mb-1">EFECTIVO</p><p id="ef" class="font-black text-2xl text-white">0€</p></div>
+        <div class="flex-1 text-center"><p class="text-[10px] opacity-50 mb-1">TPV / TARJETA</p><p id="tp" class="font-black text-2xl text-cyan-400">0€</p></div>
     </div>
 
-    <audio id="audioAlerta" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
-
     <script>
-        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; // <--- PEGA TU URL /exec
-        const nombreRepartidor = "NOMBRE_DE_PRUEBA"; // Debe coincidir con la Columna B de tu hoja REPARTIDORES
-        let totalPedidosActual = 0;
+        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; // <--- PEGA TU URL AQUÍ
+        const auth = localStorage.getItem('ag_auth');
+        if(!auth) window.location.href="index.html";
+        document.getElementById('nom').innerText = localStorage.getItem('ag_nombre');
 
-        async function refrescarDatos() {
+        async function cargar() {
             try {
-                // 1. Cargar Billetera
-                const resB = await fetch(`${scriptURL}?action=consultarBilletera&nombre=${nombreRepartidor}`);
-                const dataB = await resB.json();
-                document.getElementById('saldoEfectivo').innerText = parseFloat(dataB.efectivo || 0).toFixed(2) + " €";
-                document.getElementById('saldoTPV').innerText = parseFloat(dataB.tpv || 0).toFixed(2) + " €";
-
-                // 2. Cargar Pedidos 'Listos'
-                const resP = await fetch(`${scriptURL}?action=leerRepartidor`);
-                const pedidos = await resP.json();
-                
-                // Si hay pedidos nuevos, sonar alerta
-                if (pedidos.length > totalPedidosActual) {
-                    document.getElementById('audioAlerta').play().catch(e => console.log("Audio bloqueado"));
-                    if ("vibrate" in navigator) navigator.vibrate(200);
-                }
-                totalPedidosActual = pedidos.length;
-                renderPedidos(pedidos);
-
-            } catch (e) { console.error("Error:", e); }
-        }
-
-        function renderPedidos(lista) {
-            const cont = document.getElementById('contenedor-reparto');
-            if (lista.length === 0) {
-                cont.innerHTML = `<div class="text-center py-10 text-slate-300 italic">No hay nada para recoger ahora...</div>`;
-                return;
-            }
-            cont.innerHTML = lista.map(p => `
-                <div class="bg-white border-2 border-slate-100 rounded-3xl p-5 shadow-sm">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-bold text-cyan-600 uppercase">Listo en Cocina</span>
-                        <span class="text-lg font-black text-slate-900">${parseFloat(p.TOTAL_INFO || p.G || 0).toFixed(2)} €</span>
+                const res = await fetch(`${scriptURL}?action=leerRepartidor&auth=${auth}`);
+                const pedidos = await res.json();
+                document.getElementById('lista').innerHTML = pedidos.map(p => `
+                    <div class="bg-slate-800 p-5 rounded-3xl border border-white/5 shadow-xl">
+                        <div class="flex justify-between items-start mb-3">
+                            <div><p class="font-black text-2xl">#${p.ID_PEDIDO}</p><p class="text-emerald-400 font-bold text-lg">${p.PRECIO}€</p></div>
+                            <div class="bg-white/5 px-3 py-1 rounded-full text-[10px] font-bold">${p.METODO_PAGO}</div>
+                        </div>
+                        <p class="text-sm text-slate-400 mb-4 bg-black/20 p-3 rounded-xl">${p.DIRECCION_ENTREGA}</p>
+                        <button onclick="entregar('${p.ID_PEDIDO}','${p.PRECIO}','${p.METODO_PAGO}')" class="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all uppercase tracking-tighter">Confirmar Entrega</button>
                     </div>
-                    <h2 class="text-xl font-black text-slate-800">${p.ID_PEDIDO || p.A}</h2>
-                    <p class="text-xs text-slate-500 mb-4 italic">📍 ${p.DIRECCION_CLIENTE || p.E}</p>
-                    
-                    <button onclick="tomarYEntregar('${p.ID_PEDIDO || p.A}', '${p.TOTAL_INFO || p.G || 0}')" class="w-full bg-slate-900 text-white font-black py-4 rounded-2xl text-sm active:scale-95 transition-all">
-                        TOMAR Y ENTREGAR
-                    </button>
-                </div>
-            `).join('');
+                `).join('') || "<div class='text-center py-20 opacity-20 font-bold'>NO HAY PEDIDOS LISTOS</div>";
+
+                const resB = await fetch(`${scriptURL}?action=consultarBilletera&auth=${auth}`);
+                const b = await resB.json();
+                document.getElementById('ef').innerText = (parseFloat(b.efectivo) || 0).toFixed(2) + "€";
+                document.getElementById('tp').innerText = (parseFloat(b.tpv) || 0).toFixed(2) + "€";
+            } catch(e) { console.error("Error cargando datos"); }
         }
 
-        async function tomarYEntregar(id, monto) {
-            const confirmacion = confirm(`¿Has entregado el pedido ${id} y cobrado ${monto} €?`);
-            if (confirmacion) {
-                await fetch(scriptURL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    body: JSON.stringify({ 
-                        action: "cambiarEstado", 
-                        idPedido: id, 
-                        nuevoEstado: "finalizado",
-                        nombreRepartidor: nombreRepartidor 
-                    })
-                });
-                alert("Entrega registrada en billetera.");
-                refrescarDatos();
-            }
+        async function entregar(id, monto, metodo) {
+            if(!confirm("¿Has entregado el pedido #" + id + "?")) return;
+            // Quitamos el símbolo € si lo tiene
+            const limpioMonto = monto.toString().replace('€', '').replace(',', '.');
+            
+            await fetch(scriptURL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify({
+                    action: "entregarPedido", 
+                    idPedido: id, 
+                    monto: limpioMonto, 
+                    metodoPago: metodo, 
+                    nombreRepartidor: localStorage.getItem('ag_nombre')
+                }) 
+            });
+            
+            // Refresco visual inmediato
+            document.getElementById('lista').innerHTML = "<p class='text-center py-10 font-bold text-cyan-400 animate-pulse'>PROCESANDO ENTREGA...</p>";
+            setTimeout(cargar, 2500);
         }
 
-        setInterval(refrescarDatos, 15000);
-        refrescarDatos();
+        setInterval(cargar, 30000); 
+        cargar();
     </script>
 </body>
 </html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Panel Cocina - Aguadulce</title>
+    <style>
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .nuevo-pedido { animation: blink 1s infinite; border: 3px solid #22d3ee; }
+    </style>
+</head>
+<body class="bg-[#0a0f1a] text-white p-4 font-sans">
+    
+    <audio id="audioAlerta" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+
+    <div class="max-w-4xl mx-auto">
+        <header class="flex justify-between items-center mb-8 bg-[#1a2235] p-6 rounded-3xl border border-white/5">
+            <div>
+                <h1 class="text-2xl font-black italic text-cyan-400">COCINA AGUADULCE</h1>
+                <p id="local-nombre" class="text-xs opacity-50 uppercase tracking-widest">Cargando restaurante...</p>
+            </div>
+            <div id="status" class="text-[10px] bg-green-500/20 text-green-500 px-3 py-1 rounded-full">CONECTADO</div>
+        </header>
+
+        <div id="contenedor-pedidos" class="grid gap-4">
+            </div>
+    </div>
+
+    <script>
+        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; // <--- PEGA TU URL AQUÍ
+        const MI_ID_REST = "RT33M5"; // <--- ID de tu restaurante
+        let pedidosActuales = [];
+
+        async function cargarPedidos() {
+            try {
+                const res = await fetch(`${scriptURL}?action=leerCocina&idRest=${MI_ID_REST}`);
+                const pedidos = await res.json();
+                
+                // Si hay más pedidos que antes, sonar alerta
+                if (pedidos.length > pedidosActuales.length && pedidosActuales.length !== 0) {
+                    document.getElementById('audioAlerta').play();
+                }
+                
+                pedidosActuales = pedidos;
+                renderizar(pedidos);
+                document.getElementById('local-nombre').innerText = "Restaurante ID: " + MI_ID_REST;
+            } catch (e) {
+                document.getElementById('status').innerText = "ERROR DE CONEXIÓN";
+                document.getElementById('status').className = "text-[10px] bg-red-500/20 text-red-500 px-3 py-1 rounded-full";
+            }
+        }
+
+        function renderizar(pedidos) {
+            const container = document.getElementById('contenedor-pedidos');
+            if (pedidos.length === 0) {
+                container.innerHTML = `<div class="text-center py-20 opacity-20 font-black italic text-xl">SIN PEDIDOS PENDIENTES</div>`;
+                return;
+            }
+
+            container.innerHTML = pedidos.map(p => `
+                <div class="bg-[#1a2235] p-6 rounded-[2.5rem] border border-white/5 shadow-xl relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <span class="text-cyan-400 font-black text-xl">#${p.ID_PEDIDO}</span>
+                            <h2 class="text-xl font-bold">${p.CLIENTE}</h2>
+                        </div>
+                        <span class="text-[10px] opacity-40">${p.FECHA}</span>
+                    </div>
+                    
+                    <div class="bg-black/30 p-4 rounded-2xl mb-6 border-l-4 border-cyan-500">
+                        <p class="text-cyan-100 italic font-medium">${p.PEDIDO_DETALLE}</p>
+                    </div>
+
+                    <button onclick="marcarListo('${p.ID_PEDIDO}')" 
+                        class="w-full bg-white text-slate-900 py-4 rounded-2xl font-black uppercase italic hover:bg-cyan-400 transition-colors">
+                        ¡PEDIDO LISTO!
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function marcarListo(id) {
+            // Optimismo: lo quitamos de la vista antes de que Google responda
+            pedidosActuales = pedidosActuales.filter(p => p.ID_PEDIDO !== id);
+            renderizar(pedidosActuales);
+
+            await fetch(scriptURL, {
+                method: 'POST',
+                body: JSON.stringify({idPedido: id})
+            });
+        }
+
+        // Refrescar cada 10 segundos
+        setInterval(cargarPedidos, 10000);
+        cargarPedidos();
+    </script>
+</body>
+</html>

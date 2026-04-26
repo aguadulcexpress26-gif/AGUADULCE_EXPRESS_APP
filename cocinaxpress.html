@@ -66,7 +66,8 @@
     </div>
 
     <script>
-        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
+        // RECUERDA PONER AQUÍ TU URL DE SCRIPT ACTUALIZADA
+        const scriptURL = "TU_URL_DEL_SCRIPT_AQUI"; 
         const MI_ID_REST = "RT33M5";
         let pedidosActivos = [], historialHoy = [], aceptados = new Set(), tiendaAbierta = false;
 
@@ -114,77 +115,56 @@
         function verDetalles(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             mostrarModal("DETALLES", `#${id} - ${p.CLIENTE}`, 
-                `PRODUCTOS:<br>${p.PEDIDO_DETALLE}<br><br>DIR: ${p.DIRECCION}<br><br>WHATSAPP: ${p.WHATSAPP}`,
-                `<div class="flex flex-col w-full gap-2"><button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase">Imprimir Recibo 🖨️</button><button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button></div>`);
+                `PRODUCTOS:<br>${p.PEDIDO_DETALLE}<br><br>DIR: ${p.DIRECCION}`,
+                `<div class="flex flex-col w-full gap-2"><button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button><button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button></div>`);
         }
 
-      function imprimirTicket(id) {
-    const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
-    if (!p) return;
+        // --- FUNCIÓN DE IMPRESIÓN REPARADA ---
+        function imprimirTicket(id) {
+            const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
+            if (!p) return;
 
-    const nombreRestaurante = document.getElementById('resNombre').innerText;
+            const nombreRestaurante = document.getElementById('resNombre').innerText;
+            const v = window.open('', 'PRINT', 'height=600,width=400');
+            
+            v.document.write(`
+                <html>
+                <head>
+                    <style>
+                        body { margin: 0; padding: 10px; width: 300px; font-family: 'Courier New', monospace; color: black; background: white; }
+                        .text-center { text-align: center; }
+                        .bold { font-weight: bold; }
+                        .divider { border-bottom: 2px dashed black; margin: 10px 0; }
+                        .ticket-id { background: black; color: white; text-align: center; padding: 5px; font-size: 20px; margin: 10px 0; }
+                        .total-row { display: flex; justify-content: space-between; font-size: 18px; font-weight: bold; border-top: 1px solid black; padding-top: 5px; }
+                        @media print { @page { margin: 0; } button { display: none; } }
+                    </style>
+                </head>
+                <body>
+                    <button onclick="window.print()" style="width: 100%; padding: 15px; background: #06b6d4; color: white; border: none; border-radius: 10px; font-weight: bold; margin-bottom: 20px; font-size: 16px;">
+                        CLICK AQUÍ PARA IMPRIMIR 🖨️
+                    </button>
+                    <div class="text-center bold" style="font-size: 18px;">AGUADULCE EXPRESS</div>
+                    <div class="text-center">${nombreRestaurante}</div>
+                    <div class="divider"></div>
+                    <div class="bold">ENTREGAR A:</div>
+                    <div class="bold" style="font-size: 18px;">${p.CLIENTE}</div>
+                    <div style="font-size: 14px;">${p.DIRECCION}</div>
+                    <div class="ticket-id">#${p.ID_PEDIDO}</div>
+                    <div class="divider"></div>
+                    <div style="font-size: 14px;">${p.PEDIDO_DETALLE.replace(/,/g, '<br>')}</div>
+                    <div class="divider"></div>
+                    <div class="total-row"><span>TOTAL:</span><span>${parseFloat(p.TOTAL).toFixed(2)}€</span></div>
+                    <div style="font-size: 12px; margin-top: 10px;">Pago: ${p.PAGO}<br>Fecha: ${p.FECHA}</div>
+                    <div class="divider"></div>
+                    <div class="text-center" style="margin-bottom: 50px;">*** GRACIAS ***</div>
+                    <script>setTimeout(() => { window.print(); }, 500);<\/script>
+                </body>
+                </html>
+            `);
+            v.document.close();
+        }
 
-    // 1. Crear un iframe oculto (esto evita que el móvil bloquee la ventana)
-    let iframe = document.getElementById('printFrame');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'printFrame';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-    }
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(`
-        <html>
-        <head>
-            <style>
-                @media print {
-                    @page { size: 58mm auto; margin: 0; }
-                    body { width: 58mm; margin: 0; padding: 5px; font-family: monospace; font-size: 12px; color: black; }
-                }
-                body { font-family: monospace; width: 58mm; font-size: 12px; }
-                .text-center { text-align: center; }
-                .bold { font-weight: bold; }
-                .divider { border-bottom: 1px dashed black; margin: 5px 0; }
-                .total { font-size: 14px; font-weight: bold; margin-top: 5px; border-top: 1px solid black; }
-            </style>
-        </head>
-        <body>
-            <div class="text-center bold">AGUADULCE EXPRESS</div>
-            <div class="text-center">${nombreRestaurante}</div>
-            <div class="divider"></div>
-            <div class="bold">CLIENTE:</div>
-            <div class="bold" style="font-size:14px">${p.CLIENTE}</div>
-            <div style="font-size:10px">${p.DIRECCION}</div>
-            <div class="divider"></div>
-            <div class="text-center bold" style="background:black; color:white; padding:3px; font-size:14px">
-                #${p.ID_PEDIDO}
-            </div>
-            <div class="divider"></div>
-            <div style="white-space: pre-wrap;">${p.PEDIDO_DETALLE.replace(/,/g, '\n')}</div>
-            <div class="divider"></div>
-            <div class="total">
-                <div style="display:flex; justify-content:space-between;">
-                    <span>TOTAL:</span>
-                    <span>${parseFloat(p.TOTAL).toFixed(2)}€</span>
-                </div>
-            </div>
-            <div style="font-size:10px; margin-top:5px;">Pago: ${p.PAGO}</div>
-            <div style="font-size:9px;">${p.FECHA}</div>
-            <div class="divider"></div>
-            <div class="text-center" style="margin-bottom:30px;">*** GRACIAS ***</div>
-        </body>
-        </html>
-    `);
-    doc.close();
-
-    // 2. Disparar impresión desde el iframe
-    setTimeout(() => {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-    }, 500);
-}
         function confirmarListo(id) {
             mostrarModal("¿PEDIDO TERMINADO?", `#${id}`, "Confirma que el pedido está listo para despacho.",
                 `<button onclick="cerrarModal()" class="flex-1 bg-slate-800 py-4 rounded-2xl font-bold text-xs uppercase">No</button><button onclick="ejecutarListo('${id}')" class="flex-1 bg-cyan-500 text-black py-4 rounded-2xl font-black text-xs uppercase">Sí, Listo</button>`);

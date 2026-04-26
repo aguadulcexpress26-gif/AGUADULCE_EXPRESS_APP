@@ -4,96 +4,144 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
-    <title>Panel Cocina - Aguadulce</title>
-    <style>
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        .nuevo-pedido { animation: blink 1s infinite; border: 3px solid #22d3ee; }
-    </style>
+    <title>Panel Cocina Aguadulce</title>
 </head>
-<body class="bg-[#0a0f1a] text-white p-4 font-sans">
-    
-    <audio id="audioAlerta" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+<body class="bg-[#0b1120] text-slate-100 p-4 font-sans min-h-screen">
 
-    <div class="max-w-4xl mx-auto">
-        <header class="flex justify-between items-center mb-8 bg-[#1a2235] p-6 rounded-3xl border border-white/5">
-            <div>
-                <h1 class="text-2xl font-black italic text-cyan-400">COCINA AGUADULCE</h1>
-                <p id="local-nombre" class="text-xs opacity-50 uppercase tracking-widest">Cargando restaurante...</p>
+    <audio id="alertaSonora" loop src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+
+    <div class="max-w-3xl mx-auto">
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 p-4 rounded-3xl border border-emerald-500/20 shadow-lg">
+                <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Venta de Hoy</p>
+                <h2 id="ventaHoy" class="text-3xl font-black text-white">0.00€</h2>
             </div>
-            <div id="status" class="text-[10px] bg-green-500/20 text-green-500 px-3 py-1 rounded-full">CONECTADO</div>
+            <div class="bg-gradient-to-br from-cyan-500/20 to-cyan-900/40 p-4 rounded-3xl border border-cyan-500/20 shadow-lg">
+                <p class="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">Esta Semana</p>
+                <h2 id="ventaSemana" class="text-3xl font-black text-white">0.00€</h2>
+            </div>
+        </div>
+
+        <header class="flex justify-between items-center mb-6 bg-slate-900/50 p-4 rounded-2xl border border-white/5">
+            <h1 class="text-lg font-black text-white italic">COCINA <span class="text-cyan-400">AGUADULCE</span></h1>
+            <div id="status" class="text-[9px] bg-slate-800 px-3 py-1 rounded-full font-bold">SINCRONIZANDO...</div>
         </header>
 
-        <div id="contenedor-pedidos" class="grid gap-4">
+        <div id="lista" class="space-y-4"></div>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black/90 hidden items-center justify-center p-4 z-50 backdrop-blur-md">
+        <div class="bg-slate-900 w-full max-w-sm rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
+            <div class="p-6">
+                <h2 id="modalId" class="text-cyan-400 font-black text-2xl mb-4">#----</h2>
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <p class="text-[10px] text-slate-500 uppercase font-bold">Cliente</p>
+                        <p id="modalCliente" class="text-lg font-bold"></p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-slate-500 uppercase font-bold">Teléfono</p>
+                        <a id="modalTelf" href="#" class="text-lg font-bold text-cyan-400 underline"></a>
+                    </div>
+                    <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
+                        <p class="text-[10px] text-slate-500 uppercase font-bold mb-2">Detalles del Pedido</p>
+                        <p id="modalTexto" class="text-sm leading-relaxed text-slate-300"></p>
+                    </div>
+                </div>
+                <button onclick="cerrarModal()" class="w-full bg-slate-800 text-white font-bold py-4 rounded-2xl hover:bg-slate-700 transition-all">CERRAR DETALLES</button>
             </div>
+        </div>
     </div>
 
     <script>
-        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; // <--- PEGA TU URL AQUÍ
-        const MI_ID_REST = "RT33M5"; // <--- ID de tu restaurante
-        let pedidosActuales = [];
+        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec";
+        const MI_ID_REST = "RT33M5";
+        let pedidosActivos = [];
+        let aceptados = new Set();
 
-        async function cargarPedidos() {
+        async function cargar() {
             try {
                 const res = await fetch(`${scriptURL}?action=leerCocina&idRest=${MI_ID_REST}`);
-                const pedidos = await res.json();
+                const data = await res.json();
                 
-                // Si hay más pedidos que antes, sonar alerta
-                if (pedidos.length > pedidosActuales.length && pedidosActuales.length !== 0) {
-                    document.getElementById('audioAlerta').play();
+                pedidosActivos = data.pedidos;
+                document.getElementById('ventaHoy').innerText = data.stats.diaria + "€";
+                document.getElementById('ventaSemana').innerText = data.stats.semanal + "€";
+                
+                // Alerta sonora si hay un pedido que NO está en la lista de aceptados
+                const hayNuevos = pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO));
+                if (hayNuevos) {
+                    document.getElementById('alertaSonora').play().catch(()=>{});
+                } else {
+                    document.getElementById('alertaSonora').pause();
                 }
-                
-                pedidosActuales = pedidos;
-                renderizar(pedidos);
-                document.getElementById('local-nombre').innerText = "Restaurante ID: " + MI_ID_REST;
-            } catch (e) {
-                document.getElementById('status').innerText = "ERROR DE CONEXIÓN";
-                document.getElementById('status').className = "text-[10px] bg-red-500/20 text-red-500 px-3 py-1 rounded-full";
-            }
+
+                render();
+                document.getElementById('status').innerText = "ONLINE";
+                document.getElementById('status').className = "text-[9px] bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-bold";
+            } catch (e) { document.getElementById('status').innerText = "ERROR RED"; }
         }
 
-        function renderizar(pedidos) {
-            const container = document.getElementById('contenedor-pedidos');
-            if (pedidos.length === 0) {
-                container.innerHTML = `<div class="text-center py-20 opacity-20 font-black italic text-xl">SIN PEDIDOS PENDIENTES</div>`;
+        function render() {
+            const lista = document.getElementById('lista');
+            if (pedidosActivos.length === 0) {
+                lista.innerHTML = '<div class="text-center py-20 text-slate-500 italic">No hay pedidos pendientes...</div>';
                 return;
             }
-
-            container.innerHTML = pedidos.map(p => `
-                <div class="bg-[#1a2235] p-6 rounded-[2.5rem] border border-white/5 shadow-xl relative overflow-hidden">
+            lista.innerHTML = pedidosActivos.map(p => `
+                <div class="bg-slate-900 border border-white/5 p-5 rounded-3xl shadow-xl">
                     <div class="flex justify-between items-start mb-4">
                         <div>
                             <span class="text-cyan-400 font-black text-xl">#${p.ID_PEDIDO}</span>
-                            <h2 class="text-xl font-bold">${p.CLIENTE}</h2>
+                            <h2 class="text-lg font-bold uppercase">${p.CLIENTE}</h2>
                         </div>
-                        <span class="text-[10px] opacity-40">${p.FECHA}</span>
+                        <div class="text-right">
+                            <p class="text-2xl font-black text-white">${parseFloat(p.TOTAL).toFixed(2)}€</p>
+                            <p class="text-[10px] text-slate-500">${p.FECHA.split(' ')[1] || ''}</p>
+                        </div>
                     </div>
-                    
-                    <div class="bg-black/30 p-4 rounded-2xl mb-6 border-l-4 border-cyan-500">
-                        <p class="text-cyan-100 italic font-medium">${p.PEDIDO_DETALLE}</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="aceptar('${p.ID_PEDIDO}')" class="${aceptados.has(p.ID_PEDIDO) ? 'bg-slate-800 text-slate-500' : 'bg-white text-black'} font-black py-3 rounded-xl text-[10px] uppercase">
+                            ${aceptados.has(p.ID_PEDIDO) ? 'ACEPTADO' : 'ACEPTAR'}
+                        </button>
+                        <button onclick="ver('${p.ID_PEDIDO}')" class="bg-slate-800 text-cyan-400 border border-cyan-400/20 font-black py-3 rounded-xl text-[10px] uppercase">DETALLES</button>
+                        <button onclick="listo('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-black py-3 rounded-xl text-[10px] uppercase shadow-lg shadow-cyan-500/30">LISTO</button>
                     </div>
-
-                    <button onclick="marcarListo('${p.ID_PEDIDO}')" 
-                        class="w-full bg-white text-slate-900 py-4 rounded-2xl font-black uppercase italic hover:bg-cyan-400 transition-colors">
-                        ¡PEDIDO LISTO!
-                    </button>
                 </div>
             `).join('');
         }
 
-        async function marcarListo(id) {
-            // Optimismo: lo quitamos de la vista antes de que Google responda
-            pedidosActuales = pedidosActuales.filter(p => p.ID_PEDIDO !== id);
-            renderizar(pedidosActuales);
-
-            await fetch(scriptURL, {
-                method: 'POST',
-                body: JSON.stringify({idPedido: id})
-            });
+        function aceptar(id) {
+            aceptados.add(id);
+            document.getElementById('alertaSonora').pause();
+            render();
         }
 
-        // Refrescar cada 10 segundos
-        setInterval(cargarPedidos, 10000);
-        cargarPedidos();
+        function ver(id) {
+            const p = pedidosActivos.find(x => x.ID_PEDIDO === id);
+            document.getElementById('modalId').innerText = "#" + p.ID_PEDIDO;
+            document.getElementById('modalCliente').innerText = p.CLIENTE;
+            document.getElementById('modalTelf').innerText = p.WHATSAPP || p.TELEFONO || '---';
+            document.getElementById('modalTelf').href = "tel:" + (p.WHATSAPP || p.TELEFONO);
+            document.getElementById('modalTexto').innerText = p.PEDIDO_DETALLE || p.DETALLE || 'Sin detalles';
+            document.getElementById('modal').classList.remove('hidden');
+            document.getElementById('modal').classList.add('flex');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modal').classList.add('hidden');
+            document.getElementById('modal').classList.remove('flex');
+        }
+
+        async function listo(id) {
+            if(!confirm("¿Pedido entregado?")) return;
+            pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
+            render();
+            await fetch(`${scriptURL}?action=marcarListo&idPedido=${id}`);
+        }
+
+        setInterval(cargar, 10000);
+        cargar();
     </script>
 </body>
 </html>

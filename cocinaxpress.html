@@ -4,153 +4,288 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
-    <title>Panel Control Aguadulce</title>
+    <title>Panel de Cocina Aguadulce</title>
+    <style>
+        /* Estilo para el switch de abierto/cerrado */
+        .switch-input:checked + .switch-label {
+            background-color: #10b981; /* Verde esmeralda para Abierto */
+        }
+        .switch-input:checked + .switch-label .switch-dot {
+            transform: translateX(1.25rem); /* Movimiento del punto */
+        }
+        /* Animación suave para modales */
+        .modal-animate {
+            animation: modalFadeIn 0.3s ease-out;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
 </head>
-<body class="bg-[#0b1120] text-slate-100 font-sans">
+<body class="bg-[#0b1120] text-slate-100 p-4 font-sans min-h-screen">
 
-    <audio id="alerta" loop src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+    <audio id="alerta" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
-    <nav class="sticky top-0 z-50 bg-[#0f172a]/95 backdrop-blur-md border-b border-white/10 p-4 shadow-2xl">
-        <div class="max-w-xl mx-auto">
-            <div class="flex justify-between items-center mb-3">
-                <h1 class="text-xs font-black text-cyan-400 italic tracking-widest uppercase">Aguadulce Cocina</h1>
-                <div class="flex items-center gap-3">
-                    <span id="txtEstado" class="text-[10px] font-bold">---</span>
-                    <button onclick="toggleTienda()" id="btnTienda" class="w-12 h-6 rounded-full bg-slate-700 relative transition-all duration-300">
-                        <div id="circuloTienda" class="w-4 h-4 bg-white rounded-full absolute top-1 left-1 transition-all duration-300"></div>
-                    </button>
+    <div class="max-w-2xl mx-auto pb-20">
+        
+        <header class="flex justify-between items-start mb-6 bg-slate-900/50 p-5 rounded-3xl border border-white/5 shadow-xl">
+            <div>
+                <h1 class="text-xl font-black text-cyan-400 italic">AGUADULCE COCINA</h1>
+                <p id="nombreRestaurante" class="text-xs text-slate-400 font-medium mt-1 uppercase tracking-wider">Cargando restaurante...</p>
+                <div id="status" class="text-[9px] font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-500 uppercase mt-2 inline-block">Conectando...</div>
+            </div>
+            
+            <div class="flex flex-col items-end gap-2">
+                <span id="txtEstado" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">---</span>
+                <div class="relative inline-block w-11 h-6 select-none">
+                    <input type="checkbox" id="tiendaSwitch" class="switch-input sr-only" onchange="confirmarCambioEstado(this)">
+                    <label for="tiendaSwitch" class="switch-label block overflow-hidden h-6 rounded-full bg-slate-700 cursor-pointer transition-colors duration-300">
+                        <span class="switch-dot absolute block w-4 h-4 rounded-full bg-white top-1 left-1 transition-transform duration-300 shadow-md"></span>
+                    </label>
                 </div>
             </div>
-            <div class="flex gap-4 bg-white/5 p-3 rounded-2xl">
-                <div class="flex-1">
-                    <p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Venta Hoy</p>
-                    <p id="ventaHoy" class="text-2xl font-black text-white">0.00€</p>
-                </div>
-                <div class="flex-1 text-right border-l border-white/10 pl-4">
-                    <p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Acumulado</p>
-                    <p id="ventaSemana" class="text-2xl font-black text-white">0.00€</p>
-                </div>
+        </header>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 p-5 rounded-3xl border border-emerald-500/20 shadow-lg">
+                <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest text-center">Venta Hoy</p>
+                <h2 id="ventaHoy" class="text-3xl font-black text-center text-white">0.00€</h2>
+            </div>
+            <div class="bg-gradient-to-br from-cyan-500/20 to-cyan-900/40 p-5 rounded-3xl border border-cyan-500/20 shadow-lg">
+                <p class="text-[10px] text-cyan-400 font-bold uppercase tracking-widest text-center">Venta Semana</p>
+                <h2 id="ventaSemana" class="text-3xl font-black text-center text-white">0.00€</h2>
             </div>
         </div>
-    </nav>
 
-    <main class="max-w-xl mx-auto p-4 space-y-6 pb-20">
-        <div id="lista"></div>
-    </main>
+        <div id="lista" class="space-y-5">
+            </div>
+    </div>
 
-    <div id="modal" class="fixed inset-0 bg-black/95 hidden items-center justify-center p-6 z-[100] backdrop-blur-md">
-        <div class="bg-slate-900 w-full rounded-[2.5rem] border border-white/10 p-8 shadow-2xl">
-            <h2 id="m-id" class="text-cyan-400 font-black text-3xl mb-4"></h2>
-            <div class="mb-6">
-                <p id="m-cliente" class="text-white font-bold text-xl"></p>
-                <a id="m-telf" href="#" class="text-cyan-500 font-bold underline italic text-sm">Llamar ahora</a>
+    <div id="modalConfirmarListo" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 w-full max-w-sm rounded-3xl border border-white/10 shadow-2xl overflow-hidden modal-animate p-6">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-cyan-100 mb-6">
+                    <svg class="h-10 w-10 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Confirmar Pedido Preparado</h3>
+                <p id="modalConfirmarTexto" class="text-sm text-slate-400 mb-8">¿Estás seguro de que el pedido #---- está listo para entregar?</p>
             </div>
-            <div class="bg-white/5 p-5 rounded-3xl border border-white/5 mb-8">
-                <p id="m-detalle" class="text-slate-300 leading-relaxed font-medium"></p>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="cerrarModalConfirmar()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3.5 rounded-xl transition-all">Cancelar</button>
+                <button id="btnAceptarListo" class="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-3.5 rounded-xl transition-all shadow-lg shadow-cyan-500/20">Aceptar</button>
             </div>
-            <button onclick="cerrarModal()" class="w-full bg-slate-800 py-5 rounded-2xl font-black uppercase text-xs tracking-widest">Cerrar Detalles</button>
         </div>
     </div>
 
     <script>
-        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
-        const MI_ID_REST = "RT33M5";
+        // --- CONFIGURACIÓN ---
+        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; // PEGA AQUÍ TU URL DE GOOGLE APPS SCRIPT
+        const MI_ID_REST = "RT33M5"; // ID de tu restaurante (de image_2.png)
+        
+        // Variables de estado
         let pedidosActivos = [];
         let aceptados = new Set();
         let tiendaAbierta = false;
+        let idPedidoParaListo = null;
 
-        async function cargar() {
+        // --- FUNCIONES PRINCIPALES ---
+
+        // Función para cargar todos los datos (Pedidos, stats, info tienda)
+        async function cargarDatos() {
             try {
-                const r = await fetch(`${scriptURL}?action=leerCocina&idRest=${MI_ID_REST}`);
-                const data = await r.json();
+                // Llamamos a la acción que unifica todo: leerCocina, leerStats y leerTienda
+                const res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}`);
+                if (!res.ok) throw new Error("Error en la respuesta de red");
+                const data = await res.json();
                 
-                pedidosActivos = data.pedidos;
-                tiendaAbierta = data.tiendaAbierta;
-                
+                if (data.error) throw new Error(data.error);
+
+                // 1. Info de la Tienda y Restaurante (Punto 3)
+                tiendaAbierta = data.tienda.estado === "Abierto";
+                actualizarUISwitch(tiendaAbierta);
+                document.getElementById('nombreRestaurante').innerText = data.tienda.nombre || "Restaurante Desconocido";
+
+                // 2. Estadísticas de Ventas
                 document.getElementById('ventaHoy').innerText = data.stats.diaria + "€";
                 document.getElementById('ventaSemana').innerText = data.stats.semanal + "€";
+
+                // 3. Alerta sonora si hay nuevos pedidos
+                if (data.pedidos.length > pedidosActivos.length && pedidosActivos.length > 0) {
+                    document.getElementById('alerta').play().catch(()=>{});
+                }
+
+                // 4. Renderizar pedidos
+                pedidosActivos = data.pedidos;
+                renderPedidos(pedidosActivos);
                 
-                actualizarUIApp();
+                // Actualizar status de conexión
+                const st = document.getElementById('status');
+                st.innerText = "ONLINE";
+                st.className = "text-[9px] font-bold px-3 py-1 rounded-full bg-green-500/20 text-green-400 uppercase mt-2 inline-block";
 
-                const hayNuevos = pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO));
-                if(hayNuevos && pedidosActivos.length > 0) document.getElementById('alerta').play().catch(()=>{});
-                else document.getElementById('alerta').pause();
-
-                render();
-            } catch (e) { console.error("Error cargando:", e); }
-        }
-
-        function actualizarUIApp() {
-            const btn = document.getElementById('btnTienda');
-            const circ = document.getElementById('circuloTienda');
-            const txt = document.getElementById('txtEstado');
-            if(tiendaAbierta) {
-                btn.classList.replace('bg-slate-700', 'bg-emerald-500');
-                circ.style.left = "26px";
-                txt.innerText = "ABIERTO";
-                txt.className = "text-[10px] font-bold text-emerald-400";
-            } else {
-                btn.classList.replace('bg-emerald-500', 'bg-slate-700');
-                circ.style.left = "4px";
-                txt.innerText = "CERRADO";
-                txt.className = "text-[10px] font-bold text-slate-500";
+            } catch (e) {
+                console.error("Error cargando datos:", e);
+                const st = document.getElementById('status');
+                st.innerText = "ERROR RED";
+                st.className = "text-[9px] font-bold px-3 py-1 rounded-full bg-red-500/20 text-red-400 uppercase mt-2 inline-block";
             }
         }
 
-        async function toggleTienda() {
-            tiendaAbierta = !tiendaAbierta;
-            actualizarUIApp();
-            const estadoStr = tiendaAbierta ? "ABIERTO" : "CERRADO";
-            fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${estadoStr}`);
+        // --- GESTIÓN DE TIENDA (SWITCH ABIERTO/CERRADO) (Punto 1 y 2) ---
+
+        // Actualiza visualmente el switch según el estado
+        function actualizarUISwitch(abierto) {
+            const sw = document.getElementById('tiendaSwitch');
+            const txt = document.getElementById('txtEstado');
+            sw.checked = abierto;
+            if (abierto) {
+                txt.innerText = "ABIERTO";
+                txt.className = "text-[10px] font-bold text-emerald-400 uppercase tracking-widest";
+            } else {
+                txt.innerText = "CERRADO";
+                txt.className = "text-[10px] font-bold text-slate-500 uppercase tracking-widest";
+            }
         }
 
-        function render() {
+        // Maneja el cambio de estado con confirmación
+        function confirmarCambioEstado(input) {
+            // Revertimos el estado visual inmediatamente. El cambio real solo ocurrirá si el servidor confirma.
+            actualizarUISwitch(tiendaAbierta); 
+            
+            const nuevoEstado = tiendaAbierta ? "Cerrado" : "Abierto";
+            const msg = `¿Seguro que quieres pasar la tienda a estado ${nuevoEstado.toUpperCase()}?`;
+            
+            // Usamos confirm() del navegador para la tienda por seguridad, pero podrías usar otro modal moderno.
+            if(confirm(msg)) {
+                // Si acepta, actualizamos visualmente y enviamos al servidor
+                actualizarUISwitch(!tiendaAbierta); 
+                actualizarEstadoTienda(nuevoEstado);
+            }
+        }
+
+        // Envía el cambio de estado al servidor
+        async function actualizarEstadoTienda(nuevoEstado) {
+            try {
+                const res = await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${nuevoEstado}`);
+                if (!res.ok) throw new Error("Error en red al cambiar estado");
+                const data = await res.json();
+                if(data.status !== "ok") throw new Error("Error del servidor al cambiar estado");
+                
+                // Confirmación exitosa del servidor
+                tiendaAbierta = (nuevoEstado === "Abierto");
+                console.log("Estado de tienda actualizado a:", nuevoEstado);
+            } catch (e) {
+                console.error("Error al actualizar estado de la tienda:", e);
+                // Si falla, revertimos la interfaz al estado anterior
+                alert("No se pudo cambiar el estado de la tienda. Inténtalo de nuevo.");
+                actualizarUISwitch(tiendaAbierta);
+            }
+        }
+
+        // --- GESTIÓN DE PEDIDOS ---
+
+        // Renderiza la lista de pedidos activos
+        function renderPedidos(pedidos) {
             const cont = document.getElementById('lista');
-            if (pedidosActivos.length === 0) {
-                cont.innerHTML = '<div class="text-center py-20 text-slate-600 italic">No hay pedidos pendientes</div>';
+            if (pedidos.length === 0) {
+                cont.innerHTML = '<div class="text-center py-20 text-slate-600 text-sm italic">No hay pedidos pendientes en cocina...</div>';
                 return;
             }
-            cont.innerHTML = pedidosActivos.map(p => `
-                <div class="bg-slate-900 p-6 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
-                    <div class="flex justify-between items-start mb-6">
-                        <div>
-                            <span class="text-cyan-400 font-black text-2xl tracking-tighter">#${p.ID_PEDIDO}</span>
-                            <h2 class="font-bold text-white uppercase text-[10px] opacity-60 mt-1">${p.CLIENTE}</h2>
+
+            cont.innerHTML = pedidos.map(p => {
+                // Adaptamos las llaves JSON basándonos en image_0.png
+                const idPedido = p.ID_PEDIDO || p["ID PEDIDO"];
+                const cliente = p.CLIENTE;
+                const total = p.TOTAL;
+                
+                return `
+                    <div class="bg-slate-900 p-5 rounded-3xl border border-white/5 shadow-xl transition-all">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <span class="text-cyan-400 font-black text-xl tracking-tighter">#${idPedido}</span>
+                                <h2 class="font-bold text-white uppercase text-[10px] mt-1 opacity-70 tracking-wider">${cliente}</h2>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-2xl font-black text-white">${parseFloat(total).toFixed(2)}€</p>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            <p class="text-2xl font-black text-white">${parseFloat(p.TOTAL || 0).toFixed(2)}€</p>
+                        
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <button onclick="aceptarPedido('${idPedido}')" class="${aceptados.has(idPedido) ? 'bg-slate-800 text-slate-600' : 'bg-white text-black ring-4 ring-white/10'} font-black py-3.5 px-3 rounded-2xl text-[9px] uppercase tracking-wider transition-all">
+                                ${aceptados.has(idPedido) ? 'Aceptado' : 'Aceptar'}
+                            </button>
+                            <button onclick="verDetalles('${idPedido}')" class="bg-slate-800 text-cyan-400 border border-cyan-400/20 font-black py-3.5 px-3 rounded-2xl text-[9px] uppercase tracking-wider transition-all hover:bg-slate-700">
+                                Detalles
+                            </button>
+                            <button onclick="confirmarListo('${idPedido}')" class="bg-cyan-500 hover:bg-cyan-400 text-black font-black py-3.5 px-3 rounded-2xl text-[9px] uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-cyan-500/20">
+                                Listo
+                            </button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-3 gap-3">
-                        <button onclick="aceptar('${p.ID_PEDIDO}')" class="py-4 rounded-2xl text-[9px] font-black uppercase transition-all ${aceptados.has(p.ID_PEDIDO) ? 'bg-slate-800 text-slate-600' : 'bg-white text-black'}">
-                            ${aceptados.has(p.ID_PEDIDO) ? 'ACEPTADO' : 'ACEPTAR'}
-                        </button>
-                        <button onclick="ver('${p.ID_PEDIDO}')" class="bg-slate-800 text-cyan-400 py-4 rounded-2xl text-[9px] font-black uppercase border border-cyan-400/20">DETALLES</button>
-                        <button onclick="listo('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black py-4 rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-cyan-500/20">LISTO</button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
-        function aceptar(id) { aceptados.add(id); document.getElementById('alerta').pause(); render(); }
-        function ver(id) {
-            const p = pedidosActivos.find(x => x.ID_PEDIDO === id);
-            document.getElementById('m-id').innerText = "#" + p.ID_PEDIDO;
-            document.getElementById('m-cliente').innerText = p.CLIENTE;
-            document.getElementById('m-telf').href = "tel:" + p.WHATSAPP;
-            document.getElementById('m-detalle').innerText = p.PEDIDO_DETALLE;
-            document.getElementById('modal').style.display = 'flex';
-        }
-        function cerrarModal() { document.getElementById('modal').style.display = 'none'; }
-        async function listo(id) {
-            if(!confirm("¿Pedido preparado y fuera de cocina?")) return;
-            pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
-            render();
-            fetch(`${scriptURL}?action=marcarListo&idPedido=${id}`);
+        // --- GESTIÓN DE "LISTO" CON MODAL MODERNO (Punto 3) ---
+
+        // Abre el modal de confirmación moderno
+        function confirmarListo(id) {
+            idPedidoParaListo = id;
+            document.getElementById('modalConfirmarTexto').innerText = `¿Estás seguro de que el pedido #${id} está listo para entregar?`;
+            
+            // Configuramos la acción del botón Aceptar del modal
+            document.getElementById('btnAceptarListo').onclick = function() {
+                marcarComoListo(idPedidoParaListo);
+            };
+            
+            document.getElementById('modalConfirmarListo').classList.remove('hidden');
+            document.getElementById('modalConfirmarListo').classList.add('flex');
         }
 
-        setInterval(cargar, 8000);
-        cargar();
+        // Cierra el modal de confirmación
+        function cerrarModalConfirmar() {
+            document.getElementById('modalConfirmarListo').classList.add('hidden');
+            document.getElementById('modalConfirmarListo').classList.remove('flex');
+            idPedidoParaListo = null;
+        }
+
+        // Envía la acción de marcar como listo al servidor
+        async function marcarComoListo(id) {
+            cerrarModalConfirmar(); // Cerramos el modal inmediatamente
+            
+            // Eliminación optimista de la interfaz para mayor fluidez
+            pedidosActivos = pedidosActivos.filter(p => (p.ID_PEDIDO || p["ID PEDIDO"]) !== id);
+            renderPedidos(pedidosActivos);
+            
+            try {
+                // Llamamos a la acción de marcarListo
+                const res = await fetch(`${scriptURL}?action=marcarListo&idPedido=${id}`);
+                if (!res.ok) throw new Error("Error en red al marcar listo");
+                const data = await res.json();
+                if(data.status !== "ok") throw new Error("Error del servidor al marcar listo");
+                
+                console.log(`Pedido #${id} marcado como listo exitosamente.`);
+            } catch (e) {
+                console.error("Error al marcar como listo:", e);
+                // Si falla, podrías recargar para recuperar el pedido eliminado de la vista
+                alert("Hubo un problema al marcar el pedido. Por favor, recarga la página.");
+            }
+        }
+
+        // Funciones auxiliares sencillas
+        function aceptarPedido(id) { aceptados.add(id); renderPedidos(pedidosActivos); }
+        function verDetalles(id) { alert(`Detalles del pedido #${id} (funcionalidad pendiente de implementar)`); }
+
+        // --- INICIALIZACIÓN ---
+
+        // Carga automática cada 8 segundos
+        setInterval(cargarDatos, 8000);
+        // Carga inicial al abrir
+        cargarDatos();
+
     </script>
 </body>
 </html>

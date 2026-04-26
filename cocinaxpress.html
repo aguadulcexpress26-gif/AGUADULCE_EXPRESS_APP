@@ -4,127 +4,146 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
-    <title>Cocina Aguadulce</title>
+    <title>Panel Control Aguadulce</title>
 </head>
-<body class="bg-[#0b1120] text-slate-100 p-4 font-sans">
+<body class="bg-[#0b1120] text-slate-100 font-sans">
 
     <audio id="alerta" loop src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
-    <div class="max-w-xl mx-auto">
-        <div class="grid grid-cols-2 gap-3 mb-6">
-            <div class="bg-slate-900 border border-emerald-500/30 p-4 rounded-3xl shadow-lg">
-                <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest text-center">Venta Hoy</p>
-                <h2 id="ventaHoy" class="text-2xl font-black italic text-center">0.00€</h2>
+    <nav class="sticky top-0 z-50 bg-[#0f172a]/95 backdrop-blur-md border-b border-white/10 p-4 shadow-2xl">
+        <div class="max-w-xl mx-auto">
+            <div class="flex justify-between items-center mb-3">
+                <h1 class="text-xs font-black text-cyan-400 italic tracking-widest uppercase">Aguadulce Cocina</h1>
+                <div class="flex items-center gap-3">
+                    <span id="txtEstado" class="text-[10px] font-bold">---</span>
+                    <button onclick="toggleTienda()" id="btnTienda" class="w-12 h-6 rounded-full bg-slate-700 relative transition-all duration-300">
+                        <div id="circuloTienda" class="w-4 h-4 bg-white rounded-full absolute top-1 left-1 transition-all duration-300"></div>
+                    </button>
+                </div>
             </div>
-            <div class="bg-slate-900 border border-cyan-500/30 p-4 rounded-3xl shadow-lg">
-                <p class="text-[10px] text-cyan-400 font-bold uppercase tracking-widest text-center">Venta Semana</p>
-                <h2 id="ventaSemana" class="text-2xl font-black italic text-center">0.00€</h2>
+            <div class="flex gap-4 bg-white/5 p-3 rounded-2xl">
+                <div class="flex-1">
+                    <p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Venta Hoy</p>
+                    <p id="ventaHoy" class="text-2xl font-black text-white">0.00€</p>
+                </div>
+                <div class="flex-1 text-right border-l border-white/10 pl-4">
+                    <p class="text-[9px] text-slate-500 font-bold uppercase mb-1">Acumulado</p>
+                    <p id="ventaSemana" class="text-2xl font-black text-white">0.00€</p>
+                </div>
             </div>
         </div>
+    </nav>
 
-        <div id="lista" class="space-y-4">
-            <p class="text-center text-slate-500 mt-10">Conectando con el servidor...</p>
-        </div>
-    </div>
+    <main class="max-w-xl mx-auto p-4 space-y-6 pb-20">
+        <div id="lista"></div>
+    </main>
 
-    <div id="modal" class="fixed inset-0 bg-black/95 hidden items-center justify-center p-6 z-50 backdrop-blur-md">
+    <div id="modal" class="fixed inset-0 bg-black/95 hidden items-center justify-center p-6 z-[100] backdrop-blur-md">
         <div class="bg-slate-900 w-full rounded-[2.5rem] border border-white/10 p-8 shadow-2xl">
-            <h2 id="m-id" class="text-cyan-400 font-black text-2xl mb-2"></h2>
-            <p id="m-cliente" class="text-white font-bold text-lg mb-1"></p>
-            <a id="m-telf" href="#" class="text-cyan-500 font-bold underline block mb-6"></a>
-            
-            <div class="bg-white/5 p-4 rounded-2xl border border-white/5 mb-8">
-                <p class="text-[10px] text-slate-500 font-bold uppercase mb-2">Detalles del Pedido</p>
-                <p id="m-detalle" class="text-sm text-slate-300 leading-relaxed"></p>
+            <h2 id="m-id" class="text-cyan-400 font-black text-3xl mb-4"></h2>
+            <div class="mb-6">
+                <p id="m-cliente" class="text-white font-bold text-xl"></p>
+                <a id="m-telf" href="#" class="text-cyan-500 font-bold underline italic text-sm">Llamar ahora</a>
             </div>
-            <button onclick="cerrarModal()" class="w-full bg-slate-800 py-4 rounded-2xl font-bold">CERRAR DETALLES</button>
+            <div class="bg-white/5 p-5 rounded-3xl border border-white/5 mb-8">
+                <p id="m-detalle" class="text-slate-300 leading-relaxed font-medium"></p>
+            </div>
+            <button onclick="cerrarModal()" class="w-full bg-slate-800 py-5 rounded-2xl font-black uppercase text-xs tracking-widest">Cerrar Detalles</button>
         </div>
     </div>
 
     <script>
-        // Pega AQUÍ tu URL de la imagen
         const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
         const MI_ID_REST = "RT33M5";
         let pedidosActivos = [];
         let aceptados = new Set();
+        let tiendaAbierta = false;
 
         async function cargar() {
             try {
-                const urlCompleta = `${scriptURL}?action=leerCocina&idRest=${MI_ID_REST}`;
-                const r = await fetch(urlCompleta);
+                const r = await fetch(`${scriptURL}?action=leerCocina&idRest=${MI_ID_REST}`);
                 const data = await r.json();
                 
-                if(data.error) throw new Error(data.error);
-
                 pedidosActivos = data.pedidos;
+                tiendaAbierta = data.tiendaAbierta;
+                
                 document.getElementById('ventaHoy').innerText = data.stats.diaria + "€";
                 document.getElementById('ventaSemana').innerText = data.stats.semanal + "€";
+                
+                actualizarUIApp();
 
-                // Alerta sonora (punto 4)
-                const nuevos = pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO));
-                if(nuevos && pedidosActivos.length > 0) {
-                    document.getElementById('alerta').play().catch(()=>{});
-                } else {
-                    document.getElementById('alerta').pause();
-                }
+                const hayNuevos = pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO));
+                if(hayNuevos && pedidosActivos.length > 0) document.getElementById('alerta').play().catch(()=>{});
+                else document.getElementById('alerta').pause();
 
                 render();
-            } catch (e) {
-                document.getElementById('lista').innerHTML = `<p class="text-center text-red-500 italic">Error de conexión: ${e.message}</p>`;
+            } catch (e) { console.error("Error cargando:", e); }
+        }
+
+        function actualizarUIApp() {
+            const btn = document.getElementById('btnTienda');
+            const circ = document.getElementById('circuloTienda');
+            const txt = document.getElementById('txtEstado');
+            if(tiendaAbierta) {
+                btn.classList.replace('bg-slate-700', 'bg-emerald-500');
+                circ.style.left = "26px";
+                txt.innerText = "ABIERTO";
+                txt.className = "text-[10px] font-bold text-emerald-400";
+            } else {
+                btn.classList.replace('bg-emerald-500', 'bg-slate-700');
+                circ.style.left = "4px";
+                txt.innerText = "CERRADO";
+                txt.className = "text-[10px] font-bold text-slate-500";
             }
+        }
+
+        async function toggleTienda() {
+            tiendaAbierta = !tiendaAbierta;
+            actualizarUIApp();
+            const estadoStr = tiendaAbierta ? "ABIERTO" : "CERRADO";
+            fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${estadoStr}`);
         }
 
         function render() {
             const cont = document.getElementById('lista');
             if (pedidosActivos.length === 0) {
-                cont.innerHTML = '<p class="text-center text-slate-500 mt-10 italic">No hay pedidos pendientes...</p>';
+                cont.innerHTML = '<div class="text-center py-20 text-slate-600 italic">No hay pedidos pendientes</div>';
                 return;
             }
             cont.innerHTML = pedidosActivos.map(p => `
-                <div class="bg-slate-900 p-5 rounded-[2rem] border border-white/5 shadow-xl">
-                    <div class="flex justify-between items-start mb-4">
+                <div class="bg-slate-900 p-6 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-6">
                         <div>
-                            <span class="text-cyan-400 font-black text-xl">#${p.ID_PEDIDO}</span>
-                            <h2 class="font-bold text-white uppercase text-sm">${p.CLIENTE}</h2>
+                            <span class="text-cyan-400 font-black text-2xl tracking-tighter">#${p.ID_PEDIDO}</span>
+                            <h2 class="font-bold text-white uppercase text-[10px] opacity-60 mt-1">${p.CLIENTE}</h2>
                         </div>
                         <div class="text-right">
-                            <p class="text-xl font-black text-white">${parseFloat(p.TOTAL || 0).toFixed(2)}€</p>
+                            <p class="text-2xl font-black text-white">${parseFloat(p.TOTAL || 0).toFixed(2)}€</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-3 gap-2">
-                        <button onclick="aceptar('${p.ID_PEDIDO}')" class="py-3 rounded-xl text-[10px] font-bold uppercase ${aceptados.has(p.ID_PEDIDO) ? 'bg-slate-800 text-slate-500' : 'bg-white text-black'}">
+                    <div class="grid grid-cols-3 gap-3">
+                        <button onclick="aceptar('${p.ID_PEDIDO}')" class="py-4 rounded-2xl text-[9px] font-black uppercase transition-all ${aceptados.has(p.ID_PEDIDO) ? 'bg-slate-800 text-slate-600' : 'bg-white text-black'}">
                             ${aceptados.has(p.ID_PEDIDO) ? 'ACEPTADO' : 'ACEPTAR'}
                         </button>
-                        <button onclick="ver('${p.ID_PEDIDO}')" class="bg-slate-800 text-cyan-400 py-3 rounded-xl text-[10px] font-bold uppercase border border-cyan-400/20 text-center">DETALLES</button>
-                        <button onclick="listo('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black py-3 rounded-xl text-[10px] font-bold uppercase">LISTO</button>
+                        <button onclick="ver('${p.ID_PEDIDO}')" class="bg-slate-800 text-cyan-400 py-4 rounded-2xl text-[9px] font-black uppercase border border-cyan-400/20">DETALLES</button>
+                        <button onclick="listo('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black py-4 rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-cyan-500/20">LISTO</button>
                     </div>
                 </div>
             `).join('');
         }
 
-        function aceptar(id) {
-            aceptados.add(id);
-            document.getElementById('alerta').pause();
-            render();
-        }
-
+        function aceptar(id) { aceptados.add(id); document.getElementById('alerta').pause(); render(); }
         function ver(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id);
             document.getElementById('m-id').innerText = "#" + p.ID_PEDIDO;
             document.getElementById('m-cliente').innerText = p.CLIENTE;
-            // Usamos WHATSAPP tal como sale en tu JSON de la imagen
-            document.getElementById('m-telf').innerText = p.WHATSAPP || "Sin Teléfono";
             document.getElementById('m-telf').href = "tel:" + p.WHATSAPP;
             document.getElementById('m-detalle').innerText = p.PEDIDO_DETALLE;
             document.getElementById('modal').style.display = 'flex';
         }
-
-        function cerrarModal() {
-            document.getElementById('modal').style.display = 'none';
-        }
-
+        function cerrarModal() { document.getElementById('modal').style.display = 'none'; }
         async function listo(id) {
-            if(!confirm("¿Pedido terminado?")) return;
+            if(!confirm("¿Pedido preparado y fuera de cocina?")) return;
             pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
             render();
             fetch(`${scriptURL}?action=marcarListo&idPedido=${id}`);

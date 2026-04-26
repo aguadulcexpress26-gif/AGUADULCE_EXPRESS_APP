@@ -127,60 +127,75 @@
     if (!p) return;
 
     const resNombre = document.getElementById('resNombre').innerText;
-    
-    // COMANDOS ESC/POS PARA RAWBT
-    const ESC = "\x1B";
-    const GS = "\x1D";
-    const NORMAL = ESC + "!" + "\x00";        // Texto normal
-    const DOBLE_ALTO = ESC + "!" + "\x10";    // Doble alto
-    const DOBLE_ANCHO = ESC + "!" + "\x20";   // Doble ancho
-    const GIGANTE = ESC + "!" + "\x30";       // Doble alto y ancho + Negrita
-    const NEGRITA = ESC + "!" + "\x08";       // Solo negrita
-    const CENTRADO = ESC + "a" + "\x01";      // Alinear al centro
-    const IZQUIERDA = ESC + "a" + "\x00";     // Alinear a la izquierda
 
-    let t = "";
-    
-    // Encabezado
-    t += CENTRADO + NEGRITA + "AGUADULCE EXPRESS\n" + NORMAL;
-    t += CENTRADO + DOBLE_ALTO + resNombre + "\n" + NORMAL;
-    t += CENTRADO + "--------------------------------\n";
-    
-    // Datos del Cliente (Grande)
-    t += IZQUIERDA + NEGRITA + "ENTREGAR A:\n" + NORMAL;
-    t += IZQUIERDA + GIGANTE + p.CLIENTE + "\n" + NORMAL;
-    t += IZQUIERDA + DOBLE_ALTO + "DIR: " + p.DIRECCION + "\n" + NORMAL;
-    
-    // Número de Pedido (Muy Grande)
-    t += CENTRADO + "--------------------------------\n";
-    t += CENTRADO + NEGRITA + "PEDIDO NUMERO:\n" + NORMAL;
-    t += CENTRADO + GIGANTE + "#" + p.ID_PEDIDO + "\n" + NORMAL;
-    t += CENTRADO + "--------------------------------\n";
-    
-    // Detalle del Pedido
-    t += IZQUIERDA + NEGRITA + "DETALLE:\n" + NORMAL;
-    // Hacemos el detalle un poco más grande
-    const items = p.PEDIDO_DETALLE.replace(/,/g, '\n');
-    t += IZQUIERDA + DOBLE_ALTO + items + "\n" + NORMAL;
-    
-    t += CENTRADO + "--------------------------------\n";
-    
-    // Total y Pago
-    t += IZQUIERDA + GIGANTE + "TOTAL: " + parseFloat(p.TOTAL).toFixed(2) + " EUR\n" + NORMAL;
-    t += IZQUIERDA + NEGRITA + "PAGO: " + p.PAGO + "\n" + NORMAL;
-    t += IZQUIERDA + "Fecha: " + p.FECHA + "\n";
-    
-    t += CENTRADO + "--------------------------------\n";
-    t += CENTRADO + NEGRITA + "*** GRACIAS POR SU COMPRA ***\n" + NORMAL;
-    t += "\n\n\n\n"; // Espacio para poder cortar el papel
+    // 1. Creamos un contenedor oculto para diseñar el ticket visualmente
+    const ticketElement = document.createElement('div');
+    ticketElement.style.width = '350px'; // Ajuste para 58mm
+    ticketElement.style.padding = '10px';
+    ticketElement.style.background = 'white';
+    ticketElement.style.color = 'black';
+    ticketElement.style.fontFamily = 'Arial, sans-serif';
 
-    // Enviar a RawBT usando Base64 (método más estable)
-    try {
-        const base64Data = btoa(unescape(encodeURIComponent(t)));
-        window.location.href = "rawbt:base64," + base64Data;
-    } catch (e) {
-        alert("Error al enviar a la impresora: " + e);
-    }
+    ticketElement.innerHTML = `
+        <div style="text-align:center;">
+            <div style="font-size: 50px; font-weight: 900; letter-spacing: -2px; margin-bottom: -5px;">AE</div>
+            <div style="font-size: 22px; font-weight: 900; margin-bottom: 5px; border-bottom: 3px solid black; display: inline-block; padding-bottom: 2px;">
+                AGUADULCE EXPRESS
+            </div>
+            
+            <div style="font-size: 16px; font-weight: bold; margin-top: 10px; text-transform: uppercase;">
+                ${resNombre}
+            </div>
+            
+            <div style="border-bottom: 1px dashed black; margin: 10px 0;"></div>
+            
+            <div style="text-align: left;">
+                <span style="font-size: 12px; font-weight: bold;">ENTREGAR A:</span><br>
+                <span style="font-size: 24px; font-weight: 900;">${p.CLIENTE}</span><br>
+                <span style="font-size: 16px; font-weight: bold;">${p.DIRECCION}</span>
+            </div>
+
+            <div style="background: black; color: white; margin: 15px 0; padding: 8px; font-size: 26px; font-weight: 900;">
+                #${p.ID_PEDIDO}
+            </div>
+
+            <div style="text-align: left; font-size: 14px; font-weight: bold; line-height: 1.4;">
+                ${p.PEDIDO_DETALLE.replace(/,/g, '<br>')}
+            </div>
+
+            <div style="border-bottom: 1px dashed black; margin: 10px 0;"></div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 22px; font-weight: 900;">
+                <span>TOTAL:</span>
+                <span>${parseFloat(p.TOTAL).toFixed(2)}€</span>
+            </div>
+            
+            <div style="text-align: left; font-size: 12px; margin-top: 10px; font-weight: bold;">
+                PAGO: ${p.PAGO}<br>
+                FECHA: ${p.FECHA}
+            </div>
+
+            <div style="border-bottom: 1px dashed black; margin: 10px 0;"></div>
+            <div style="font-size: 14px; font-weight: bold;">*** GRACIAS POR TU COMPRA ***</div>
+            <div style="height: 50px;"></div>
+        </div>
+    `;
+
+    document.body.appendChild(ticketElement);
+
+    // 2. Usamos una librería para convertir ese HTML en Imagen (Carga rápida desde CDN)
+    const script = document.createElement('script');
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    script.onload = () => {
+        html2canvas(ticketElement, { scale: 2 }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            // Enviamos la imagen directamente a RawBT
+            window.location.href = "rawbt:base64," + imgData.split(',')[1];
+            document.body.removeChild(ticketElement);
+        });
+    };
+    document.head.appendChild(script);
+}
 
         function confirmarListo(id) {
             mostrarModal("¿PEDIDO TERMINADO?", `#${id}`, "Confirma que el pedido está listo para despacho.",

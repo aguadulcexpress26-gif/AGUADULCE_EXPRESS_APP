@@ -123,34 +123,64 @@
 
         // --- NUEVA FUNCIÓN PARA RAWBT ---
         function imprimirTicket(id) {
-            const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
-            if (!p) return;
+    const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
+    if (!p) return;
 
-            const resNombre = document.getElementById('resNombre').innerText;
-            
-            // Construimos el ticket en texto puro (ideal para térmicas 58mm)
-            let textoTicket = "";
-            textoTicket += "AGUADULCE EXPRESS\n";
-            textoTicket += resNombre + "\n";
-            textoTicket += "--------------------------------\n";
-            textoTicket += "ENTREGAR A:\n";
-            textoTicket += p.CLIENTE + "\n";
-            textoTicket += p.DIRECCION + "\n\n";
-            textoTicket += "PEDIDO: #" + p.ID_PEDIDO + "\n";
-            textoTicket += "--------------------------------\n";
-            textoTicket += p.PEDIDO_DETALLE.replace(/,/g, '\n') + "\n";
-            textoTicket += "--------------------------------\n";
-            textoTicket += "TOTAL: " + parseFloat(p.TOTAL).toFixed(2) + " EUR\n";
-            textoTicket += "Pago: " + p.PAGO + "\n";
-            textoTicket += "Fecha: " + p.FECHA + "\n";
-            textoTicket += "--------------------------------\n";
-            textoTicket += "\n*** GRACIAS ***\n\n\n\n";
+    const resNombre = document.getElementById('resNombre').innerText;
+    
+    // COMANDOS ESC/POS PARA RAWBT
+    const ESC = "\x1B";
+    const GS = "\x1D";
+    const NORMAL = ESC + "!" + "\x00";        // Texto normal
+    const DOBLE_ALTO = ESC + "!" + "\x10";    // Doble alto
+    const DOBLE_ANCHO = ESC + "!" + "\x20";   // Doble ancho
+    const GIGANTE = ESC + "!" + "\x30";       // Doble alto y ancho + Negrita
+    const NEGRITA = ESC + "!" + "\x08";       // Solo negrita
+    const CENTRADO = ESC + "a" + "\x01";      // Alinear al centro
+    const IZQUIERDA = ESC + "a" + "\x00";     // Alinear a la izquierda
 
-            // El truco mágico: enviamos el texto a RawBT mediante su URL Scheme
-            // Esto abrirá RawBT directamente y mandará a imprimir
-            const encodedText = encodeURIComponent(textoTicket);
-            window.location.href = "rawbt:base64," + btoa(unescape(encodeURIComponent(textoTicket)));
-        }
+    let t = "";
+    
+    // Encabezado
+    t += CENTRADO + NEGRITA + "AGUADULCE EXPRESS\n" + NORMAL;
+    t += CENTRADO + DOBLE_ALTO + resNombre + "\n" + NORMAL;
+    t += CENTRADO + "--------------------------------\n";
+    
+    // Datos del Cliente (Grande)
+    t += IZQUIERDA + NEGRITA + "ENTREGAR A:\n" + NORMAL;
+    t += IZQUIERDA + GIGANTE + p.CLIENTE + "\n" + NORMAL;
+    t += IZQUIERDA + DOBLE_ALTO + "DIR: " + p.DIRECCION + "\n" + NORMAL;
+    
+    // Número de Pedido (Muy Grande)
+    t += CENTRADO + "--------------------------------\n";
+    t += CENTRADO + NEGRITA + "PEDIDO NUMERO:\n" + NORMAL;
+    t += CENTRADO + GIGANTE + "#" + p.ID_PEDIDO + "\n" + NORMAL;
+    t += CENTRADO + "--------------------------------\n";
+    
+    // Detalle del Pedido
+    t += IZQUIERDA + NEGRITA + "DETALLE:\n" + NORMAL;
+    // Hacemos el detalle un poco más grande
+    const items = p.PEDIDO_DETALLE.replace(/,/g, '\n');
+    t += IZQUIERDA + DOBLE_ALTO + items + "\n" + NORMAL;
+    
+    t += CENTRADO + "--------------------------------\n";
+    
+    // Total y Pago
+    t += IZQUIERDA + GIGANTE + "TOTAL: " + parseFloat(p.TOTAL).toFixed(2) + " EUR\n" + NORMAL;
+    t += IZQUIERDA + NEGRITA + "PAGO: " + p.PAGO + "\n" + NORMAL;
+    t += IZQUIERDA + "Fecha: " + p.FECHA + "\n";
+    
+    t += CENTRADO + "--------------------------------\n";
+    t += CENTRADO + NEGRITA + "*** GRACIAS POR SU COMPRA ***\n" + NORMAL;
+    t += "\n\n\n\n"; // Espacio para poder cortar el papel
+
+    // Enviar a RawBT usando Base64 (método más estable)
+    try {
+        const base64Data = btoa(unescape(encodeURIComponent(t)));
+        window.location.href = "rawbt:base64," + base64Data;
+    } catch (e) {
+        alert("Error al enviar a la impresora: " + e);
+    }
 
         function confirmarListo(id) {
             mostrarModal("¿PEDIDO TERMINADO?", `#${id}`, "Confirma que el pedido está listo para despacho.",

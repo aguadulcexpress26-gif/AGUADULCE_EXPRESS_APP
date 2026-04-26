@@ -66,8 +66,7 @@
     </div>
 
     <script>
-        // RECUERDA PONER AQUÍ TU URL DE SCRIPT ACTUALIZADA
-        const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
+        const scriptURL = "TU_URL_DE_SCRIPT"; 
         const MI_ID_REST = "RT33M5";
         let pedidosActivos = [], historialHoy = [], aceptados = new Set(), tiendaAbierta = false;
 
@@ -116,53 +115,41 @@
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             mostrarModal("DETALLES", `#${id} - ${p.CLIENTE}`, 
                 `PRODUCTOS:<br>${p.PEDIDO_DETALLE}<br><br>DIR: ${p.DIRECCION}`,
-                `<div class="flex flex-col w-full gap-2"><button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button><button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button></div>`);
+                `<div class="flex flex-col w-full gap-2">
+                    <button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button>
+                    <button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button>
+                </div>`);
         }
 
-        // --- FUNCIÓN DE IMPRESIÓN REPARADA ---
+        // --- NUEVA FUNCIÓN PARA RAWBT ---
         function imprimirTicket(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             if (!p) return;
 
-            const nombreRestaurante = document.getElementById('resNombre').innerText;
-            const v = window.open('', 'PRINT', 'height=600,width=400');
+            const resNombre = document.getElementById('resNombre').innerText;
             
-            v.document.write(`
-                <html>
-                <head>
-                    <style>
-                        body { margin: 0; padding: 10px; width: 300px; font-family: 'Courier New', monospace; color: black; background: white; }
-                        .text-center { text-align: center; }
-                        .bold { font-weight: bold; }
-                        .divider { border-bottom: 2px dashed black; margin: 10px 0; }
-                        .ticket-id { background: black; color: white; text-align: center; padding: 5px; font-size: 20px; margin: 10px 0; }
-                        .total-row { display: flex; justify-content: space-between; font-size: 18px; font-weight: bold; border-top: 1px solid black; padding-top: 5px; }
-                        @media print { @page { margin: 0; } button { display: none; } }
-                    </style>
-                </head>
-                <body>
-                    <button onclick="window.print()" style="width: 100%; padding: 15px; background: #06b6d4; color: white; border: none; border-radius: 10px; font-weight: bold; margin-bottom: 20px; font-size: 16px;">
-                        CLICK AQUÍ PARA IMPRIMIR 🖨️
-                    </button>
-                    <div class="text-center bold" style="font-size: 18px;">AGUADULCE EXPRESS</div>
-                    <div class="text-center">${nombreRestaurante}</div>
-                    <div class="divider"></div>
-                    <div class="bold">ENTREGAR A:</div>
-                    <div class="bold" style="font-size: 18px;">${p.CLIENTE}</div>
-                    <div style="font-size: 14px;">${p.DIRECCION}</div>
-                    <div class="ticket-id">#${p.ID_PEDIDO}</div>
-                    <div class="divider"></div>
-                    <div style="font-size: 14px;">${p.PEDIDO_DETALLE.replace(/,/g, '<br>')}</div>
-                    <div class="divider"></div>
-                    <div class="total-row"><span>TOTAL:</span><span>${parseFloat(p.TOTAL).toFixed(2)}€</span></div>
-                    <div style="font-size: 12px; margin-top: 10px;">Pago: ${p.PAGO}<br>Fecha: ${p.FECHA}</div>
-                    <div class="divider"></div>
-                    <div class="text-center" style="margin-bottom: 50px;">*** GRACIAS ***</div>
-                    <script>setTimeout(() => { window.print(); }, 500);<\/script>
-                </body>
-                </html>
-            `);
-            v.document.close();
+            // Construimos el ticket en texto puro (ideal para térmicas 58mm)
+            let textoTicket = "";
+            textoTicket += "AGUADULCE EXPRESS\n";
+            textoTicket += resNombre + "\n";
+            textoTicket += "--------------------------------\n";
+            textoTicket += "ENTREGAR A:\n";
+            textoTicket += p.CLIENTE + "\n";
+            textoTicket += p.DIRECCION + "\n\n";
+            textoTicket += "PEDIDO: #" + p.ID_PEDIDO + "\n";
+            textoTicket += "--------------------------------\n";
+            textoTicket += p.PEDIDO_DETALLE.replace(/,/g, '\n') + "\n";
+            textoTicket += "--------------------------------\n";
+            textoTicket += "TOTAL: " + parseFloat(p.TOTAL).toFixed(2) + " EUR\n";
+            textoTicket += "Pago: " + p.PAGO + "\n";
+            textoTicket += "Fecha: " + p.FECHA + "\n";
+            textoTicket += "--------------------------------\n";
+            textoTicket += "\n*** GRACIAS ***\n\n\n\n";
+
+            // El truco mágico: enviamos el texto a RawBT mediante su URL Scheme
+            // Esto abrirá RawBT directamente y mandará a imprimir
+            const encodedText = encodeURIComponent(textoTicket);
+            window.location.href = "rawbt:base64," + btoa(unescape(encodeURIComponent(textoTicket)));
         }
 
         function confirmarListo(id) {
@@ -186,17 +173,25 @@
         }
 
         function cerrarHistorial() { document.getElementById('sideHistorial').style.transform = 'translateX(100%)'; }
+        
         function mostrarModal(t, s, b, f) {
-            document.getElementById('modalTitle').innerText = t; document.getElementById('modalSub').innerText = s;
-            document.getElementById('modalBody').innerHTML = b; document.getElementById('modalFooter').innerHTML = f;
-            document.getElementById('customModal').classList.remove('hidden'); document.getElementById('customModal').classList.add('flex');
+            document.getElementById('modalTitle').innerText = t; 
+            document.getElementById('modalSub').innerText = s;
+            document.getElementById('modalBody').innerHTML = b; 
+            document.getElementById('modalFooter').innerHTML = f;
+            document.getElementById('customModal').classList.remove('hidden'); 
+            document.getElementById('customModal').classList.add('flex');
         }
+
         function cerrarModal() { document.getElementById('customModal').classList.add('hidden'); }
+        
         function confirmarToggleTienda() {
             const n = !tiendaAbierta ? "ABRIR" : "CERRAR";
             mostrarModal("¿ESTADO TIENDA?", n, `Confirmas que deseas ${n} el restaurante.`, `<button onclick="revertirToggle()" class="flex-1 bg-slate-800 py-4 rounded-2xl font-bold text-xs">NO</button><button onclick="ejecutarToggle()" class="flex-1 bg-cyan-500 text-black py-4 rounded-2xl font-black text-xs">SÍ</button>`);
         }
+
         function revertirToggle() { document.getElementById('tiendaToggle').checked = tiendaAbierta; cerrarModal(); }
+        
         async function ejecutarToggle() {
             cerrarModal(); const rs = !tiendaAbierta ? "Abierto" : "Cerrado"; tiendaAbierta = !tiendaAbierta;
             await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${rs}`); cargar();

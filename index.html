@@ -143,43 +143,43 @@
         }
 
         function renderHome() {
-            let html = `<p class="step-tag mb-6 ml-2 italic">Selecciona un restaurante</p>`;
-            const ahora = new Date();
-            const horaActual = ahora.getHours() * 100 + ahora.getMinutes();
+    let html = `<p class="step-tag mb-6 ml-2 italic">Selecciona un restaurante</p>`;
+    const ahora = new Date();
+    const horaActual = ahora.getHours() * 100 + ahora.getMinutes();
 
-            db.restaurantes.forEach(r => {
-                const ape1 = parseInt((r.HORA_APERTURA_1 || "00:00").replace(':', ''));
-                const cie1 = parseInt((r.HORA_CIERRE_1 || "00:00").replace(':', ''));
-                const ape2 = parseInt((r.HORA_APERTURA_2 || "00:00").replace(':', ''));
-                const cie2 = parseInt((r.HORA_CIERRE_2 || "00:00").replace(':', ''));
-                
-                const enHorario = ((horaActual >= ape1 && horaActual <= cie1) || (horaActual >= ape2 && horaActual <= cie2));
-                const manualAbierto = (r.ESTADO && r.ESTADO.toLowerCase().trim() === "abierto");
+    db.restaurantes.forEach(r => {
+        // Leemos los 2 turnos desde el Excel
+        const ape1 = parseInt((r.HORA_APERTURA_1 || "00:00").replace(':', ''));
+        const cie1 = parseInt((r.HORA_CIERRE_1 || "00:00").replace(':', ''));
+        const ape2 = parseInt((r.HORA_APERTURA_2 || "00:00").replace(':', ''));
+        const cie2 = parseInt((r.HORA_CIERRE_2 || "00:00").replace(':', ''));
+        
+        const enHorario = ((horaActual >= ape1 && horaActual <= cie1) || (horaActual >= ape2 && horaActual <= cie2));
+        const manualAbierto = (r.ESTADO && r.ESTADO.toLowerCase().trim() === "abierto");
 
-                if (enHorario && manualAbierto) {
-                    html += `
-                    <div class="relative rounded-[2.5rem] overflow-hidden h-[170px] mb-5 border border-white/5 shadow-2xl active:scale-95 transition-all" onclick="verMenu('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
-                        <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-60">
-                        <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
-                        <div class="absolute bottom-6 left-8 text-left">
-                            <p class="text-cyan-400 text-[8px] font-black uppercase mb-1 tracking-widest">${r.CATEGORIA || 'Gourmet'}</p>
-                            <h2 class="text-2xl font-black italic uppercase text-white leading-tight">${r.NOMBRE_RESTAURANTE}</h2>
-                        </div>
-                    </div>`;
-                } else {
-                    html += `
-                    <div class="relative rounded-[2.5rem] overflow-hidden h-[170px] mb-5 border border-white/5 grayscale opacity-40">
-                        <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
-                            <p class="text-white font-black italic uppercase border-2 border-white px-4 py-1 text-[10px]">Cerrado</p>
-                            <p class="text-cyan-400 text-[8px] font-bold mt-2 uppercase tracking-[0.2em]">Abre: ${r.HORA_APERTURA_1} / ${r.HORA_APERTURA_2}</p>
-                        </div>
-                    </div>`;
-                }
-            });
-            document.getElementById('app-container').innerHTML = html;
+        if (enHorario && manualAbierto) {
+            html += `
+            <div class="relative rounded-[2.5rem] overflow-hidden h-[170px] mb-5 border border-white/5 shadow-2xl active:scale-95 transition-all" onclick="verMenu('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
+                <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-60">
+                <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
+                <div class="absolute bottom-6 left-8 text-left">
+                    <p class="text-cyan-400 text-[8px] font-black uppercase mb-1 tracking-widest">${r.CATEGORIA || 'Gourmet'}</p>
+                    <h2 class="text-2xl font-black italic uppercase text-white leading-tight">${r.NOMBRE_RESTAURANTE}</h2>
+                </div>
+            </div>`;
+        } else {
+            html += `
+            <div class="relative rounded-[2.5rem] overflow-hidden h-[170px] mb-5 border border-white/5 grayscale opacity-40">
+                <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover">
+                <div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                    <p class="text-white font-black italic uppercase border-2 border-white px-4 py-1 text-[10px]">Cerrado</p>
+                    <p class="text-cyan-400 text-[8px] font-bold mt-2 uppercase tracking-[0.2em]">Abre: ${r.HORA_APERTURA_1} / ${r.HORA_APERTURA_2}</p>
+                </div>
+            </div>`;
         }
-
+    });
+    document.getElementById('app-container').innerHTML = html;
+}
         function verMenu(nombre, id) {
             const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(id));
             const cats = [...new Set(platos.map(p => p.CATEGORIA || "General"))];
@@ -263,23 +263,53 @@
         }
 
         async function enviarPedidoFinal() {
-            const nomCli = document.getElementById('nombre-cli').value;
-            const telCli = document.getElementById('telefono').value;
-            const dirCli = document.getElementById('dir-cli').value;
-            if(!nomCli || !dirCli) return alert("Completa los datos");
+    // 1. OBTENER DATOS (Tus IDs originales)
+    const nomCli = document.getElementById('cliente-nombre').value;
+    const telCli = document.getElementById('cliente-telf').value;
+    const dirCli = document.getElementById('cliente-dir').value;
+    const pagoCli = document.getElementById('metodo-pago').value;
 
-            localStorage.setItem('ae_nombre', nomCli);
-            localStorage.setItem('ae_telf', telCli);
-            localStorage.setItem('ae_dir', dirCli);
-            localStorage.setItem('ae_legal', "true");
+    // 2. VALIDACIÓN
+    if (!nomCli || !telCli || !dirCli) {
+        alert("⚠️ Completa tus datos de entrega");
+        return;
+    }
 
-            const paquete = { cliente_info: nomCli, telf_info: telCli, dir_info: dirCli, pedido_info: cesta.map(i => i.nombre).join(" | "), total_info: (cesta.reduce((a,b)=>a+b.total,0)+3.5).toFixed(2)+"€", id_res_info: rActivo.id };
-            
-            document.getElementById('btn-final').innerText = "ENVIANDO...";
-            await fetch(scriptURL, { method: "POST", mode: "no-cors", body: JSON.stringify(paquete) });
-            document.getElementById('modal-exito').style.display = 'flex';
-            cesta = []; actualizarCestaBar(); cerrarCheckout();
-        }
+    // --- GUARDAR PARA LA PRÓXIMA COMPRA ---
+    localStorage.setItem('ae_nombre', nomCli);
+    localStorage.setItem('ae_telf', telCli);
+    localStorage.setItem('ae_dir', dirCli);
+    localStorage.setItem('ae_legal', "true");
+
+    // 3. CÁLCULO
+    const subtotal = cesta.reduce((acc, i) => acc + (parseFloat(i.total) || 0), 0);
+    const totalConCargos = (subtotal + 3.50).toFixed(2);
+
+    const paquete = {
+        cliente_info: nomCli.toUpperCase(),
+        telf_info: telCli,
+        dir_info: dirCli.toUpperCase(),
+        pedido_info: cesta.map(i => i.nombre).join(" | "),
+        total_info: totalConCargos + "€",
+        pago_info: pagoCli,
+        id_res_info: rActivo.id 
+    };
+
+    const btn = document.getElementById('btn-final');
+    btn.innerText = "⏳ ENVIANDO...";
+    btn.disabled = true;
+
+    try {
+        await fetch(scriptURL, { method: "POST", mode: "no-cors", body: JSON.stringify(paquete) });
+        document.getElementById('modal-exito').style.display = 'flex';
+        cesta = [];
+        actualizarCestaBar();
+        cerrarCheckout();
+    } catch (error) {
+        alert("❌ Error de red");
+        btn.innerText = "Efectuar Pedido";
+        btn.disabled = false;
+    }
 
         function actualizarCestaBar() {
             const total = cesta.reduce((acc, i) => acc + i.total, 0);

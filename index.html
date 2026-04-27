@@ -133,7 +133,7 @@
             try {
                 const res = await fetch(scriptURL);
                 const data = await res.json();
-                db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE);
+                db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN" && r.NOMBRE_RESTAURANTE.trim() !== "");
                 db.menu = data.MENU_GENERAL;
                 db.anuncios = data.ANUNCIOS;
                 db.legal = data.LEGAL_TEXT || "Política de privacidad estándar...";
@@ -148,42 +148,53 @@
             } catch (e) { console.error("Error inicializando:", e); }
         }
 
-        function renderHome() {
-            let html = `<p class="step-tag ml-2 italic">Selecciona un restaurante</p>`;
-            const ahora = new Date();
-            const horaActual = ahora.getHours() * 100 + ahora.getMinutes();
+       function abrirTienda(nombre, id) {
+    if (cesta.length > 0 && String(rActivo.id) !== String(id)) {
+        const msj = `Tienes productos de "${rActivo.nombre}" en la cesta. Finaliza ese pedido o vacía la cesta antes de cambiar de restaurante.`;
+        document.getElementById('texto-alerta').innerText = msj;
+        document.getElementById('modal-alerta').style.display = 'flex';
+        return;
+    }
+    rActivo.id = id;
+    rActivo.nombre = nombre;
+    verMenu();
+}
 
-            db.restaurantes.forEach(r => {
-                const ape1 = parseInt((r.HORA_APERTURA_1 || "00:00").replace(':', ''));
-                const cie1 = parseInt((r.HORA_CIERRE_1 || "00:00").replace(':', ''));
-                const ape2 = parseInt((r.HORA_APERTURA_2 || "00:00").replace(':', ''));
-                const cie2 = parseInt((r.HORA_CIERRE_2 || "00:00").replace(':', ''));
-                
-                const enHorario = ((horaActual >= ape1 && horaActual <= cie1) || (horaActual >= ape2 && horaActual <= cie2));
-                const abierto = (r.ESTADO && r.ESTADO.toLowerCase() === "abierto");
+function renderHome() {
+    let html = `<p class="step-tag mb-6 ml-2 italic">Selecciona un restaurante</p>`;
+    const ahora = new Date();
+    const horaActual = ahora.getHours() * 100 + ahora.getMinutes();
 
-                if (enHorario && abierto) {
-                    html += `
-                    <div class="relative rounded-[2rem] overflow-hidden h-[160px] mb-4 border border-white/5 active:scale-95 transition-all" onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
-                        <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
-                        <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
-                        <div class="absolute bottom-6 left-6 text-left">
-                            <h2 class="text-xl font-black italic uppercase">${r.NOMBRE_RESTAURANTE}</h2>
-                        </div>
-                    </div>`;
-                } else {
-                    html += `
-                    <div class="relative rounded-[2rem] overflow-hidden h-[160px] mb-4 border border-white/5 grayscale opacity-40">
-                        <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-black/60 flex items-center justify-center">
-                            <p class="border-2 border-white px-4 py-1 text-[10px] font-black uppercase italic">Cerrado</p>
-                        </div>
-                    </div>`;
-                }
-            });
-            document.getElementById('app-container').innerHTML = html;
+    db.restaurantes.forEach(r => {
+        const ape1 = parseInt((r.HORA_APERTURA_1 || "00:00").replace(':', ''));
+        const cie1 = parseInt((r.HORA_CIERRE_1 || "00:00").replace(':', ''));
+        const ape2 = parseInt((r.HORA_APERTURA_2 || "00:00").replace(':', ''));
+        const cie2 = parseInt((r.HORA_CIERRE_2 || "00:00").replace(':', ''));
+        
+        const enHorario = ((horaActual >= ape1 && horaActual <= cie1) || (horaActual >= ape2 && horaActual <= cie2));
+        const abierto = (r.ESTADO && r.ESTADO.toLowerCase().trim() === "abierto");
+
+        if (enHorario && abierto) {
+            html += `
+            <div class="relative rounded-[2.5rem] overflow-hidden h-[170px] mb-5 border border-white/5 active:scale-95 transition-all shadow-xl" onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
+                <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
+                <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
+                <div class="absolute bottom-6 left-8 text-left">
+                    <h2 class="text-2xl font-black italic uppercase text-white leading-tight">${r.NOMBRE_RESTAURANTE}</h2>
+                </div>
+            </div>`;
+        } else {
+            html += `
+            <div class="relative rounded-[2.5rem] overflow-hidden h-[170px] mb-5 border border-white/5 grayscale opacity-40">
+                <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover">
+                <div class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                    <p class="border-2 border-white px-4 py-1 text-[10px] font-black uppercase italic">Cerrado</p>
+                </div>
+            </div>`;
         }
-
+    });
+    document.getElementById('app-container').innerHTML = html;
+}
         // BLOQUEO DE COMPRA CRUZADA
         function abrirTienda(nombre, id) {
             if (cesta.length > 0 && String(rActivo.id) !== String(id)) {
@@ -270,14 +281,23 @@
             actualizarBarraModal();
         }
 
-        function toggleSel(el, pr, tipo) {
-            el.parentElement.querySelectorAll('.grid-option').forEach(o => o.classList.remove('selected'));
-            el.classList.add('selected');
-            if(tipo === 'oblig') itemActual.obligatorioOk = true;
-            if(tipo === 'unica') itemActual.pOpciones = pr;
-            actualizarBarraModal();
-        }
+        function updEx(btn, mod, prManual) {
+    const span = btn.parentElement.querySelector('.qty');
+    const nombreExtraFull = btn.parentElement.parentElement.querySelector('span').innerText;
+    
+    // Intentamos sacar el precio si viene en formato NOMBRE:1.50
+    let precioFinal = prManual;
+    if (nombreExtraFull.includes(':')) {
+        precioFinal = parseFloat(nombreExtraFull.split(':')[1]) || 0;
+    }
 
+    let val = parseInt(span.innerText) + mod;
+    if(val >= 0) {
+        span.innerText = val;
+        itemActual.pExtras += (mod * precioFinal);
+        actualizarBarraModal();
+    }
+}
         function updEx(btn, mod, pr) {
             const span = btn.parentElement.querySelector('.qty');
             let val = parseInt(span.innerText) + mod;
@@ -398,5 +418,14 @@
         }
         init();
     </script>
+    <div id="modal-alerta" class="fixed inset-0 z-[8000] hidden items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+    <div class="bg-[#020617] border border-red-500/30 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl">
+        <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="text-red-500 text-3xl">⚠️</span>
+        </div>
+        <p id="texto-alerta" class="text-sm font-bold text-white/80 mb-6 uppercase leading-relaxed"></p>
+        <button onclick="document.getElementById('modal-alerta').style.display='none'" class="w-full bg-white/10 text-white py-4 rounded-xl font-black uppercase text-xs">Entendido</button>
+    </div>
+</div>
 </body>
 </html>

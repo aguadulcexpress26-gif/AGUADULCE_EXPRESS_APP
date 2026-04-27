@@ -19,13 +19,13 @@
 </head>
 <body class="min-h-screen pb-10">
 
-    <audio id="alerta" loop src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+    <audio id="alerta" loop src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
 
     <nav class="sticky top-0 z-40 glass border-b border-white/5 p-4 shadow-2xl">
         <div class="max-w-xl mx-auto flex justify-between items-start">
             <div>
                 <h1 class="text-cyan-400 font-black italic tracking-tighter text-xl leading-none">AGUADULCE COCINA</h1>
-                <p id="resNombre" class="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest italic">Cargando restaurante...</p>
+                <p id="resNombre" class="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest italic">Cargando...</p>
             </div>
             <div class="flex items-center gap-4">
                 <button onclick="abrirHistorial()" class="bg-white/5 p-2 rounded-xl border border-white/10">
@@ -69,6 +69,15 @@
         const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
         const MI_ID_REST = "RT33M5";
         let pedidosActivos = [], historialHoy = [], aceptados = new Set(), tiendaAbierta = false;
+        let audioHabilitado = false;
+
+        // --- TRUCO PARA ACTIVAR AUDIO ---
+        document.addEventListener('click', () => {
+            if(!audioHabilitado) {
+                const a = document.getElementById('alerta');
+                a.play().then(() => { a.pause(); audioHabilitado = true; }).catch(()=>{});
+            }
+        }, { once: true });
 
         async function cargar() {
             try {
@@ -82,11 +91,19 @@
                 const txtE = document.getElementById('txtEstado');
                 txtE.innerText = tiendaAbierta ? "ABIERTO" : "CERRADO";
                 txtE.className = tiendaAbierta ? "text-[8px] font-black text-emerald-400" : "text-[8px] font-black text-slate-500";
+                
                 pedidosActivos = data.pedidos;
                 historialHoy = data.historial;
-                const suena = pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO));
-                if(suena && pedidosActivos.length > 0) document.getElementById('alerta').play().catch(()=>{});
-                else document.getElementById('alerta').pause();
+
+                const alerta = document.getElementById('alerta');
+                const hayNuevos = pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO));
+                
+                if(hayNuevos && pedidosActivos.length > 0) {
+                    alerta.play().catch(() => { console.log("Toca la pantalla para activar sonido"); });
+                } else {
+                    alerta.pause();
+                }
+
                 render();
             } catch (e) { console.error(e); }
         }
@@ -115,54 +132,16 @@
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             mostrarModal("DETALLES", `#${id} - ${p.CLIENTE}`, 
                 `PRODUCTOS:<br>${p.PEDIDO_DETALLE}<br><br>DIR: ${p.DIRECCION}`,
-                `<div class="flex flex-col w-full gap-2">
-                    <button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button>
-                    <button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button>
-                </div>`);
+                `<div class="flex flex-col w-full gap-2"><button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button><button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button></div>`);
         }
 
-        // --- FUNCIÓN DE IMPRESIÓN ESTABLE Y COMPACTA ---
         function imprimirTicket(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             if (!p) return;
-
             const resNombre = document.getElementById('resNombre').innerText;
-            
-            // Comandos básicos que todas las impresoras entienden
-            const ESC = "\x1B";
-            const NORMAL = ESC + "!" + "\x00"; 
-            const NEGRITA = ESC + "!" + "\x08";
-            const DOBLE_ALTO = ESC + "!" + "\x10";
-            const CENTRADO = ESC + "a" + "\x01";
-            const IZQUIERDA = ESC + "a" + "\x00";
-
-            let t = "";
-            t += CENTRADO + DOBLE_ALTO + "AGUADULCE EXPRESS\n" + NORMAL;
-            t += CENTRADO + NEGRITA + resNombre + "\n" + NORMAL;
-            t += CENTRADO + "--------------------------------\n";
-            
-            t += IZQUIERDA + NEGRITA + "CLIENTE: " + NORMAL + p.CLIENTE + "\n";
-            t += IZQUIERDA + NEGRITA + "DIR: " + NORMAL + p.DIRECCION + "\n";
-            
-            t += CENTRADO + DOBLE_ALTO + "PEDIDO #" + p.ID_PEDIDO + "\n" + NORMAL;
-            t += CENTRADO + "--------------------------------\n";
-            
-            t += IZQUIERDA + p.PEDIDO_DETALLE.replace(/,/g, '\n') + "\n";
-            t += CENTRADO + "--------------------------------\n";
-            
-            t += IZQUIERDA + DOBLE_ALTO + "TOTAL: " + parseFloat(p.TOTAL).toFixed(2) + " EUR\n" + NORMAL;
-            t += IZQUIERDA + "Pago: " + p.PAGO + "\n";
-            t += IZQUIERDA + "Fecha: " + p.FECHA + "\n";
-            
-            t += CENTRADO + "--------------------------------\n";
-            t += CENTRADO + "*** GRACIAS ***\n\n\n";
-
-            try {
-                // Usamos base64 simple para enviar el texto a RawBT
-                window.location.href = "rawbt:base64," + btoa(unescape(encodeURIComponent(t)));
-            } catch (e) {
-                alert("Error al imprimir: " + e);
-            }
+            const ESC = "\x1B", NORMAL = ESC + "!" + "\x00", NEGRITA = ESC + "!" + "\x08", DOBLE_ALTO = ESC + "!" + "\x10", CENTRADO = ESC + "a" + "\x01", IZQUIERDA = ESC + "a" + "\x00";
+            let t = CENTRADO + DOBLE_ALTO + "AGUADULCE EXPRESS\n" + NORMAL + CENTRADO + NEGRITA + resNombre + "\n" + NORMAL + CENTRADO + "--------------------------------\n" + IZQUIERDA + NEGRITA + "CLIENTE: " + NORMAL + p.CLIENTE + "\n" + IZQUIERDA + NEGRITA + "DIR: " + NORMAL + p.DIRECCION + "\n" + CENTRADO + DOBLE_ALTO + "PEDIDO #" + p.ID_PEDIDO + "\n" + NORMAL + CENTRADO + "--------------------------------\n" + IZQUIERDA + p.PEDIDO_DETALLE.replace(/,/g, '\n') + "\n" + CENTRADO + "--------------------------------\n" + IZQUIERDA + DOBLE_ALTO + "TOTAL: " + parseFloat(p.TOTAL).toFixed(2) + " EUR\n" + NORMAL + IZQUIERDA + "Pago: " + p.PAGO + "\n" + CENTRADO + "--------------------------------\n" + CENTRADO + "*** GRACIAS ***\n\n\n";
+            window.location.href = "rawbt:base64," + btoa(unescape(encodeURIComponent(t)));
         }
 
         function confirmarListo(id) {
@@ -186,25 +165,17 @@
         }
 
         function cerrarHistorial() { document.getElementById('sideHistorial').style.transform = 'translateX(100%)'; }
-        
         function mostrarModal(t, s, b, f) {
-            document.getElementById('modalTitle').innerText = t; 
-            document.getElementById('modalSub').innerText = s;
-            document.getElementById('modalBody').innerHTML = b; 
-            document.getElementById('modalFooter').innerHTML = f;
-            document.getElementById('customModal').classList.remove('hidden'); 
-            document.getElementById('customModal').classList.add('flex');
+            document.getElementById('modalTitle').innerText = t; document.getElementById('modalSub').innerText = s;
+            document.getElementById('modalBody').innerHTML = b; document.getElementById('modalFooter').innerHTML = f;
+            document.getElementById('customModal').classList.remove('hidden'); document.getElementById('customModal').classList.add('flex');
         }
-
         function cerrarModal() { document.getElementById('customModal').classList.add('hidden'); }
-        
         function confirmarToggleTienda() {
             const n = !tiendaAbierta ? "ABRIR" : "CERRAR";
             mostrarModal("¿ESTADO TIENDA?", n, `Confirmas que deseas ${n} el restaurante.`, `<button onclick="revertirToggle()" class="flex-1 bg-slate-800 py-4 rounded-2xl font-bold text-xs">NO</button><button onclick="ejecutarToggle()" class="flex-1 bg-cyan-500 text-black py-4 rounded-2xl font-black text-xs">SÍ</button>`);
         }
-
         function revertirToggle() { document.getElementById('tiendaToggle').checked = tiendaAbierta; cerrarModal(); }
-        
         async function ejecutarToggle() {
             cerrarModal(); const rs = !tiendaAbierta ? "Abierto" : "Cerrado"; tiendaAbierta = !tiendaAbierta;
             await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${rs}`); cargar();

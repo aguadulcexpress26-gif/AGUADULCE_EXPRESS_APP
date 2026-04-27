@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AE COCINA V60 - FINAL</title>
+    <title>AE COCINA V60 - PROFESIONAL FIX</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
@@ -28,7 +28,7 @@
         <div class="glass w-full max-w-xs rounded-[2.5rem] p-8 text-center shadow-2xl">
             <div class="text-cyan-400 font-black italic text-3xl mb-1">AE</div>
             <h2 class="text-white font-black italic text-xl mb-6 tracking-tighter">COCINA XPRESS</h2>
-            <input type="text" id="pinInput" placeholder="CÓDIGO" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 text-center text-2xl font-black text-cyan-400 focus:outline-none mb-4 uppercase">
+            <input type="text" id="pinInput" placeholder="CÓDIGO PIN" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 text-center text-2xl font-black text-cyan-400 focus:outline-none mb-4 uppercase">
             <button onclick="verificarPIN()" class="w-full bg-cyan-500 text-black py-4 rounded-2xl font-black uppercase shadow-lg shadow-cyan-500/20 active:scale-95 transition-transform">Entrar</button>
             <p id="loginError" class="text-red-500 text-[10px] font-bold mt-4 uppercase hidden italic">PIN Incorrecto</p>
         </div>
@@ -39,7 +39,7 @@
             <div class="max-w-xl mx-auto flex justify-between items-start">
                 <div>
                     <h1 class="text-cyan-400 font-black italic tracking-tighter text-xl leading-none">AGUADULCE EXPRESS</h1>
-                    <p id="resNombreDisplay" class="text-sm text-white font-black uppercase mt-1 italic tracking-tight">Cargando establecimiento...</p>
+                    <p id="resNombreDisplay" class="text-sm text-white font-black uppercase mt-1 italic tracking-tight">Cargando...</p>
                 </div>
                 <div class="flex items-center gap-4">
                     <button onclick="abrirHistorial()" class="bg-white/5 p-2 rounded-xl border border-white/10">
@@ -94,13 +94,8 @@
 
     <script>
         const ACCESS_DB = {
-            "DELI10": { id: "6G4L1V" },
-            "CHUN20": { id: "RT33M5" },
-            "HARO30": { id: "8N3Z7K" },
-            "SUCU40": { id: "TR92X5" },
-            "PERU50": { id: "9V1L8K" },
-            "LIMA60": { id: "FL44K8" },
-            "PECA70": { id: "CV11Q9" }
+            "DELI10": { id: "6G4L1V" }, "CHUN20": { id: "RT33M5" }, "HARO30": { id: "8N3Z7K" },
+            "SUCU40": { id: "TR92X5" }, "PERU50": { id: "9V1L8K" }, "LIMA60": { id: "FL44K8" }, "PECA70": { id: "CV11Q9" }
         };
 
         const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
@@ -131,17 +126,21 @@
                 const r = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}`);
                 const data = await r.json();
                 
-                // NOMBRE DINÁMICO AQUÍ
-                document.getElementById('resNombreDisplay').innerText = data.tienda.nombre;
+                // Corrección Nombre: Asegurar que data.tienda.nombre existe antes de asignar
+                if(data.tienda && data.tienda.nombre) {
+                    document.getElementById('resNombreDisplay').innerText = data.tienda.nombre;
+                } else {
+                    document.getElementById('resNombreDisplay').innerText = "Establecimiento";
+                }
                 
                 document.getElementById('statHoy').innerText = data.stats.diaria + "€";
                 document.getElementById('statSemana').innerText = data.stats.semanal + "€";
                 
-                tiendaAbierta = (data.tienda.estado === "Abierto");
+                tiendaAbierta = (data.tienda.estado && data.tienda.estado.toLowerCase() === "abierto");
                 document.getElementById('tiendaToggle').checked = tiendaAbierta;
                 const txtE = document.getElementById('txtEstado');
                 txtE.innerText = tiendaAbierta ? "ABIERTO" : "CERRADO";
-                txtE.className = tiendaAbierta ? "text-[8px] font-black text-emerald-400" : "text-[8px] font-black text-slate-500";
+                txtE.className = tiendaAbierta ? "text-[8px] font-black text-emerald-400" : "text-[8px] font-black text-red-500";
                 
                 pedidosActivos = data.pedidos;
                 historialHoy = data.historial;
@@ -176,13 +175,13 @@
 
         function verDetalles(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
-            mostrarModal("DETALLES", `#${id}`, `FECHA: ${p.FECHA}<br>CLIENTE: ${p.CLIENTE}<br>PAGO: ${p.METODO_PAGO || 'EFECTIVO'}<br><br>DETALLE:<br>${p.PEDIDO_DETALLE.replace(/\n/g, '<br>')}<br><br>DIRECCIÓN:<br>${p.DIRECCION}`,
+            mostrarModal("PEDIDO", `#${id}`, `CLIENTE: ${p.CLIENTE}<br>FECHA: ${p.FECHA}<br>PAGO: ${p.METODO_PAGO || 'EFECTIVO'}<br><br>DETALLE:<br>${p.PEDIDO_DETALLE.replace(/\n/g, '<br>')}<br><br>DIR: ${p.DIRECCION}`,
                 `<div class="flex flex-col w-full gap-2"><button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">IMPRIMIR 🖨️</button><button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">VOLVER</button></div>`);
         }
 
         function confirmarListo(id) {
-            mostrarModal("¿PREPARADO?", `#${id}`, "¿Confirmas que el pedido está listo para el reparto?",
-                `<div class="flex w-full gap-3"><button onclick="cerrarModal()" class="w-1/2 bg-slate-800 py-4 rounded-2xl font-bold text-xs text-slate-400 uppercase">No</button><button onclick="ejecutarListo('${id}')" class="w-1/2 bg-cyan-500 py-4 rounded-2xl font-bold text-xs text-black uppercase">Sí</button></div>`);
+            mostrarModal("¿LISTO?", `#${id}`, "¿Confirmas que el pedido ya fue entregado?",
+                `<div class="flex w-full gap-3"><button onclick="cerrarModal()" class="w-1/2 bg-slate-800 py-4 rounded-2xl font-bold text-xs text-slate-400">NO</button><button onclick="ejecutarListo('${id}')" class="w-1/2 bg-cyan-500 py-4 rounded-2xl font-bold text-xs text-black">SÍ</button></div>`);
         }
 
         async function ejecutarListo(id) { cerrarModal(); await fetch(`${scriptURL}?action=marcarListo&idPedido=${id}`); aceptados.delete(id); cargar(); }
@@ -203,13 +202,16 @@
         function cancelarToggle() { document.getElementById('tiendaToggle').checked = tiendaAbierta; cerrarModal(); }
         async function ejecutarToggle(estado) { cerrarModal(); await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${estado}`); setTimeout(cargar, 500); }
 
+        // --- FUNCIÓN DE IMPRESIÓN REPARADA ---
         function imprimirTicket(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
-            const resNombre = document.getElementById('resNombreDisplay').innerText;
+            const resNombre = document.getElementById('resNombreDisplay').innerText; // Nombre dinámico
+            
+            // ESTRUCTURA DE RECIBO FINAL REPARADA
             const ticket = 
-                `   AGUADULCE EXPRESS\n` +
-                `   ${resNombre.toUpperCase()}\n\n` +
-                `     PEDIDO # ${p.ID_PEDIDO}\n\n` +
+                `      AGUADULCE EXPRESS\n` +
+                `      ${resNombre.toUpperCase()}\n\n` + // Nombre dinámico real
+                `        PEDIDO # ${p.ID_PEDIDO}\n\n` +
                 `--------------------------------\n` +
                 `CLIENTE: ${p.CLIENTE}\n` +
                 `DIRECCION: ${p.DIRECCION}\n` +
@@ -219,14 +221,15 @@
                 `TOTAL: ${parseFloat(p.TOTAL).toFixed(2)} EUR\n` +
                 `PAGO: ${p.METODO_PAGO || 'EFECTIVO'}\n` +
                 `FECHA: ${p.FECHA}\n\n` +
-                `   ¡GRACIAS POR SU COMPRA! \n\n\n\n`;
+                `     ¡GRACIAS POR SU COMPRA! \n\n\n\n`;
+            
             window.location.href = "intent:" + encodeURI(ticket) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
         }
 
         function abrirHistorial() {
             const listaH = document.getElementById('listaHistorial');
-            listaH.innerHTML = historialHoy.length === 0 ? '<p class="opacity-20 italic text-[10px]">Vacío</p>' : 
-                historialHoy.map(p => `<div class="bg-white/5 p-4 rounded-2xl border border-white/5 mb-2"><div class="flex justify-between font-bold text-cyan-400 text-xs"><span>#${p.ID_PEDIDO}</span><span>${p.TOTAL}€</span></div><p class="text-[9px] opacity-50 uppercase">${p.CLIENTE}</p></div>`).join('');
+            listaH.innerHTML = historialHoy.length === 0 ? '<p class="opacity-20 italic text-[10px]">No hay entregados</p>' : 
+                historialHoy.map(p => `<div class="bg-white/5 p-4 rounded-2xl border border-white/5 mb-2"><div class="flex justify-between font-bold text-cyan-400 text-xs"><span>#${p.ID_PEDIDO}</span><span>${parseFloat(p.TOTAL).toFixed(2)}€</span></div><p class="text-[9px] opacity-50 uppercase mt-1">${p.CLIENTE}</p></div>`).join('');
             document.getElementById('sideHistorial').classList.remove('translate-x-full');
         }
 

@@ -77,16 +77,15 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN DE ACCESOS (ALFANUMÉRICOS)
+        // CONFIGURACIÓN DE ACCESOS
         const ACCESS_DB = {
-            "DELI10": { id: "6G4L1V", rol: "REPARTIDOR" },
+            "DELI10": { id: "6G4L1V", rol: "PARTNER" },
             "CHUN20": { id: "RT33M5", rol: "PARTNER" },
             "HARO30": { id: "8N3Z7K", rol: "PARTNER" },
             "SUCU40": { id: "TR92X5", rol: "PARTNER" },
             "PERU50": { id: "9V1L8K", rol: "PARTNER" },
             "LIMA60": { id: "FL44K8", rol: "PARTNER" },
-            "PECA70": { id: "CV11Q9", rol: "PARTNER" },
-            "JUAN80": { id: "REPART01", rol: "REPARTIDOR" }
+            "PECA70": { id: "CV11Q9", rol: "PARTNER" }
         };
 
         const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec"; 
@@ -94,7 +93,6 @@
         let pedidosActivos = [], historialHoy = [], aceptados = new Set(), tiendaAbierta = false;
         let audioHabilitado = false;
 
-        // Desbloquear audio al primer clic
         document.addEventListener('click', () => {
             if(!audioHabilitado) {
                 const a = document.getElementById('alerta');
@@ -106,28 +104,20 @@
             if(MI_ID_REST) {
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('appContent').classList.remove('hidden');
+                setInterval(cargar, 15000); // Recarga automática cada 15 seg
                 cargar();
             }
         };
 
         function verificarPIN() {
             const pin = document.getElementById('pinInput').value.trim().toUpperCase();
-            const errorMsg = document.getElementById('loginError');
             const user = ACCESS_DB[pin];
-
             if (user) {
-                if (user.rol === "REPARTIDOR") {
-                    alert("Acceso denegado: Este código es para el Panel de Repartidores.");
-                    return;
-                }
                 MI_ID_REST = user.id;
                 localStorage.setItem('AE_REST_ID', MI_ID_REST);
-                document.getElementById('loginScreen').classList.add('hidden');
-                document.getElementById('appContent').classList.remove('hidden');
-                cargar();
+                location.reload();
             } else {
-                errorMsg.classList.remove('hidden');
-                document.getElementById('pinInput').value = "";
+                document.getElementById('loginError').classList.remove('hidden');
             }
         }
 
@@ -147,7 +137,7 @@
                 historialHoy = data.historial;
 
                 const alerta = document.getElementById('alerta');
-                if(pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO)) && pedidosActivos.length > 0) {
+                if(pedidosActivos.length > 0 && pedidosActivos.some(p => !aceptados.has(p.ID_PEDIDO))) {
                     alerta.play().catch(()=>{});
                 } else {
                     alerta.pause();
@@ -176,15 +166,81 @@
                 </div>`).join('');
         }
 
+        function aceptarPedido(id) {
+            aceptados.add(id);
+            document.getElementById('alerta').pause();
+            render();
+        }
+
         function verDetalles(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             mostrarModal("DETALLES", `#${id} - ${p.CLIENTE}`, 
                 `PRODUCTOS:<br>${p.PEDIDO_DETALLE}<br><br>DIR: ${p.DIRECCION}`,
-                `<div class="flex flex-col w-full gap-2"><button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button><button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button></div>`);
+                `<div class="flex flex-col w-full gap-2">
+                    <button onclick="imprimirTicket('${id}')" class="w-full bg-cyan-600 py-3 rounded-xl font-bold text-xs uppercase text-white">Imprimir Recibo 🖨️</button>
+                    <button onclick="cerrarModal()" class="w-full bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-400">Cerrar</button>
+                </div>`);
+        }
+
+        async function confirmarListo(id) {
+            if(confirm("¿Pedido listo para entregar?")) {
+                await fetch(`${scriptURL}?action=marcarListo&idPedido=${id}`);
+                aceptados.delete(id);
+                cargar();
+            }
         }
 
         function imprimirTicket(id) {
             const p = pedidosActivos.find(x => x.ID_PEDIDO === id) || historialHoy.find(x => x.ID_PEDIDO === id);
             if (!p) return;
             const resNombre = document.getElementById('resNombre').innerText;
-            const ESC = "\x1B", NORMAL = ESC + "!" + "\x00", NEGRITA = ESC +
+            
+            const texto = `--- ${resNombre.toUpperCase()} ---\n` +
+                          `PEDIDO: #${p.ID_PEDIDO}\n` +
+                          `CLIENTE: ${p.CLIENTE}\n` +
+                          `--------------------------------\n` +
+                          `${p.PEDIDO_DETALLE}\n` +
+                          `--------------------------------\n` +
+                          `TOTAL: ${parseFloat(p.TOTAL).toFixed(2)} EUR\n\n\n\n`;
+            
+            const intent = "intent:" + encodeURI(texto) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
+            window.location.href = intent;
+        }
+
+        function confirmarToggleTienda() {
+            const nuevoEstado = tiendaAbierta ? "Cerrado" : "Abierto";
+            if(confirm(`¿Cambiar estado a ${nuevoEstado.toUpperCase()}?`)) {
+                fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&nuevoEstado=${nuevoEstado}`).then(() => cargar());
+            } else {
+                document.getElementById('tiendaToggle').checked = tiendaAbierta;
+            }
+        }
+
+        function mostrarModal(titulo, sub, body, footer) {
+            document.getElementById('modalTitle').innerText = titulo;
+            document.getElementById('modalSub').innerText = sub;
+            document.getElementById('modalBody').innerHTML = body;
+            document.getElementById('modalFooter').innerHTML = footer;
+            document.getElementById('customModal').classList.remove('hidden');
+        }
+
+        function cerrarModal() { document.getElementById('customModal').classList.add('hidden'); }
+        
+        function abrirHistorial() { 
+            const listaH = document.getElementById('listaHistorial');
+            listaH.innerHTML = historialHoy.map(p => `
+                <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <div class="flex justify-between items-center">
+                        <span class="text-cyan-400 font-bold">#${p.ID_PEDIDO}</span>
+                        <span class="text-[10px] text-slate-500">${p.TOTAL}€</span>
+                    </div>
+                    <p class="text-[10px] uppercase opacity-50">${p.CLIENTE}</p>
+                </div>
+            `).join('');
+            document.getElementById('sideHistorial').classList.remove('translate-x-full'); 
+        }
+        
+        function cerrarHistorial() { document.getElementById('sideHistorial').classList.add('translate-x-full'); }
+    </script>
+</body>
+</html>

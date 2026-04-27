@@ -235,51 +235,65 @@ function renderHome() {
         }
 
         function abrirDetalle(p) {
-            itemActual = { pBase: parseFloat(p.PRECIO), pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: !p.SELECCION_OBLIGATORIA, data: p };
-            document.getElementById('modal-titulo').innerText = p.PLATO;
-            document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
-            document.getElementById('modal-img').src = p.FOTO_PLATO;
-            document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
-            
-            let html = "";
-            // COLUMNA G: OBLIGATORIA (Grid)
-            if(p.SELECCION_OBLIGATORIA) {
-                html += `<div class="text-left"><span class="step-tag">Obligatorio</span><div class="grid grid-cols-2 gap-2">` + 
-                p.SELECCION_OBLIGATORIA.split(',').map(d => `<div class="grid-option" onclick="toggleSel(this, 0, 'oblig')">${d.trim()}</div>`).join('') + `</div></div>`;
-            }
-            // COLUMNA I: UNICA (Grid)
-            if(p.SELECCION_UNICA) {
-                html += `<div class="text-left"><span class="step-tag">Personalizar</span><div class="grid grid-cols-2 gap-2">` + 
-                p.SELECCION_UNICA.split(',').map(d => {
-                    const parts = d.split(':+');
-                    const n = parts[0].trim();
-                    const pr = parseFloat(parts[1]) || 0;
-                    return `<div class="grid-option" onclick="toggleSel(this, ${pr}, 'unica')">${n} ${pr > 0 ? '+'+pr+'€' : ''}</div>`;
-                }).join('') + `</div></div>`;
-            }
-            // COLUMNA H: EXTRAS (Lista con +- )
-            if(p.EXTRAS) {
-                html += `<div class="text-left"><span class="step-tag">Extras</span><div class="space-y-2">` + 
-                p.EXTRAS.split(',').map(d => {
-                    const parts = d.split(':+');
-                    const n = parts[0].trim();
-                    const pr = parseFloat(parts[1]) || 0;
-                    return `
-                        <div class="flex justify-between items-center py-2 border-b border-white/5">
-                            <span class="text-xs font-bold uppercase">${n} <small class="text-cyan-400">+${pr}€</small></span>
-                            <div class="flex items-center gap-3">
-                                <button onclick="updEx(this, -1, ${pr})" class="w-7 h-7 rounded bg-white/5">-</button>
-                                <span class="qty text-xs font-black">0</span>
-                                <button onclick="updEx(this, 1, ${pr})" class="w-7 h-7 rounded bg-cyan-400 text-black">+</button>
-                            </div>
-                        </div>`;
-                }).join('') + `</div></div>`;
-            }
+    rActivo.id = p.ID_RESTAURANTE;
+    // Reiniciamos el item actual
+    itemActual = { pBase: parseFloat(p.PRECIO), pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: !p.SELECCION_OBLIGATORIA, data: p };
+    
+    document.getElementById('modal-titulo').innerText = p.PLATO;
+    document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
+    document.getElementById('modal-img').src = p.FOTO_PLATO;
+    document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
+    
+    let html = "";
 
-            document.getElementById('contenedor-pasos').innerHTML = html;
-            document.getElementById('modal-plato').style.display = 'flex';
-            actualizarBarraModal();
-        }
+    // --- COLUMNA G: OBLIGATORIO (HASTA 5) ---
+    if(p.SELECCION_OBLIGATORIA) {
+        html += `<div class="text-left"><span class="step-tag">Selecciona hasta 5 (Obligatorio)</span><div class="grid grid-cols-2 gap-2">`;
+        p.SELECCION_OBLIGATORIA.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombre = partes[0].trim();
+            const precio = parseFloat(partes[1]) || 0;
+            html += `<div class="grid-option" onclick="toggleSel(this, ${precio}, 'oblig')">${nombre}${precio > 0 ? ' +'+precio+'€' : ''}</div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    // --- COLUMNA I: SELECCIÓN ÚNICA (PERSONALIZAR) ---
+    if(p.SELECCION_UNICA) {
+        html += `<div class="text-left"><span class="step-tag">Personalizar</span><div class="grid grid-cols-2 gap-2">`;
+        p.SELECCION_UNICA.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombre = partes[0].trim();
+            const precio = parseFloat(partes[1]) || 0;
+            html += `<div class="grid-option" onclick="toggleSel(this, ${precio}, 'unica')">${nombre}${precio > 0 ? ' +'+precio+'€' : ''}</div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    // --- COLUMNA H: EXTRAS (BOTONES + / -) ---
+    if(p.EXTRAS) {
+        html += `<div class="text-left"><span class="step-tag">Extras adicionales</span><div class="space-y-2">`;
+        p.EXTRAS.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombre = partes[0].trim();
+            const precio = parseFloat(partes[1]) || 0;
+            html += `
+                <div class="flex justify-between items-center py-3 border-b border-white/5">
+                    <span class="text-xs font-bold uppercase">${nombre} <small class="text-cyan-400">+${precio.toFixed(2)}€</small></span>
+                    <div class="flex items-center gap-4">
+                        <button onclick="updEx(this, -1, ${precio})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
+                        <span class="qty text-xs font-black">0</span>
+                        <button onclick="updEx(this, 1, ${precio})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
+                    </div>
+                </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    document.getElementById('contenedor-pasos').innerHTML = html;
+    document.getElementById('modal-plato').style.display = 'flex';
+    actualizarBarraModal();
+}
 
         function updEx(btn, mod, prManual) {
     const span = btn.parentElement.querySelector('.qty');
@@ -309,13 +323,18 @@ function renderHome() {
         }
 
         function actualizarBarraModal() {
-            const total = (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad;
-            document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€";
-            const btn = document.getElementById('btn-anadir-modal');
-            btn.disabled = !itemActual.obligatorioOk;
-            btn.style.opacity = itemActual.obligatorioOk ? "1" : "0.3";
-            document.getElementById('txt-anadir').innerText = itemActual.obligatorioOk ? "Añadir al Carrito" : "Elige opción obligatoria";
-        }
+    // Calculamos: (Base + Opciones de Grids + Extras acumulados) * Cantidad
+    const totalUnitario = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
+    const totalFinal = totalUnitario * itemActual.cantidad;
+    
+    document.getElementById('total-modal-btn').innerText = totalFinal.toFixed(2) + "€";
+    
+    const btn = document.getElementById('btn-anadir-modal');
+    // El botón se activa si la selección obligatoria está marcada (al menos una)
+    btn.disabled = !itemActual.obligatorioOk;
+    btn.style.opacity = itemActual.obligatorioOk ? "1" : "0.3";
+    document.getElementById('txt-anadir').innerText = itemActual.obligatorioOk ? "Añadir al Carrito" : "Falta selección obligatoria";
+}
 
         function confirmarAnadir() {
             let sel = [];

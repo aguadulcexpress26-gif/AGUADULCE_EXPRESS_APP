@@ -297,16 +297,34 @@
         }
 
         function confirmarAnadir() {
-            let sel = [];
-            document.querySelectorAll('.grid-option.selected').forEach(el => sel.push(el.innerText.split('+')[0].trim()));
-            document.querySelectorAll('.qty').forEach(el => {
-                const cant = parseInt(el.innerText);
-                if(cant > 0) sel.push(`${cant}x ${el.closest('.flex').parentElement.querySelector('span').innerText}`);
-            });
-            const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
-            cesta.push({ nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad });
-            actualizarCestaBar(); cerrarModal();
+    let sel = [];
+    
+    // 1. Atrapamos Obligatorios y Selección Única (Grids)
+    document.querySelectorAll('.grid-option.selected').forEach(el => {
+        // Limpiamos el texto para que no envíe el "+1.00€" al Excel, solo el nombre
+        sel.push(el.innerText.split('+')[0].trim());
+    });
+
+    // 2. Atrapamos los EXTRAS (+ / -) -> AQUÍ ESTABA EL FALLO
+    document.querySelectorAll('.qty').forEach(el => {
+        const cant = parseInt(el.innerText);
+        if (cant > 0) {
+            // Buscamos el nombre del extra en el mismo contenedor
+            const nombreExtra = el.closest('.flex').parentElement.querySelector('span').innerText.split('+')[0].trim();
+            sel.push(`${cant}x ${nombreExtra}`);
         }
+    });
+
+    const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
+    
+    cesta.push({ 
+        nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, 
+        total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad 
+    });
+
+    actualizarCestaBar(); 
+    cerrarModal();
+}
 
         function actualizarCestaBar() {
             const total = cesta.reduce((acc, i) => acc + i.total, 0);
@@ -316,29 +334,55 @@
         }
 
         function abrirCheckout() {
-            const modal = document.getElementById('panel-checkout');
-            modal.style.display = 'flex';
-            
-            const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-            const envio = 2.50;
-            const app = 1.00;
-            const totalFinal = subtotal + envio + app;
+    const modal = document.getElementById('panel-checkout');
+    modal.style.display = 'flex';
+    
+    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+    const envio = 2.50;
+    const app = 1.00;
+    const totalFinal = subtotal + envio + app;
 
-            document.getElementById('desglose-pago').innerHTML = `
-                <div class="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
-                <div class="flex justify-between"><span>Envío</span><span>${envio.toFixed(2)}€</span></div>
-                <div class="flex justify-between"><span>Gestión App</span><span>${app.toFixed(2)}€</span></div>
-                <div class="flex justify-between font-black text-cyan-400 text-lg border-t border-white/10 pt-2 mt-2 italic uppercase">
-                    <span>Total a Pagar</span><span>${totalFinal.toFixed(2)}€</span>
-                </div>`;
+    document.getElementById('desglose-pago').innerHTML = `
+        <div class="flex justify-between text-white/60"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
+        <div class="flex justify-between text-white/60"><span>Envío</span><span>${envio.toFixed(2)}€</span></div>
+        <div class="flex justify-between text-white/60"><span>Gestión App</span><span>${app.toFixed(2)}€</span></div>
+        <div class="flex justify-between font-black text-cyan-400 text-lg border-t border-white/10 pt-2 mt-2 italic uppercase">
+            <span>Total a Pagar</span><span>${totalFinal.toFixed(2)}€</span>
+        </div>
+        
+        <div class="p-4 bg-white/5 border border-white/10 rounded-2xl mt-6">
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" id="check-legal" ${localStorage.getItem('ae_legal') === 'true' ? 'checked' : ''} 
+                    onchange="document.getElementById('btn-final').disabled = !this.checked" 
+                    class="mt-1 w-4 h-4 accent-cyan-400">
+                <span class="text-[10px] text-white/50 leading-tight uppercase font-bold">
+                    Acepto los <span onclick="abrirLegal()" class="text-cyan-400 underline">términos y condiciones</span> y el uso de mis datos para la entrega.
+                </span>
+            </label>
+        </div>
+    `;
 
-            document.getElementById('cliente-nombre').value = localStorage.getItem('ae_nombre') || "";
-            document.getElementById('cliente-telf').value = localStorage.getItem('ae_telf') || "+34";
-            document.getElementById('cliente-dir').value = localStorage.getItem('ae_dir') || "";
-        }
+    // Bloqueo inicial del botón según el checkbox
+    const aceptado = localStorage.getItem('ae_legal') === 'true';
+    document.getElementById('btn-final').disabled = !aceptado;
+    document.getElementById('btn-final').style.opacity = aceptado ? "1" : "0.5";
 
-        function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
+    // Cargar datos guardados
+    document.getElementById('cliente-nombre').value = localStorage.getItem('ae_nombre') || "";
+    document.getElementById('cliente-telf').value = localStorage.getItem('ae_telf') || "+34";
+    document.getElementById('cliente-dir').value = localStorage.getItem('ae_dir') || "";
+}
 
+function cerrarCheckout() { 
+    document.getElementById('panel-checkout').style.display = 'none'; 
+}
+
+// Asegúrate de tener esta también para que el enlace funcione
+function abrirLegal() {
+    // db.legal es lo que traemos del Excel
+    document.getElementById('texto-legal-completo').innerText = db.legal || "Cargando términos..."; 
+    document.getElementById('modal-legal').style.display = 'flex';
+}
         async function enviarPedidoFinal() {
             const nom = document.getElementById('cliente-nombre').value;
             const tel = document.getElementById('cliente-telf').value;

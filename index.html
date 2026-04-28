@@ -205,49 +205,56 @@
             document.getElementById('app-container').innerHTML = html + "</div>";
         }
 
-        function abrirDetalle(p) {
-            itemActual = { pBase: parseFloat(p.PRECIO), pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: !p.SELECCION_OBLIGATORIA, data: p };
-            document.getElementById('modal-titulo').innerText = p.PLATO;
-            document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
-            document.getElementById('modal-img').src = p.FOTO_PLATO;
-            document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
-            let html = "";
-            const renderGrid = (titulo, datos, tipo) => {
-                if(!datos) return "";
-                let res = `<div class="text-left"><span class="step-tag">${titulo}</span><div class="grid grid-cols-2 gap-2">`;
-                datos.split(',').forEach(d => {
-                    const partes = d.split(':');
-                    const nombre = partes[0].trim();
-                    const precio = parseFloat(partes[1]) || 0;
-                    res += `<div class="grid-option" onclick="toggleSel(this, ${precio}, '${tipo}')">${nombre}${precio > 0 ? ' +'+precio.toFixed(2)+'€' : ''}</div>`;
-                });
-                return res + `</div></div>`;
-            };
-            html += `<div class="text-left"><span class="step-tag text-left">Extras adicionales</span><div class="space-y-2">`;
-p.EXTRAS.split(',').forEach(d => {
-    const partes = d.split(':');
-    const nombre = partes[0].trim();
-    const precio = parseFloat(partes[1]) || 0;
-    html += `
-    <div class="flex justify-between items-center py-3 border-b border-white/5">
-        <span class="text-[11px] font-bold uppercase text-white/80 extra-nombre-celda">${nombre}</span>
-        <div class="flex items-center gap-4">
-            <span class="text-cyan-400 font-black text-[10px]">+${precio.toFixed(2)}€</span>
-            <div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl">
-                <button onclick="updEx(this, -1, ${precio})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
-                <span class="qty text-xs font-black">0</span>
-                <button onclick="updEx(this, 1, ${precio})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
-            </div>
-        </div>
-    </div>`;
-});
-html += `</div></div>`;
-            
-            document.getElementById('contenedor-pasos').innerHTML = html;
-            document.getElementById('modal-plato').style.display = 'flex';
-            actualizarBarraModal();
-        }
+       function abrirDetalle(p) {
+    let html = "";
+    
+    // 1. FUNCIÓN INTERNA PARA CREAR LAS CUADRÍCULAS (OBLIGATORIOS Y ÚNICAS)
+    const renderGrid = (titulo, datos, tipo) => {
+        if (!datos || datos.trim() === "") return "";
+        let res = `<div class="text-left mb-4"><span class="step-tag">${titulo}</span><div class="grid grid-cols-2 gap-2">`;
+        datos.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombre = partes[0].trim();
+            const precio = parseFloat(partes[1]) || 0;
+            res += `<div class="grid-option" onclick="toggleSel(this, ${precio}, '${tipo}')">
+                        ${nombre}${precio > 0 ? ' +'+precio.toFixed(2)+'€' : ''}
+                    </div>`;
+        });
+        return res + `</div></div>`;
+    };
 
+    // 2. AÑADIR OBLIGATORIOS Y ÚNICAS AL HTML
+    html += renderGrid("Selección Obligatoria", p.SELECCION_OBLIGATORIA, 'oblig');
+    html += renderGrid("Opciones", p.SELECCION_UNICA, 'unica');
+
+    // 3. BLOQUE DE EXTRAS (CON EL NOMBRE PROTEGIDO)
+    if (p.EXTRAS) {
+        html += `<div class="text-left"><span class="step-tag">Extras</span><div class="space-y-2">`;
+        p.EXTRAS.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombre = partes[0].trim();
+            const precio = parseFloat(partes[1]) || 0;
+            html += `
+            <div class="flex justify-between items-center py-3 border-b border-white/5">
+                <span class="text-[11px] font-bold uppercase text-white/80 extra-item-name">${nombre}</span>
+                <div class="flex items-center gap-4">
+                    <span class="text-cyan-400 font-black text-[10px]">+${precio.toFixed(2)}€</span>
+                    <div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl">
+                        <button onclick="updEx(this, -1, ${precio})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
+                        <span class="qty text-xs font-black">0</span>
+                        <button onclick="updEx(this, 1, ${precio})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
+                    </div>
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    // 4. INYECTAR EN EL MODAL Y MOSTRAR
+    document.getElementById('contenedor-pasos').innerHTML = html;
+    document.getElementById('modal-plato').style.display = 'flex';
+    actualizarBarraModal();
+}
         // CORRECCIÓN NOMBRES EXTRAS
         function confirmarAnadir() {
     try {

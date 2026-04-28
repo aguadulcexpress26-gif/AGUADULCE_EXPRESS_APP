@@ -61,18 +61,17 @@
     <main id="app-container" class="px-5 py-6 pb-32"></main>
 
     <div id="cesta-flotante" class="fixed bottom-6 left-4 right-4 bg-white text-black p-0 rounded-[2rem] hidden flex-col z-[100] shadow-2xl overflow-hidden border-2 border-cyan-400">
-        <div class="p-5 flex items-center gap-4" onclick="abrirRevision()">
-            <div class="bg-cyan-400 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl">🛒</div>
-            <div class="flex-1 text-left">
-                <span id="cesta-info" class="font-black text-sm italic uppercase block">0 PRODUCTOS</span>
-                <span id="cesta-total" class="font-bold text-cyan-600 text-xs uppercase tracking-tighter">0.00€ TOTAL</span>
-            </div>
-            <div class="flex items-center gap-3">
-                <div class="bg-black text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase italic">PAGAR »</div>
-                <div class="text-red-500 font-black text-xl p-2 mr-2" onclick="confirmarVaciar(); event.stopPropagation();">✕</div>
-            </div>
+    <div class="p-5 flex items-center gap-4" onclick="abrirRevision()">
+        <div class="bg-cyan-400 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl">🛒</div>
+        <div class="flex-1 text-left">
+            <span id="cesta-info" class="font-black text-sm italic uppercase block text-black">0 PRODUCTOS</span>
+            <span id="cesta-total" class="font-bold text-cyan-600 text-xs uppercase tracking-tighter">0.00€ TOTAL</span>
         </div>
+        <button onclick="confirmarVaciar(); event.stopPropagation();" class="bg-red-100 text-red-600 p-3 rounded-xl font-black flex items-center justify-center mr-2">
+            <span class="text-xs uppercase italic">Vaciar</span>
+        </button>
     </div>
+</div>
 
     <div id="panel-revision" class="p-6 bg-dark">
         <div class="flex items-center gap-4 mb-8">
@@ -243,21 +242,47 @@
 
         // CORRECCIÓN NOMBRES EXTRAS
         function confirmarAnadir() {
-            let sel = [];
-            document.querySelectorAll('.grid-option.selected').forEach(el => {
-                sel.push(el.innerText.split('+')[0].split(':')[0].trim());
-            });
-            document.querySelectorAll('.qty').forEach(el => {
-                const cant = parseInt(el.innerText);
-                if (cant > 0) {
-                    const nombreLimpio = el.closest('.flex').parentElement.querySelector('.extra-name-target').innerText;
-                    sel.push(`${cant}x ${nombreLimpio}`);
-                }
-            });
-            const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
-            cesta.push({ nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad });
-            actualizarCestaBar(); cerrarModal();
+    try {
+        let sel = [];
+        
+        // 1. Capturar selecciones de cuadrícula (Obligatorios y Únicos)
+        document.querySelectorAll('.grid-option.selected').forEach(el => {
+            // Limpiamos el texto para evitar caracteres extraños
+            let texto = el.innerText.split('+')[0].trim();
+            if (texto) sel.push(texto);
+        });
+
+        // 2. Capturar extras adicionales (Cantidades)
+        document.querySelectorAll('.qty').forEach(el => {
+            const cant = parseInt(el.innerText) || 0;
+            if (cant > 0) {
+                const nombreExtraContainer = el.closest('.flex').parentElement.querySelector('.extra-name-item') || 
+                                           el.closest('.flex').parentElement.querySelector('.extra-name-tag');
+                const nombreExtra = nombreExtraContainer ? nombreExtraContainer.innerText.trim() : "Extra";
+                sel.push(`${cant}x ${nombreExtra}`);
+            }
+        });
+
+        // 3. Crear el nombre del producto final
+        const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
+        const itemParaCesta = {
+            nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`,
+            total: parseFloat((itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad)
+        };
+
+        // 4. Validar que el total sea un número válido antes de añadir
+        if (!isNaN(itemParaCesta.total)) {
+            cesta.push(itemParaCesta);
+            actualizarCestaBar();
+            cerrarModal();
+        } else {
+            console.error("Error en el cálculo del precio");
         }
+    } catch (error) {
+        console.error("Error al añadir producto complejo:", error);
+        alert("Hubo un problema al añadir este producto. Inténtalo de nuevo.");
+    }
+}
 
         function actualizarCestaBar() {
             const total = cesta.reduce((acc, i) => acc + i.total, 0);

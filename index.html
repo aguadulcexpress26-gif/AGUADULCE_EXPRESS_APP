@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express v106 Pro</title>
+    <title>Aguadulce Express v60.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -16,21 +16,26 @@
         #header-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.8; }
         .brand-overlay { position: absolute; inset: 0; background: linear-gradient(to top, var(--dark), transparent); }
         .plato-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
-        #modal-plato, #panel-checkout, #modal-legal, #modal-alerta-pro, #modal-exito { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
+        #modal-plato, #panel-revision, #panel-checkout, #modal-legal, #modal-alerta-pro, #modal-seguimiento { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
         .step-tag { font-weight: 800; font-size: 10px; text-transform: uppercase; color: var(--cyan); letter-spacing: 1px; margin-bottom: 10px; display: block; }
         .grid-option { border: 1px solid rgba(255,255,255,0.1); padding: 12px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 12px; cursor: pointer; }
         .grid-option.selected { border-color: var(--cyan); background: rgba(6,182,212,0.1); color: var(--cyan); }
         input, select { background: rgba(255,255,255,0.05)!important; border: 1px solid rgba(255,255,255,0.1)!important; padding: 14px!important; border-radius: 12px!important; color: white!important; width: 100%; }
-        .cat-chip { padding: 10px 20px; background: rgba(255,255,255,0.05); border-radius: 15px; font-size: 11px; font-weight: 800; white-space: nowrap; border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
-        .cat-chip.active { background: var(--cyan); color: var(--dark); border-color: var(--cyan); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* Línea de Seguimiento */
+        .track-node { position: relative; display: flex; flex-direction: column; align-items: center; flex: 1; }
+        .track-line { position: absolute; top: 15px; left: 50%; width: 100%; height: 2px; background: rgba(255,255,255,0.1); z-index: 1; }
+        .track-node.active .track-dot { background: var(--cyan); box-shadow: 0 0 15px var(--cyan); }
+        .track-node.active .track-line { background: var(--cyan); }
+        .track-dot { width: 30px; height: 30px; border-radius: 50%; background: #1e293b; z-index: 2; display: flex; items-center; justify-content: center; font-size: 12px; border: 2px solid rgba(255,255,255,0.1); }
     </style>
 </head>
 <body>
 
     <div id="loader">
         <div class="spinner mb-4"></div>
-        <p class="text-cyan-400 text-[10px] font-black uppercase">Sincronizando Aguadulce Express...</p>
+        <p class="text-cyan-400 text-[10px] font-black uppercase tracking-widest">Aguadulce Express...</p>
     </div>
 
     <header class="brand-header">
@@ -45,17 +50,84 @@
         </div>
     </header>
 
-    <main id="app-container" class="px-5 py-6 pb-32"></main>
+    <main id="app-container" class="px-5 py-6 pb-32 text-left"></main>
 
-    <div id="cesta-flotante" class="fixed bottom-6 left-4 right-4 bg-white text-black p-0 rounded-[2rem] hidden flex-col z-[100] shadow-2xl overflow-hidden border-2 border-cyan-400">
-        <div class="absolute top-2 right-4 text-red-500 font-black text-xl cursor-pointer p-2" onclick="confirmarVaciar()">✕</div>
-        <div class="p-5 flex items-center gap-4" onclick="abrirCheckout()">
-            <div class="bg-cyan-400 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl">🛒</div>
-            <div class="flex-1 text-left">
-                <span id="cesta-info" class="font-black text-sm italic uppercase block">0 PRODUCTOS</span>
-                <span id="cesta-total" class="font-bold text-cyan-600 text-xs uppercase tracking-tighter">0.00€ TOTAL</span>
+    <div id="cesta-flotante" class="fixed bottom-6 left-4 right-4 bg-white text-black p-4 rounded-[2rem] hidden z-[100] shadow-2xl items-center border-2 border-cyan-400">
+        <div class="bg-cyan-400 w-10 h-10 rounded-xl flex items-center justify-center text-xl mr-3">🛒</div>
+        <div class="flex-1" onclick="abrirRevision()">
+            <span id="cesta-info" class="font-black text-xs uppercase block">0 PRODUCTOS</span>
+            <span id="cesta-total" class="font-bold text-cyan-600 text-[10px] uppercase">0.00€ TOTAL</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="abrirRevision()" class="bg-black text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase italic">REVISAR</button>
+            <button onclick="confirmarVaciar()" class="text-red-500 font-black px-2 text-lg">✕</button>
+        </div>
+    </div>
+
+    <div id="panel-revision" class="p-6">
+        <div class="flex items-center gap-4 mb-8">
+            <button onclick="cerrarRevision()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
+            <h2 class="text-xl font-black italic uppercase">Tu Carrito</h2>
+        </div>
+        <div id="lista-revision" class="space-y-4 mb-8 text-left">
             </div>
-            <div class="bg-black text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase italic mr-6">REVISAR »</div>
+        <div class="border-t border-white/10 pt-4 mb-32">
+            <div class="flex justify-between font-black text-xl italic uppercase px-2 mb-6">
+                <span>Subtotal</span><span id="subtotal-revision">0.00€</span>
+            </div>
+            <button onclick="irACheckout()" class="w-full bg-cyan-400 text-black py-6 rounded-2xl font-black uppercase italic shadow-lg shadow-cyan-400/20">Continuar al Pago</button>
+        </div>
+    </div>
+
+    <div id="panel-checkout" class="p-6">
+        <div class="flex items-center gap-4 mb-8">
+            <button onclick="cerrarCheckout()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
+            <h2 class="text-xl font-black italic uppercase">Datos de Envío</h2>
+        </div>
+        <div class="space-y-4 text-left">
+            <p class="step-tag">¿A dónde enviamos?</p>
+            <input type="text" id="cliente-nombre" placeholder="TU NOMBRE">
+            <input type="tel" id="cliente-telf" value="+34">
+            <input type="text" id="cliente-dir" placeholder="DIRECCIÓN EXACTA">
+            <select id="metodo-pago">
+                <option value="EFECTIVO">PAGO EN EFECTIVO</option>
+                <option value="BIZUM">BIZUM</option>
+                <option value="TARJETA">TARJETA AL REPARTIDOR</option>
+            </select>
+        </div>
+        <div id="desglose-pago" class="mt-8 p-6 bg-white/5 rounded-[2rem] space-y-2 text-sm text-left"></div>
+        <button id="btn-final" onclick="enviarPedidoFinal()" class="w-full bg-cyan-400 text-black py-6 rounded-2xl font-black uppercase mt-6 shadow-lg">Confirmar Pedido</button>
+    </div>
+
+    <div id="modal-seguimiento">
+        <div class="p-8 text-center flex flex-col h-full justify-center">
+            <div class="w-20 h-20 bg-cyan-400/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span class="text-cyan-400 text-4xl animate-pulse">🔥</span>
+            </div>
+            <h2 class="text-3xl font-black italic uppercase mb-2">¡PEDIDO RECIBIDO!</h2>
+            <p class="text-xs text-white/40 mb-12 uppercase font-bold tracking-widest">Sigue el estado de tu orden en tiempo real</p>
+            
+            <div class="flex justify-between items-start w-full relative mb-12 px-4">
+                <div class="track-node active">
+                    <div class="track-line"></div>
+                    <div class="track-dot">✔</div>
+                    <span class="text-[9px] font-black uppercase mt-2 text-cyan-400">Recibido</span>
+                </div>
+                <div class="track-node">
+                    <div class="track-line"></div>
+                    <div class="track-dot">🍳</div>
+                    <span class="text-[9px] font-black uppercase mt-2 text-white/30">Cocina</span>
+                </div>
+                <div class="track-node">
+                    <div class="track-line" style="display:none"></div>
+                    <div class="track-dot">🛵</div>
+                    <span class="text-[9px] font-black uppercase mt-2 text-white/30">En camino</span>
+                </div>
+            </div>
+
+            <p class="text-[10px] text-white/60 italic mb-8 px-6">"Guarda esta pantalla para ver cuándo sale tu comida"</p>
+            
+            <button onclick="location.reload()" class="w-full border-2 border-white/10 text-white/50 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar y Volver al Inicio</button>
         </div>
     </div>
 
@@ -74,50 +146,16 @@
         </div>
         <div class="fixed bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-dark via-dark">
             <button id="btn-anadir-modal" onclick="confirmarAnadir()" class="w-full bg-cyan-400 text-black font-black py-5 rounded-2xl flex justify-between px-8">
-                <span id="txt-anadir">Añadir al Carrito</span>
+                <span id="txt-anadir">Añadir</span>
                 <span id="total-modal-btn">0.00€</span>
             </button>
         </div>
     </div>
 
-    <div id="panel-checkout" class="p-6 bg-dark text-white">
-        <div class="flex items-center gap-4 mb-8">
-            <button onclick="cerrarCheckout()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
-            <h2 class="text-xl font-black italic uppercase text-white">Tu Pedido</h2>
-        </div>
-        <div class="space-y-4 text-left">
-            <p class="step-tag">Datos de Entrega</p>
-            <input type="text" id="cliente-nombre" placeholder="TU NOMBRE">
-            <input type="tel" id="cliente-telf" value="+34">
-            <input type="text" id="cliente-dir" placeholder="DIRECCIÓN DE ENTREGA">
-            <select id="metodo-pago">
-                <option value="EFECTIVO">EFECTIVO</option>
-                <option value="BIZUM">BIZUM</option>
-                <option value="TARJETA">TARJETA AL REPARTIDOR</option>
-            </select>
-        </div>
-        <div id="desglose-pago" class="mt-8 p-6 bg-white/5 rounded-[2rem] space-y-2 text-sm text-white"></div>
-        <button id="btn-final" onclick="enviarPedidoFinal()" class="w-full bg-cyan-400 text-black py-6 rounded-2xl font-black uppercase mt-6">Efectuar Pedido</button>
-    </div>
-
-    <div id="modal-exito" class="fixed inset-0 z-[6000] hidden items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
-        </div>
-
-    <div id="modal-legal" class="fixed inset-0 z-[7000] hidden items-center justify-center p-6 backdrop-blur-xl bg-black/80">
-        <div class="bg-[#020617] w-full max-w-sm rounded-[2rem] p-8 border border-white/10 shadow-2xl">
-            <h3 class="text-cyan-400 font-black uppercase text-xs mb-4 italic text-left">Términos y Privacidad</h3>
-            <p id="texto-legal-completo" class="text-[10px] text-white/60 mb-6 italic font-medium leading-relaxed text-left">Cargando...</p>
-            <button onclick="document.getElementById('modal-legal').style.display='none'" class="w-full bg-cyan-400 text-black py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button>
-        </div>
-    </div>
-
     <div id="modal-alerta-pro" class="fixed inset-0 z-[9000] hidden items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-        <div class="bg-[#020617] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-sm text-center">
-            <div class="w-16 h-16 bg-cyan-400/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span class="text-cyan-400 text-2xl">⚠️</span>
-            </div>
-            <h3 id="titulo-alerta" class="text-white font-black uppercase italic mb-2">Atención</h3>
-            <p id="texto-alerta" class="text-[11px] text-white/60 mb-8 uppercase font-bold leading-relaxed"></p>
+        <div class="bg-[#020617] border border-white/10 p-8 rounded-[2.5rem] w-full max-sm text-center">
+            <h3 id="titulo-alerta" class="text-white font-black uppercase italic mb-2">Aviso</h3>
+            <p id="texto-alerta" class="text-[11px] text-white/60 mb-8 font-bold uppercase"></p>
             <div id="contenedor-botones-alerta" class="flex flex-col gap-3"></div>
         </div>
     </div>
@@ -135,7 +173,7 @@
                 const data = await res.json();
                 db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
                 db.menu = data.MENU_GENERAL;
-                db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "Política de privacidad de Aguadulce Express.";
+                db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "";
                 if(data.CONFIG && data.CONFIG[0]) {
                     document.getElementById('app-logo').src = data.CONFIG[0].LOGO_URL;
                     document.getElementById('header-bg').style.backgroundImage = `url('${data.CONFIG[0].FONDO_URL}')`;
@@ -146,42 +184,21 @@
         }
 
         function renderHome() {
-            let html = `<p class="step-tag mb-6 ml-2 italic text-left text-white/50">Selecciona un restaurante</p>`;
-            const ahora = new Date();
-            const horaActual = ahora.getHours() * 100 + ahora.getMinutes();
+            let html = `<p class="step-tag mb-6 ml-2 italic">Selecciona un restaurante</p>`;
             db.restaurantes.forEach(r => {
-                const ape1 = parseInt((r.HORA_APERTURA_1 || "00:00").replace(':', ''));
-                const cie1 = parseInt((r.HORA_CIERRE_1 || "00:00").replace(':', ''));
-                const ape2 = parseInt((r.HORA_APERTURA_2 || "00:00").replace(':', ''));
-                const cie2 = parseInt((r.HORA_CIERRE_2 || "00:00").replace(':', ''));
-                const enHorario = ((horaActual >= ape1 && horaActual <= cie1) || (horaActual >= ape2 && horaActual <= cie2));
-                const abierto = (r.ESTADO && r.ESTADO.toLowerCase().trim() === "abierto");
-                if (enHorario && abierto) {
-                    html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 active:scale-95 transition-all shadow-xl" onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')"><img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70"><div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div><div class="absolute bottom-6 left-8 text-left"><h2 class="text-2xl font-black italic uppercase text-white">${r.NOMBRE_RESTAURANTE}</h2></div></div>`;
-                } else {
-                    html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 grayscale opacity-40"><img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover"><div class="absolute inset-0 bg-black/60 flex items-center justify-center"><p class="border-2 border-white px-4 py-1 text-[10px] font-black uppercase italic text-white">Cerrado</p></div></div>`;
-                }
+                html += `
+                <div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 active:scale-95 transition-all" onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}')">
+                    <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
+                    <div class="absolute bottom-6 left-8 text-left"><h2 class="text-2xl font-black italic uppercase">${r.NOMBRE_RESTAURANTE}</h2></div>
+                </div>`;
             });
             document.getElementById('app-container').innerHTML = html;
         }
 
-        function mostrarAviso(titulo, mensaje, esConfirmacion = false, callbackStr = null) {
-            const modal = document.getElementById('modal-alerta-pro');
-            document.getElementById('titulo-alerta').innerText = titulo;
-            document.getElementById('texto-alerta').innerText = mensaje;
-            const btnCont = document.getElementById('contenedor-botones-alerta');
-            if (esConfirmacion) {
-                btnCont.innerHTML = `<button onclick="${callbackStr}" class="w-full bg-cyan-400 text-black py-4 rounded-2xl font-black uppercase italic text-xs">Confirmar</button><button onclick="cerrarAvisoPro()" class="w-full bg-white/5 text-white py-4 rounded-2xl font-black uppercase italic text-xs">Cancelar</button>`;
-            } else {
-                btnCont.innerHTML = `<button onclick="cerrarAvisoPro()" class="w-full bg-cyan-400 text-black py-4 rounded-2xl font-black uppercase italic text-xs">Entendido</button>`;
-            }
-            modal.style.display = 'flex';
-        }
-        function cerrarAvisoPro() { document.getElementById('modal-alerta-pro').style.display = 'none'; }
-
         function abrirTienda(nombre, id) {
             if (cesta.length > 0 && String(rActivo.id) !== String(id)) {
-                mostrarAviso("PEDIDO EN CURSO", `Tienes productos de "${rActivo.nombre}" en la cesta. Finaliza ese pedido o vacíalo para cambiar.`);
+                mostrarAviso("PEDIDO EN CURSO", `Tienes platos de "${rActivo.nombre}" en la cesta. Termina ese pedido o vacía la cesta.`);
                 return;
             }
             rActivo.id = id; rActivo.nombre = nombre; verMenu();
@@ -189,10 +206,9 @@
 
         function verMenu() {
             const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(rActivo.id));
-            const cats = [...new Set(platos.map(p => p.CATEGORIA || "General"))];
-            let html = `<div class="flex items-center gap-4 mb-6"><button onclick="renderHome()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate text-white">${rActivo.nombre}</h2></div><div class="flex overflow-x-auto gap-2 mb-6 no-scrollbar"><div class="cat-chip active" onclick="filtrarCat('TODOS', this)">Todos</div>${cats.map(c => `<div class="cat-chip" onclick="filtrarCat('${c}', this)">${c}</div>`).join('')}</div><div id="lista-platos" class="space-y-3">`;
+            let html = `<div class="flex items-center gap-4 mb-6"><button onclick="renderHome()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button><h2 class="text-xl font-black uppercase italic">${rActivo.nombre}</h2></div><div class="space-y-4">`;
             platos.forEach(p => {
-                html += `<div class="plato-card" data-cat="${p.CATEGORIA}" onclick='abrirDetalle(${JSON.stringify(p).replace(/'/g, "&apos;")})'><div class="flex-1 text-left"><h4 class="font-black text-sm uppercase leading-none mb-1 text-white">${p.PLATO}</h4><p class="text-cyan-400 font-black text-xs">${parseFloat(p.PRECIO).toFixed(2)}€</p></div><img src="${p.FOTO_PLATO}" class="w-16 h-16 rounded-xl object-cover shadow-lg"></div>`;
+                html += `<div class="plato-card" onclick='abrirDetalle(${JSON.stringify(p).replace(/'/g, "&apos;")})'><div class="flex-1 text-left"><h4 class="font-black text-sm uppercase">${p.PLATO}</h4><p class="text-cyan-400 font-black text-xs">${parseFloat(p.PRECIO).toFixed(2)}€</p></div><img src="${p.FOTO_PLATO}" class="w-16 h-16 rounded-xl object-cover"></div>`;
             });
             document.getElementById('app-container').innerHTML = html + "</div>";
         }
@@ -200,30 +216,43 @@
         function abrirDetalle(p) {
             itemActual = { pBase: parseFloat(p.PRECIO), pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: !p.SELECCION_OBLIGATORIA, data: p };
             document.getElementById('modal-titulo').innerText = p.PLATO;
-            document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
             document.getElementById('modal-img').src = p.FOTO_PLATO;
             document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
+            
             let html = "";
-            const renderGrid = (titulo, datos, tipo) => {
+            const renderG = (tit, datos, tipo) => {
                 if(!datos) return "";
-                let res = `<div class="text-left"><span class="step-tag">${titulo}</span><div class="grid grid-cols-2 gap-2">`;
+                let res = `<div class="text-left"><span class="step-tag">${tit}</span><div class="grid grid-cols-2 gap-2">`;
                 datos.split(',').forEach(d => {
-                    const partes = d.split(':');
-                    const nombre = partes[0].trim();
-                    const precio = parseFloat(partes[1]) || 0;
-                    res += `<div class="grid-option" onclick="toggleSel(this, ${precio}, '${tipo}')">${nombre}${precio > 0 ? ' +'+precio.toFixed(2)+'€' : ''}</div>`;
+                    const parts = d.split(':');
+                    const n = parts[0].trim();
+                    const pr = parseFloat(parts[1]) || 0;
+                    res += `<div class="grid-option" onclick="toggleSel(this, ${pr}, '${tipo}')">${n}${pr > 0 ? ' +'+pr.toFixed(2)+'€' : ''}</div>`;
                 });
                 return res + `</div></div>`;
             };
-            html += renderGrid("Obligatorio (Hasta 5)", p.SELECCION_OBLIGATORIA, 'oblig');
-            html += renderGrid("Personalizar", p.SELECCION_UNICA, 'unica');
+
+            html += renderG("Obligatorio", p.SELECCION_OBLIGATORIA, 'oblig');
+            html += renderG("Opciones", p.SELECCION_UNICA, 'unica');
+
             if(p.EXTRAS) {
-                html += `<div class="text-left"><span class="step-tag">Extras adicionales</span><div class="space-y-2">`;
+                html += `<div class="text-left"><span class="step-tag">Extras</span><div class="space-y-2">`;
                 p.EXTRAS.split(',').forEach(d => {
-                    const partes = d.split(':');
-                    const nombre = partes[0].trim();
-                    const precio = parseFloat(partes[1]) || 0;
-                    html += `<div class="flex justify-between items-center py-3 border-b border-white/5"><span class="text-[11px] font-bold uppercase text-white/80">${nombre}</span><div class="flex items-center gap-4"><span class="text-cyan-400 font-black text-[10px]">+${precio.toFixed(2)}€</span><div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl"><button onclick="updEx(this, -1, ${precio})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button><span class="qty text-xs font-black">0</span><button onclick="updEx(this, 1, ${precio})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button></div></div></div>`;
+                    const parts = d.split(':');
+                    const n = parts[0].trim(); // Nombre del extra
+                    const pr = parseFloat(parts[1]) || 0;
+                    html += `
+                        <div class="flex justify-between items-center py-3 border-b border-white/5">
+                            <span class="text-[11px] font-bold uppercase text-white/80 extra-name-target">${n}</span>
+                            <div class="flex items-center gap-4">
+                                <span class="text-cyan-400 font-black text-[10px]">+${pr.toFixed(2)}€</span>
+                                <div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl">
+                                    <button onclick="updEx(this, -1, ${pr})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
+                                    <span class="qty text-xs font-black">0</span>
+                                    <button onclick="updEx(this, 1, ${pr})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
+                                </div>
+                            </div>
+                        </div>`;
                 });
                 html += `</div></div>`;
             }
@@ -232,132 +261,133 @@
             actualizarBarraModal();
         }
 
-        function toggleSel(el, pr, tipo) {
-            if (tipo === 'oblig') {
-                const seleccionados = el.parentElement.querySelectorAll('.selected').length;
-                if (el.classList.contains('selected')) el.classList.remove('selected');
-                else if (seleccionados < 5) el.classList.add('selected');
-                else mostrarAviso("LÍMITE", "Máximo 5 opciones.");
-            } else {
-                el.parentElement.querySelectorAll('.grid-option').forEach(o => o.classList.remove('selected'));
-                el.classList.add('selected');
-            }
-            let extraGrids = 0;
-            document.querySelectorAll('.grid-option.selected').forEach(sel => {
-                const text = sel.innerText;
-                if(text.includes('+')) extraGrids += parseFloat(text.split('+')[1]) || 0;
-            });
-            itemActual.pOpciones = extraGrids;
-            itemActual.obligatorioOk = !itemActual.data.SELECCION_OBLIGATORIA || document.querySelectorAll('#contenedor-pasos .grid-option.selected').length > 0;
-            actualizarBarraModal();
-        }
-
-        function updEx(btn, mod, pr) {
-            const span = btn.parentElement.querySelector('.qty');
-            let val = parseInt(span.innerText) + mod;
-            if(val >= 0) {
-                span.innerText = val;
-                itemActual.pExtras += (mod * pr);
-                actualizarBarraModal();
-            }
-        }
-
-        function actualizarBarraModal() {
-            const total = (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad;
-            document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€";
-            const btn = document.getElementById('btn-anadir-modal');
-            btn.disabled = !itemActual.obligatorioOk;
-            btn.style.opacity = itemActual.obligatorioOk ? "1" : "0.3";
-        }
-
-        // CORRECCIÓN DE EXTRAS (Atrapa nombre)
+        // CORRECCIÓN: Captura de nombres corregida
         function confirmarAnadir() {
             let sel = [];
             document.querySelectorAll('.grid-option.selected').forEach(el => {
-                sel.push(el.innerText.split('+')[0].split(':')[0].trim());
+                sel.push(el.innerText.split('+')[0].trim());
             });
             document.querySelectorAll('.qty').forEach(el => {
                 const cant = parseInt(el.innerText);
                 if (cant > 0) {
-                    const nombreExtraFull = el.closest('.flex').parentElement.querySelector('span').innerText;
-                    const nombreLimpio = nombreExtraFull.split('+')[0].split(':')[0].trim();
-                    sel.push(`${cant}x ${nombreLimpio}`);
+                    const n = el.closest('.flex').parentElement.querySelector('.extra-name-target').innerText;
+                    sel.push(`${cant}x ${n}`);
                 }
             });
-            const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
-            cesta.push({ nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad });
+            const det = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
+            cesta.push({ 
+                nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${det}`, 
+                total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad 
+            });
             actualizarCestaBar(); cerrarModal();
         }
 
-        function actualizarCestaBar() {
-            const total = cesta.reduce((acc, i) => acc + i.total, 0);
-            document.getElementById('cesta-flotante').classList.toggle('hidden', cesta.length === 0);
-            document.getElementById('cesta-info').innerText = `🛒 ${cesta.length} PRODUCTOS`;
-            document.getElementById('cesta-total').innerText = `${total.toFixed(2)}€ TOTAL`;
+        function abrirRevision() {
+            const list = document.getElementById('lista-revision');
+            list.innerHTML = "";
+            cesta.forEach((item, index) => {
+                list.innerHTML += `
+                    <div class="bg-white/5 p-4 rounded-2xl flex justify-between items-center">
+                        <div class="flex-1 pr-4">
+                            <p class="text-xs font-black uppercase text-white">${item.nombre}</p>
+                            <p class="text-[10px] text-cyan-400 font-bold">${item.total.toFixed(2)}€</p>
+                        </div>
+                        <button onclick="eliminarItem(${index})" class="text-red-500 font-black">✕</button>
+                    </div>`;
+            });
+            const sub = cesta.reduce((a,b) => a + b.total, 0);
+            document.getElementById('subtotal-revision').innerText = sub.toFixed(2) + "€";
+            document.getElementById('panel-revision').style.display = 'flex';
         }
 
-        // CHECKOUT LEGAL REINSTALADO
-        function abrirCheckout() {
-            const modal = document.getElementById('panel-checkout');
-            modal.style.display = 'flex';
-            const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-            const envio = 2.50;
-            const app = 1.00;
-            const totalFinal = subtotal + envio + app;
+        function irACheckout() {
+            const sub = cesta.reduce((a,b) => a + b.total, 0);
+            const env = 2.50; const gest = 1.00;
+            const total = sub + env + gest;
             document.getElementById('desglose-pago').innerHTML = `
-                <div class="flex justify-between text-white/60"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
-                <div class="flex justify-between text-white/60"><span>Envío</span><span>${envio.toFixed(2)}€</span></div>
-                <div class="flex justify-between text-white/60"><span>Gestión App</span><span>${app.toFixed(2)}€</span></div>
-                <div class="flex justify-between font-black text-cyan-400 text-lg border-t border-white/10 pt-2 mt-2 italic uppercase"><span>Total a Pagar</span><span>${totalFinal.toFixed(2)}€</span></div>
-                <div class="p-4 bg-white/5 border border-white/10 rounded-2xl mt-6">
-                    <label class="flex items-start gap-3 cursor-pointer">
-                        <input type="checkbox" id="check-legal" ${localStorage.getItem('ae_legal') === 'true' ? 'checked' : ''} onchange="document.getElementById('btn-final').disabled = !this.checked; document.getElementById('btn-final').style.opacity = this.checked ? '1' : '0.5'" class="mt-1 w-4 h-4 accent-cyan-400">
-                        <span class="text-[10px] text-white/50 leading-tight uppercase font-bold">Acepto los <span onclick="abrirLegal()" class="text-cyan-400 underline">términos y condiciones</span> y el uso de mis datos para la entrega.</span>
-                    </label>
+                <div class="flex justify-between"><span>Subtotal</span><span>${sub.toFixed(2)}€</span></div>
+                <div class="flex justify-between"><span>Envío</span><span>${env.toFixed(2)}€</span></div>
+                <div class="flex justify-between"><span>Gestión</span><span>${gest.toFixed(2)}€</span></div>
+                <div class="flex justify-between font-black text-cyan-400 text-lg pt-2 border-t border-white/10 mt-2 italic uppercase">
+                    <span>Total</span><span>${total.toFixed(2)}€</span>
                 </div>`;
-            const aceptado = localStorage.getItem('ae_legal') === 'true';
-            document.getElementById('btn-final').disabled = !aceptado;
-            document.getElementById('btn-final').style.opacity = aceptado ? "1" : "0.5";
-            document.getElementById('cliente-nombre').value = localStorage.getItem('ae_nombre') || "";
-            document.getElementById('cliente-telf').value = localStorage.getItem('ae_telf') || "+34";
-            document.getElementById('cliente-dir').value = localStorage.getItem('ae_dir') || "";
+            document.getElementById('panel-checkout').style.display = 'flex';
         }
 
-        function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
-        function abrirLegal() { document.getElementById('texto-legal-completo').innerText = db.legal || "Cargando..."; document.getElementById('modal-legal').style.display = 'flex'; }
-
-        // ENVIAR PEDIDO CON SEGUIMIENTO WHATSAPP
         async function enviarPedidoFinal() {
             const nom = document.getElementById('cliente-nombre').value;
             const tel = document.getElementById('cliente-telf').value;
             const dir = document.getElementById('cliente-dir').value;
-            const pag = document.getElementById('metodo-pago').value;
-            if(!nom || !dir || tel.length < 9) return mostrarAviso("DATOS", "Completa nombre, teléfono y dirección.");
+            if(!nom || !dir || tel.length < 9) return mostrarAviso("ERROR", "Datos incompletos");
+
             const btn = document.getElementById('btn-final');
-            btn.innerText = "⏳ PROCESANDO...";
-            btn.disabled = true;
-            const totalFinal = (cesta.reduce((a,b)=>a+b.total,0) + 3.5).toFixed(2);
-            const resumenTexto = cesta.map(i => i.nombre).join(" | ");
-            const paquete = { cliente_info: nom, telf_info: tel, dir_info: dir, pedido_info: resumenTexto, total_info: totalFinal + "€", pago_info: pag, id_res_info: rActivo.id };
+            btn.innerText = "⏳ PROCESANDO..."; btn.disabled = true;
+
+            const total = (cesta.reduce((a,b)=>a+b.total,0) + 3.5).toFixed(2);
+            const paquete = { 
+                cliente_info: nom, telf_info: tel, dir_info: dir, 
+                pedido_info: cesta.map(i => i.nombre).join(" | "), 
+                total_info: total + "€", pago_info: document.getElementById('metodo-pago').value, 
+                id_res_info: rActivo.id 
+            };
+
             try {
                 await fetch(scriptURL, { method: "POST", mode: "no-cors", body: JSON.stringify(paquete) });
-                const telfRestaurante = "34612345678"; // <--- CAMBIA TU WHATSAPP AQUÍ
-                const msgWA = `¡Hola! Acabo de pedir en Aguadulce Express.%0A*Cliente:* ${nom}%0A*Pedido:* ${resumenTexto}%0A*Total:* ${totalFinal}€%0A*Dirección:* ${dir}`;
-                document.getElementById('modal-exito').innerHTML = `<div class="bg-[#020617] border border-cyan-400/30 p-8 rounded-[2.5rem] w-full max-w-sm text-center shadow-2xl"><div class="w-20 h-20 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-cyan-400/40"><svg class="w-10 h-10 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg></div><h2 class="text-2xl font-black italic uppercase mb-2">¡RECIBIDO!</h2><p class="text-[10px] text-white/50 mb-6 font-bold uppercase italic">Tu pedido ya está en cocina.</p><a href="https://wa.me/${telfRestaurante}?text=${msgWA}" class="w-full bg-[#25D366] text-white py-5 rounded-2xl font-black uppercase text-xs mb-3 flex items-center justify-center gap-2 shadow-lg">📲 SEGUIMIENTO WHATSAPP</a><button onclick="location.reload()" class="w-full bg-white/5 text-white py-4 rounded-2xl font-black uppercase text-[10px]">VOLVER AL INICIO</button></div>`;
-                document.getElementById('modal-exito').style.display = 'flex';
-                cesta = []; actualizarCestaBar(); localStorage.setItem('ae_nombre', nom); localStorage.setItem('ae_telf', tel); localStorage.setItem('ae_dir', dir);
-            } catch (e) { alert("Error al enviar"); btn.disabled = false; btn.innerText = "Efectuar Pedido"; }
+                document.getElementById('modal-seguimiento').style.display = 'flex';
+                cesta = []; actualizarCestaBar();
+            } catch (e) { 
+                btn.disabled = false; btn.innerText = "Confirmar Pedido";
+            }
         }
 
-        function confirmarVaciar() { mostrarAviso("VACIAR", "¿Borrar cesta?", true, "vaciarCesta()"); }
-        function vaciarCesta() { cesta = []; actualizarCestaBar(); cerrarAvisoPro(); }
+        // Funciones de apoyo
+        function mostrarAviso(tit, msj, conf = false, cb = null) {
+            const mod = document.getElementById('modal-alerta-pro');
+            document.getElementById('titulo-alerta').innerText = tit;
+            document.getElementById('texto-alerta').innerText = msj;
+            const cnt = document.getElementById('contenedor-botones-alerta');
+            cnt.innerHTML = conf ? `<button onclick="${cb}" class="bg-cyan-400 text-black py-4 rounded-xl font-black uppercase text-xs">Confirmar</button><button onclick="cerrarAvisoPro()" class="bg-white/10 py-4 rounded-xl font-black text-xs">Cancelar</button>` : `<button onclick="cerrarAvisoPro()" class="bg-cyan-400 text-black py-4 rounded-xl font-black text-xs">ENTENDIDO</button>`;
+            mod.style.display = 'flex';
+        }
+        function cerrarAvisoPro() { document.getElementById('modal-alerta-pro').style.display = 'none'; }
         function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; }
-        function filtrarCat(cat, el) {
-            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-            el.classList.add('active');
-            document.querySelectorAll('.plato-card').forEach(p => {
-                p.style.display = (cat === 'TODOS' || p.dataset.cat === cat) ? 'flex' : 'none';
+        function cerrarRevision() { document.getElementById('panel-revision').style.display = 'none'; }
+        function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
+        function eliminarItem(i) { cesta.splice(i,1); if(cesta.length === 0) cerrarRevision(); else abrirRevision(); actualizarCestaBar(); }
+        function confirmarVaciar() { mostrarAviso("VACIAR", "¿Borrar todo?", true, "cesta=[];actualizarCestaBar();cerrarAvisoPro()"); }
+        function actualizarCestaBar() {
+            const sub = cesta.reduce((a,b)=>a+b.total,0);
+            document.getElementById('cesta-flotante').style.display = cesta.length > 0 ? 'flex' : 'none';
+            document.getElementById('cesta-info').innerText = `${cesta.length} PRODUCTOS`;
+            document.getElementById('cesta-total').innerText = `${sub.toFixed(2)}€ TOTAL`;
+        }
+        function updEx(btn, m, p) {
+            const s = btn.parentElement.querySelector('.qty');
+            let v = parseInt(s.innerText) + m;
+            if(v >= 0) { s.innerText = v; itemActual.pExtras += (m*p); actualizarBarraModal(); }
+        }
+        function toggleSel(el, p, t) {
+            if(t === 'oblig') {
+                const sels = el.parentElement.querySelectorAll('.selected').length;
+                if(el.classList.contains('selected')) el.classList.remove('selected');
+                else if(sels < 5) el.classList.add('selected');
+            } else {
+                el.parentElement.querySelectorAll('.grid-option').forEach(o => o.classList.remove('selected'));
+                el.classList.add('selected');
+            }
+            let eg = 0;
+            document.querySelectorAll('.grid-option.selected').forEach(s => {
+                const tx = s.innerText; if(tx.includes('+')) eg += parseFloat(tx.split('+')[1]) || 0;
             });
+            itemActual.pOpciones = eg;
+            itemActual.obligatorioOk = !itemActual.data.SELECCION_OBLIGATORIA || document.querySelectorAll('#contenedor-pasos .grid-option.selected').length > 0;
+            actualizarBarraModal();
+        }
+        function actualizarBarraModal() {
+            const tot = (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad;
+            document.getElementById('total-modal-btn').innerText = tot.toFixed(2) + "€";
+            const btn = document.getElementById('btn-anadir-modal');
+            btn.disabled = !itemActual.obligatorioOk; btn.style.opacity = itemActual.obligatorioOk ? "1" : "0.3";
         }
         init();
     </script>

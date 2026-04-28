@@ -206,9 +206,15 @@
         }
 
        function abrirDetalle(p) {
+    // REPARACIÓN: Carga inmediata de imagen y datos para que el diseño no se rompa
+    itemActual = { pBase: parseFloat(p.PRECIO), pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: !p.SELECCION_OBLIGATORIA, data: p };
+    document.getElementById('modal-titulo').innerText = p.PLATO;
+    document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
+    document.getElementById('modal-img').src = p.FOTO_PLATO; // Recupera la imagen del plato
+    document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
+
     let html = "";
     
-    // 1. FUNCIÓN INTERNA PARA CREAR LAS CUADRÍCULAS (OBLIGATORIOS Y ÚNICAS)
     const renderGrid = (titulo, datos, tipo) => {
         if (!datos || datos.trim() === "") return "";
         let res = `<div class="text-left mb-4"><span class="step-tag">${titulo}</span><div class="grid grid-cols-2 gap-2">`;
@@ -223,26 +229,26 @@
         return res + `</div></div>`;
     };
 
-    // 2. AÑADIR OBLIGATORIOS Y ÚNICAS AL HTML
+    // Reparación: Se inyectan Obligatorios y Únicos
     html += renderGrid("Selección Obligatoria", p.SELECCION_OBLIGATORIA, 'oblig');
     html += renderGrid("Opciones", p.SELECCION_UNICA, 'unica');
 
-    // 3. BLOQUE DE EXTRAS (CON EL NOMBRE PROTEGIDO)
+    // Reparación: Extras con nombre identificable y espacio inferior (pb-32) para que el botón no los tape
     if (p.EXTRAS) {
-        html += `<div class="text-left"><span class="step-tag">Extras</span><div class="space-y-2">`;
+        html += `<div class="text-left pb-32"><span class="step-tag text-left">Extras y Bebidas</span><div class="space-y-2">`;
         p.EXTRAS.split(',').forEach(d => {
             const partes = d.split(':');
-            const nombre = partes[0].trim();
-            const precio = parseFloat(partes[1]) || 0;
+            const nombreExtra = partes[0].trim();
+            const precioExtra = parseFloat(partes[1]) || 0;
             html += `
             <div class="flex justify-between items-center py-3 border-b border-white/5">
-                <span class="text-[11px] font-bold uppercase text-white/80 extra-item-name">${nombre}</span>
+                <span class="text-[11px] font-bold uppercase text-white/80 extra-item-name">${nombreExtra}</span>
                 <div class="flex items-center gap-4">
-                    <span class="text-cyan-400 font-black text-[10px]">+${precio.toFixed(2)}€</span>
+                    <span class="text-cyan-400 font-black text-[10px]">+${precioExtra.toFixed(2)}€</span>
                     <div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl">
-                        <button onclick="updEx(this, -1, ${precio})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
+                        <button onclick="updEx(this, -1, ${precioExtra})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
                         <span class="qty text-xs font-black">0</span>
-                        <button onclick="updEx(this, 1, ${precio})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
+                        <button onclick="updEx(this, 1, ${precioExtra})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
                     </div>
                 </div>
             </div>`;
@@ -250,52 +256,42 @@
         html += `</div></div>`;
     }
 
-    // 4. INYECTAR EN EL MODAL Y MOSTRAR
     document.getElementById('contenedor-pasos').innerHTML = html;
     document.getElementById('modal-plato').style.display = 'flex';
     actualizarBarraModal();
 }
         // CORRECCIÓN NOMBRES EXTRAS
-        function confirmarAnadir() {
+       function confirmarAnadir() {
     try {
         let sel = [];
         
-        // 1. Capturar selecciones de cuadrícula (Obligatorios y Únicos)
+        // 1. Capturar Obligatorios y Únicos
         document.querySelectorAll('.grid-option.selected').forEach(el => {
-            // Limpiamos el texto para evitar caracteres extraños
             let texto = el.innerText.split('+')[0].trim();
             if (texto) sel.push(texto);
         });
 
-        // 2. Capturar extras adicionales (Cantidades)
+        // 2. REPARACIÓN: Capturar nombres reales de los extras
         document.querySelectorAll('.qty').forEach(el => {
             const cant = parseInt(el.innerText) || 0;
             if (cant > 0) {
-                const nombreExtraContainer = el.closest('.flex').parentElement.querySelector('.extra-name-item') || 
-                                           el.closest('.flex').parentElement.querySelector('.extra-name-tag');
-                const nombreExtra = nombreExtraContainer ? nombreExtraContainer.innerText.trim() : "Extra";
+                // Busca el nombre en la misma fila usando la clase extra-item-name
+                const nEl = el.closest('.flex').parentElement.querySelector('.extra-item-name');
+                const nombreExtra = nEl ? nEl.innerText.trim() : "Extra";
                 sel.push(`${cant}x ${nombreExtra}`);
             }
         });
 
-        // 3. Crear el nombre del producto final
         const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
-        const itemParaCesta = {
-            nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`,
-            total: parseFloat((itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad)
-        };
+        cesta.push({ 
+            nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, 
+            total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad 
+        });
 
-        // 4. Validar que el total sea un número válido antes de añadir
-        if (!isNaN(itemParaCesta.total)) {
-            cesta.push(itemParaCesta);
-            actualizarCestaBar();
-            cerrarModal();
-        } else {
-            console.error("Error en el cálculo del precio");
-        }
-    } catch (error) {
-        console.error("Error al añadir producto complejo:", error);
-        alert("Hubo un problema al añadir este producto. Inténtalo de nuevo.");
+        actualizarCestaBar(); 
+        cerrarModal();
+    } catch (e) { 
+        alert("Error al añadir"); 
     }
 }
 

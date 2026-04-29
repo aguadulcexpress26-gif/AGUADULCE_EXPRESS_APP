@@ -1,88 +1,195 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express v106 Pro</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root { --cyan: #06b6d4; --dark: #020617; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--dark); color: white; margin: 0; -webkit-tap-highlight-color: transparent; }
-        #loader { position: fixed; inset: 0; background: var(--dark); z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .brand-header { position: relative; height: 160px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; }
-        #header-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.8; }
-        .brand-overlay { position: absolute; inset: 0; background: linear-gradient(to top, var(--dark), transparent); }
-        .plato-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
-        #modal-plato, #panel-checkout, #modal-legal, #modal-alerta-pro, #modal-exito, #panel-revision { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
-        .step-tag { font-weight: 800; font-size: 10px; text-transform: uppercase; color: var(--cyan); letter-spacing: 1px; margin-bottom: 10px; display: block; }
-        .grid-option { border: 1px solid rgba(255,255,255,0.1); padding: 12px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 12px; cursor: pointer; }
-        .grid-option.selected { border-color: var(--cyan); background: rgba(6,182,212,0.1); color: var(--cyan); }
-        input, select { background: rgba(255,255,255,0.05)!important; border: 1px solid rgba(255,255,255,0.1)!important; padding: 14px!important; border-radius: 12px!important; color: white!important; width: 100%; }
-        .cat-chip { padding: 10px 20px; background: rgba(255,255,255,0.05); border-radius: 15px; font-size: 11px; font-weight: 800; white-space: nowrap; border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
-        .cat-chip.active { background: var(--cyan); color: var(--dark); border-color: var(--cyan); }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-    </style>
-</head>
-<body>
-
-<div id="loader">
-    <div class="spinner mb-4"></div>
-    <p class="text-cyan-400 text-[10px] font-black uppercase">Sincronizando...</p>
-</div>
-
-<main id="app-container"></main>
-
 <script>
-    // ============================
-    // 🔥 TU URL YA INSERTADA
-    // ============================
-    const scriptURL = "https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec";
+const scriptURL = 'https://script.google.com/macros/s/AKfycbzmIW4rvilG6rCN7NbT-sQw-VniY0PDyi7wxQuBYbmDXOGbMup8J4tMEu99uqwzMHuq/exec';
 
-    let db = { menu: [], restaurantes: [], config: {}, anuncios: [], legal: "" };
-    let cesta = [];
-    let rActivo = { id: null, nombre: "", foto: "" };
+let db = { menu: [], restaurantes: [], config: {}, anuncios: [], legal: "" };
+let cesta = [];
+let rActivo = { id: null, nombre: "", foto: "" };
 
-    async function init() {
-        try {
-            const res = await fetch(scriptURL);
-            const data = await res.json();
+let itemActual = { 
+    pBase: 0, 
+    pOpciones: 0, 
+    pExtras: 0, 
+    cantidad: 1, 
+    obligatorioOk: false, 
+    data: null 
+};
 
-            db.restaurantes = data.RESTAURANTES;
-            db.menu = data.MENU_GENERAL;
-            db.anuncios = data.ANUNCIOS || [];
+let fondoOriginal = "";
 
-            document.getElementById('loader').style.display = 'none';
+/* ================= INIT ================= */
+async function init() {
+    try {
+        const res = await fetch(scriptURL);
+        const data = await res.json();
 
-            renderHome();
-        } catch (e) {
-            console.error(e);
+        db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+        db.menu = data.MENU_GENERAL;
+        db.anuncios = data.ANUNCIOS || [];
+        db.legal = data.LEGAL?.[0]?.TEXTO || "";
+
+        if (db.anuncios.length > 0)
+            document.getElementById('texto-anuncio').innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+
+        if (data.CONFIG?.[0]) {
+            document.getElementById('app-logo').src = data.CONFIG[0].LOGO_URL;
+            document.getElementById('header-bg').style.backgroundImage = `url('${data.CONFIG[0].FONDO_URL}')`;
+            fondoOriginal = data.CONFIG[0].FONDO_URL;
         }
-    }
 
-    function renderHome() {
-        let html = `<h1 class="text-white p-6 font-black text-xl">Restaurantes</h1>`;
+        document.getElementById('loader').style.display = 'none';
 
-        db.restaurantes.forEach(r => {
-            html += `
-                <div class="p-4 m-4 bg-white/5 rounded-2xl border border-white/10" onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}','${r.ID_RESTAURANTE}','${r.FOTO}')">
-                    <h2 class="font-black text-white">${r.NOMBRE_RESTAURANTE}</h2>
-                </div>
-            `;
+        if(localStorage.getItem('ae_pedido_id')) renderSeguimiento();
+
+        renderHome();
+
+    } catch (e) { console.error(e); }
+}
+
+/* ================= CANTIDAD ================= */
+function cambiarCantPlato(delta) {
+    itemActual.cantidad += delta;
+    if (itemActual.cantidad < 1) itemActual.cantidad = 1;
+
+    document.getElementById('cant-plato-modal').innerText = itemActual.cantidad;
+    actualizarBarraModal();
+}
+
+/* ================= AÑADIR ================= */
+function confirmarAnadir() {
+    try {
+        let sel = [];
+
+        document.querySelectorAll('.grid-option.selected').forEach(el => {
+            let texto = el.innerText.split('+')[0].trim();
+            if (texto) sel.push(texto);
         });
 
-        document.getElementById('app-container').innerHTML = html;
-    }
+        document.querySelectorAll('.qty').forEach(el => {
+            const cant = parseInt(el.innerText) || 0;
+            if (cant > 0) {
+                const nombreExtra = el.dataset.nombre || "Extra";
+                sel.push(`${cant}x ${nombreExtra}`);
+            }
+        });
 
-    function abrirTienda(nombre, id, foto) {
-        rActivo = { nombre, id, foto };
-        alert("Abriendo " + nombre);
-    }
+        const detalle = sel.length ? ` [${sel.join(', ')}]` : "";
+        const nombreBase = `${itemActual.data.PLATO}${detalle}`;
+        const precioUnitario = itemActual.pBase + itemActual.pOpciones + itemActual.pExtras;
 
-    init();
+        let existente = cesta.find(i => i.base === nombreBase);
+
+        if (existente) {
+            existente.cantidad += itemActual.cantidad;
+            existente.total += precioUnitario * itemActual.cantidad;
+        } else {
+            cesta.push({
+                base: nombreBase,
+                cantidad: itemActual.cantidad,
+                total: precioUnitario * itemActual.cantidad
+            });
+        }
+
+        actualizarCestaBar();
+        cerrarModal();
+
+    } catch (e) {
+        alert("Error al añadir");
+    }
+}
+
+/* ================= CESTA ================= */
+function actualizarCestaBar() {
+    const total = cesta.reduce((acc, i) => acc + i.total, 0);
+
+    document.getElementById('cesta-flotante')
+        .classList.toggle('hidden', cesta.length === 0);
+
+    document.getElementById('cesta-info')
+        .innerText = `${cesta.length} PRODUCTOS`;
+
+    document.getElementById('cesta-total')
+        .innerText = `${total.toFixed(2)}€ TOTAL`;
+}
+
+/* ================= MODAL PRECIO ================= */
+function actualizarBarraModal() {
+    const total = (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad;
+
+    document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€";
+
+    const btn = document.getElementById('btn-anadir-modal');
+    btn.disabled = !itemActual.obligatorioOk;
+    btn.style.opacity = itemActual.obligatorioOk ? "1" : "0.3";
+}
+
+/* ================= ELIMINAR ================= */
+function eliminarItem(i) {
+    cesta.splice(i, 1);
+    actualizarCestaBar();
+    if(cesta.length === 0)
+        document.getElementById('panel-revision').style.display = 'none';
+}
+
+/* ================= CHECKOUT ================= */
+function abrirCheckout() {
+    document.getElementById('panel-revision').style.display = 'none';
+    document.getElementById('panel-checkout').style.display = 'flex';
+
+    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+
+    document.getElementById('desglose-pago').innerHTML = `
+        <div class="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
+        <div class="flex justify-between"><span>Envío</span><span>2.50€</span></div>
+        <div class="flex justify-between font-black text-cyan-400 text-lg">
+            <span>Total</span>
+            <span>${(subtotal + 2.5 + 1).toFixed(2)}€</span>
+        </div>`;
+}
+
+/* ================= ENVÍO ================= */
+async function enviarPedidoFinal() {
+    const nom = document.getElementById('cliente-nombre').value;
+    const tel = document.getElementById('cliente-telf').value;
+    const dir = document.getElementById('cliente-dir').value;
+
+    if(!nom || !dir || tel.length < 9)
+        return alert("Completa datos");
+
+    const pedido = {
+        cliente_info: nom,
+        telf_info: tel,
+        dir_info: dir,
+        pedido_info: cesta.map(i => `${i.cantidad}x ${i.base}`).join(" | "),
+        total_info: cesta.reduce((a,b)=>a+b.total,0).toFixed(2)+"€",
+        pago_info: document.getElementById('metodo-pago').value,
+        id_res_info: rActivo.id
+    };
+
+    try {
+        await fetch(scriptURL, {
+            method: "POST",
+            mode: "no-cors",
+            body: JSON.stringify(pedido)
+        });
+
+        cesta = [];
+        actualizarCestaBar();
+        cerrarCheckout();
+        renderSeguimiento();
+
+    } catch (e) {
+        alert("Error envío");
+    }
+}
+
+/* ================= UTIL ================= */
+function cerrarModal() {
+    document.getElementById('modal-plato').style.display = 'none';
+}
+function cerrarCheckout() {
+    document.getElementById('panel-checkout').style.display = 'none';
+}
+
+/* ================= START ================= */
+init();
 </script>
-
-</body>
-</html>

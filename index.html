@@ -41,8 +41,11 @@
         .marquee p { display: inline-block; padding-left: 100%; animation: marquee 25s linear infinite; font-size: 10px; font-weight: 800; color: var(--cyan); text-transform: uppercase; italic; }
         @keyframes marquee { 0% { transform: translate(0, 0); } 100% { transform: translate(-100%, 0); } }
     </style>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
 </head>
-<body>
+<body class="bg-black text-white font-sans selection:bg-cyan-500/30">
 
     <div id="loader">
         <div class="spinner mb-4"></div>
@@ -129,7 +132,6 @@
             <input type="text" id="cliente-dir" placeholder="DIRECCIÓN DE ENTREGA">
             <select id="metodo-pago">
                 <option value="EFECTIVO">EFECTIVO</option>
-                <option value="BIZUM">BIZUM</option>
                 <option value="TARJETA">TARJETA (TPV EN SITIO)</option>
             </select>
         </div>
@@ -479,6 +481,89 @@ function cambiarCantPlato(mod) {
       });
     }
     // ===========================================
+        // --- SISTEMA DE SEGUIMIENTO Y CRONÓMETRO ---
+function renderSeguimiento() {
+    const pid = localStorage.getItem('ae_pedido_id');
+    const modalExito = document.getElementById('modal-exito');
+    const card = document.getElementById('card-seguimiento');
+    
+    if(!card) return;
+
+    card.innerHTML = `
+        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
+            <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h2 class="text-xl font-black italic uppercase text-white mb-1">¡ORDEN RECIBIDA!</h2>
+        <p class="text-[10px] text-white/50 mb-4 uppercase italic tracking-widest">Ref: ${pid}</p>
+
+        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl">
+            <p class="text-[9px] text-cyan-400 font-black uppercase mb-1">Tiempo Estimado de Entrega</p>
+            <div id="countdown-display" class="text-3xl font-black italic text-white">CALCULANDO...</div>
+        </div>
+
+        <div class="flex justify-between items-start w-full relative mb-12 px-2">
+            <div class="track-node" id="node-recibido">
+                <div class="track-line"></div>
+                <div class="track-dot">✔</div>
+                <span class="text-[8px] font-black uppercase mt-2">Recibido</span>
+            </div>
+            <div class="track-node" id="node-cocina">
+                <div class="track-line"></div>
+                <div class="track-dot">🍳</div>
+                <span class="text-[8px] font-black uppercase mt-2">Cocina</span>
+            </div>
+            <div class="track-node" id="node-camino">
+                <div class="track-dot">🛵</div>
+                <span class="text-[8px] font-black uppercase mt-2">Camino</span>
+            </div>
+        </div>
+
+        <div class="space-y-3">
+            <button onclick="window.open('https://wa.me/34643261881', '_blank')" class="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2">
+                <span>Contactar con Soporte</span>
+            </button>
+            <button onclick="document.getElementById('modal-exito').style.display='none'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button>
+        </div>
+    `;
+
+    modalExito.style.display = 'flex';
+
+    // Escuchador de Firebase en tiempo real
+    const pedidoRef = firebase.database().ref('pedidos/' + pid);
+    pedidoRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        if (data.timestamp_final) iniciarCronometroCliente(data.timestamp_final);
+
+        // Actualizar iconos de estado
+        document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
+        document.getElementById('node-recibido').classList.add('active');
+        if(data.estado === 'en cocina' || data.estado === 'listo') document.getElementById('node-cocina').classList.add('active');
+        if(data.estado === 'enviado') {
+            document.getElementById('node-cocina').classList.add('active');
+            document.getElementById('node-camino').classList.add('active');
+        }
+    });
+}
+
+let clienteInterval;
+function iniciarCronometroCliente(targetTime) {
+    if (clienteInterval) clearInterval(clienteInterval);
+    const display = document.getElementById('countdown-display');
+    clienteInterval = setInterval(() => {
+        const ahora = new Date().getTime();
+        const diff = targetTime - ahora;
+        if (diff <= 0) {
+            clearInterval(clienteInterval);
+            display.innerText = "¡LLEGANDO!";
+            return;
+        }
+        const min = Math.floor(diff / 60000);
+        const sec = Math.floor((diff % 60000) / 1000);
+        display.innerText = `${min}m ${sec}s`;
+    }, 1000);
+}
 </script>
 </body>
 </html>

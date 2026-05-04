@@ -20,6 +20,8 @@
         .btn-salir { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s; }
         .btn-salir:active { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
     </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </head>
 <body>
 
@@ -61,25 +63,34 @@
     <script>
         // RECUERDA: La URL debe terminar en /exec
         const scriptURL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec'; 
-        
+        const firebaseConfig = {
+    databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/"
+};
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
         let miCodigo = localStorage.getItem('ae_cod_reparto');
         let pedidosActivos = [];
         let saldoActual = 0;
 
-        async function initReparto() {
-            if(!miCodigo) {
-                miCodigo = prompt("Introduce tu código de repartidor (ej: R001):");
-                if(!miCodigo) return location.reload();
-                localStorage.setItem('ae_cod_reparto', miCodigo.trim());
-            }
-            
-            document.getElementById('codigo-ui').innerText = `ID: ${miCodigo}`;
-            
-            await refrescarDatos();
-            document.getElementById('loader').style.display = 'none';
-            setInterval(refrescarDatos, 30000); // Auto-refresco cada 30 seg
-        }
-
+       async function initReparto() {
+    if(!miCodigo) {
+        miCodigo = prompt("Introduce tu código de repartidor (ej: R001):");
+        if(!miCodigo) return location.reload();
+        localStorage.setItem('ae_cod_reparto', miCodigo.trim());
+    }
+    
+    document.getElementById('codigo-ui').innerText = `ID: ${miCodigo}`;
+    
+    // --- ESTA ES LA PARTE QUE DEBES AÑADIR ---
+    database.ref('pedidosActivos').on('value', (snapshot) => {
+        console.log("Movimiento detectado, actualizando panel...");
+        refrescarDatos(); 
+    });
+    // -----------------------------------------
+    
+    await refrescarDatos();
+    document.getElementById('loader').style.display = 'none';
+}
         async function refrescarDatos() {
             try {
                 const res = await fetch(`${scriptURL}?action=getPedidosReparto&idRepartidor=${miCodigo}`);

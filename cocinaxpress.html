@@ -19,6 +19,12 @@
         .modal-blur { backdrop-filter: blur(12px); background: rgba(0,0,0,0.85); }
         .ticket-font { font-family: 'JetBrains+Mono', monospace; white-space: pre-wrap; line-height: 1.4; }
         .btn-logout { position: fixed; bottom: 20px; right: 20px; z-index: 100; width: 45px; height: 45px; border-radius: 12px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; }
+        /* Nuevos estilos para botones de tiempo */
+        .btn-tiempo { transition: all 0.2s; border: 1px solid rgba(255,255,255,0.1); }
+        .btn-tiempo:active { scale: 0.90; }
+        .t-15 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .t-30 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .t-45 { background: rgba(239, 68, 68, 0.2); color: #f87171; }
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -186,17 +192,29 @@
             return;
         }
         cont.innerHTML = pedidosActivos.map(p => `
-            <div class="glass p-6 rounded-[2.5rem] border border-white/5 shadow-xl">
-                <div class="flex justify-between items-start mb-6">
-                    <div><span class="text-cyan-400 font-black text-2xl italic tracking-tighter">#${p.ID_PEDIDO}</span><h2 class="text-white font-bold uppercase text-[10px] mt-1 opacity-60 italic">${p.CLIENTE}</h2></div>
-                    <p class="text-2xl font-black text-white">${parseFloat(p.TOTAL).toFixed(2)}€</p>
-                </div>
-                <div class="grid grid-cols-3 gap-2">
-                    <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="py-4 rounded-2xl text-[9px] font-black uppercase ${aceptados.has(p.ID_PEDIDO) ? 'bg-slate-800 text-slate-600' : 'bg-white text-black ring-4 ring-white/10'} shadow-lg">${aceptados.has(p.ID_PEDIDO) ? 'ACEPTADO' : 'ACEPTAR'}</button>
-                    <button onclick="verDetalles('${p.ID_PEDIDO}')" class="bg-slate-800 text-cyan-400 py-4 rounded-2xl text-[9px] font-black uppercase border border-cyan-400/20 shadow-lg">DETALLES</button>
-                    <button onclick="confirmarListo('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black py-4 rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-cyan-500/20">LISTO</button>
-                </div>
-            </div>`).join('');
+           <div class="glass p-6 rounded-[2.5rem] border border-white/5 shadow-xl">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <span class="text-cyan-400 font-black text-2xl italic tracking-tighter">#${p.ID_PEDIDO}</span>
+                <h2 class="text-white font-bold uppercase text-[10px] mt-1 opacity-60 italic">${p.CLIENTE}</h2>
+            </div>
+            <p class="text-2xl font-black text-white">${parseFloat(p.TOTAL).toFixed(2)}€</p>
+        </div>
+
+        <!-- --- NUEVA FILA DE TIEMPOS --- -->
+        <div class="flex gap-2 mb-4">
+            <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15)" class="btn-tiempo t-15 flex-1 py-3 rounded-xl text-[9px] font-black italic border border-green-500/30">15 MIN</button>
+            <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30)" class="btn-tiempo t-30 flex-1 py-3 rounded-xl text-[9px] font-black italic border border-amber-500/30">30 MIN</button>
+            <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45)" class="btn-tiempo t-45 flex-1 py-3 rounded-xl text-[9px] font-black italic border border-red-500/30">45 MIN</button>
+        </div>
+        <!-- ---------------------------- -->
+
+        <div class="grid grid-cols-3 gap-2">
+            <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="py-4 rounded-2xl text-[9px] font-black uppercase ${aceptados.has(p.ID_PEDIDO) ? 'bg-slate-800 text-slate-600' : 'bg-white text-black ring-4 ring-white/10'} shadow-lg">${aceptados.has(p.ID_PEDIDO) ? 'ACEPTADO' : 'ACEPTAR'}</button>
+            <button onclick="verDetalles('${p.ID_PEDIDO}')" class="bg-slate-800 text-cyan-400 py-4 rounded-2xl text-[9px] font-black uppercase border border-cyan-400/20 shadow-lg">DETALLES</button>
+            <button onclick="confirmarListo('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black py-4 rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-cyan-500/20">LISTO</button>
+        </div>
+    </div>`).join('');
     }
 
     function verDetalles(id) {
@@ -307,4 +325,27 @@
         document.getElementById('customModal').classList.remove('hidden');
     }
     function cerrarModal() { document.getElementById('customModal').classList.add('hidden'); }
+        // --- FUNCIÓN PARA ASIGNAR TIEMPO DESDE COCINA ---
+async function asignarTiempo(idPedido, minutos) {
+    const ahora = new Date();
+    const horaListo = new Date(ahora.getTime() + minutos * 60000);
+    
+    // Formateamos la hora (ej: 14:30)
+    const horaFormateada = horaListo.getHours().toString().padStart(2, '0') + ":" + 
+                           horaListo.getMinutes().toString().padStart(2, '0');
+
+    try {
+        // Guardamos en Firebase para que el Repartidor y Cliente lo vean al segundo
+        await database.ref('pedidos/' + idPedido).update({
+            tiempoEstimado: minutos,
+            horaSalida: horaFormateada,
+            timestampListo: horaListo.getTime()
+        });
+
+        alert(`⏳ Pedido #${idPedido} marcado para las ${horaFormateada} (${minutos} min)`);
+    } catch (error) {
+        console.error("Error al asignar tiempo:", error);
+        alert("Error al conectar con Firebase");
+    }
+}
 </script>

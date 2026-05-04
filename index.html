@@ -444,12 +444,42 @@ function cambiarCantPlato(mod) {
             const pid = "AE-" + Math.floor(1000 + Math.random() * 9000);
             const paquete = { cliente_info: nom, telf_info: tel, dir_info: dir, pedido_info: cesta.map(i => i.nombre).join(" | "), total_info: (cesta.reduce((a,b)=>a+b.total,0)+3.5).toFixed(2)+"€", pago_info: document.getElementById('metodo-pago').value, id_res_info: rActivo.id };
             try {
-                await fetch(scriptURL, { method: "POST", mode: "no-cors", body: JSON.stringify(paquete) });
-                localStorage.setItem('ae_pedido_id', pid);
-                localStorage.setItem('ae_nombre', nom); localStorage.setItem('ae_telf', tel); localStorage.setItem('ae_dir', dir); localStorage.setItem('ae_legal', "true");
-                cesta = []; actualizarCestaBar(); cerrarCheckout(); renderSeguimiento();
-            } catch (e) { alert("Error al enviar"); btn.disabled = false; btn.innerText = "Procesar Orden"; }
-        }
+        // 1. Enviamos a Google Sheets (tu código actual)
+        await fetch(scriptURL, { method: "POST", mode: "no-cors", body: JSON.stringify(paquete) });
+
+        // 2. NUEVO: Enviamos a Firebase para activar el Seguimiento en Vivo
+        const tiempoEstimado = 45; // Minutos iniciales
+        const entregaTimestamp = new Date().getTime() + (tiempoEstimado * 60000);
+
+        await firebase.database().ref('pedidos/' + pid).set({
+            id: pid,
+            cliente: nom,
+            direccion: dir,
+            telefono: tel,
+            items: cesta.map(i => i.nombre),
+            total: paquete.total_info,
+            estado: 'recibido',
+            timestamp_final: entregaTimestamp
+        });
+
+        // 3. Guardamos localmente y abrimos el modal
+        localStorage.setItem('ae_pedido_id', pid);
+        localStorage.setItem('ae_nombre', nom); 
+        localStorage.setItem('ae_telf', tel); 
+        localStorage.setItem('ae_dir', dir);
+        localStorage.setItem('ae_legal', "true");
+
+        cesta = []; 
+        actualizarCestaBar(); 
+        cerrarCheckout(); 
+        renderSeguimiento(); // Esto ahora sí encontrará datos en Firebase
+
+    } catch (e) { 
+        console.error(e);
+        alert("Error al enviar el pedido"); 
+        btn.disabled = false; 
+        btn.innerText = "Procesar Orden"; 
+    }        }
 
         function toggleSel(el, pr, tipo) {
             if (tipo === 'oblig') {

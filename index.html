@@ -437,41 +437,86 @@
     function abrirLegal() { document.getElementById('texto-legal-completo').innerText = db.legal; document.getElementById('modal-legal').style.display = 'flex'; }
     function filtrarCat(cat, el) { document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.plato-card').forEach(p => { p.style.display = (cat === 'TODOS' || p.dataset.cat === cat) ? 'flex' : 'none'; }); }
 
-    function renderSeguimiento() {
-        const pid = localStorage.getItem('ae_pedido_id');
-        const modalExito = document.getElementById('modal-exito');
-        const card = document.getElementById('card-seguimiento');
-        if(!card) return;
-        card.innerHTML = `<div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]"><svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg></div><h2 class="text-xl font-black italic uppercase text-white mb-1">¡ORDEN RECIBIDA!</h2><p class="text-[10px] text-white/50 mb-4 uppercase italic tracking-widest">Ref: ${pid}</p><div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl"><p class="text-[9px] text-cyan-400 font-black uppercase mb-1">Tiempo Estimado de Entrega</p><div id="countdown-display" class="text-3xl font-black italic text-white">CALCULANDO...</div></div><div class="flex justify-between items-start w-full relative mb-12 px-2"><div class="track-node" id="node-recibido"><div class="track-line"></div><div class="track-dot">✔</div><span class="text-[8px] font-black uppercase mt-2">Recibido</span></div><div class="track-node" id="node-cocina"><div class="track-line"></div><div class="track-dot">🍳</div><span class="text-[8px] font-black uppercase mt-2">Cocina</span></div><div class="track-node" id="node-camino"><div class="track-dot">🛵</div><span class="text-[8px] font-black uppercase mt-2">Camino</span></div></div><div class="space-y-3"><button onclick="window.open('https://wa.me/34643261881', '_blank')" class="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2"><span>Contactar con Soporte</span></button><button onclick="document.getElementById('modal-exito').style.display='none'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button></div>`;
-        modalExito.style.display = 'flex';
-        database.ref('pedidos/' + pid).on('value', (snapshot) => {
-            const data = snapshot.val(); if (!data) return;
-            if (data.timestamp_final) iniciarCronometroCliente(data.timestamp_final);
-            document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
-            document.getElementById('node-recibido').classList.add('active');
-            if(data.estado === 'en cocina' || data.estado === 'listo') document.getElementById('node-cocina').classList.add('active');
-            if(data.estado === 'enviado') { document.getElementById('node-cocina').classList.add('active'); document.getElementById('node-camino').classList.add('active'); }
-        });
-    }
+  function renderSeguimiento() {
+    const pid = localStorage.getItem('ae_pedido_id');
+    const modalExito = document.getElementById('modal-exito');
+    const card = document.getElementById('card-seguimiento');
+    if(!card) return;
 
-    let clienteInterval;
-    function iniciarCronometroCliente(targetTime) {
-        if (clienteInterval) clearInterval(clienteInterval);
+    // 1. Diseño base del Modal de Éxito
+    card.innerHTML = `
+        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
+            <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h2 class="text-xl font-black italic uppercase text-white mb-1">¡ORDEN RECIBIDA!</h2>
+        <p class="text-[10px] text-white/50 mb-4 uppercase italic tracking-widest">Ref: ${pid}</p>
+        
+        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl">
+            <p id="timer-label" class="text-[9px] text-cyan-400 font-black uppercase mb-1">Estado del Pedido</p>
+            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase">Esperando confirmación...</div>
+        </div>
+
+        <div class="flex justify-between items-start w-full relative mb-12 px-2">
+            <div class="track-node" id="node-recibido">
+                <div class="track-line"></div>
+                <div class="track-dot">✔</div>
+                <span class="text-[8px] font-black uppercase mt-2">Recibido</span>
+            </div>
+            <div class="track-node" id="node-cocina">
+                <div class="track-line"></div>
+                <div class="track-dot">🍳</div>
+                <span class="text-[8px] font-black uppercase mt-2">Cocina</span>
+            </div>
+            <div class="track-node" id="node-camino">
+                <div class="track-dot">🛵</div>
+                <span class="text-[8px] font-black uppercase mt-2">Camino</span>
+            </div>
+        </div>
+        <div class="space-y-3">
+            <button onclick="window.open('https://wa.me/34643261881', '_blank')" class="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2"><span>Contactar con Soporte</span></button>
+            <button onclick="document.getElementById('modal-exito').style.display='none'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button>
+        </div>`;
+
+    modalExito.style.display = 'flex';
+
+    // 2. Escucha de Firebase para actualizar estados y tiempo
+    database.ref('pedidos/' + pid).on('value', (snapshot) => {
+        const data = snapshot.val(); 
+        if (!data) return;
+
         const display = document.getElementById('countdown-display');
-        clienteInterval = setInterval(() => {
-            const ahora = new Date().getTime(); const diff = targetTime - ahora;
-            if (diff <= 0) { clearInterval(clienteInterval); display.innerText = "¡LLEGANDO!"; return; }
-            const min = Math.floor(diff / 60000); const sec = Math.floor((diff % 60000) / 1000);
-            display.innerText = `${min}m ${sec}s`;
-        }, 1000);
-    }
+        const label = document.getElementById('timer-label');
 
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => console.log('SW activo')).catch(err => console.error('Error SW', err));
-      });
-    }
+        // LÓGICA DEL TIEMPO (Solo inicia si el restaurante marca minutos)
+        if (data.timestamp_final) {
+            label.innerText = "Tiempo Estimado de Entrega";
+            display.classList.remove('text-sm');
+            display.classList.add('text-3xl');
+            iniciarCronometroCliente(data.timestamp_final);
+        } else {
+            display.innerText = "Estamos enviando tu pedido al restaurante...";
+        }
 
+        // LÓGICA DE LA BARRA DE ESTADOS
+        document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
+        
+        // Estado 1: Recibido
+        document.getElementById('node-recibido').classList.add('active');
+
+        // Estado 2: En Cocina (Se activa con el tiempo o estado 'en cocina'/'listo')
+        if(data.timestamp_final || data.estado === 'en cocina' || data.estado === 'listo') {
+            document.getElementById('node-cocina').classList.add('active');
+        }
+
+        // Estado 3: En Camino (SOLO cuando el repartidor lo tiene)
+        if(data.estado === 'en camino') {
+            document.getElementById('node-cocina').classList.add('active');
+            document.getElementById('node-camino').classList.add('active');
+            display.classList.add('text-sm'); // Ajustar tamaño para el texto largo
+            display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
+        }
+    });
+}
     init();
 </script>
 </body>

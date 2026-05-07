@@ -367,24 +367,26 @@
         id_res_info: rActivo.id
     };
 
-    try {
+   try {
         const formData = new FormData();
         formData.append("data", JSON.stringify(paquete));
 
+        // 1. Enviamos el pedido al Script de Google (Excel)
         const res = await fetch(scriptURL, {
             method: "POST",
             body: formData
         });
 
-        // (Opcional) si quieres comprobar respuesta:
-        // const json = await res.json();
-        // console.log(json);
+        // 2. RECUPERAMOS EL ID REAL: Leemos la respuesta del Script para obtener el ID oficial
+        const respuestaScript = await res.json();
+        const pidReal = respuestaScript.idPedido; 
 
         const tiempoEstimado = 45;
         const entregaTimestamp = Date.now() + (tiempoEstimado * 60000);
 
-        await database.ref('pedidos/' + pid).set({
-            id: pid,
+        // 3. ESCRIBIMOS EN FIREBASE: Usamos 'pidReal' para que coincida con el Excel
+        await database.ref('pedidos/' + pidReal).set({
+            id: pidReal,
             cliente: nom,
             direccion: dir,
             telefono: tel,
@@ -394,7 +396,8 @@
             timestamp_final: entregaTimestamp
         });
 
-        localStorage.setItem('ae_pedido_id', pid);
+        // 4. GUARDAMOS EN LOCAL: Registramos el ID oficial para el seguimiento del cliente
+        localStorage.setItem('ae_pedido_id', pidReal);
         localStorage.setItem('ae_nombre', nom);
         localStorage.setItem('ae_telf', tel);
         localStorage.setItem('ae_dir', dir);
@@ -406,14 +409,13 @@
         renderSeguimiento();
 
     } catch (e) {
-        console.error(e);
-        alert("Error al enviar el pedido");
+        console.error("Error en el envío:", e);
+        alert("Hubo un problema al procesar tu pedido. Por favor, inténtalo de nuevo.");
     } finally {
         btn.disabled = false;
         btn.innerText = "Procesar Orden";
+       }
     }
-}
-
     function toggleSel(el, pr, tipo) {
         if (tipo === 'oblig') {
             const s = el.parentElement.querySelectorAll('.selected').length;
@@ -473,35 +475,4 @@
     init();
 </script>
 </body>
-  <!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-    console.log("Inicializando Firebase…");
-
-    const firebaseConfig = {
-    apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
-    authDomain: "aguadulce-notificaciones.firebaseapp.com",
-    databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
-    projectId: "aguadulce-notificaciones",
-    storageBucket: "aguadulce-notificaciones.firebasestorage.app",
-    messagingSenderId: "940283725281",
-    appId: "1:940283725281:web:3b388d2e7f362a99d2bea0"
-};
-
-    // Inicializar Firebase SOLO una vez
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-        console.log("Firebase inicializado correctamente");
-    } else {
-        console.log("Firebase ya estaba inicializado");
-    }
-
-    // Crear referencia global
-    window.db = firebase.database();
-});
-</script>
-  
 </html>

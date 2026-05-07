@@ -194,22 +194,47 @@ async function refrescarDatos() {
                     <p class="text-[8px] font-bold text-white/40 uppercase">Total a Cobrar</p>
                     <p class="text-xl font-black text-cyan-400">${parseFloat(p.total).toFixed(2)}€</p>
                 </div>
-                ${p.estado === 'EN PROCESO' || p.estado === 'PREPARANDO' || p.estado === 'LISTO' ? 
-                    `<button onclick="actualizarEstado('${p.id}', 'EN CAMINO')" class="flex-1 bg-white text-black py-4 rounded-xl font-black uppercase text-[10px] italic">Iniciar Reparto</button>` :
-                    `<button onclick="finalizarEntrega('${p.id}', ${p.total})" class="flex-1 bg-green-500 text-white py-4 rounded-xl font-black uppercase text-[10px] italic">Confirmar Entrega</button>`
-                }
+               ${p.ESTADO === 'EN CAMINO' ? 
+    `<button onclick="finalizarEntrega('${p.ID_PEDIDO}', '${p.TOTAL}')" class="flex-1 bg-green-500 text-white py-4 rounded-xl font-black uppercase text-[10px] italic shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+        Confirmar Entrega
+    </button>` 
+    : 
+    `<button onclick="marcarEnCamino('${p.ID_PEDIDO}')" class="flex-1 bg-white text-black py-4 rounded-xl font-black uppercase text-[10px] italic">
+        Recoger Pedido 🛵
+    </button>`
+}
             </div>
         </div>
     `;
 }).join('');
         }
 
-        async function actualizarEstado(id, nuevoEstado) {
-            document.getElementById('loader').style.display = 'flex';
-            await fetch(`${scriptURL}?action=cambiarEstadoReparto&idPedido=${id}&estado=${nuevoEstado}`);
-            await refrescarDatos();
-            document.getElementById('loader').style.display = 'none';
-        }
+       async function marcarEnCamino(id) {
+    if(!id || id === 'undefined') return alert("ID de pedido no válido");
+    
+    // Mostramos el cargador visual
+    document.getElementById('loader').style.display = 'flex';
+
+    try {
+        // 1. Avisamos al Excel (Google Sheets)
+        await fetch(`${scriptURL}?action=cambiarEstadoReparto&idPedido=${id}&estado=EN CAMINO`);
+        
+        // 2. Avisamos a Firebase (Para que el cliente vea la moto moviéndose)
+        await database.ref('pedidos/' + id).update({
+            estado: 'en camino'
+        });
+
+        // 3. Refrescamos los datos de la App
+        await refrescarDatos();
+        
+    } catch (error) {
+        console.error("Error al recoger:", error);
+        alert("Hubo un problema de conexión. Inténtalo de nuevo.");
+    } finally {
+        // Ocultamos el cargador
+        document.getElementById('loader').style.display = 'none';
+    }
+}
 
         async function finalizarEntrega(id, total) {
             if(!confirm("¿Confirmas que el cliente ha pagado y recibido el pedido?")) return;

@@ -85,62 +85,71 @@ const database = firebase.database();
 
        async function initReparto() {
     if(!miCodigo) {
-        miCodigo = prompt("Introduce tu código de repartidor (ej: R001):");
-        if(!miCodigo) return location.reload();
-        localStorage.setItem('ae_cod_reparto', miCodigo.trim());
+        let inputCodigo = prompt("Introduce tu código de repartidor (ej: R001):");
+        if(!inputCodigo) return location.reload();
+        
+        // CORRECCIÓN: Limpiamos espacios y pasamos a MAYÚSCULAS antes de guardar
+        miCodigo = inputCodigo.trim().toUpperCase(); 
+        localStorage.setItem('ae_cod_reparto', miCodigo);
     }
     
     document.getElementById('codigo-ui').innerText = `ID: ${miCodigo}`;
     
-    // --- ESTA ES LA PARTE QUE DEBES AÑADIR ---
+    // Escucha de Firebase para refrescar cuando hay pedidos nuevos
     database.ref('pedidosActivos').on('value', (snapshot) => {
         console.log("Movimiento detectado, actualizando panel...");
         refrescarDatos(); 
     });
-    // -----------------------------------------
     
     await refrescarDatos();
     document.getElementById('loader').style.display = 'none';
 }
-        async function refrescarDatos() {
-            try {
-                const res = await fetch(`${scriptURL}?action=getPedidosReparto&idRepartidor=${miCodigo}`);
-                const data = await res.json();
-                
-                if(data.error) {
-                    alert("Error: " + data.error);
-                    cerrarSesion();
-                    return;
-                }
 
-                pedidosActivos = data.pedidos;
-                saldoActual = data.saldo;
-                
-                document.getElementById('saldo-billetera').innerText = saldoActual.toFixed(2) + "€";
-                document.getElementById('indicador-pedidos').innerText = `${pedidosActivos.length}/2 ACTIVOS`;
-                document.getElementById('nombre-repartidor').innerText = data.nombre;
-                // --- PUENTE FIREBASE-EXCEL ---
-// Leemos los tiempos reales de Firebase
-const snapshot = await database.ref('pedidos').once('value');
-const tiemposFirebase = snapshot.val() || {};
-
-// Inyectamos el timestamp de Firebase en nuestros pedidos del Excel
-pedidosActivos = pedidosActivos.map(p => {
-    if (tiemposFirebase[p.id]) {
-        return { ...p, timestampListo: tiemposFirebase[p.id].timestampListo };
-    }
-    return p;
-});
-// -----------------------------
-                
-                renderPedidos();
-            } catch (e) { 
-                console.error("Error de conexión"); 
-                document.getElementById('txt-estado').innerText = "Offline";
-                document.getElementById('txt-estado').className = "text-red-400";
-            }
+async function refrescarDatos() {
+    try {
+        // Aseguramos que el código vaya limpio en la URL
+        const urlFinal = `${scriptURL}?action=getPedidosReparto&idRepartidor=${miCodigo.trim().toUpperCase()}`;
+        const res = await fetch(urlFinal);
+        const data = await res.json();
+        
+        if(data.error) {
+            // Si el error es "No encontrado", avisamos qué ID se intentó usar
+            console.error("Error desde el servidor:", data.error);
+            alert(`Repartidor ${miCodigo} no encontrado en el sistema.`);
+            cerrarSesion();
+            return;
         }
 
+        pedidosActivos = data.pedidos;
+        saldoActual = parseFloat(data.saldo) || 0;
+        
+        document.getElementById('saldo-billetera').innerText = saldoActual.toFixed(2) + "€";
+        document.getElementById('indicador-pedidos').innerText = `${pedidosActivos.length}/2 ACTIVOS`;
+        document.getElementById('nombre-repartidor').innerText = data.nombre || "REPARTIDOR";
+        
+        // --- SINCRONIZACIÓN CON FIREBASE ---
+        const snapshot = await database.ref('pedidos').once('value');
+        const tiemposFirebase = snapshot.val() || {};
+
+        pedidosActivos = pedidosActivos.map(p => {
+            if (tiemposFirebase[p.id]) {
+                return { ...p, timestampListo: tiemposFirebase[p.id].timestampListo };
+            }
+            return p;
+        });
+        
+        renderPedidos();
+        
+        // Resetear estado visual a Online
+        document.getElementById('txt-estado').innerText = "Disponible";
+        document.getElementById('txt-estado').className = "text-green-400";
+
+    } catch (e) { 
+        console.error("Error de conexión:", e); 
+        document.getElementById('txt-estado').innerText = "Offline";
+        document.getElementById('txt-estado').className = "text-red-400";
+    }
+}
         function renderPedidos() {
             const contenedor = document.getElementById('lista-pedidos');
             if(pedidosActivos.length === 0) {

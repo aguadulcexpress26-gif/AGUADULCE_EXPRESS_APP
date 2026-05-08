@@ -503,33 +503,42 @@ document.getElementById('desglose-pago').innerHTML = `
         const display = document.getElementById('countdown-display');
         const label = document.getElementById('timer-label');
 
-        // LÓGICA DEL TIEMPO (Solo inicia si el restaurante marca minutos)
-        if (data.timestamp_final) {
+        // 1. LÓGICA DEL TIEMPO (Solo si hay un tiempo confirmado)
+        if (data.timestampListo) {
             label.innerText = "Tiempo Estimado de Entrega";
             display.classList.remove('text-sm');
             display.classList.add('text-3xl');
-            iniciarCronometroCliente(data.timestamp_final);
+            iniciarCronometroCliente(data.timestampListo);
         } else {
-            display.innerText = "Estamos enviando tu pedido al restaurante...";
+            label.innerText = "Estado del Pedido";
+            display.classList.remove('text-3xl');
+            display.classList.add('text-sm');
+            display.innerText = "Esperando que el restaurante confirme tu pedido...";
         }
 
-        // LÓGICA DE LA BARRA DE ESTADOS
+        // 2. LÓGICA DE LA BARRA DE ESTADOS (Nodos)
+        // Limpiamos todos primero
         document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
         
-        // Estado 1: Recibido
+        // Siempre activo el primero
         document.getElementById('node-recibido').classList.add('active');
 
-        // Estado 2: En Cocina (Se activa con el tiempo o estado 'en cocina'/'listo')
-        if(data.timestamp_final || data.estado === 'en cocina' || data.estado === 'listo') {
+        // Solo activar COCINA si el estado ya no es 'recibido'
+        const estado = String(data.estado || "").toLowerCase();
+        
+        if (estado !== 'recibido' && estado !== '') {
             document.getElementById('node-cocina').classList.add('active');
         }
 
-        // Estado 3: En Camino (SOLO cuando el repartidor lo tiene)
-        if(data.estado === 'en camino') {
-            document.getElementById('node-cocina').classList.add('active');
+        // Activar CAMINO solo cuando el repartidor lo marca
+        if (estado === 'en camino') {
             document.getElementById('node-camino').classList.add('active');
-            display.classList.add('text-sm'); // Ajustar tamaño para el texto largo
+            display.classList.remove('text-3xl');
+            display.classList.add('text-sm');
             display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
+            
+            // Si quieres que el cronómetro desaparezca al estar en camino:
+            if (clienteInterval) clearInterval(clienteInterval);
         }
     });
 }

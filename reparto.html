@@ -15,24 +15,12 @@
         #loader { position: fixed; inset: 0; background: var(--dark); z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        
-        /* Estilo para el botón de salida */
-        .btn-salir { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s; }
-        .btn-salir:active { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
-        .badge-tiempo {
-    background: rgba(6, 182, 212, 0.1);
-    border: 1px solid rgba(6, 182, 212, 0.3);
-    color: var(--cyan);
-    padding: 4px 10px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 800;
-}
-.blink { animation: blinker 1.5s linear infinite; }
-@keyframes blinker { 50% { opacity: 0; } }
+        .badge-tiempo { background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); color: var(--cyan); padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 800; }
+        .blink { animation: blinker 1.5s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </head>
 <body>
 
@@ -41,17 +29,15 @@
         <p class="text-cyan-400 text-[10px] font-black uppercase tracking-widest">Iniciando Terminal de Reparto...</p>
     </div>
 
-    <!-- HEADER LOGÍSTICA -->
     <header class="p-6 bg-gradient-to-b from-cyan-900/20 to-transparent">
         <div class="flex justify-between items-center mb-6">
             <div class="flex items-center gap-4">
-                <!-- BOTÓN SALIR -->
-                <button onclick="cerrarSesion()" class="btn-salir p-3 rounded-2xl">
+                <button onclick="cerrarSesion()" class="p-3 bg-white/5 border border-white/10 rounded-2xl">
                     <span class="text-lg">🚪</span>
                 </button>
                 <div>
-                    <h1 id="nombre-repartidor" class="text-xl font-black italic uppercase italic leading-tight">REPARTIDOR</h1>
-                    <p id="codigo-ui" class="text-cyan-400 text-[10px] font-bold uppercase tracking-tighter">Cargando código...</p>
+                    <h1 id="nombre-repartidor" class="text-xl font-black italic uppercase leading-tight">REPARTIDOR</h1>
+                    <p id="codigo-ui" class="text-cyan-400 text-[10px] font-bold uppercase tracking-tighter">ID: ---</p>
                 </div>
             </div>
             <div class="text-right">
@@ -60,7 +46,6 @@
             </div>
         </div>
         
-        <!-- ESTADO DE CONEXIÓN -->
         <div id="status-bar" class="bg-white/5 p-4 rounded-2xl border border-white/10 flex justify-between items-center">
             <span class="text-[10px] font-black uppercase">Estado: <span id="txt-estado" class="text-green-400">Disponible</span></span>
             <div id="indicador-pedidos" class="text-[10px] font-black bg-cyan-400 text-black px-3 py-1 rounded-full">0/2 ACTIVOS</div>
@@ -68,88 +53,71 @@
     </header>
 
     <main id="lista-pedidos" class="px-6 pb-32">
-        <!-- Las tarjetas de pedidos aparecerán aquí -->
-    </main>
+        </main>
 
     <script>
-        // RECUERDA: La URL debe terminar en /exec
         const scriptURL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec'; 
-        const firebaseConfig = {
-    databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/"
-};
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
+        const firebaseConfig = { databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
         let miCodigo = localStorage.getItem('ae_cod_reparto');
         let pedidosActivos = [];
-        let saldoActual = 0;
 
-       async function initReparto() {
-    if(!miCodigo) {
-        let inputCodigo = prompt("Introduce tu código de repartidor (ej: R001):");
-        if(!inputCodigo) return location.reload();
-        
-        // CORRECCIÓN: Limpiamos espacios y pasamos a MAYÚSCULAS antes de guardar
-        miCodigo = inputCodigo.trim().toUpperCase(); 
-        localStorage.setItem('ae_cod_reparto', miCodigo);
-    }
-    
-    document.getElementById('codigo-ui').innerText = `ID: ${miCodigo}`;
-    
-    // Escucha de Firebase para refrescar cuando hay pedidos nuevos
-    database.ref('pedidosActivos').on('value', (snapshot) => {
-        console.log("Movimiento detectado, actualizando panel...");
-        refrescarDatos(); 
-    });
-    
-    await refrescarDatos();
-    document.getElementById('loader').style.display = 'none';
-}
-
-async function refrescarDatos() {
-    try {
-        // Aseguramos que el código vaya limpio en la URL
-        const urlFinal = `${scriptURL}?action=getPedidosReparto&idRepartidor=${miCodigo.trim().toUpperCase()}`;
-        const res = await fetch(urlFinal);
-        const data = await res.json();
-        
-        if(data.error) {
-            // Si el error es "No encontrado", avisamos qué ID se intentó usar
-            console.error("Error desde el servidor:", data.error);
-            alert(`Repartidor ${miCodigo} no encontrado en el sistema.`);
-            cerrarSesion();
-            return;
+        async function initReparto() {
+            if(!miCodigo) {
+                let inputCodigo = prompt("Introduce tu código de repartidor (ej: R001):");
+                if(!inputCodigo) return location.reload();
+                miCodigo = inputCodigo.trim().toUpperCase(); 
+                localStorage.setItem('ae_cod_reparto', miCodigo);
+            }
+            document.getElementById('codigo-ui').innerText = `ID: ${miCodigo}`;
+            
+            database.ref('pedidosActivos').on('value', () => {
+                refrescarDatos(); 
+            });
+            
+            await refrescarDatos();
+            document.getElementById('loader').style.display = 'none';
         }
 
-        pedidosActivos = data.pedidos;
-        saldoActual = parseFloat(data.saldo) || 0;
-        
-        document.getElementById('saldo-billetera').innerText = saldoActual.toFixed(2) + "€";
-        document.getElementById('indicador-pedidos').innerText = `${pedidosActivos.length}/2 ACTIVOS`;
-        document.getElementById('nombre-repartidor').innerText = data.nombre || "REPARTIDOR";
-        
-        // --- SINCRONIZACIÓN CON FIREBASE ---
-        const snapshot = await database.ref('pedidos').once('value');
-        const tiemposFirebase = snapshot.val() || {};
+        async function refrescarDatos() {
+            try {
+                const res = await fetch(`${scriptURL}?action=getPedidosReparto&idRepartidor=${miCodigo}`);
+                const data = await res.json();
+                
+                if(data.error) {
+                    alert(data.error);
+                    cerrarSesion();
+                    return;
+                }
 
-        pedidosActivos = pedidosActivos.map(p => {
-            if (tiemposFirebase[p.id]) {
-                return { ...p, timestampListo: tiemposFirebase[p.id].timestampListo };
+                document.getElementById('saldo-billetera').innerText = (parseFloat(data.saldo) || 0).toFixed(2) + "€";
+                document.getElementById('indicador-pedidos').innerText = `${data.pedidos.length}/2 ACTIVOS`;
+                document.getElementById('nombre-repartidor').innerText = data.nombre || "REPARTIDOR";
+
+                // Sincronizar tiempos con Firebase usando ID_PEDIDO
+                const snapshot = await database.ref('pedidos').once('value');
+                const fbData = snapshot.val() || {};
+
+                pedidosActivos = data.pedidos.map(p => {
+                    const fbPedido = fbData[p.ID_PEDIDO];
+                    return {
+                        ...p,
+                        timestampListo: fbPedido ? fbPedido.timestampListo : null,
+                        notas: p.notas || "Sin instrucciones"
+                    };
+                });
+                
+                renderPedidos();
+                document.getElementById('txt-estado').innerText = "Disponible";
+                document.getElementById('txt-estado').className = "text-green-400";
+            } catch (e) { 
+                document.getElementById('txt-estado').innerText = "Offline";
+                document.getElementById('txt-estado').className = "text-red-400";
             }
-            return p;
-        });
-        
-        renderPedidos();
-        
-        // Resetear estado visual a Online
-        document.getElementById('txt-estado').innerText = "Disponible";
-        document.getElementById('txt-estado').className = "text-green-400";
+        }
 
-    } catch (e) { 
-        console.error("Error de conexión:", e); 
-        document.getElementById('txt-estado').innerText = "Offline";
-        document.getElementById('txt-estado').className = "text-red-400";
-    }
-}
         function renderPedidos() {
             const contenedor = document.getElementById('lista-pedidos');
             if(pedidosActivos.length === 0) {
@@ -158,152 +126,115 @@ async function refrescarDatos() {
             }
 
             contenedor.innerHTML = pedidosActivos.map(p => {
-    // Definimos el estado actual para la lógica de botones
-    const estadoActual = (p.ESTADO || "").toUpperCase();
+                const estado = (p.ESTADO || "").toUpperCase();
+                return `
+                    <div class="card-reparto">
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="bg-cyan-400 text-black px-3 py-1 rounded-lg text-[10px] font-black italic uppercase">${p.ESTADO}</span>
+                            <span class="text-white/40 text-[10px] font-bold">Ref: ${p.ID_PEDIDO}</span>
+                        </div>
+                        
+                        <h3 class="font-black text-lg italic uppercase leading-tight mb-1">${p.DIRECCION}</h3>
+                        
+                        ${p.notas && p.notas !== "Sin instrucciones" ? `
+                            <div class="bg-yellow-400/10 border border-yellow-400/20 p-3 rounded-xl mb-4 text-left">
+                                <p class="text-[8px] font-black text-yellow-400 uppercase">🔔 NOTA:</p>
+                                <p class="text-[10px] text-white italic font-medium leading-tight">"${p.notas}"</p>
+                            </div>
+                        ` : ''}
 
-    return `
-        <div class="card-reparto">
-            <div class="flex justify-between items-start mb-4">
-                <span class="bg-cyan-400 text-black px-3 py-1 rounded-lg text-[10px] font-black italic uppercase">${p.ESTADO || 'ACEPTADO'}</span>
-                <span class="text-white/40 text-[10px] font-bold">Ref: ${p.ID_PEDIDO || '---'}</span>
-            </div>
-            
-            <h3 class="font-black text-lg italic uppercase leading-tight mb-1">${p.DIRECCION || 'Sin Dirección'}</h3>
-            
-            ${p.notas && p.notas !== "Sin instrucciones" && p.notas.trim() !== "" ? `
-                <div class="bg-yellow-400/10 border border-yellow-400/30 p-3 rounded-xl mb-4">
-                    <p class="text-[8px] font-black text-yellow-400 uppercase mb-1 flex items-center gap-1">
-                        <span>🔔</span> INDICACIONES DEL CLIENTE:
-                    </p>
-                    <p class="text-[11px] text-white italic font-medium leading-tight">"${p.notas}"</p>
-                </div>
-            ` : ''}
-            
-            <div class="mb-4">
-                <span class="timer-cocina badge-tiempo" data-time="${p.timestampListo || ''}">
-                    ${p.timestampListo ? 'Calculando...' : '⏳ ESPERANDO TIEMPO'}
-                </span>
-            </div>
-            
-            <p class="text-white/60 text-xs mb-4">${p.CLIENTE || 'Cliente'} • ${p.PAGO || 'Efectivo'}</p>
-            
-            <div class="grid grid-cols-2 gap-3 mb-6">
-                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.DIRECCION)}" target="_blank" class="bg-white/5 border border-white/10 p-4 rounded-xl text-center">
-                    <span class="block text-[18px]">📍</span>
-                    <span class="text-[8px] font-black uppercase text-cyan-400">Ver Mapa</span>
-                </a>
-                <a href="https://wa.me/${(p.telf || '').toString().replace(/\D/g,'')}" target="_blank" class="bg-white/5 border border-white/10 p-4 rounded-xl text-center">
-                    <span class="block text-[18px]">💬</span>
-                    <span class="text-[8px] font-black uppercase text-green-400">WhatsApp</span>
-                </a>
-            </div>
+                        <div class="mb-4 text-left">
+                            <span class="timer-cocina badge-tiempo" data-time="${p.timestampListo || ''}">
+                                ${p.timestampListo ? 'Calculando...' : '⏳ ESPERANDO COCINA'}
+                            </span>
+                        </div>
+                        
+                        <p class="text-white/60 text-xs mb-4">${p.CLIENTE} • ${p.PAGO}</p>
+                        
+                        <div class="grid grid-cols-2 gap-3 mb-6">
+                            <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.DIRECCION)}" target="_blank" class="bg-white/5 border border-white/10 p-4 rounded-xl text-center">
+                                <span class="block text-[18px]">📍</span>
+                                <span class="text-[8px] font-black uppercase text-cyan-400">Ver Mapa</span>
+                            </a>
+                            <a href="https://wa.me/${p.telf.toString().replace(/\D/g,'')}" target="_blank" class="bg-white/5 border border-white/10 p-4 rounded-xl text-center">
+                                <span class="block text-[18px]">💬</span>
+                                <span class="text-[8px] font-black uppercase text-green-400">WhatsApp</span>
+                            </a>
+                        </div>
 
-            <div class="flex items-center justify-between gap-4 mt-6">
-                <div class="text-left">
-                    <p class="text-[8px] font-bold text-white/40 uppercase">A Cobrar:</p>
-                    <p class="text-xl font-black text-cyan-400">${p.TOTAL || '0.00'}€</p>
-                </div>
-                
-                ${estadoActual === 'EN CAMINO' ? 
-                    // ETAPA 2: El repartidor ya va en la moto, ahora avisa que llegó
-                    `<button onclick="marcarLlegada('${p.ID_PEDIDO}')" 
-                             class="flex-1 bg-yellow-500 text-black py-4 rounded-xl font-black uppercase text-[10px] italic shadow-[0_0_15px_rgba(234,179,8,0.3)]">
-                        He llegado 📍
-                    </button>` 
-                    : estadoActual === 'LLEGÓ' ?
-                    // ETAPA 3: Ya avisó que llegó, ahora confirma el cobro/entrega
-                    `<button onclick="finalizarEntrega('${p.ID_PEDIDO}', '${p.TOTAL}')" 
-                             class="flex-1 bg-green-500 text-white py-4 rounded-xl font-black uppercase text-[10px] italic shadow-[0_0_15px_rgba(34,197,94,0.4)]">
-                        Entregado ✅
-                    </button>`
-                    :
-                    // ETAPA 1: El botón inicial de recoger
-                    `<button onclick="marcarEnCamino('${p.ID_PEDIDO}')" 
-                             class="flex-1 bg-white text-black py-4 rounded-xl font-black uppercase text-[10px] italic">
-                        Recoger Pedido 🛵
-                    </button>`
-                }
-            </div>
-        </div>
-    `;
-}).join('');
+                        <div class="flex items-center justify-between gap-4">
+                            <div class="text-left">
+                                <p class="text-[8px] font-bold text-white/40 uppercase">Total:</p>
+                                <p class="text-xl font-black text-cyan-400">${p.TOTAL}€</p>
+                            </div>
+                            ${estado === 'EN CAMINO' ? 
+                                `<button onclick="marcarLlegada('${p.ID_PEDIDO}')" class="flex-1 bg-yellow-500 text-black py-4 rounded-xl font-black uppercase text-[10px] italic">He llegado 📍</button>` :
+                              estado === 'LLEGÓ' ?
+                                `<button onclick="finalizarEntrega('${p.ID_PEDIDO}', '${p.TOTAL}')" class="flex-1 bg-green-500 text-white py-4 rounded-xl font-black uppercase text-[10px] italic">Entregado ✅</button>` :
+                                `<button onclick="marcarEnCamino('${p.ID_PEDIDO}')" class="flex-1 bg-white text-black py-4 rounded-xl font-black uppercase text-[10px] italic">Recoger Pedido 🛵</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
-       // --- FUNCIONES DE ESTADO DEL REPARTIDOR ---
+        async function marcarEnCamino(id) {
+            document.getElementById('loader').style.display = 'flex';
+            try {
+                await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN CAMINO`);
+                await database.ref('pedidos/' + id).update({ estado: 'en camino', timestampListo: null });
+                await refrescarDatos();
+            } catch (e) { alert("Error de conexión"); }
+            finally { document.getElementById('loader').style.display = 'none'; }
+        }
 
-// 1. RECOGER EL PEDIDO
-async function marcarEnCamino(id) {
-    if(!id || id === 'undefined') return alert("ID de pedido no válido");
-    document.getElementById('loader').style.display = 'flex';
-    try {
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN CAMINO`);
-        await database.ref('pedidos/' + id).update({ 
-            estado: 'en camino',
-            timestampListo: null // Detiene el cronómetro del cliente
-        });
-        await refrescarDatos();
-    } catch (e) { alert("Error al recoger"); }
-    finally { document.getElementById('loader').style.display = 'none'; }
-}
-
-// 2. AVISAR LLEGADA (Botón Amarillo)
-async function marcarLlegada(id) {
-    if(!id) return;
-    document.getElementById('loader').style.display = 'flex';
-    try {
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LLEGÓ`);
-        await database.ref('pedidos/' + id).update({ estado: 'llegó' });
-        await refrescarDatos();
-    } catch (e) { alert("Error al marcar llegada"); }
-    finally { document.getElementById('loader').style.display = 'none'; }
-}
-
-// 3. FINALIZAR ENTREGA (Botón Verde)
-async function finalizarEntrega(id, total) {
-    if(!confirm("¿Confirmas la entrega y el cobro de " + total + "€?")) return;
-    document.getElementById('loader').style.display = 'flex';
-    try {
-        await fetch(`${scriptURL}?action=finalizarEntrega&idPedido=${id}&total=${total}`);
-        await database.ref('pedidos/' + id).update({ estado: 'entregado' });
-        await refrescarDatos();
-    } catch (e) { alert("Error al finalizar"); }
-    finally { document.getElementById('loader').style.display = 'none'; }
-}
+        async function marcarLlegada(id) {
+            document.getElementById('loader').style.display = 'flex';
+            try {
+                await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LLEGÓ`);
+                await database.ref('pedidos/' + id).update({ estado: 'llegó' });
+                await refrescarDatos();
+            } catch (e) { alert("Error de conexión"); }
+            finally { document.getElementById('loader').style.display = 'none'; }
+        }
 
         async function finalizarEntrega(id, total) {
-            if(!confirm("¿Confirmas que el cliente ha pagado y recibido el pedido?")) return;
+            if(!confirm(`¿Confirmas el cobro de ${total}€?`)) return;
             document.getElementById('loader').style.display = 'flex';
-            await fetch(`${scriptURL}?action=finalizarEntrega&idPedido=${id}&total=${total}&idRepartidor=${miCodigo}`);
-            await refrescarDatos();
-            document.getElementById('loader').style.display = 'none';
+            try {
+                await fetch(`${scriptURL}?action=finalizarEntrega&idPedido=${id}&total=${total}&idRepartidor=${miCodigo}`);
+                await database.ref('pedidos/' + id).update({ estado: 'entregado' });
+                await refrescarDatos();
+            } catch (e) { alert("Error al finalizar pedido"); }
+            finally { document.getElementById('loader').style.display = 'none'; }
         }
 
         function cerrarSesion() {
-            if(confirm("¿Quieres cerrar sesión y cambiar de repartidor?")) {
+            if(confirm("¿Quieres cerrar sesión?")) {
                 localStorage.removeItem('ae_cod_reparto');
                 location.reload();
             }
         }
+
         function actualizarContadores() {
-    document.querySelectorAll('.timer-cocina').forEach(el => {
-        const target = parseInt(el.getAttribute('data-time'));
-        if (!target) return;
-
-        const ahora = new Date().getTime();
-        const diff = target - ahora;
-
-        if (diff <= 0) {
-            el.innerHTML = "🔔 ¡PEDIDO LISTO!";
-            el.className = "timer-cocina text-green-400 font-black blink";
-        } else {
-            const min = Math.floor(diff / 60000);
-            const seg = Math.floor((diff % 60000) / 1000);
-            el.innerHTML = `⏳ COCINA: ${min}m ${seg}s`;
+            document.querySelectorAll('.timer-cocina').forEach(el => {
+                const target = parseInt(el.getAttribute('data-time'));
+                if (!target) return;
+                const ahora = new Date().getTime();
+                const diff = target - ahora;
+                if (diff <= 0) {
+                    el.innerHTML = "🔔 ¡PEDIDO LISTO!";
+                    el.className = "timer-cocina text-green-400 font-black blink";
+                } else {
+                    const min = Math.floor(diff / 60000);
+                    const seg = Math.floor((diff % 60000) / 1000);
+                    el.innerHTML = `⏳ COCINA: ${min}m ${seg}s`;
+                }
+            });
         }
-    });
-}
-// Ejecutamos la actualización cada segundo
-setInterval(actualizarContadores, 1000);
+
+        setInterval(actualizarContadores, 1000);
         initReparto();
     </script>
 </body>

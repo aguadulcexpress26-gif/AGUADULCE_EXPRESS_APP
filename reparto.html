@@ -220,31 +220,45 @@ async function refrescarDatos() {
 }).join('');
         }
 
-       async function marcarEnCamino(id) {
+       // --- FUNCIONES DE ESTADO DEL REPARTIDOR ---
+
+// 1. RECOGER EL PEDIDO
+async function marcarEnCamino(id) {
     if(!id || id === 'undefined') return alert("ID de pedido no válido");
-    
-    // Mostramos el cargador visual
     document.getElementById('loader').style.display = 'flex';
-
     try {
-        // 1. Avisamos al Excel (Google Sheets)
-        await fetch(`${scriptURL}?action=cambiarEstadoReparto&idPedido=${id}&estado=EN CAMINO`);
-        
-        // 2. Avisamos a Firebase (Para que el cliente vea la moto moviéndose)
-        await database.ref('pedidos/' + id).update({
-            estado: 'en camino'
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN CAMINO`);
+        await database.ref('pedidos/' + id).update({ 
+            estado: 'en camino',
+            timestampListo: null // Detiene el cronómetro del cliente
         });
-
-        // 3. Refrescamos los datos de la App
         await refrescarDatos();
-        
-    } catch (error) {
-        console.error("Error al recoger:", error);
-        alert("Hubo un problema de conexión. Inténtalo de nuevo.");
-    } finally {
-        // Ocultamos el cargador
-        document.getElementById('loader').style.display = 'none';
-    }
+    } catch (e) { alert("Error al recoger"); }
+    finally { document.getElementById('loader').style.display = 'none'; }
+}
+
+// 2. AVISAR LLEGADA (Botón Amarillo)
+async function marcarLlegada(id) {
+    if(!id) return;
+    document.getElementById('loader').style.display = 'flex';
+    try {
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LLEGÓ`);
+        await database.ref('pedidos/' + id).update({ estado: 'llegó' });
+        await refrescarDatos();
+    } catch (e) { alert("Error al marcar llegada"); }
+    finally { document.getElementById('loader').style.display = 'none'; }
+}
+
+// 3. FINALIZAR ENTREGA (Botón Verde)
+async function finalizarEntrega(id, total) {
+    if(!confirm("¿Confirmas la entrega y el cobro de " + total + "€?")) return;
+    document.getElementById('loader').style.display = 'flex';
+    try {
+        await fetch(`${scriptURL}?action=finalizarEntrega&idPedido=${id}&total=${total}`);
+        await database.ref('pedidos/' + id).update({ estado: 'entregado' });
+        await refrescarDatos();
+    } catch (e) { alert("Error al finalizar"); }
+    finally { document.getElementById('loader').style.display = 'none'; }
 }
 
         async function finalizarEntrega(id, total) {

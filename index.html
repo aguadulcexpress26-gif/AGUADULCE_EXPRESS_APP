@@ -453,13 +453,13 @@ document.getElementById('desglose-pago').innerHTML = `
     function abrirLegal() { document.getElementById('texto-legal-completo').innerText = db.legal; document.getElementById('modal-legal').style.display = 'flex'; }
     function filtrarCat(cat, el) { document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.plato-card').forEach(p => { p.style.display = (cat === 'TODOS' || p.dataset.cat === cat) ? 'flex' : 'none'; }); }
 
-  function renderSeguimiento() {
+ function renderSeguimiento() {
     const pid = localStorage.getItem('ae_pedido_id');
     const modalExito = document.getElementById('modal-exito');
     const card = document.getElementById('card-seguimiento');
     if(!card) return;
 
-    // 1. Diseño base del Modal de Éxito
+    // 1. Diseño base del Modal (Mantenemos tu estética original)
     card.innerHTML = `
         <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
             <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
@@ -495,50 +495,63 @@ document.getElementById('desglose-pago').innerHTML = `
 
     modalExito.style.display = 'flex';
 
-    // 2. Escucha de Firebase para actualizar estados y tiempo
+    // 2. Escucha de Firebase MEJORADA
     database.ref('pedidos/' + pid).on('value', (snapshot) => {
         const data = snapshot.val(); 
         if (!data) return;
 
         const display = document.getElementById('countdown-display');
         const label = document.getElementById('timer-label');
+        const estado = String(data.estado || "").toLowerCase();
 
-        // 1. LÓGICA DEL TIEMPO (Solo si hay un tiempo confirmado)
-        if (data.timestampListo) {
+        // --- LÓGICA DE TEXTOS Y TIEMPOS ---
+        
+        if (estado === 'entregado') {
+            // FIN DEL PROCESO
+            localStorage.removeItem('ae_pedido_id');
+            alert("¡Pedido entregado! Gracias por su compra.");
+            location.reload(); 
+            return;
+        } 
+        else if (estado === 'llegó') {
+            // REPARTIDOR EN LA PUERTA
+            if (clienteInterval) clearInterval(clienteInterval);
+            label.innerText = "¡AVISO URGENTE!";
+            display.innerText = "📍 ¡EL REPARTIDOR ESTÁ EN TU PUERTA!";
+            display.classList.remove('text-sm', 'text-3xl');
+            display.classList.add('text-lg', 'animate-pulse', 'text-yellow-400');
+        }
+        else if (estado === 'en camino') {
+            // EN REPARTO
+            if (clienteInterval) clearInterval(clienteInterval);
+            label.innerText = "Estado del Envío";
+            display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
+            display.classList.remove('text-3xl');
+            display.classList.add('text-sm', 'text-cyan-400');
+        } 
+        else if (data.timestampListo) {
+            // EN COCINA CON TIEMPO
             label.innerText = "Tiempo Estimado de Entrega";
-            display.classList.remove('text-sm');
+            display.classList.remove('text-sm', 'text-yellow-400', 'animate-pulse');
             display.classList.add('text-3xl');
             iniciarCronometroCliente(data.timestampListo);
         } else {
-            label.innerText = "Estado del Pedido";
-            display.classList.remove('text-3xl');
-            display.classList.add('text-sm');
-            display.innerText = "Esperando que el restaurante confirme tu pedido...";
+            // ESPERA INICIAL
+            display.innerText = "Esperando confirmación del restaurante...";
         }
 
-        // 2. LÓGICA DE LA BARRA DE ESTADOS (Nodos)
-        // Limpiamos todos primero
-        document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
+        // --- LÓGICA DE LAS LUCES DE LA BARRA ---
         
-        // Siempre activo el primero
+        document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
         document.getElementById('node-recibido').classList.add('active');
 
-        // Solo activar COCINA si el estado ya no es 'recibido'
-        const estado = String(data.estado || "").toLowerCase();
-        
         if (estado !== 'recibido' && estado !== '') {
             document.getElementById('node-cocina').classList.add('active');
         }
 
-        // Activar CAMINO solo cuando el repartidor lo marca
-        if (estado === 'en camino') {
+        if (estado === 'en camino' || estado === 'llegó') {
+            document.getElementById('node-cocina').classList.add('active');
             document.getElementById('node-camino').classList.add('active');
-            display.classList.remove('text-3xl');
-            display.classList.add('text-sm');
-            display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
-            
-            // Si quieres que el cronómetro desaparezca al estar en camino:
-            if (clienteInterval) clearInterval(clienteInterval);
         }
     });
 }

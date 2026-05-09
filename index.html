@@ -495,78 +495,77 @@ document.getElementById('desglose-pago').innerHTML = `
 
     modalExito.style.display = 'flex';
 
-   // 2. Escucha de Firebase MEJORADA
-    database.ref('pedidos/' + pid).on('value', (snapshot) => {
-        const data = snapshot.val(); 
-        if (!data) return;
+  // 2. Escucha de Firebase MEJORADA
+database.ref('pedidos/' + pid).on('value', (snapshot) => {
+    const data = snapshot.val(); 
+    if (!data) return;
 
-        const display = document.getElementById('countdown-display');
-        const label = document.getElementById('timer-label');
-        const estado = String(data.estado || "").toLowerCase();
+    const display = document.getElementById('countdown-display');
+    const label = document.getElementById('timer-label');
+    const estado = String(data.estado || "").toLowerCase();
 
-        // --- LÓGICA DE TEXTOS Y TIEMPOS (CORREGIDA) ---
-        
-        if (estado === 'entregado') {
-            // 1. FIN DEL PROCESO: Limpieza total
-            if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-            localStorage.removeItem('ae_pedido_id');
-            alert("¡Pedido entregado! Gracias por confiar en Aguadulce Express.");
-            window.location.reload(); 
-            return;
-        } 
-        else if (estado === 'llegó' || estado === 'llegó 📍') {
-            // 2. REPARTIDOR EN LA PUERTA: Aviso visual fuerte
-            if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-            if (label) label.innerText = "¡ATENCIÓN!";
-            if (display) {
-                display.innerText = "📍 ¡EL REPARTIDOR ESTÁ EN TU PUERTA!";
-                display.classList.remove('text-sm', 'text-3xl');
-                display.classList.add('text-lg', 'animate-pulse', 'text-yellow-400');
-            }
+    // --- 1. LÓGICA DE TEXTOS Y TIEMPOS ---
+    if (estado === 'entregado') {
+        if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
+        localStorage.removeItem('ae_pedido_id');
+        alert("¡Pedido entregado! Gracias por confiar en Aguadulce Express.");
+        window.location.reload(); 
+        return;
+    } 
+    else if (estado === 'llegó' || estado === 'llegó 📍') {
+        if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
+        if (label) label.innerText = "¡ATENCIÓN!";
+        if (display) {
+            display.innerText = "📍 ¡EL REPARTIDOR ESTÁ EN TU PUERTA!";
+            display.classList.remove('text-sm', 'text-3xl');
+            display.classList.add('text-lg', 'animate-pulse', 'text-yellow-400');
         }
-       else if (estado === 'en camino') {
-            // 3. EN REPARTO: Moto en movimiento
-            if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-            if (label) label.innerText = "ESTADO DEL ENVÍO:";
-            if (display) {
-                display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
-                display.classList.remove('text-3xl', 'text-yellow-400', 'animate-pulse');
-                display.classList.add('text-sm', 'text-cyan-400');
-            }
-        } 
-        else if (data.timestampListo) {
-            // 4. EN COCINA: Cambiamos la etiqueta a "Elaboración"
-            if (label) label.innerText = "TIEMPO DE ELABORACIÓN DE TU PEDIDO";
-            if (display) {
-                display.classList.remove('text-sm', 'text-yellow-400', 'animate-pulse');
-                display.classList.add('text-3xl', 'text-white');
-            }
-            iniciarCronometroCliente(data.timestampListo);
-        } 
-        else {
-            // 5. ESPERA INICIAL (Si no hay tiempo ni estados de entrega)
-            if (label) label.innerText = "ESTADO DEL PEDIDO";
-            if (display) display.innerText = "ESPERANDO CONFIRMACIÓN...";
+    }
+    else if (estado === 'en camino') {
+        if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
+        if (label) label.innerText = "ESTADO DEL ENVÍO:";
+        if (display) {
+            display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
+            display.classList.remove('text-3xl', 'text-yellow-400', 'animate-pulse');
+            display.classList.add('text-sm', 'text-cyan-400');
         }
-
-    }); // <-- Este es el cierre correcto que debe ir al final de TODO el bloque
-
-        // --- LÓGICA DE LAS LUCES DE LA BARRA ---
-        
-        document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
-        document.getElementById('node-recibido').classList.add('active');
-
-        if (estado !== 'recibido' && estado !== '') {
-            document.getElementById('node-cocina').classList.add('active');
+    } 
+    else if (data.timestampListo) {
+        if (label) label.innerText = "TIEMPO DE ELABORACIÓN DE TU PEDIDO";
+        if (display) {
+            display.classList.remove('text-sm', 'text-yellow-400', 'animate-pulse');
+            display.classList.add('text-3xl', 'text-white');
         }
+        iniciarCronometroCliente(data.timestampListo);
+    } 
+    else {
+        if (label) label.innerText = "ESTADO DEL PEDIDO";
+        if (display) display.innerText = "ESPERANDO CONFIRMACIÓN...";
+    }
 
-        if (estado === 'en camino' || estado === 'llegó') {
-            document.getElementById('node-cocina').classList.add('active');
-            document.getElementById('node-camino').classList.add('active');
-        }
-    });
-}
-        let clienteInterval;
+    // --- 2. LÓGICA DE LAS LUCES DE LA BARRA (DENTRO DE FIREBASE) ---
+    document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
+    
+    const nodeRecibido = document.getElementById('node-recibido');
+    const nodeCocina = document.getElementById('node-cocina');
+    const nodeCamino = document.getElementById('node-camino');
+
+    if (nodeRecibido) nodeRecibido.classList.add('active');
+
+    if (estado !== 'recibido' && estado !== '') {
+        if (nodeCocina) nodeCocina.classList.add('active');
+    }
+
+    if (estado === 'en camino' || estado === 'llegó') {
+        if (nodeCocina) nodeCocina.classList.add('active');
+        if (nodeCamino) nodeCamino.classList.add('active');
+    }
+
+}); // CIERRE CORRECTO DE LA ESCUCHA FIREBASE
+
+// --- FUNCIONES Y VARIABLES GLOBALES ---
+let clienteInterval;
+
 function iniciarCronometroCliente(targetTime) {
     if (clienteInterval) clearInterval(clienteInterval);
     const display = document.getElementById('countdown-display');
@@ -587,7 +586,7 @@ function iniciarCronometroCliente(targetTime) {
         display.innerText = `${min}m ${sec}s`;
     }, 1000);
 }
-    init();
+
+// Iniciar aplicación
+init();
 </script>
-</body>
-</html>

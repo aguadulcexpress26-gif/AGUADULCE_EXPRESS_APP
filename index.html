@@ -477,7 +477,7 @@
     const card = document.getElementById('card-seguimiento');
     if(!card) return;
 
-    // 1. Diseño base del Modal (Mantenemos tu estética original)
+    // 1. Diseño base del Modal
     card.innerHTML = `
         <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
             <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
@@ -513,59 +513,42 @@
 
     modalExito.style.display = 'flex';
 
-  // 2. Escucha de Firebase MEJORADA
-  database.ref('pedidos/' + pid).on('value', (snapshot) => {
-    const data = snapshot.val(); 
-    if (!data) return;
+    // 2. Escucha de Firebase REPARADA
+    database.ref('pedidos/' + pid).on('value', (snapshot) => {
+        const data = snapshot.val(); 
+        if (!data) return;
 
-    const display = document.getElementById('countdown-display');
-    const label = document.getElementById('timer-label');
-    const estado = String(data.estado || "").toLowerCase();
+        const estado = String(data.estado || "").toLowerCase();
 
-    // --- 1. LÓGICA DE TEXTOS Y TIEMPOS ---
-    if (estado === 'entregado') {
-        if (window.entregaFinalizada) return; 
-        window.entregaFinalizada = true;
-
-        if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-        
-        mostrarAviso(
-            "¡PEDIDO ENTREGADO!", 
-            "Gracias por confiar en Aguadulce Express. ¡Que disfrutes tu comida!", 
-            false, 
-            ""
-        );
-
-        localStorage.removeItem('ae_pedido_id');
-        
-        setTimeout(() => {
-            window.location.reload();
-        }, 3500);
-        
-        return;
-    } 
-    else if (estado === 'llegó' || estado === 'llegó 📍') {
-        actualizarEstadoVisual('llegó'); // Llama al mensaje amigable
-        const sonido = document.getElementById('audio-llegada');
-        if (sonido) {
-            sonido.volume = 1.0;
-            sonido.currentTime = 0;
-            sonido.play().catch(e => {});
-            setTimeout(() => { 
-                sonido.currentTime = 0; 
-                sonido.play(); 
-            }, 1500);
+        // LÓGICA DE ESTADOS (Usa las funciones globales que ya tienes)
+        if (estado === 'entregado') {
+            if (window.entregaFinalizada) return; 
+            window.entregaFinalizada = true;
+            mostrarAviso("¡PEDIDO ENTREGADO!", "¡Gracias por elegirnos!", false, "");
+            localStorage.removeItem('ae_pedido_id');
+            setTimeout(() => { window.location.reload(); }, 3500);
+        } 
+        else if (estado === 'llegó' || estado === 'llegó 📍') {
+            actualizarEstadoVisual('llegó');
+            const sonido = document.getElementById('audio-llegada');
+            if (sonido) {
+                sonido.volume = 1.0;
+                sonido.play().catch(e => {});
+            }
+        } 
+        else if (estado === 'en camino') {
+            actualizarEstadoVisual('en camino');
+        } 
+        else if (data.timestampListo) {
+            actualizarEstadoVisual('cocina');
+        } 
+        else {
+            actualizarEstadoVisual('recibido');
         }
-    }
-    else if (estado === 'en camino') {
-        actualizarEstadoVisual('en camino'); // Llama al mensaje amigable
-    } 
-    else if (data.timestampListo) {
-        actualizarEstadoVisual('cocina'); // Llama al mensaje amigable
-    } 
-    else {
-        actualizarEstadoVisual('recibido'); // Llama al mensaje amigable
-    }
+
+        actualizarLucesBarra(estado);
+    }); // <--- Aquí cerramos Firebase correctamente
+} // <--- Aquí cerramos renderSeguimiento correctamente
 
     // --- 2. LÓGICA DE LAS LUCES DE LA BARRA ---
     actualizarLucesBarra(estado);

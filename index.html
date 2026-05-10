@@ -190,27 +190,39 @@
     let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: false, data: null };
 
     async function init() {
-        try {
-            const res = await fetch(scriptURL);
-            const data = await res.json();
-            db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
-            db.menu = data.MENU_GENERAL;
-            db.anuncios = data.ANUNCIOS || [];
-            db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "Tratamiento de datos personales...";
-            
-            if(db.anuncios.length > 0) document.getElementById('texto-anuncio').innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
-            if(data.CONFIG && data.CONFIG[0]) {
-                document.getElementById('app-logo').src = data.CONFIG[0].LOGO_URL;
-                document.getElementById('header-bg').style.backgroundImage = `url('${data.CONFIG[0].FONDO_URL}')`;
-                fondoOriginal = data.CONFIG[0].FONDO_URL;
-            }
-            document.getElementById('loader').style.display = 'none';
+    console.log("🚀 Iniciando sistema..."); // Esto nos dirá si la función arranca
+    try {
+        const res = await fetch(scriptURL);
+        const data = await res.json();
+        console.log("✅ Datos recibidos de Google Sheets");
 
-            if(localStorage.getItem('ae_pedido_id')) renderSeguimiento();
-            
+        // 1. Carga de datos
+        db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+        db.menu = data.MENU_GENERAL;
+        db.anuncios = data.ANUNCIOS || [];
+        
+        // 2. Quitamos el Loader SIEMPRE
+        const loader = document.getElementById('loader');
+        if (loader) loader.style.display = 'none';
+        console.log("✨ Pantalla de carga eliminada");
+
+        // 3. Decidimos qué mostrar
+        const pedidoGuardado = localStorage.getItem('ae_pedido_id');
+        if (pedidoGuardado) {
+            console.log("🛵 Hay un pedido activo, abriendo seguimiento...");
+            renderSeguimiento();
+        } else {
+            console.log("🏠 No hay pedido, abriendo Home...");
             renderHome();
-        } catch (e) { console.error(e); }
+        }
+
+    } catch (e) {
+        console.error("❌ ERROR EN EL ARRANQUE:", e);
+        const loader = document.getElementById('loader');
+        if (loader) loader.style.display = 'none';
+        document.body.innerHTML += '<div style="color:white; padding:20px; text-align:center;">Error de conexión. Por favor, recarga la página.</div>';
     }
+}
 
     function renderHome() {
         document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;

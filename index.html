@@ -17,10 +17,9 @@
         #loader { position: fixed; inset: 0; background: var(--dark); z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .brand-header { position: relative; height: 160px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; }
-        #header-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.8; }
-        .brand-overlay { position: absolute; inset: 0; background: linear-gradient(to top, var(--dark), transparent); }
-        .plato-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
+        .brand-header { position: relative; height: 180px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; }
+        #header-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 1; filter: brightness(1.1); }
+        .brand-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(2,6,23,0.8) 0%, transparent 50%); }        .plato-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
         #modal-plato, #panel-checkout, #modal-legal, #modal-alerta-pro, #modal-exito, #panel-revision { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: none; flex-direction: column; overflow-y: auto; }
         .step-tag { font-weight: 800; font-size: 10px; text-transform: uppercase; color: var(--cyan); letter-spacing: 1px; margin-bottom: 10px; display: block; }
         .grid-option { border: 1px solid rgba(255,255,255,0.1); padding: 12px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 12px; cursor: pointer; }
@@ -190,37 +189,59 @@
     let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: false, data: null };
 
     async function init() {
-    console.log("🚀 Iniciando sistema..."); // Esto nos dirá si la función arranca
+    console.log("🚀 Iniciando sistema con carga de marca...");
     try {
         const res = await fetch(scriptURL);
         const data = await res.json();
-        console.log("✅ Datos recibidos de Google Sheets");
+        console.log("✅ Datos recibidos");
 
-        // 1. Carga de datos
+        // 1. CARGA DE CONFIGURACIÓN DE MARCA (LOGO Y FONDO)
+        if (data.CONFIG && data.CONFIG[0]) {
+            const config = data.CONFIG[0];
+            
+            // Cargar el Logo
+            const logoImg = document.getElementById('app-logo');
+            if (logoImg && config.LOGO_URL) {
+                logoImg.src = config.LOGO_URL;
+            }
+
+            // Cargar el Fondo del Header
+            const headerBg = document.getElementById('header-bg');
+            if (headerBg && config.FONDO_URL) {
+                headerBg.style.backgroundImage = `url('${config.FONDO_URL}')`;
+                fondoOriginal = config.FONDO_URL; // Guardamos para cuando vuelvas al home
+            }
+            console.log("🎨 Identidad visual cargada");
+        }
+
+        // 2. CARGA DE DATOS DE NEGOCIO
         db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
         db.menu = data.MENU_GENERAL;
         db.anuncios = data.ANUNCIOS || [];
-        
-        // 2. Quitamos el Loader SIEMPRE
+        db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "Tratamiento de datos personales...";
+
+        // 3. TEXTO DE ANUNCIOS
+        if(db.anuncios.length > 0) {
+            const marquee = document.getElementById('texto-anuncio');
+            if(marquee) marquee.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+        }
+
+        // 4. QUITAR LOADER Y MOSTRAR APP
         const loader = document.getElementById('loader');
         if (loader) loader.style.display = 'none';
-        console.log("✨ Pantalla de carga eliminada");
 
-        // 3. Decidimos qué mostrar
+        // 5. CONTROL DE RUTA (HOME O SEGUIMIENTO)
         const pedidoGuardado = localStorage.getItem('ae_pedido_id');
         if (pedidoGuardado) {
-            console.log("🛵 Hay un pedido activo, abriendo seguimiento...");
             renderSeguimiento();
         } else {
-            console.log("🏠 No hay pedido, abriendo Home...");
             renderHome();
         }
 
     } catch (e) {
-        console.error("❌ ERROR EN EL ARRANQUE:", e);
+        console.error("❌ Error en arranque:", e);
         const loader = document.getElementById('loader');
         if (loader) loader.style.display = 'none';
-        document.body.innerHTML += '<div style="color:white; padding:20px; text-align:center;">Error de conexión. Por favor, recarga la página.</div>';
     }
 }
 

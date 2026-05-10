@@ -582,17 +582,40 @@ database.ref('pedidos/' + pid).on('value', (snapshot) => {
             display.classList.add('text-sm', 'text-cyan-400');
         }
     } 
-    else if (data.timestampListo) {
-        if (label) label.innerText = "TIEMPO DE ELABORACIÓN DE TU PEDIDO";
-        if (display) {
-            display.classList.remove('text-sm', 'text-yellow-400', 'animate-pulse');
-            display.classList.add('text-3xl', 'text-white');
+   const data = snapshot.val(); 
+    if (!data) return;
+
+    const estado = String(data.estado || "").toLowerCase();
+
+    // 1. MANEJO DE ENTREGA FINAL (Lo que hicimos del candado y modal bonito)
+    if (estado === 'entregado') {
+        if (window.yaFinalizado) return;
+        window.yaFinalizado = true;
+        localStorage.removeItem('ae_pedido_id');
+        mostrarAviso("¡PEDIDO ENTREGADO!", "¡Gracias por elegirnos! Que disfrutes tu comida.", false, "");
+        setTimeout(() => { window.location.reload(); }, 3500);
+        return;
+    }
+
+    // 2. ACTUALIZACIÓN DE MENSAJES SEGÚN ESTADO
+    if (estado === 'llegó' || estado === 'llegó 📍') {
+        actualizarEstadoVisual('llegó');
+        // Sonido de la sierra 🪚
+        const sonido = document.getElementById('audio-llegada');
+        if (sonido) { 
+            sonido.volume = 1.0; 
+            sonido.play().catch(e => {}); 
         }
-        iniciarCronometroCliente(data.timestampListo);
+    } 
+    else if (estado === 'en camino') {
+        actualizarEstadoVisual('en camino');
+    } 
+    else if (data.timestampListo) {
+        // Aunque tengamos el tiempo de cocina, el cliente solo verá el mensaje
+        actualizarEstadoVisual('cocina');
     } 
     else {
-        if (label) label.innerText = "ESTADO DEL PEDIDO";
-        if (display) display.innerText = "ESPERANDO CONFIRMACIÓN...";
+        actualizarEstadoVisual('recibido');
     }
 
    // --- 2. LÓGICA DE LAS LUCES DE LA BARRA (DENTRO DE FIREBASE) ---
@@ -620,25 +643,43 @@ database.ref('pedidos/' + pid).on('value', (snapshot) => {
 // --- FUNCIONES Y VARIABLES GLOBALES ---
 let clienteInterval;
 
-function iniciarCronometroCliente(targetTime) {
-    if (clienteInterval) clearInterval(clienteInterval);
+// --- NUEVA FUNCIÓN DE MENSAJES DINÁMICOS ---
+function actualizarEstadoVisual(estado) {
     const display = document.getElementById('countdown-display');
-    if (!display) return;
+    const label = document.getElementById('timer-label');
+    if (!display || !label) return;
 
-    clienteInterval = setInterval(() => {
-        const ahora = new Date().getTime();
-        const diff = targetTime - ahora;
+    // Si había algún cronómetro corriendo por error, lo detenemos
+    if (window.clienteInterval) clearInterval(window.clienteInterval);
 
-        if (diff <= 0) {
-            clearInterval(clienteInterval);
-            display.innerText = "¡LLEGANDO!";
-            return;
-        }
+    let textoPrincipal = "";
+    let textoLabel = "ESTADO DEL PEDIDO";
 
-        const min = Math.floor(diff / 60000);
-        const sec = Math.floor((diff % 60000) / 1000);
-        display.innerText = `${min}m ${sec}s`;
-    }, 1000);
+    switch (estado) {
+        case 'recibido':
+            textoLabel = "PASO 1: CONFIRMACIÓN";
+            textoPrincipal = "📝 ORDEN RECIBIDA. ¡EN BREVE A COCINA!";
+            break;
+        case 'cocina':
+            textoLabel = "PASO 2: ELABORACIÓN";
+            textoPrincipal = "🔥 TU PEDIDO SE ESTÁ COCINANDO CON AMOR...";
+            break;
+        case 'en camino':
+            textoLabel = "PASO 3: REPARTO";
+            textoPrincipal = "🛵 ¡EL REPARTIDOR YA VA VOLANDO HACIA TI!";
+            break;
+        case 'llegó':
+            textoLabel = "¡YA ESTAMOS AQUÍ!";
+            textoPrincipal = "📍 ¡REPARTIDOR EN LA PUERTA! SAL A RECOGER.";
+            break;
+    }
+
+    display.innerText = textoPrincipal;
+    label.innerText = textoLabel;
+    
+    // Le quitamos clases viejas de tamaño y le damos el pulso de vida
+    display.classList.remove('text-3xl', 'text-sm');
+    display.classList.add('text-base', 'animate-pulse');
 }
 
 init();

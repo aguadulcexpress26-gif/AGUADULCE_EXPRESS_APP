@@ -327,34 +327,52 @@
 
     function confirmarVaciarFinal() { cesta = []; actualizarCestaBar(); document.getElementById('panel-revision').style.display = 'none'; verMenu(); }
 
-    function abrirCheckout() {
-        document.getElementById('panel-revision').style.display = 'none';
-        document.getElementById('panel-checkout').style.display = 'flex';
-        const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-        const envio = 2.50; const plataforma = 1.00;
-        // Busca la línea 335 y asegúrate de que el bloque termine así:
-document.getElementById('desglose-pago').innerHTML = `
-    <div class="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
-    <div class="flex justify-between"><span>Costo Envío</span><span>${envio.toFixed(2)}€</span></div>
-    <div class="flex justify-between text-white/50 italic"><span>Uso de Plataforma</span><span>${plataforma.toFixed(2)}€</span></div>
-    <div class="flex justify-between font-black text-cyan-400 text-lg border-t border-white/10 pt-2 mt-2 uppercase italic">
-        <span>Total a Pagar</span><span>${(subtotal + envio + plataforma).toFixed(2)}€</span>
-    </div>
-    
-    <div class="mt-6">
-        <p class="text-[9px] font-black uppercase text-cyan-400 mb-1 ml-2">Instrucciones para el repartidor</p>
-        <textarea id="cliente-notas" placeholder="Ej: El timbre no funciona, llamar al llegar..." 
-                  class="w-full bg-white/10 border border-white/10 rounded-2xl p-4 text-white text-xs focus:outline-none focus:border-cyan-400 h-20 resize-none"></textarea>
-    </div>
-
-    <div class="p-4 bg-white/5 border border-white/10 rounded-2xl mt-4">
-        <label class="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" id="check-legal" ${localStorage.getItem('ae_legal') === 'true' ? 'checked' : ''} onchange="document.getElementById('btn-final').disabled = !this.checked; document.getElementById('btn-final').style.opacity = this.checked ? '1' : '0.5'" class="mt-1 w-4 h-4 accent-cyan-400">
-            <span class="text-[10px] text-white/50 leading-tight uppercase font-bold">Acepto el Tratamiento de Datos</span>
-        </label>
-    </div>
-`;
+   function abrirCheckout() {
+    // --- NUEVO: BLOQUEO DE PEDIDO ACTIVO ---
+    const pedidoActivo = localStorage.getItem('ae_pedido_id');
+    if (pedidoActivo) {
+        mostrarAviso(
+            "PEDIDO EN CURSO", 
+            "Ya tienes una orden activa (Ref: " + pedidoActivo + "). Por favor, espera a recibirla antes de realizar una nueva compra.", 
+            false, 
+            ""
+        );
+        renderSeguimiento(); // Re-abre el cuadro de seguimiento por si lo cerraron
+        return; // Detiene la ejecución aquí
     }
+    // ---------------------------------------
+
+    document.getElementById('panel-revision').style.display = 'none';
+    document.getElementById('panel-checkout').style.display = 'flex';
+    
+    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+    const envio = 2.50; 
+    const plataforma = 1.00;
+
+    document.getElementById('desglose-pago').innerHTML = `
+        <div class="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
+        <div class="flex justify-between"><span>Costo Envío</span><span>${envio.toFixed(2)}€</span></div>
+        <div class="flex justify-between text-white/50 italic"><span>Uso de Plataforma</span><span>${plataforma.toFixed(2)}€</span></div>
+        <div class="flex justify-between font-black text-cyan-400 text-lg border-t border-white/10 pt-2 mt-2 uppercase italic">
+            <span>Total a Pagar</span><span>${(subtotal + envio + plataforma).toFixed(2)}€</span>
+        </div>
+        
+        <div class="mt-6">
+            <p class="text-[9px] font-black uppercase text-cyan-400 mb-1 ml-2">Instrucciones para el repartidor</p>
+            <textarea id="cliente-notas" placeholder="Ej: El timbre no funciona, llamar al llegar..."  
+                      class="w-full bg-white/10 border border-white/10 rounded-2xl p-4 text-white text-xs focus:outline-none focus:border-cyan-400 h-20 resize-none"></textarea>
+        </div>
+
+        <div class="p-4 bg-white/5 border border-white/10 rounded-2xl mt-4">
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" id="check-legal" ${localStorage.getItem('ae_legal') === 'true' ? 'checked' : ''} 
+                       onchange="document.getElementById('btn-final').disabled = !this.checked; document.getElementById('btn-final').style.opacity = this.checked ? '1' : '0.5'" 
+                       class="mt-1 w-4 h-4 accent-cyan-400">
+                <span class="text-[10px] text-white/50 leading-tight uppercase font-bold">Acepto el Tratamiento de Datos</span>
+            </label>
+        </div>
+    `;
+}
         
     async function enviarPedidoFinal() {
     const nom = document.getElementById('cliente-nombre').value;

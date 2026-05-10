@@ -514,7 +514,7 @@
     modalExito.style.display = 'flex';
 
   // 2. Escucha de Firebase MEJORADA
-database.ref('pedidos/' + pid).on('value', (snapshot) => {
+  database.ref('pedidos/' + pid).on('value', (snapshot) => {
     const data = snapshot.val(); 
     if (!data) return;
 
@@ -524,69 +524,52 @@ database.ref('pedidos/' + pid).on('value', (snapshot) => {
 
     // --- 1. LÓGICA DE TEXTOS Y TIEMPOS ---
     if (estado === 'entregado') {
-            // 1. Evitamos que el mensaje salga varias veces
-            if (window.entregaFinalizada) return; 
-            window.entregaFinalizada = true;
+        if (window.entregaFinalizada) return; 
+        window.entregaFinalizada = true;
 
-            // 2. Limpieza de intervalos
-            if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-            
-            // 3. Usamos TU MODAL PRO en lugar del alert blanco
-            // mostrarAviso(titulo, mensaje, conBotones, funcionCallback)
-            mostrarAviso(
-                "¡PEDIDO ENTREGADO!", 
-                "Gracias por confiar en Aguadulce Express. ¡Que disfrutes tu comida!", 
-                false, 
-                ""
-            );
-
-            // 4. Limpiamos datos y recargamos después de 3 segundos para que vean el mensaje
-            localStorage.removeItem('ae_pedido_id');
-            
-            setTimeout(() => {
-                window.location.reload();
-            }, 3500);
-            
-            return;
-        } 
-    else if (estado === 'llegó' || estado === 'llegó 📍') {
-            if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-
-            // --- REPRODUCIR NUEVO SONIDO POTENTE ---
-            const sonido = document.getElementById('audio-llegada');
-            if (sonido) {
-                sonido.volume = 1.0; // Forzamos volumen al máximo
-                sonido.currentTime = 0; // Reiniciamos el audio
-                sonido.play().catch(e => console.log("El usuario debe interactuar para sonar"));
-                
-                // Opcional: Un segundo toque a los 1.5 segundos para asegurar que lo oiga
-                setTimeout(() => { 
-                    sonido.currentTime = 0; 
-                    sonido.play(); 
-                }, 1500);
-            }
-
-            if (label) label.innerText = "¡ATENCIÓN!";
-            if (display) {
-                display.innerText = "📍 ¡EL REPARTIDOR ESTÁ EN TU PUERTA!";
-                display.classList.remove('text-sm', 'text-3xl');
-                display.classList.add('text-lg', 'animate-pulse', 'text-yellow-400');
-            }
-        }
-    else if (estado === 'en camino') {
         if (typeof clienteInterval !== 'undefined') clearInterval(clienteInterval);
-        if (label) label.innerText = "ESTADO DEL ENVÍO:";
-        if (display) {
-            display.innerText = "🛵 ¡EL REPARTIDOR VA EN CAMINO!";
-            display.classList.remove('text-3xl', 'text-yellow-400', 'animate-pulse');
-            display.classList.add('text-sm', 'text-cyan-400');
-        }
+        
+        mostrarAviso(
+            "¡PEDIDO ENTREGADO!", 
+            "Gracias por confiar en Aguadulce Express. ¡Que disfrutes tu comida!", 
+            false, 
+            ""
+        );
+
+        localStorage.removeItem('ae_pedido_id');
+        
+        setTimeout(() => {
+            window.location.reload();
+        }, 3500);
+        
+        return;
     } 
-   const data = snapshot.val(); 
-    if (!data) return;
+    else if (estado === 'llegó' || estado === 'llegó 📍') {
+        actualizarEstadoVisual('llegó'); // Llama al mensaje amigable
+        const sonido = document.getElementById('audio-llegada');
+        if (sonido) {
+            sonido.volume = 1.0;
+            sonido.currentTime = 0;
+            sonido.play().catch(e => {});
+            setTimeout(() => { 
+                sonido.currentTime = 0; 
+                sonido.play(); 
+            }, 1500);
+        }
+    }
+    else if (estado === 'en camino') {
+        actualizarEstadoVisual('en camino'); // Llama al mensaje amigable
+    } 
+    else if (data.timestampListo) {
+        actualizarEstadoVisual('cocina'); // Llama al mensaje amigable
+    } 
+    else {
+        actualizarEstadoVisual('recibido'); // Llama al mensaje amigable
+    }
 
-    const estado = String(data.estado || "").toLowerCase();
-
+    // --- 2. LÓGICA DE LAS LUCES DE LA BARRA ---
+    actualizarLucesBarra(estado);
+  });
     // 1. MANEJO DE ENTREGA FINAL (Lo que hicimos del candado y modal bonito)
     if (estado === 'entregado') {
         if (window.yaFinalizado) return;

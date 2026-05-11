@@ -415,18 +415,28 @@
 const loader = document.getElementById('loader');
 if (loader) loader.style.display = 'none';
 
-// 6. DIBUJAR CONTENIDO
-const pedidoGuardado = localStorage.getItem('ae_pedido_id');
+// 6. CONTROL DE RUTA Y SEGUIMIENTO (CORREGIDO)
+            // Primero: Siempre dibujamos los restaurantes para que la pantalla no esté negra
+            renderHome(); 
 
-if (pedidoGuardado) {
-    console.log("Detectado pedido activo, abriendo seguimiento...");
-    escucharPedidoActivo(); 
-    renderSeguimiento();
-} else {
-    console.log("No hay pedidos, cargando inicio...");
-    renderHome(); // <--- ESTA ES LA QUE PINTA LOS RESTAURANTES
-}
-
+            // Segundo: Revisamos si hay un pedido activo
+            const pedidoGuardado = localStorage.getItem('ae_pedido_id');
+            if (pedidoGuardado) {
+                console.log("Moto encendida: Pedido detectado");
+                
+                // Activamos la escucha de Firebase (la moto)
+                escucharPedidoActivo(); 
+                
+                // Hacemos aparecer el botón flotante de la moto
+                const btnMoto = document.getElementById('btn-reabrir-seguimiento');
+                if (btnMoto) {
+                    btnMoto.style.display = 'block';
+                    btnMoto.classList.remove('hidden');
+                }
+                
+                // Opcional: Si quieres que al abrir la App se vea el seguimiento primero:
+                // renderSeguimiento(); 
+            }
         // --- TRUCO DE DESBLOQUEO DE AUDIO PARA MÓVILES ---
         document.body.addEventListener('click', () => {
             const audio = document.getElementById('audio-llegada');
@@ -444,7 +454,8 @@ if (pedidoGuardado) {
         if (loader) loader.style.display = 'none';
         alert("Error de conexión. Por favor, recarga la página.");
     }
-}   function renderHome() {
+}   
+        function renderHome() {
     document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;
     let html = `<p class="step-tag mb-6 ml-2 italic text-left text-white/50">Selecciona un restaurante</p>`;
     
@@ -1061,6 +1072,39 @@ function guardarRegistro() {
     }
 }
 
+// ESTA ES LA FUNCIÓN QUE FALTABA Y HACÍA QUE LA PANTALLA SE QUEDARA NEGRA
+function actualizarInterfazSeguimiento(data) {
+    const contenedor = document.getElementById('card-seguimiento');
+    if (!contenedor) return;
+
+    // Definimos qué icono y qué texto mostrar según el estado en Firebase
+    const estados = {
+        'recibido': { txt: 'Orden recibida', icon: '🛵' },
+        'cocinando': { txt: 'Tu pedido está en cocina', icon: '🔥' },
+        'entregado': { txt: '¡El repartidor ha llegado!', icon: '🔔' }
+    };
+
+    const info = estados[data.estado] || estados['recibido'];
+
+    // Dibujamos el contenido dentro del modal de seguimiento
+    contenedor.innerHTML = `
+        <div class="flex flex-col items-center gap-4">
+            <div class="text-6xl animate-bounce">${info.icon}</div>
+            <h3 class="text-xl font-black uppercase italic text-white">${info.txt}</h3>
+            <p class="text-[10px] text-white/50 uppercase italic">Ref: ${data.id}</p>
+            
+            ${data.estado === 'entregado' ? `
+                <button onclick="finalizarPedidoLocal()" class="mt-6 px-8 py-3 bg-cyan-400 text-black font-black rounded-2xl uppercase text-xs shadow-[0_0_15px_rgba(0,210,255,0.4)]">
+                    Recibido / Cerrar
+                </button>
+            ` : `
+                <button onclick="document.getElementById('modal-exito').style.display='none'" class="mt-6 px-8 py-3 bg-white/5 text-white/50 font-black rounded-2xl uppercase text-[10px]">
+                    Ver restaurantes
+                </button>
+            `}
+        </div>
+    `;
+}
 // ==========================================
 // 🏍️ MOTOR DE SEGUIMIENTO EN TIEMPO REAL
 // ==========================================

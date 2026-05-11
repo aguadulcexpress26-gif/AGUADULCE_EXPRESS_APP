@@ -242,27 +242,29 @@
     <div class="space-y-6 text-left">
         <div id="cliente-identificado" class="bg-white/5 p-4 rounded-2xl border border-white/10">
             <p class="text-cyan-400 text-xs font-black uppercase mb-2">Entregar a:</p>
-            <p id="info-cliente-logueado" class="text-sm font-medium text-white italic">Cargando datos...</p>
-            <button onclick="borrarRegistro()" class="text-[10px] text-red-400 uppercase font-bold mt-2">Cambiar datos o cerrar sesión</button>
+            <p id="info-cliente-logueado" class="text-sm font-medium text-white italic leading-relaxed">Cargando datos...</p>
+            <button onclick="borrarRegistro()" class="text-[10px] text-red-400 uppercase font-bold mt-2 hover:underline">Cambiar datos o cerrar sesión</button>
         </div>
 
-        <div id="lista-cesta-checkout" class="space-y-3">
-            </div>
+        <div id="lista-cesta-checkout" class="space-y-3"></div>
 
-        <div class="bg-white/5 p-5 rounded-3xl space-y-3">
-            <div class="flex justify-between text-gray-400 text-sm">
-                <span>Subtotal</span>
-                <span id="check-subtotal">0.00€</span>
-            </div>
-            <div id="row-deuda" class="flex justify-between text-red-400 text-sm hidden">
-                <span>Saldo pendiente</span>
-                <span id="check-deuda">0.00€</span>
-            </div>
-            <div class="flex justify-between text-white font-black text-xl border-t border-white/10 pt-3">
-                <span>TOTAL</span>
-                <span id="check-total">0.00€</span>
-            </div>
+        <div id="desglose-pago"></div>
+
+        <div class="mt-6">
+            <p class="text-cyan-400 text-[10px] font-black uppercase mb-2 ml-2 italic">Selecciona Forma de Pago</p>
+            <select id="metodo-pago" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-cyan-400 appearance-none italic text-sm">
+                <option value="Efectivo">Efectivo (Pagar al recibir)</option>
+                <option value="Transferencia">Transferencia / Bizum</option>
+                <option value="Tarjeta">Datáfono (Tarjeta al recibir)</option>
+            </select>
         </div>
+
+        <button id="btn-final" onclick="enviarPedidoFinal()" 
+                class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] mt-8 text-lg">
+            Procesar Orden
+        </button>
+    </div>
+</div>
 
         <p class="text-cyan-400 text-xs font-black uppercase ml-1">Forma de Pago</p>
         <select id="metodo-pago" class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-white outline-none">
@@ -577,56 +579,38 @@
     function confirmarVaciarFinal() { cesta = []; actualizarCestaBar(); document.getElementById('panel-revision').style.display = 'none'; verMenu(); }
 
 function abrirCheckout() {
-    // 1. BLOQUEO DE PEDIDO ACTIVO
+    // 1. Bloqueo de pedido activo (Usando SweetAlert profesional)
     const pedidoActivo = localStorage.getItem('ae_pedido_id');
     if (pedidoActivo) {
         Swal.fire({
             title: 'PEDIDO EN CURSO',
-            html: `Ya tienes una orden activa (Ref: <b>${pedidoActivo}</b>).<br><br>Por seguridad, debes recibir tu pedido actual antes de realizar uno nuevo.`,
+            html: `Ya tienes una orden activa (Ref: <b>${pedidoActivo}</b>).<br><br>Espera a recibirla antes de realizar una nueva compra.`,
             icon: 'warning',
-            background: '#1a1a2e',
+            background: '#0a0a0a',
             color: '#fff',
-            confirmButtonText: 'VER SEGUIMIENTO',
             confirmButtonColor: '#00d2ff'
-        }).then(() => {
-            renderSeguimiento(); 
-        });
+        }).then(() => { renderSeguimiento(); });
         return; 
     }
 
-    // 2. CÁLCULO DE PRECIOS (Ajustado a tus montos)
+    // 2. Cálculos (Envío 3.50€ y Gestión 0.99€)
     const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-    const envio = 3.50;  // <-- Cambiado a 3.50€ como pediste
+    const envio = 3.50;
     const gestion = 0.99;
     const deuda = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
     const totalFinal = subtotal + envio + gestion + deuda;
 
-    // 3. INYECCIÓN DEL CUADRO DE NOTAS Y DESGLOSE DINÁMICO
-    // Buscamos el contenedor del desglose en tu HTML
-    const contenedorDesglose = document.getElementById('desglose-pago');
-    if (contenedorDesglose) {
-        contenedorDesglose.innerHTML = `
-            <div class="space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5">
-                <div class="flex justify-between text-gray-400 text-sm">
-                    <span>Subtotal Productos</span>
-                    <span class="text-white font-bold">${subtotal.toFixed(2)}€</span>
-                </div>
-                <div class="flex justify-between text-gray-400 text-sm">
-                    <span>Gastos de Envío</span>
-                    <span class="text-white font-bold">${envio.toFixed(2)}€</span>
-                </div>
-                <div class="flex justify-between text-gray-400 text-sm italic">
-                    <span>Gestión Plataforma</span>
-                    <span class="text-white font-bold">${gestion.toFixed(2)}€</span>
-                </div>
-                ${deuda > 0 ? `
-                <div class="flex justify-between text-red-400 text-sm font-bold pt-1 border-t border-white/5">
-                    <span>Saldo Pendiente</span>
-                    <span>${deuda.toFixed(2)}€</span>
-                </div>` : ''}
-                <div class="flex justify-between text-cyan-400 font-black text-xl border-t border-cyan-400/20 pt-2 mt-1 italic uppercase">
-                    <span>Total a Pagar</span>
-                    <span>${totalFinal.toFixed(2)}€</span>
+    // 3. Inyección del Desglose y el Cuadro de Notas
+    const contenedor = document.getElementById('desglose-pago');
+    if (contenedor) {
+        contenedor.innerHTML = `
+            <div class="bg-white/5 p-5 rounded-3xl space-y-3 border border-white/5 shadow-inner">
+                <div class="flex justify-between text-gray-400 text-sm italic"><span>Subtotal Productos</span><span class="text-white font-bold">${subtotal.toFixed(2)}€</span></div>
+                <div class="flex justify-between text-gray-400 text-sm italic"><span>Gastos de Envío</span><span class="text-white font-bold">${envio.toFixed(2)}€</span></div>
+                <div class="flex justify-between text-gray-400 text-sm italic text-white/40"><span>Gestión Plataforma</span><span class="font-bold">${gestion.toFixed(2)}€</span></div>
+                ${deuda > 0 ? `<div class="flex justify-between text-red-400 text-sm font-bold border-t border-white/5 pt-2 italic"><span>Saldo Pendiente (Deuda)</span><span>${deuda.toFixed(2)}€</span></div>` : ''}
+                <div class="flex justify-between text-cyan-400 font-black text-xl border-t border-white/10 pt-3 mt-1 uppercase italic">
+                    <span>Total a Pagar</span><span>${totalFinal.toFixed(2)}€</span>
                 </div>
             </div>
 
@@ -638,24 +622,17 @@ function abrirCheckout() {
         `;
     }
 
-    // 4. ACTUALIZAR EL BOTÓN DE PAGO FINAL
+    // 4. Activar panel y actualizar botón
+    document.getElementById('panel-checkout').style.display = 'block';
+    document.getElementById('panel-checkout').classList.remove('hidden');
+    
     const btnFinal = document.getElementById('btn-final');
     if (btnFinal) {
         btnFinal.innerText = `PROCESAR ORDEN (${totalFinal.toFixed(2)}€)`;
-        btnFinal.disabled = false;
-        btnFinal.style.opacity = "1";
     }
 
-    // 5. CAMBIO DE PANTALLA
-    const panelRev = document.getElementById('panel-revision');
-    if(panelRev) panelRev.style.display = 'none';
-    
-    const panelCheck = document.getElementById('panel-checkout');
-    if(panelCheck) panelCheck.style.display = 'flex';
-
     actualizarCestaBar();
-}
-        
+}        
     async function enviarPedidoFinal() {
     // 1. OBTENER DATOS DEL REGISTRO (Ya no usamos los inputs del panel)
     const cache = localStorage.getItem('ae_cliente');

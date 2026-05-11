@@ -878,43 +878,63 @@ function abrirCheckout() {
         </div>
     `;
 
-   function renderSeguimiento() {
+   // ==========================================
+// 🛠️ FUNCIÓN DE SEGUIMIENTO (LIMPIA Y SEGURA)
+// ==========================================
+function renderSeguimiento() {
+    // 1. Buscamos los elementos y los guardamos en variables
     const pid = localStorage.getItem('ae_pedido_id');
     const modalExito = document.getElementById('modal-exito');
-    const card = document.getElementById('card-seguimiento'); 
+    const cardContainer = document.getElementById('card-seguimiento'); 
 
-    // Verificación de seguridad
-    if (!modalExito || !card) return;
+    // 2. Verificamos que existan antes de hacer nada
+    if (!modalExito || !cardContainer) {
+        console.error("Error: No se encontró el contenedor del seguimiento");
+        return;
+    }
 
-    // 1. ABRIR MODAL
+    // 3. Abrimos el modal
     modalExito.style.setProperty('display', 'flex', 'important');
     modalExito.classList.remove('hidden');
 
-    // 2. DISEÑO BASE (Lo ponemos aquí dentro para que no de error)
-    if (pid) {
-        card.innerHTML = `
-            <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl">
-                <p class="text-[9px] text-cyan-400 font-black uppercase mb-1 text-center">Estado del Pedido</p>
-                <div id="countdown-display" class="text-sm font-bold italic text-white uppercase text-center">Sincronizando...</div>
-            </div>
-            <div id="interfaz-nodos">
-                </div>
-        `;
-
-        // 3. CONECTAR CON FIREBASE
-        database.ref('pedidos/' + pid).on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                actualizarInterfazSeguimiento(data);
-            } else {
-                card.innerHTML = `<p class="text-white italic text-center text-xs">Pedido no encontrado en el sistema.</p>`;
-            }
-        });
-
-    } else {
-        card.innerHTML = `<p class="text-white italic text-center text-xs">No tienes pedidos activos en este momento.</p>`;
+    // 4. Si NO hay pedido, mostramos aviso y botón de cerrar
+    if (!pid) {
+        cardContainer.innerHTML = `
+            <div class="text-center p-4">
+                <p class="text-white italic text-sm">No tienes pedidos activos.</p>
+                <button onclick="document.getElementById('modal-exito').style.display='none'" 
+                        class="mt-4 bg-white/10 px-4 py-2 rounded-xl text-white text-[10px] uppercase font-black">
+                    Volver al inicio
+                </button>
+            </div>`;
+        return;
     }
-}
+
+    // 5. Si SÍ hay pedido, cargamos el diseño base
+    cardContainer.innerHTML = `
+        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
+            <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path>
+            </svg>
+        </div>
+        <h2 class="text-xl font-black italic uppercase text-white mb-1 text-center">¡ORDEN RECIBIDA!</h2>
+        <p class="text-[10px] text-white/50 mb-6 uppercase italic tracking-widest text-center text-xs">Ref: ${pid}</p>
+        
+        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl">
+            <p class="text-[9px] text-cyan-400 font-black uppercase mb-1 text-center">Estado actual</p>
+            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase text-center text-xs">Sincronizando...</div>
+        </div>
+        <div id="interfaz-nodos">
+            </div>
+    `;
+
+    // 6. Conectamos con Firebase para las actualizaciones en vivo
+    database.ref('pedidos/' + pid).on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data && typeof actualizarInterfazSeguimiento === "function") {
+            actualizarInterfazSeguimiento(data);
+        }
+    });
     // 1. Diseño base del Modal
     card.innerHTML = `
         <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">

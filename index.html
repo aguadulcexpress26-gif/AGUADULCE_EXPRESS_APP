@@ -98,6 +98,21 @@
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
 }
+    /* Personalización de los modales para que parezcan tu App */
+.swal2-popup {
+    border-radius: 25px !important;
+    font-family: 'Inter', sans-serif !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+}
+.swal2-title {
+    font-weight: 900 !important;
+    font-style: italic !important;
+    text-transform: uppercase !important;
+}
+.swal2-confirm {
+    border-radius: 15px !important;
+    font-weight: bold !important;
+}
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -559,16 +574,46 @@
 
     function confirmarVaciarFinal() { cesta = []; actualizarCestaBar(); document.getElementById('panel-revision').style.display = 'none'; verMenu(); }
 
-   function abrirCheckout() {
-    // --- NUEVO: BLOQUEO DE PEDIDO ACTIVO ---
+  function abrirCheckout() {
+    // 1. BLOQUEO DE PEDIDO ACTIVO (Con modal elegante)
     const pedidoActivo = localStorage.getItem('ae_pedido_id');
     if (pedidoActivo) {
-        mostrarAviso(
-            "PEDIDO EN CURSO", 
-            "Ya tienes una orden activa (Ref: " + pedidoActivo + "). Por favor, espera a recibirla antes de realizar una nueva compra.", 
-            false, 
-            ""
-        );
+        Swal.fire({
+            title: 'PEDIDO EN CURSO',
+            html: `Ya tienes una orden activa (Ref: <b>${pedidoActivo}</b>).<br><br>Por seguridad, debes recibir tu pedido actual antes de realizar uno nuevo.`,
+            icon: 'warning',
+            background: '#1a1a2e',
+            color: '#fff',
+            confirmButtonText: 'VER SEGUIMIENTO',
+            confirmButtonColor: '#00d2ff'
+        }).then(() => {
+            renderSeguimiento(); // Si acepta, lo mandamos a ver su pedido
+        });
+        return; 
+    }
+
+    // 2. CÁLCULO DINÁMICO DE PRECIOS PARA EL DESGLOSE
+    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
+    const envio = 3.50;
+    const gestion = 0.99;
+    const deuda = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
+    const totalFinal = subtotal + envio + gestion + deuda;
+
+    // Inyectamos los textos en el HTML (Los IDs que pusimos antes)
+    document.getElementById('check-subtotal').innerText = subtotal.toFixed(2) + "€";
+    document.getElementById('check-deuda').innerText = deuda.toFixed(2) + "€";
+    document.getElementById('check-total').innerText = totalFinal.toFixed(2) + "€";
+
+    // Mostramos la fila de deuda solo si existe
+    document.getElementById('row-deuda').classList.toggle('hidden', deuda === 0);
+
+    // 3. MOSTRAR EL PANEL
+    document.getElementById('panel-checkout').style.display = 'block';
+    document.getElementById('panel-checkout').classList.remove('hidden');
+    
+    // Sincronizamos los datos del cliente por si acaso
+    actualizarCestaBar();
+}
         renderSeguimiento(); // Re-abre el cuadro de seguimiento por si lo cerraron
         return; // Detiene la ejecución aquí
     }

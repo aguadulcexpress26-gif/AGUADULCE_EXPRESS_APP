@@ -352,21 +352,34 @@
     }
 
     function confirmarAnadir() {
-        try {
-            let sel = [];
-            document.querySelectorAll('.grid-option.selected').forEach(el => {
-                let texto = el.innerText.split('+')[0].trim();
-                if (texto) sel.push(texto);
-            });
-            document.querySelectorAll('.qty').forEach(el => {
-                const cant = parseInt(el.innerText) || 0;
-                if (cant > 0) sel.push(`${cant}x ${el.dataset.nombre || "Extra"}`);
-            });
-            const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
-            cesta.push({ nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad });
-            actualizarCestaBar(); cerrarModal();
-        } catch (e) { alert("Error al añadir"); }
+    // --- EL CANDADO DE SEGURIDAD ---
+    if (!localStorage.getItem('ae_cliente')) {
+        document.getElementById('modal-registro').style.display = 'flex';
+        return; // Detiene la función aquí mismo
     }
+    // -------------------------------
+
+    try {
+        let sel = [];
+        document.querySelectorAll('.grid-option.selected').forEach(el => {
+            let texto = el.innerText.split('+')[0].trim();
+            if (texto) sel.push(texto);
+        });
+        document.querySelectorAll('.qty').forEach(el => {
+            const cant = parseInt(el.innerText) || 0;
+            if (cant > 0) sel.push(`${cant}x ${el.dataset.nombre || "Extra"}`);
+        });
+        const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
+        cesta.push({ 
+            nombre: `${itemActual.cantidad}x ${itemActual.data.PLATO}${detalle}`, 
+            total: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad 
+        });
+        actualizarCestaBar(); 
+        cerrarModal();
+    } catch (e) { 
+        alert("Error al añadir"); 
+    }
+}
 
     function actualizarCestaBar() {
         const total = cesta.reduce((acc, i) => acc + i.total, 0);
@@ -680,6 +693,66 @@ function actualizarEstadoVisual(estado) {
 // --- FUNCIÓN DE ZOOM PARA PUBLICIDAD ---
 function toggleZoom(el) {
     el.classList.toggle('img-zoom');
+}
+function verificarEstadoLogin() {
+    const cache = localStorage.getItem('ae_cliente');
+    const panelDatos = document.getElementById('datos-registro-checkout');
+    const panelInfo = document.getElementById('cliente-identificado');
+    const txtLogueado = document.getElementById('info-cliente-logueado');
+
+    if (cache) {
+        const u = JSON.parse(cache);
+        // Ocultamos los inputs y mostramos el resumen
+        if(panelDatos) panelDatos.classList.add('hidden');
+        if(panelInfo) panelInfo.classList.remove('hidden');
+        if(txtLogueado) txtLogueado.innerText = `${u.nombre} | ${u.telf}\n${u.dir}`;
+        
+        // Rellenamos los campos ocultos por seguridad
+        if(document.getElementById('cliente-nombre')) document.getElementById('cliente-nombre').value = u.nombre;
+        if(document.getElementById('cliente-telf')) document.getElementById('cliente-telf').value = u.telf;
+        if(document.getElementById('cliente-dir')) document.getElementById('cliente-dir').value = u.dir;
+    } else {
+        // Si no hay nada, mostramos los inputs vacíos
+        if(panelDatos) panelDatos.classList.remove('hidden');
+        if(panelInfo) panelInfo.classList.add('hidden');
+    }
+}
+
+function borrarRegistro() {
+    if(confirm("¿Quieres cambiar tus datos de cliente?")) {
+        localStorage.removeItem('ae_cliente');
+        location.reload(); // Recargamos para que el sistema pida registro de nuevo
+    }
+}
+// --- FUNCIONES DE REGISTRO ---
+function guardarRegistro() {
+    const nombre = document.getElementById('reg-nombre').value.trim();
+    const telf = document.getElementById('reg-telf').value.trim();
+    const dir = document.getElementById('reg-dir').value.trim();
+
+    const esTelefonoValido = /^[6789]\d{8}$/.test(telf.replace('+34', '').trim());
+
+    if (nombre.length < 3) {
+        alert("Por favor, introduce tu nombre.");
+        return;
+    }
+    if (!esTelefonoValido) {
+        alert("El teléfono no es válido. Introduce 9 dígitos.");
+        return;
+    }
+    if (dir.length < 5) {
+        alert("Por favor, introduce tu dirección de entrega.");
+        return;
+    }
+
+    const usuario = { nombre, telf, dir };
+    localStorage.setItem('ae_cliente', JSON.stringify(usuario));
+    
+    document.getElementById('modal-registro').style.display = 'none';
+    
+    if (typeof verificarEstadoLogin === "function") {
+        verificarEstadoLogin(); 
+    }
 }
 
 // ==========================================

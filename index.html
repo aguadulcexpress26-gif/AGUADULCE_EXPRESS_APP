@@ -887,376 +887,144 @@ function abrirCheckout() {
     `;
 
    // ==========================================
-// 🛠️ FUNCIÓN DE SEGUIMIENTO (LIMPIA Y SEGURA)
+// 🛠️ FUNCIÓN DE SEGUIMIENTO (Toda la Lógica)
 // ==========================================
 function renderSeguimiento() {
-    // 1. Buscamos los elementos y los guardamos en variables
     const pid = localStorage.getItem('ae_pedido_id');
     const modalExito = document.getElementById('modal-exito');
-    const cardContainer = document.getElementById('card-seguimiento'); 
+    const card = document.getElementById('card-seguimiento'); 
 
-    // 2. Verificamos que existan antes de hacer nada
-    if (!modalExito || !cardContainer) {
-        console.error("Error: No se encontró el contenedor del seguimiento");
-        return;
-    }
+    if (!modalExito || !card) return;
 
-    // 3. Abrimos el modal
     modalExito.style.setProperty('display', 'flex', 'important');
     modalExito.classList.remove('hidden');
 
-    // 4. Si NO hay pedido, mostramos aviso y botón de cerrar
     if (!pid) {
-        cardContainer.innerHTML = `
-            <div class="text-center p-4">
-                <p class="text-white italic text-sm">No tienes pedidos activos.</p>
-                <button onclick="document.getElementById('modal-exito').style.display='none'" 
-                        class="mt-4 bg-white/10 px-4 py-2 rounded-xl text-white text-[10px] uppercase font-black">
-                    Volver al inicio
-                </button>
-            </div>`;
+        card.innerHTML = `<div class="text-center p-4"><p class="text-white italic text-sm">No hay pedidos activos.</p></div>`;
         return;
     }
 
-    // 5. Si SÍ hay pedido, cargamos el diseño base
-    cardContainer.innerHTML = `
-        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
-            <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path>
-            </svg>
-        </div>
-        <h2 class="text-xl font-black italic uppercase text-white mb-1 text-center">¡ORDEN RECIBIDA!</h2>
-        <p class="text-[10px] text-white/50 mb-6 uppercase italic tracking-widest text-center text-xs">Ref: ${pid}</p>
-        
-        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl">
-            <p class="text-[9px] text-cyan-400 font-black uppercase mb-1 text-center">Estado actual</p>
-            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase text-center text-xs">Sincronizando...</div>
-        </div>
-        <div id="interfaz-nodos">
-            </div>
-    `;
-
-    // 6. Conectamos con Firebase para las actualizaciones en vivo
-    database.ref('pedidos/' + pid).on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data && typeof actualizarInterfazSeguimiento === "function") {
-            actualizarInterfazSeguimiento(data);
-        }
-    });
-    // 1. Diseño base del Modal
+    // DISEÑO DE LA BARRA DE LUCES Y NODOS
     card.innerHTML = `
         <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
             <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
         </div>
-        <h2 class="text-xl font-black italic uppercase text-white mb-1">¡ORDEN RECIBIDA!</h2>
-        <p class="text-[10px] text-white/50 mb-4 uppercase italic tracking-widest">Ref: ${pid}</p>
+        <h2 class="text-xl font-black italic uppercase text-white mb-1 text-center">¡ORDEN RECIBIDA!</h2>
+        <p class="text-[10px] text-white/50 mb-4 uppercase italic tracking-widest text-center">Ref: ${pid}</p>
         
-        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl">
+        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl text-center">
             <p id="timer-label" class="text-[9px] text-cyan-400 font-black uppercase mb-1">Estado del Pedido</p>
-            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase">Esperando confirmación...</div>
+            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase text-center">Sincronizando...</div>
         </div>
 
         <div class="flex justify-between items-start w-full relative mb-12 px-2">
             <div class="track-node" id="node-recibido">
                 <div class="track-line"></div>
                 <div class="track-dot">✔</div>
-                <span class="text-[8px] font-black uppercase mt-2">Recibido</span>
+                <span class="text-[8px] font-black uppercase mt-2 text-white">Recibido</span>
             </div>
             <div class="track-node" id="node-cocina">
                 <div class="track-line"></div>
                 <div class="track-dot">🍳</div>
-                <span class="text-[8px] font-black uppercase mt-2">Cocina</span>
+                <span class="text-[8px] font-black uppercase mt-2 text-white">Cocina</span>
             </div>
             <div class="track-node" id="node-camino">
                 <div class="track-dot">🛵</div>
-                <span class="text-[8px] font-black uppercase mt-2">Camino</span>
+                <span class="text-[8px] font-black uppercase mt-2 text-white">Camino</span>
             </div>
         </div>
+
         <div class="space-y-3">
-            <button onclick="window.open('https://wa.me/34643261881', '_blank')" class="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2"><span>Contactar con Soporte</span></button>
-            <button onclick="document.getElementById('modal-exito').style.display='none'; document.getElementById('btn-reabrir-seguimiento').style.display='block'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button>
-        </div>`;
+            <button onclick="window.open('https://wa.me/34643261881', '_blank')" class="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2">
+                <span>Contactar con Soporte</span>
+            </button>
+            <button onclick="document.getElementById('modal-exito').style.display='none'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button>
+        </div>
+    `;
 
- modalExito.style.display = 'flex';
-
-    // 2. Escucha de Firebase (Mantiene toda la lógica de avisos, sonidos y luces)
-    database.ref('pedidos/' + pid).on('value', (snapshot) => {
-        const data = snapshot.val(); 
-        if (!data) return;
-        const estado = String(data.estado || "").toLowerCase();
-
-        // --- 1. LÓGICA DE ENTREGA FINAL ---
-        if (estado === 'entregado') {
-            if (window.entregaFinalizada) return; 
-            window.entregaFinalizada = true;
-            localStorage.removeItem('ae_pedido_id');
-            mostrarAviso("¡PEDIDO ENTREGADO!", "¡Gracias por elegirnos! Que disfrutes tu comida.", false, "");
-            setTimeout(() => { window.location.reload(); }, 3500);
-            return;
-        } 
-        
-        // --- 2. LÓGICA DE MENSAJES Y SONIDO ---
-        if (estado === 'llegó' || estado === 'llegó 📍') {
-            actualizarEstadoVisual('llegó');
-            const sonido = document.getElementById('audio-llegada');
-            if (sonido) { 
-                sonido.volume = 1.0; 
-                sonido.play().catch(e => {}); 
-            }
-        } else if (estado === 'en camino') {
-            actualizarEstadoVisual('en camino');
-        } else if (data.timestampListo) {
-            actualizarEstadoVisual('cocina');
-        } else {
-            actualizarEstadoVisual('recibido');
-        }
-
-               // --- 3. LÓGICA DE LAS LUCES DE LA BARRA ---
-        actualizarLucesBarra(estado);
-
-    }); // Cierra Firebase .on()
-// Cierra renderSeguimiento()
-
-// ==========================================
-// 🛠️ FUNCIONES GLOBALES (FUERA DE RENDER)
-// ==========================================
-let clienteInterval;
-let fondoOriginal = ""; 
-
-function actualizarLucesBarra(estado) {
-    // 1. Limpiar nodos
-    document.querySelectorAll('.track-node').forEach(nodo => nodo.classList.remove('active'));
-
-    // 2. Encender según estado
-    const nodeRecibido = document.getElementById('node-recibido');
-    if (nodeRecibido) nodeRecibido.classList.add('active');
-
-    if (estado !== 'recibido' && estado !== '') {
-        const nodeCocina = document.getElementById('node-cocina');
-        if (nodeCocina) nodeCocina.classList.add('active');
-    }
-
-    if (estado === 'en camino' || estado === 'llegó' || estado === 'llegó 📍') {
-        const nodeCamino = document.getElementById('node-camino');
-        if (nodeCamino) nodeCamino.classList.add('active');
-    }
+    if (typeof escucharPedidoActivo === 'function') escucharPedidoActivo();
 }
 
+// LÓGICA DE LAS LUCES
+function actualizarLucesBarra(estado) {
+    document.querySelectorAll('.track-node').forEach(nodo => nodo.classList.remove('active'));
+    const nRecibido = document.getElementById('node-recibido');
+    const nCocina = document.getElementById('node-cocina');
+    const nCamino = document.getElementById('node-camino');
+
+    if (nRecibido) nRecibido.classList.add('active');
+    if (estado !== 'recibido' && nCocina) nCocina.classList.add('active');
+    if (['en camino', 'llegó', 'llegó 📍', 'entregado'].includes(estado) && nCamino) nCamino.classList.add('active');
+}
+
+// LÓGICA DE MENSAJES DINÁMICOS
 function actualizarEstadoVisual(estado) {
     const display = document.getElementById('countdown-display');
     const label = document.getElementById('timer-label');
     if (!display || !label) return;
 
-    if (window.clienteInterval) clearInterval(window.clienteInterval);
-
-    let textoPrincipal = "";
-    let textoLabel = "ESTADO DEL PEDIDO";
+    let principal = "Sincronizando...";
+    let sub = "ESTADO DEL PEDIDO";
 
     switch (estado) {
-        case 'recibido':
-            textoLabel = "PASO 1: CONFIRMACIÓN";
-            textoPrincipal = "📝 ORDEN RECIBIDA. ¡EN BREVE A COCINA!";
-            break;
-        case 'cocina':
-            textoLabel = "PASO 2: ELABORACIÓN";
-            textoPrincipal = "🔥 TU PEDIDO SE ESTÁ COCINANDO CON AMOR...";
-            break;
-        case 'en camino':
-            textoLabel = "PASO 3: REPARTO";
-            textoPrincipal = "🛵 ¡EL REPARTIDOR YA VA VOLANDO HACIA TI!";
-            break;
-        case 'llegó':
-            textoLabel = "¡YA ESTAMOS AQUÍ!";
-            textoPrincipal = "📍 ¡REPARTIDOR EN LA PUERTA! SAL A RECOGER.";
-            break;
+        case 'en camino': sub = "PASO 3: REPARTO"; principal = "🛵 ¡EL REPARTIDOR VA HACIA TI!"; break;
+        case 'llegó': case 'llegó 📍': sub = "¡YA ESTAMOS AQUÍ!"; principal = "📍 ¡SAL A RECOGER TU PEDIDO!"; break;
+        case 'cocinando': case 'preparando': sub = "PASO 2: ELABORACIÓN"; principal = "🔥 TU PEDIDO ESTÁ EN COCINA..."; break;
+        default: sub = "PASO 1: CONFIRMACIÓN"; principal = "📝 ORDEN RECIBIDA POR EL LOCAL"; break;
     }
-
-    display.innerText = textoPrincipal;
-    label.innerText = textoLabel;
-    display.classList.remove('text-3xl', 'text-sm');
-    display.classList.add('text-base', 'animate-pulse');
+    display.innerText = principal;
+    label.innerText = sub;
 }
 
-// --- FUNCIÓN DE ZOOM PARA PUBLICIDAD ---
-function toggleZoom(el) {
-    el.classList.toggle('img-zoom');
-}
-function verificarEstadoLogin() {
-    const cache = localStorage.getItem('ae_cliente');
-    const panelDatos = document.getElementById('datos-registro-checkout');
-    const panelInfo = document.getElementById('cliente-identificado');
-    const txtLogueado = document.getElementById('info-cliente-logueado');
+// MOTOR DE FIREBASE, SONIDO Y ENTREGA FINAL
+let intervaloAlarma = null;
 
-    if (cache) {
-        const u = JSON.parse(cache);
-        // Ocultamos los inputs y mostramos el resumen
-        if(panelDatos) panelDatos.classList.add('hidden');
-        if(panelInfo) panelInfo.classList.remove('hidden');
-        if(txtLogueado) txtLogueado.innerText = `${u.nombre} | ${u.telf}\n${u.dir}`;
-        
-        // Rellenamos los campos ocultos por seguridad
-        if(document.getElementById('cliente-nombre')) document.getElementById('cliente-nombre').value = u.nombre;
-        if(document.getElementById('cliente-telf')) document.getElementById('cliente-telf').value = u.telf;
-        if(document.getElementById('cliente-dir')) document.getElementById('cliente-dir').value = u.dir;
-    } else {
-        // Si no hay nada, mostramos los inputs vacíos
-        if(panelDatos) panelDatos.classList.remove('hidden');
-        if(panelInfo) panelInfo.classList.add('hidden');
-    }
-}
-
-function borrarRegistro() {
-    if(confirm("¿Quieres cambiar tus datos de cliente?")) {
-        localStorage.removeItem('ae_cliente');
-        location.reload(); // Recargamos para que el sistema pida registro de nuevo
-    }
-} 
-       // Esta función sirve para que el botón "X" del registro funcione
-function cerrarModalRegistro() {
-    document.getElementById('modal-registro').style.display = 'none';
-} 
-// --- FUNCIONES DE REGISTRO ---
-function guardarRegistro() {
-    const nombre = document.getElementById('reg-nombre').value.trim();
-    const telf = document.getElementById('reg-telf').value.trim();
-    const dir = document.getElementById('reg-dir').value.trim();
-
-    const esTelefonoValido = /^[6789]\d{8}$/.test(telf.replace('+34', '').trim());
-
-    if (nombre.length < 3) {
-        alert("Por favor, introduce tu nombre.");
-        return;
-    }
-    if (!esTelefonoValido) {
-        alert("El teléfono no es válido. Introduce 9 dígitos.");
-        return;
-    }
-    if (dir.length < 5) {
-        alert("Por favor, introduce tu dirección de entrega.");
-        return;
-    }
-
-    const usuario = { nombre, telf, dir };
-    localStorage.setItem('ae_cliente', JSON.stringify(usuario));
-    
-    document.getElementById('modal-registro').style.display = 'none';
-    
-    if (typeof verificarEstadoLogin === "function") {
-        verificarEstadoLogin(); 
-    }
-}
-
-// ESTA ES LA FUNCIÓN QUE FALTABA Y HACÍA QUE LA PANTALLA SE QUEDARA NEGRA
-function actualizarInterfazSeguimiento(data) {
-    const contenedor = document.getElementById('card-seguimiento');
-    if (!contenedor) return;
-
-    // Definimos qué icono y qué texto mostrar según el estado en Firebase
-    const estados = {
-        'recibido': { txt: 'Orden recibida', icon: '🛵' },
-        'cocinando': { txt: 'Tu pedido está en cocina', icon: '🔥' },
-        'entregado': { txt: '¡El repartidor ha llegado!', icon: '🔔' }
-    };
-
-    const info = estados[data.estado] || estados['recibido'];
-
-    // Dibujamos el contenido dentro del modal de seguimiento
-    contenedor.innerHTML = `
-        <div class="flex flex-col items-center gap-4">
-            <div class="text-6xl animate-bounce">${info.icon}</div>
-            <h3 class="text-xl font-black uppercase italic text-white">${info.txt}</h3>
-            <p class="text-[10px] text-white/50 uppercase italic">Ref: ${data.id}</p>
-            
-            ${data.estado === 'entregado' ? `
-                <button onclick="finalizarPedidoLocal()" class="mt-6 px-8 py-3 bg-cyan-400 text-black font-black rounded-2xl uppercase text-xs shadow-[0_0_15px_rgba(0,210,255,0.4)]">
-                    Recibido / Cerrar
-                </button>
-            ` : `
-                <button onclick="document.getElementById('modal-exito').style.display='none'" class="mt-6 px-8 py-3 bg-white/5 text-white/50 font-black rounded-2xl uppercase text-[10px]">
-                    Ver restaurantes
-                </button>
-            `}
-        </div>
-    `;
-}
-// ==========================================
-// 🏍️ MOTOR DE SEGUIMIENTO EN TIEMPO REAL
-// ==========================================
 function escucharPedidoActivo() {
-    // 1. Verificación inicial de seguridad
-    if (typeof database === 'undefined') {
-        console.warn("Esperando conexión con Firebase...");
-        setTimeout(escucharPedidoActivo, 1500);
-        return;
-    }
+    const pid = localStorage.getItem('ae_pedido_id');
+    if (!pid || typeof database === 'undefined') return;
 
-    const pedidoId = localStorage.getItem('ae_pedido_id');
-    if (!pedidoId) return;
-
-    // 2. Mostrar botón de "Seguir" si existe pedido
-    const btnReabrir = document.getElementById('btn-reabrir-seguimiento');
-    if (btnReabrir) {
-        btnReabrir.style.display = 'block';
-        btnReabrir.classList.remove('hidden');
-    }
-
-    // 3. Conexión a la base de datos
-    database.ref('pedidos/' + pedidoId).on('value', (snapshot) => {
+    database.ref('pedidos/' + pid).on('value', (snapshot) => {
         const data = snapshot.val();
-        
-        if (data) {
-            // Si la función de dibujo existe, la ejecutamos
-            if (typeof actualizarInterfazSeguimiento === 'function') {
-                actualizarInterfazSeguimiento(data);
-            }
+        if (!data) return;
 
-            // 4. Lógica de sonido: Alerta cuando llega
-            if (data.estado === 'entregado' || data.estado === 'llegando') {
-                reproducirAlarmaLlegada();
-            } else {
-                detenerAlarmaLlegada();
-            }
+        const estado = String(data.estado || "").toLowerCase();
+
+        actualizarLucesBarra(estado);
+        actualizarEstadoVisual(estado);
+
+        // LÓGICA DE SONIDO "HE LLEGADO"
+        if (estado === 'llegó' || estado === 'llegó 📍') {
+            reproducirAlarmaLlegada();
+        } else if (estado === 'entregado') {
+            // LÓGICA DE ENTREGA FINAL
+            detenerAlarmaLlegada();
+            localStorage.removeItem('ae_pedido_id');
+            setTimeout(() => { window.location.reload(); }, 4000);
+        } else {
+            detenerAlarmaLlegada();
         }
-    }, (error) => {
-        console.error("Error en el seguimiento real-time:", error);
     });
 }
 
-// --- GESTIÓN DE ALARMA (SONIDO) ---
-let intervaloAlarma = null;
-
 function reproducirAlarmaLlegada() {
-    if (intervaloAlarma) return; // Ya está sonando
-
+    if (intervaloAlarma) return;
     const sonido = document.getElementById('audio-llegada');
     if (sonido) {
-        sonido.play().catch(e => console.warn("El navegador bloqueó el audio inicial"));
-        
-        // Repetir cada minuto para avisar al cliente
-        intervaloAlarma = setInterval(() => {
-            sonido.play();
-        }, 60000);
+        sonido.play().catch(() => console.warn("Audio pausado"));
+        intervaloAlarma = setInterval(() => { sonido.play(); }, 60000);
     }
 }
 
 function detenerAlarmaLlegada() {
-    if (intervaloAlarma) {
-        clearInterval(intervaloAlarma);
-        intervaloAlarma = null;
-    }
-} // <- ESTA LLAVE FALTABA
+    if (intervaloAlarma) { clearInterval(intervaloAlarma); intervaloAlarma = null; }
+}
 
-// ==========================================
-// 🚀 ARRANQUE OFICIAL DE LA APP
-// ==========================================
+// ARRANQUE
 init();
 
 </script>
 
-<div id="btn-reabrir-seguimiento" 
-     onclick="renderSeguimiento()" 
-     class="fixed bottom-24 right-6 z-[6000] bg-cyan-400 text-black p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce text-center cursor-pointer" 
-     style="display: none;">
+<div id="btn-reabrir-seguimiento" onclick="renderSeguimiento()" class="fixed bottom-24 right-6 z-[6000] bg-cyan-400 text-black p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce text-center cursor-pointer" style="display: none;">
     <span class="text-2xl" style="pointer-events: none;">🛵</span>
     <span class="block text-[8px] font-black uppercase" style="pointer-events: none;">Seguir</span>
 </div>

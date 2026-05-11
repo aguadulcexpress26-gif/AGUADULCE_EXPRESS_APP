@@ -576,8 +576,8 @@
 
     function confirmarVaciarFinal() { cesta = []; actualizarCestaBar(); document.getElementById('panel-revision').style.display = 'none'; verMenu(); }
 
-  function abrirCheckout() {
-    // 1. BLOQUEO DE PEDIDO ACTIVO (Con modal elegante)
+ function abrirCheckout() {
+    // 1. BLOQUEO SI YA HAY UN PEDIDO ACTIVO
     const pedidoActivo = localStorage.getItem('ae_pedido_id');
     if (pedidoActivo) {
         Swal.fire({
@@ -589,68 +589,69 @@
             confirmButtonText: 'VER SEGUIMIENTO',
             confirmButtonColor: '#00d2ff'
         }).then(() => {
-            renderSeguimiento(); // Si acepta, lo mandamos a ver su pedido
+            renderSeguimiento(); 
         });
         return; 
     }
 
-    // 2. CÁLCULO DINÁMICO DE PRECIOS PARA EL DESGLOSE
+    // 2. CÁLCULO DE PRECIOS
     const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
     const envio = 3.50;
-    const gestion = 0.99;
+    const plataforma = 0.99;
     const deuda = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
-    const totalFinal = subtotal + envio + gestion + deuda;
+    const totalFinal = subtotal + envio + plataforma + deuda;
 
-    // Inyectamos los textos en el HTML (Los IDs que pusimos antes)
-    document.getElementById('check-subtotal').innerText = subtotal.toFixed(2) + "€";
-    document.getElementById('check-deuda').innerText = deuda.toFixed(2) + "€";
-    document.getElementById('check-total').innerText = totalFinal.toFixed(2) + "€";
-
-    // Mostramos la fila de deuda solo si existe
-    document.getElementById('row-deuda').classList.toggle('hidden', deuda === 0);
-
-    // 3. MOSTRAR EL PANEL
-    document.getElementById('panel-checkout').style.display = 'block';
-    document.getElementById('panel-checkout').classList.remove('hidden');
+    // 3. CAMBIO DE PANTALLA
+    // Ocultamos revisión y mostramos checkout
+    const panelRev = document.getElementById('panel-revision');
+    if(panelRev) panelRev.style.display = 'none';
     
-    // Sincronizamos los datos del cliente por si acaso
-    actualizarCestaBar();
-}
-        renderSeguimiento(); // Re-abre el cuadro de seguimiento por si lo cerraron
-        return; // Detiene la ejecución aquí
-    }
-    // ---------------------------------------
+    const panelCheck = document.getElementById('panel-checkout');
+    if(panelCheck) panelCheck.style.display = 'flex';
 
-    document.getElementById('panel-revision').style.display = 'none';
-    document.getElementById('panel-checkout').style.display = 'flex';
-    
-    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-    const envio = 2.50; 
-    const plataforma = 1.00;
-
+    // 4. INYECTAR EL DESGLOSE Y LAS NOTAS
+    // Esto asegura que los precios se vean y el cliente pueda escribir sus notas
     document.getElementById('desglose-pago').innerHTML = `
-        <div class="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
-        <div class="flex justify-between"><span>Costo Envío</span><span>${envio.toFixed(2)}€</span></div>
-        <div class="flex justify-between text-white/50 italic"><span>Uso de Plataforma</span><span>${plataforma.toFixed(2)}€</span></div>
-        <div class="flex justify-between font-black text-cyan-400 text-lg border-t border-white/10 pt-2 mt-2 uppercase italic">
-            <span>Total a Pagar</span><span>${(subtotal + envio + plataforma).toFixed(2)}€</span>
+        <div class="space-y-2 bg-white/5 p-4 rounded-2xl">
+            <div class="flex justify-between text-gray-400 text-sm"><span>Subtotal</span><span>${subtotal.toFixed(2)}€</span></div>
+            <div class="flex justify-between text-gray-400 text-sm"><span>Costo Envío</span><span>${envio.toFixed(2)}€</span></div>
+            <div class="flex justify-between text-gray-400 text-sm italic"><span>Gestión Plataforma</span><span>${plataforma.toFixed(2)}€</span></div>
+            
+            ${deuda > 0 ? `
+            <div class="flex justify-between text-red-400 text-sm font-bold">
+                <span>Saldo Pendiente (Deuda)</span><span>${deuda.toFixed(2)}€</span>
+            </div>` : ''}
+
+            <div class="flex justify-between font-black text-cyan-400 text-xl border-t border-white/10 pt-2 mt-2 uppercase italic">
+                <span>Total a Pagar</span><span>${totalFinal.toFixed(2)}€</span>
+            </div>
         </div>
         
         <div class="mt-6">
-            <p class="text-[9px] font-black uppercase text-cyan-400 mb-1 ml-2">Instrucciones para el repartidor</p>
+            <p class="text-[10px] font-black uppercase text-cyan-400 mb-2 ml-2">Instrucciones para el repartidor</p>
             <textarea id="cliente-notas" placeholder="Ej: El timbre no funciona, llamar al llegar..."  
-                      class="w-full bg-white/10 border border-white/10 rounded-2xl p-4 text-white text-xs focus:outline-none focus:border-cyan-400 h-20 resize-none"></textarea>
+                      class="w-full bg-white/10 border border-white/10 rounded-2xl p-4 text-white text-xs focus:outline-none focus:border-cyan-400 h-24 resize-none"></textarea>
         </div>
 
         <div class="p-4 bg-white/5 border border-white/10 rounded-2xl mt-4">
             <label class="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" id="check-legal" ${localStorage.getItem('ae_legal') === 'true' ? 'checked' : ''} 
+                <input type="checkbox" id="check-legal" checked 
                        onchange="document.getElementById('btn-final').disabled = !this.checked; document.getElementById('btn-final').style.opacity = this.checked ? '1' : '0.5'" 
                        class="mt-1 w-4 h-4 accent-cyan-400">
-                <span class="text-[10px] text-white/50 leading-tight uppercase font-bold">Acepto el Tratamiento de Datos</span>
+                <span class="text-[10px] text-white/50 leading-tight uppercase font-bold">Confirmo que mis datos de entrega son correctos</span>
             </label>
         </div>
     `;
+
+    // 5. ACTUALIZAR BOTÓN FINAL Y DATOS
+    const btnFinal = document.getElementById('btn-final');
+    if (btnFinal) {
+        btnFinal.innerText = `PROCESAR ORDEN (${totalFinal.toFixed(2)}€)`;
+        btnFinal.disabled = false;
+        btnFinal.style.opacity = "1";
+    }
+
+    actualizarCestaBar();
 }
         
     async function enviarPedidoFinal() {

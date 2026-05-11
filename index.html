@@ -576,8 +576,8 @@
 
     function confirmarVaciarFinal() { cesta = []; actualizarCestaBar(); document.getElementById('panel-revision').style.display = 'none'; verMenu(); }
 
- function abrirCheckout() {
-    // 1. BLOQUEO SI YA HAY UN PEDIDO ACTIVO
+function abrirCheckout() {
+    // 1. BLOQUEO DE PEDIDO ACTIVO
     const pedidoActivo = localStorage.getItem('ae_pedido_id');
     if (pedidoActivo) {
         Swal.fire({
@@ -594,30 +594,51 @@
         return; 
     }
 
-    // 2. CÁLCULO DE PRECIOS ACTUALIZADO
+    // 2. CÁLCULO DE PRECIOS (Ajustado a tus montos)
     const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-    const envio = 2.50;
+    const envio = 3.50;  // <-- Cambiado a 3.50€ como pediste
     const gestion = 0.99;
     const deuda = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
     const totalFinal = subtotal + envio + gestion + deuda;
 
-    // 3. INYECTAR DATOS EN TU DISEÑO (Buscamos los IDs del HTML)
-    if(document.getElementById('check-subtotal')) 
-        document.getElementById('check-subtotal').innerText = subtotal.toFixed(2) + "€";
-    
-    if(document.getElementById('check-deuda')) 
-        document.getElementById('check-deuda').innerText = deuda.toFixed(2) + "€";
-    
-    if(document.getElementById('check-total')) 
-        document.getElementById('check-total').innerText = totalFinal.toFixed(2) + "€";
+    // 3. INYECCIÓN DEL CUADRO DE NOTAS Y DESGLOSE DINÁMICO
+    // Buscamos el contenedor del desglose en tu HTML
+    const contenedorDesglose = document.getElementById('desglose-pago');
+    if (contenedorDesglose) {
+        contenedorDesglose.innerHTML = `
+            <div class="space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5">
+                <div class="flex justify-between text-gray-400 text-sm">
+                    <span>Subtotal Productos</span>
+                    <span class="text-white font-bold">${subtotal.toFixed(2)}€</span>
+                </div>
+                <div class="flex justify-between text-gray-400 text-sm">
+                    <span>Gastos de Envío</span>
+                    <span class="text-white font-bold">${envio.toFixed(2)}€</span>
+                </div>
+                <div class="flex justify-between text-gray-400 text-sm italic">
+                    <span>Gestión Plataforma</span>
+                    <span class="text-white font-bold">${gestion.toFixed(2)}€</span>
+                </div>
+                ${deuda > 0 ? `
+                <div class="flex justify-between text-red-400 text-sm font-bold pt-1 border-t border-white/5">
+                    <span>Saldo Pendiente</span>
+                    <span>${deuda.toFixed(2)}€</span>
+                </div>` : ''}
+                <div class="flex justify-between text-cyan-400 font-black text-xl border-t border-cyan-400/20 pt-2 mt-1 italic uppercase">
+                    <span>Total a Pagar</span>
+                    <span>${totalFinal.toFixed(2)}€</span>
+                </div>
+            </div>
 
-    // Mostramos la fila de deuda solo si el cliente tiene saldo pendiente
-    const filaDeuda = document.getElementById('row-deuda');
-    if(filaDeuda) {
-        filaDeuda.classList.toggle('hidden', deuda === 0);
+            <div class="mt-6">
+                <p class="text-[10px] font-black uppercase text-cyan-400 mb-2 ml-2 italic">Instrucciones para el repartidor</p>
+                <textarea id="cliente-notas" placeholder="Ej: Piso 3, puerta B. El timbre no funciona..." 
+                    class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-xs h-24 focus:outline-none focus:border-cyan-400 transition-all resize-none shadow-inner"></textarea>
+            </div>
+        `;
     }
 
-    // 4. ACTUALIZAR EL BOTÓN FINAL
+    // 4. ACTUALIZAR EL BOTÓN DE PAGO FINAL
     const btnFinal = document.getElementById('btn-final');
     if (btnFinal) {
         btnFinal.innerText = `PROCESAR ORDEN (${totalFinal.toFixed(2)}€)`;
@@ -626,22 +647,11 @@
     }
 
     // 5. CAMBIO DE PANTALLA
-    // Asegúrate de que estos IDs existan en tu HTML
     const panelRev = document.getElementById('panel-revision');
     if(panelRev) panelRev.style.display = 'none';
     
     const panelCheck = document.getElementById('panel-checkout');
     if(panelCheck) panelCheck.style.display = 'flex';
-
-    actualizarCestaBar();
-}
-    // 5. ACTUALIZAR BOTÓN FINAL Y DATOS
-    const btnFinal = document.getElementById('btn-final');
-    if (btnFinal) {
-        btnFinal.innerText = `PROCESAR ORDEN (${totalFinal.toFixed(2)}€)`;
-        btnFinal.disabled = false;
-        btnFinal.style.opacity = "1";
-    }
 
     actualizarCestaBar();
 }

@@ -113,7 +113,52 @@
     border-radius: 15px !important;
     font-weight: bold !important;
 }
-   </style>
+  /* Estilo para el cajón de horario */
+.badge-horario {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.85); /* Negro elegante semi-transparente */
+    color: white;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+}
+
+/* Efecto cuando el restaurante está cerrado */
+.tienda-cerrada {
+    filter: grayscale(1) opacity(0.5); /* Se apaga y se pone en gris */
+    pointer-events: none; /* Bloquea los clics por completo */
+    cursor: not-allowed;
+}
+
+/* Texto de aviso cuando está cerrado */
+.texto-cerrado {
+    color: #ff4d4d; /* Rojo suave */
+}
+    /* --- ESTO OCULTA EL PANEL DE PAGO DE LA PANTALLA INICIAL --- */
+#panel-checkout {
+    display: none; /* Esto lo hace invisible al cargar */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #0a0a0a;
+    z-index: 5000; /* Lo pone por encima de todo */
+    overflow-y: auto;
+}
+
+/* Por si acaso tuvieras el ID con otro nombre, asegúrate de que coincida */
+.hidden {
+    display: none !important;
+}
+    </style>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
@@ -390,24 +435,66 @@
         }
     }
 
-    function renderHome() {
-        document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;
-        let html = `<p class="step-tag mb-6 ml-2 italic text-left text-white/50">Selecciona un restaurante</p>`;
-        db.restaurantes.forEach(r => {
-            html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 active:scale-95 transition-all shadow-xl" onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}', '${r.FOTO}')"><img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70"><div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div><div class="absolute bottom-6 left-8 text-left"><h2 class="text-2xl font-black italic uppercase text-white">${r.NOMBRE_RESTAURANTE}</h2></div></div>`;
+   function renderHome() {
+    document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;
+    let html = `<p class="step-tag mb-6 ml-2 italic text-left text-white/50">Selecciona un restaurante</p>`;
+    
+    db.restaurantes.forEach(r => {
+        // Detectamos si el restaurante está cerrado
+        const estaCerrado = String(r.ESTADO).trim().toLowerCase() === "cerrado";
+        
+        // Clases visuales: si está cerrado se pone en gris, transparente y no deja hacer clic
+        const clasesCard = estaCerrado 
+            ? "grayscale opacity-50 pointer-events-none cursor-not-allowed" 
+            : "active:scale-95 cursor-pointer";
+
+        html += `
+        <div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 transition-all shadow-xl ${clasesCard}" 
+             onclick="abrirTienda('${r.NOMBRE_RESTAURANTE}', '${r.ID_RESTAURANTE}', '${r.FOTO}', '${r.ESTADO}')">
+            
+            <img src="${r.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
+            <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent"></div>
+            
+            <div class="absolute bottom-6 left-8 text-left">
+                <h2 class="text-2xl font-black italic uppercase text-white">${r.NOMBRE_RESTAURANTE}</h2>
+            </div>
+
+            <div class="absolute bottom-6 right-6 bg-black/80 backdrop-blur-md border border-white/10 px-3 py-1 rounded-xl shadow-lg">
+                <p class="text-[10px] font-black italic uppercase ${estaCerrado ? 'text-red-500' : 'text-cyan-400'}">
+                    ${estaCerrado ? 'Cerrado' : (r.HORARIO_INFO || 'Abierto')}
+                </p>
+            </div>
+        </div>`;
+    });
+    document.getElementById('app-container').innerHTML = html;
+}
+
+    function abrirTienda(nombre, id, foto, estado) {
+    // 1. Bloqueo por horario
+    if (String(estado).trim().toLowerCase() === "cerrado") {
+        Swal.fire({
+            title: 'RESTAURANTE CERRADO',
+            text: 'Este establecimiento no está aceptando pedidos en este momento por horario.',
+            icon: 'error',
+            background: '#1a1a2e',
+            color: '#fff',
+            confirmButtonColor: '#00d2ff'
         });
-        document.getElementById('app-container').innerHTML = html;
+        return;
     }
 
-    function abrirTienda(nombre, id, foto) {
-        if (cesta.length > 0 && String(rActivo.id) !== String(id)) {
-            mostrarAviso("PEDIDO EN CURSO", `Tienes productos de "${rActivo.nombre}" en la cesta.`, true, "vaciarCesta()");
-            return;
-        }
-        rActivo.id = id; rActivo.nombre = nombre; rActivo.foto = foto;
-        document.getElementById('header-bg').style.backgroundImage = `url('${foto}')`;
-        verMenu();
+    // 2. Bloqueo por cesta de otro restaurante (Tu lógica original)
+    if (cesta.length > 0 && String(rActivo.id) !== String(id)) {
+        mostrarAviso("PEDIDO EN CURSO", `Tienes productos de "${rActivo.nombre}" en la cesta.`, true, "vaciarCesta()");
+        return;
     }
+
+    rActivo.id = id; 
+    rActivo.nombre = nombre; 
+    rActivo.foto = foto;
+    document.getElementById('header-bg').style.backgroundImage = `url('${foto}')`;
+    verMenu();
+}
 
     function verMenu() {
         const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(rActivo.id));

@@ -211,7 +211,12 @@
     let rActivo = { id: null, nombre: "", foto: "" };
     let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: false, data: null };
 
-    async function init() {
+   async function init() {
+    // --- PIEZA MEJORADA ---
+    // Añadimos 'await' para que la App espere a saber si hay deuda antes de cargar el resto
+    await verificarEstadoLogin(); 
+    // -----------------------
+
     console.log("🚀 Iniciando sistema con carga de marca...");
     try {
         const res = await fetch(scriptURL);
@@ -382,16 +387,32 @@
 }
 
     function actualizarCestaBar() {
-        const total = cesta.reduce((acc, i) => acc + i.total, 0);
-        document.getElementById('cesta-flotante').classList.toggle('hidden', cesta.length === 0);
-        document.getElementById('cesta-info').innerText = `${cesta.length} PRODUCTOS`;
-        document.getElementById('cesta-total').innerText = `${total.toFixed(2)}€ TOTAL`;
-        
-        // --- MEMORIA AUTOMÁTICA ---
-        localStorage.setItem('ae_cesta_temporal', JSON.stringify(cesta));
-        localStorage.setItem('ae_restaurante_temporal', JSON.stringify(rActivo));
-    }
+    // 1. Calculamos el total de los platos actuales
+    const totalPlatos = cesta.reduce((acc, i) => acc + i.total, 0);
+    
+    // 2. Traemos la deuda de la memoria (si no hay, es 0)
+    const deudaPendiente = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
+    
+    // 3. El total real es la suma de ambos
+    const totalFinal = totalPlatos + deudaPendiente;
 
+    // Actualizamos la barra flotante
+    document.getElementById('cesta-flotante').classList.toggle('hidden', cesta.length === 0);
+    document.getElementById('cesta-info').innerText = `${cesta.length} PRODUCTOS`;
+    
+    // Mostramos el total acumulado (Platos + Deuda)
+    document.getElementById('cesta-total').innerText = `${totalFinal.toFixed(2)}€ TOTAL`;
+
+    // 4. Actualizamos también el botón de "Procesar Orden" dentro del checkout
+    const btnFinal = document.getElementById('btn-final');
+    if (btnFinal) {
+        btnFinal.innerText = `Procesar Orden (${totalFinal.toFixed(2)}€)`;
+    }
+    
+    // --- MEMORIA AUTOMÁTICA ---
+    localStorage.setItem('ae_cesta_temporal', JSON.stringify(cesta));
+    localStorage.setItem('ae_restaurante_temporal', JSON.stringify(rActivo));
+}
     function abrirRevision(modoVaciar = false) {
         const list = document.getElementById('items-revision');
         list.innerHTML = "";

@@ -851,11 +851,37 @@ function abrirCheckout() {
     function abrirLegal() { document.getElementById('texto-legal-completo').innerText = db.legal; document.getElementById('modal-legal').style.display = 'flex'; }
     function filtrarCat(cat, el) { document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.plato-card').forEach(p => { p.style.display = (cat === 'TODOS' || p.dataset.cat === cat) ? 'flex' : 'none'; }); }
 
- function renderSeguimiento() {
+function renderSeguimiento() {
     const pid = localStorage.getItem('ae_pedido_id');
     const modalExito = document.getElementById('modal-exito');
     const card = document.getElementById('card-seguimiento');
-    if(!card) return;
+
+    if (!modalExito || !card) {
+        console.error("No se encuentran los elementos del modal");
+        return;
+    }
+
+    // 1. ABRIR EL MODAL VISUALMENTE
+    modalExito.style.setProperty('display', 'flex', 'important');
+    modalExito.classList.remove('hidden');
+
+    // 2. SI HAY UN PEDIDO, ACTIVAR LA ESCUCHA EN TIEMPO REAL
+    if (pid) {
+        console.log("Cargando seguimiento para el pedido:", pid);
+        
+        // Llamamos a la moto de Firebase para que pinte los datos dentro del card
+        database.ref('pedidos/' + pid).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                actualizarInterfazSeguimiento(data);
+            } else {
+                card.innerHTML = `<p class="text-white italic">Buscando información del pedido...</p>`;
+            }
+        });
+    } else {
+        card.innerHTML = `<p class="text-white italic">No tienes pedidos activos en este momento.</p>`;
+    }
+}
 
     // 1. Diseño base del Modal
     card.innerHTML = `

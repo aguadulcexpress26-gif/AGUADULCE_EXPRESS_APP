@@ -277,7 +277,7 @@
     </div>
 </div>
 
-<div id="panel-checkout" class="fixed inset-0 z-[5000] hidden bg-[#0a0a0a] text-white overflow-y-auto p-6" style="display: none;">
+<div id="panel-checkout" class="fixed inset-0 z-[5000] bg-[#0a0a0a] text-white overflow-y-auto p-6" style="display: none !important;">
     
     <div class="flex items-center gap-4 mb-8">
         <button onclick="cerrarCheckout()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400 flex items-center justify-center">
@@ -319,9 +319,9 @@
     </div>
 </div>
 
-<div id="modal-exito" class="fixed inset-0 z-[6000] hidden items-center justify-center p-6 bg-black/95 backdrop-blur-sm">
+<div id="modal-exito" class="fixed inset-0 z-[6000] hidden items-center justify-center p-6 bg-black/95 backdrop-blur-sm" style="display: none;">
     <div id="card-seguimiento" class="bg-[#020617] border border-cyan-400/30 p-8 rounded-[2.5rem] w-full max-w-sm text-center">
-        </div>
+    </div>
 </div>
     <div id="modal-legal" class="fixed inset-0 z-[7000] hidden items-center justify-center p-6 backdrop-blur-xl bg-black/80">
         <div class="bg-[#020617] w-full max-w-sm rounded-[2rem] p-8 border border-white/10 shadow-2xl">
@@ -705,9 +705,12 @@ function abrirCheckout() {
         `;
     }
 
-    // 4. Activar panel y actualizar botón
-    document.getElementById('panel-checkout').style.display = 'block';
-    document.getElementById('panel-checkout').classList.remove('hidden');
+   // 4. Activar panel con "fuerza bruta" para que tape todo
+    const panel = document.getElementById('panel-checkout');
+    if (panel) {
+        panel.style.setProperty('display', 'block', 'important');
+        panel.classList.remove('hidden');
+    }
     
     const btnFinal = document.getElementById('btn-final');
     if (btnFinal) {
@@ -716,21 +719,33 @@ function abrirCheckout() {
 
     actualizarCestaBar();
 }        
-    async function enviarPedidoFinal() {
-    // 1. OBTENER DATOS DEL REGISTRO (Ya no usamos los inputs del panel)
+   function cerrarCheckout() {
+    const panel = document.getElementById('panel-checkout');
+    if (panel) {
+        // Usamos setProperty con 'important' para asegurar que se oculte
+        panel.style.setProperty('display', 'none', 'important');
+        panel.classList.add('hidden');
+    }
+    
+    // Opcional: Volvemos a poner el fondo original del header
+    document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;
+}
+       async function enviarPedidoFinal() {
+    // 1. OBTENER DATOS DEL REGISTRO
     const cache = localStorage.getItem('ae_cliente');
     if (!cache) {
-        alert("⚠️ No se encuentran tus datos. Por favor, regístrate.");
+        Swal.fire("⚠️ Datos no encontrados", "Por favor, regístrate.", "warning");
         document.getElementById('modal-registro').style.display = 'flex';
         return;
     }
     const u = JSON.parse(cache);
 
-    // 2. CÁLCULO DE TOTALES (Cesta + Envío + Deuda)
+    // 2. CÁLCULO DE TOTALES (Ajustado a 2.50€ envío y 0.99€ gestión)
     const subtotal = cesta.reduce((a, b) => a + b.total, 0);
-    const costoEnvio = 2.50; 
+    const costoEnvio = 2.50; // <-- Actualizado
+    const gestion = 0.99;    // <-- Añadido para que cuadre con el desglose
     const deuda = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
-    const totalFinal = (subtotal + costoEnvio + deuda).toFixed(2);
+    const totalFinal = (subtotal + costoEnvio + gestion + deuda).toFixed(2);
 
     // 3. ESTADO DEL BOTÓN
     const btn = document.getElementById('btn-final');
@@ -738,11 +753,12 @@ function abrirCheckout() {
     btn.disabled = true;
 
     // 4. EL PAQUETE PARA GOOGLE SHEETS
+    // IMPORTANTE: i.plato es lo que usas en tu cesta, no i.nombre
     const paquete = {
         cliente_info: u.nombre,
         telf_info: u.telf,
         dir_info: u.dir,
-        pedido_info: cesta.map(i => i.nombre).join(" | "),
+        pedido_info: cesta.map(i => `${i.cantidad}x ${i.plato}`).join(" | "),
         total_info: totalFinal + "€",
         pago_info: document.getElementById('metodo-pago').value,
         id_res_info: rActivo.id,
@@ -753,7 +769,7 @@ function abrirCheckout() {
         const formData = new FormData();
         formData.append("data", JSON.stringify(paquete));
 
-        // ENVÍO A EXCEL
+        // ENVÍO A EXCEL (Google Apps Script)
         const res = await fetch(scriptURL, {
             method: "POST",
             body: formData
@@ -766,31 +782,38 @@ function abrirCheckout() {
         const tiempoEstimado = 45;
         const entregaTimestamp = Date.now() + (tiempoEstimado * 60000);
 
-        // ENVÍO A FIREBASE
+        // ENVÍO A FIREBASE (Sincronización en tiempo real)
         await database.ref('pedidos/' + pidReal).set({
             id: pidReal,
             cliente: u.nombre,
             direccion: u.dir,
             telefono: u.telf,
-            items: cesta.map(i => i.nombre),
+            items: cesta.map(i => `${i.cantidad}x ${i.plato}`),
             total: paquete.total_info,
             estado: 'recibido',
-            timestamp_final: entregaTimestamp
+            timestamp_final: entregaTimestamp,
+            restaurante_id: rActivo.id // Útil para el panel del restaurante
         });
 
         // 5. GUARDAR ID PARA SEGUIMIENTO Y LIMPIAR
         localStorage.setItem('ae_pedido_id', pidReal);
         
-        alert("✅ ¡Pedido recibido! Puedes seguirlo en la pantalla de seguimiento.");
+        // Usamos SweetAlert para que sea elegante
+        await Swal.fire({
+            title: "✅ ¡Pedido Recibido!",
+            text: "Tu orden está en camino. Puedes seguirla en tiempo real.",
+            icon: "success",
+            confirmButtonColor: "#00d2ff"
+        });
         
         cesta = [];
         actualizarCestaBar();
-        cerrarCheckout();
-        renderSeguimiento();
+        cerrarCheckout(); // Esta es la función que oculta el panel fantasma
+        renderSeguimiento(); // Abre el modal de seguimiento
 
     } catch (e) {
         console.error("Error en el envío:", e);
-        alert("Hubo un problema. Inténtalo de nuevo.");
+        Swal.fire("Error", "Hubo un problema al procesar tu pedido. Inténtalo de nuevo.", "error");
     } finally {
         btn.disabled = false;
         btn.innerText = "Procesar Orden";

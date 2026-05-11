@@ -205,73 +205,74 @@
     const database = firebase.database();
     // ================================================================
 
-    const scriptURL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+   const scriptURL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     let db = { menu: [], restaurantes: [], config: {}, anuncios: [], legal: "" };
     let cesta = [];
     let rActivo = { id: null, nombre: "", foto: "" };
     let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: false, data: null };
 
-   async function init() {
-    // --- PIEZA MEJORADA ---
-    // Añadimos 'await' para que la App espere a saber si hay deuda antes de cargar el resto
-    await verificarEstadoLogin(); 
-    // -----------------------
+    async function init() {
+        // 1. VERIFICACIÓN DE USUARIO Y DEUDAS
+        // Primero consultamos si el cliente está registrado y si tiene saldos pendientes
+        await verificarEstadoLogin(); 
 
-    console.log("🚀 Iniciando sistema con carga de marca...");
-    try {
-        const res = await fetch(scriptURL);
-        const data = await res.json();
-        console.log("✅ Datos recibidos");
+        console.log("🚀 Iniciando sistema con carga de marca...");
+        try {
+            const res = await fetch(scriptURL);
+            const data = await res.json();
+            console.log("✅ Datos recibidos");
 
-        // 1. CARGA DE CONFIGURACIÓN DE MARCA (LOGO Y FONDO)
-        if (data.CONFIG && data.CONFIG[0]) {
-            const config = data.CONFIG[0];
-            
-            // Cargar el Logo
-            const logoImg = document.getElementById('app-logo');
-            if (logoImg && config.LOGO_URL) {
-                logoImg.src = config.LOGO_URL;
+            // 2. CARGA DE CONFIGURACIÓN DE MARCA (LOGO Y FONDO)
+            if (data.CONFIG && data.CONFIG[0]) {
+                const config = data.CONFIG[0];
+                
+                // Cargar el Logo
+                const logoImg = document.getElementById('app-logo');
+                if (logoImg && config.LOGO_URL) {
+                    logoImg.src = config.LOGO_URL;
+                }
+
+                // Cargar el Fondo del Header
+                const headerBg = document.getElementById('header-bg');
+                if (headerBg && config.FONDO_URL) {
+                    headerBg.style.backgroundImage = `url('${config.FONDO_URL}')`;
+                    fondoOriginal = config.FONDO_URL; 
+                }
+                console.log("🎨 Identidad visual cargada");
             }
 
-            // Cargar el Fondo del Header
-            const headerBg = document.getElementById('header-bg');
-            if (headerBg && config.FONDO_URL) {
-                headerBg.style.backgroundImage = `url('${config.FONDO_URL}')`;
-                fondoOriginal = config.FONDO_URL; // Guardamos para cuando vuelvas al home
+            // 3. CARGA DE DATOS DE NEGOCIO
+            db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+            db.menu = data.MENU_GENERAL;
+            db.anuncios = data.ANUNCIOS || [];
+            db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "Tratamiento de datos personales...";
+
+            // 4. TEXTO DE ANUNCIOS
+            if(db.anuncios.length > 0) {
+                const marquee = document.getElementById('texto-anuncio');
+                if(marquee) marquee.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
             }
-            console.log("🎨 Identidad visual cargada");
+
+            // 5. QUITAR LOADER Y MOSTRAR APP
+            const loader = document.getElementById('loader');
+            if (loader) loader.style.display = 'none';
+
+            // 6. CONTROL DE RUTA (HOME O SEGUIMIENTO)
+            // Si el cliente tiene un pedido activo, lo mandamos a seguimiento, si no, al Home
+            const pedidoGuardado = localStorage.getItem('ae_pedido_id');
+            if (pedidoGuardado) {
+                renderSeguimiento();
+            } else {
+                renderHome();
+            }
+
+        } catch (e) {
+            console.error("❌ Error en arranque:", e);
+            const loader = document.getElementById('loader');
+            if (loader) loader.style.display = 'none';
+            alert("Error de conexión. Por favor, recarga la página.");
         }
-
-        // 2. CARGA DE DATOS DE NEGOCIO
-        db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
-        db.menu = data.MENU_GENERAL;
-        db.anuncios = data.ANUNCIOS || [];
-        db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "Tratamiento de datos personales...";
-
-        // 3. TEXTO DE ANUNCIOS
-        if(db.anuncios.length > 0) {
-            const marquee = document.getElementById('texto-anuncio');
-            if(marquee) marquee.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
-        }
-
-        // 4. QUITAR LOADER Y MOSTRAR APP
-        const loader = document.getElementById('loader');
-        if (loader) loader.style.display = 'none';
-
-        // 5. CONTROL DE RUTA (HOME O SEGUIMIENTO)
-        const pedidoGuardado = localStorage.getItem('ae_pedido_id');
-        if (pedidoGuardado) {
-            renderSeguimiento();
-        } else {
-            renderHome();
-        }
-
-    } catch (e) {
-        console.error("❌ Error en arranque:", e);
-        const loader = document.getElementById('loader');
-        if (loader) loader.style.display = 'none';
     }
-}
 
     function renderHome() {
         document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;

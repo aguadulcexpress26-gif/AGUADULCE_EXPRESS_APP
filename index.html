@@ -859,52 +859,100 @@ function abrirCheckout() {
     function abrirLegal() { document.getElementById('texto-legal-completo').innerText = db.legal; document.getElementById('modal-legal').style.display = 'flex'; }
     function filtrarCat(cat, el) { document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.plato-card').forEach(p => { p.style.display = (cat === 'TODOS' || p.dataset.cat === cat) ? 'flex' : 'none'; }); }
 
-    function renderSeguimiento() {
-        const pid = localStorage.getItem('ae_pedido_id');
-        const modalExito = document.getElementById('modal-exito');
-        const card = document.getElementById('card-seguimiento');
+    // ==========================================
+// 🏍️ MOTOR DE SEGUIMIENTO (TODA TU LÓGICA)
+// ==========================================
 
-        // Verificación de seguridad
-        if (!modalExito || !card) return;
+function renderSeguimiento() {
+    const pid = localStorage.getItem('ae_pedido_id');
+    const modalExito = document.getElementById('modal-exito');
+    const card = document.getElementById('card-seguimiento');
 
-        // 1. Mostrar el modal
-        modalExito.style.setProperty('display', 'flex', 'important');
-        modalExito.classList.remove('hidden');
+    if (!modalExito || !card) return;
 
-        // 2. Si no hay ID de pedido, mostrar mensaje y salir
-        if (!pid) {
-            card.innerHTML = `<p class="text-white italic text-center">No hay pedidos activos.</p>`;
-            return;
-        }
+    modalExito.style.setProperty('display', 'flex', 'important');
+    modalExito.classList.remove('hidden');
 
-        // 3. Pintar la estructura base
-        card.innerHTML = `
-            <div class="flex flex-col items-center">
-                <div id="interfaz-nodos" class="w-full">
-                    <p class="text-white animate-pulse text-center">Sincronizando estado...</p>
-                </div>
-            </div>
-        `;
-
-        // 4. Activar el motor de escucha si existe
-        if (typeof escucharPedidoActivo === 'function') {
-            escucharPedidoActivo();
-        }
+    if (!pid) {
+        card.innerHTML = `<p class="text-white italic text-center">No hay pedidos activos.</p>`;
+        return;
     }
 
-    // ==========================================
-    // 🚀 ARRANQUE OFICIAL
-    // ==========================================
-    init();
+    // Diseño base con la barra de nodos (luces)
+    card.innerHTML = `
+        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
+            <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h2 class="text-xl font-black italic uppercase text-white mb-1 text-center">¡ORDEN RECIBIDA!</h2>
+        <p class="text-[10px] text-white/50 mb-6 italic tracking-widest uppercase text-center">Ref: ${pid}</p>
+        
+        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl text-center">
+            <p id="timer-label" class="text-[9px] text-cyan-400 font-black uppercase mb-1">Estado del Pedido</p>
+            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase">Sincronizando...</div>
+        </div>
+
+        <div class="flex justify-between items-start w-full relative mb-12 px-2">
+            <div class="track-node" id="node-recibido"><div class="track-line"></div><div class="track-dot">✔</div><span class="text-[8px] font-black uppercase mt-2">Recibido</span></div>
+            <div class="track-node" id="node-cocina"><div class="track-line"></div><div class="track-dot">🍳</div><span class="text-[8px] font-black uppercase mt-2">Cocina</span></div>
+            <div class="track-node" id="node-camino"><div class="track-dot">🛵</div><span class="text-[8px] font-black uppercase mt-2">Camino</span></div>
+        </div>
+
+        <button onclick="window.open('https://wa.me/34643261881', '_blank')" class="w-full bg-[#25D366] text-white py-4 rounded-2xl font-black uppercase text-[10px] mb-3">WhatsApp Soporte</button>
+        <button onclick="document.getElementById('modal-exito').style.display='none'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-[10px]">Cerrar</button>
+    `;
+
+    escucharPedidoActivo();
+}
+
+function escucharPedidoActivo() {
+    const pid = localStorage.getItem('ae_pedido_id');
+    if (!pid || typeof database === 'undefined') return;
+
+    database.ref('pedidos/' + pid).on('value', (snap) => {
+        const data = snap.val(); 
+        if (!data) return;
+        
+        const est = String(data.estado || "").toLowerCase();
+        
+        // 1. Actualizar Luces
+        document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
+        document.getElementById('node-recibido')?.classList.add('active');
+        if (est !== 'recibido') document.getElementById('node-cocina')?.classList.add('active');
+        if (['en camino', 'llegó', 'llegó 📍', 'entregado'].includes(est)) document.getElementById('node-camino')?.classList.add('active');
+
+        // 2. Actualizar Textos
+        const d = document.getElementById('countdown-display');
+        const l = document.getElementById('timer-label');
+        if (d && l) {
+            let p = "Recibido", s = "PASO 1: CONFIRMACIÓN";
+            if (est === 'en camino') { s = "PASO 3: REPARTO"; p = "🛵 ¡EN CAMINO!"; }
+            else if (est === 'llegó' || est === 'llegó 📍') { s = "¡YA ESTAMOS AQUÍ!"; p = "📍 ¡SAL A RECOGER!"; reproducirAlarmaLlegada(); }
+            else if (est === 'cocinando' || est === 'preparando') { s = "PASO 2: ELABORACIÓN"; p = "🔥 EN COCINA..."; }
+            else if (est === 'entregado') { detenerAlarmaLlegada(); localStorage.removeItem('ae_pedido_id'); setTimeout(() => location.reload(), 4000); }
+            
+            d.innerText = p; l.innerText = s;
+        }
+    });
+}
+
+let intervaloAlarma = null;
+function reproducirAlarmaLlegada() {
+    if (intervaloAlarma) return;
+    const s = document.getElementById('audio-llegada');
+    if (s) { s.play().catch(()=>{}); intervaloAlarma = setInterval(() => s.play(), 60000); }
+}
+
+function detenerAlarmaLlegada() { 
+    if (intervaloAlarma) { clearInterval(intervaloAlarma); intervaloAlarma = null; } 
+}
+
+// ARRANQUE FINAL
+init();
 
 </script>
 
-<div id="btn-reabrir-seguimiento" 
-     onclick="renderSeguimiento()" 
-     class="fixed bottom-24 right-6 z-[6000] bg-cyan-400 text-black p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce text-center cursor-pointer" 
-     style="display: none;">
+<div id="btn-reabrir-seguimiento" onclick="renderSeguimiento()" class="fixed bottom-24 right-6 z-[6000] bg-cyan-400 text-black p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce text-center cursor-pointer" style="display: none;">
     <span class="text-2xl" style="pointer-events: none;">🛵</span>
     <span class="block text-[8px] font-black uppercase" style="pointer-events: none;">Seguir</span>
 </div>
-
 <audio id="audio-llegada" src="https://assets.mixkit.co/active_storage/sfx/2596/2596-preview.mp3" preload="auto"></audio>

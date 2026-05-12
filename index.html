@@ -749,7 +749,11 @@ function abrirCheckout() {
     // Opcional: Volvemos a poner el fondo original del header
     document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;
 }
-       async function enviarPedidoFinal() {
+       // ================================================================
+// 🚀 BLOQUE FINAL INTEGRADO (REPARACIÓN DE BARRA Y ENVÍO)
+// ================================================================
+
+async function enviarPedidoFinal() {
     const cache = localStorage.getItem('ae_cliente');
     if (!cache) {
         Swal.fire("⚠️ Registro necesario", "Por favor, completa tus datos.", "warning");
@@ -758,7 +762,6 @@ function abrirCheckout() {
     }
     const u = JSON.parse(cache);
 
-    // Cálculos de totales
     const subtotal = cesta.reduce((a, b) => a + b.total, 0);
     const costoEnvio = 2.50; 
     const gestion = 0.99;    
@@ -769,8 +772,7 @@ function abrirCheckout() {
     btn.innerText = "⏳ ENVIANDO...";
     btn.disabled = true;
 
-    // --- CORRECCIÓN CLAVE PARA EL EXCEL ---
-    // Volvemos a usar 'i.nombre' que es donde guardas el texto del plato + extras
+    // Paquete para Google Sheets (Usando i.nombre para que no vaya vacío)
     const paquete = {
         cliente_info: u.nombre,
         telf_info: u.telf,
@@ -790,7 +792,7 @@ function abrirCheckout() {
         const respuestaScript = await res.json();
         const pidReal = respuestaScript.idPedido; 
 
-        // Firebase: Sincronización para la barra de seguimiento
+        // Sincronización con Firebase
         await database.ref('pedidos/' + pidReal).set({
             id: pidReal,
             cliente: u.nombre,
@@ -813,24 +815,31 @@ function abrirCheckout() {
         });
 
     } catch (e) {
-        console.error("Error:", e);
-        btn.innerText = "REINTENTAR ENVÍO";
+        console.error("Error en envío:", e);
+        btn.innerText = "PROCESAR ORDEN";
         btn.disabled = false;
-        Swal.fire("Error", "No pudimos conectar con el servidor.", "error");
+        Swal.fire("Error", "Hubo un fallo al enviar. Reintenta.", "error");
     }
 }
 
-// --- MOTOR DE LA BARRA DE SEGUIMIENTO (LUCES) ---
+// --- FUNCIONES DE LA BARRA DE SEGUIMIENTO (LO QUE DABA ERROR) ---
+
 function actualizarLucesBarra(estado) {
     const est = String(estado).toLowerCase();
-    document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
+    const nodos = document.querySelectorAll('.track-node');
+    if (nodos.length === 0) return;
+
+    nodos.forEach(n => n.classList.remove('active'));
     
+    // Luz 1: Recibido (Siempre activa si hay pedido)
     document.getElementById('node-recibido')?.classList.add('active');
     
+    // Luz 2: Cocina (Activa si no está solo en 'recibido')
     if (est !== 'recibido') {
         document.getElementById('node-cocina')?.classList.add('active');
     }
     
+    // Luz 3: Camino (Activa en estados de entrega)
     if (['en camino', 'llegó', 'llegó 📍', 'entregado'].includes(est)) {
         document.getElementById('node-camino')?.classList.add('active');
     }
@@ -843,10 +852,10 @@ function actualizarEstadoVisual(estado) {
 
     let p = "Recibido", s = "PASO 1: CONFIRMACIÓN";
     switch (estado.toLowerCase()) {
-        case 'en camino': s = "PASO 3: REPARTO"; p = "🛵 ¡EN CAMINO HACIA TI!"; break;
-        case 'llegó': case 'llegó 📍': s = "¡YA ESTAMOS AQUÍ!"; p = "📍 ¡SAL A POR TU PEDIDO!"; break;
-        case 'cocinando': case 'preparando': s = "PASO 2: ELABORACIÓN"; p = "🔥 ESTAMOS COCINANDO..."; break;
-        case 'entregado': s = "¡BUEN PROVECHO!"; p = "✅ PEDIDO ENTREGADO"; break;
+        case 'en camino': s = "PASO 3: REPARTO"; p = "🛵 ¡EN CAMINO!"; break;
+        case 'llegó': case 'llegó 📍': s = "¡YA ESTAMOS AQUÍ!"; p = "📍 ¡SAL A RECOGER!"; break;
+        case 'cocinando': case 'preparando': s = "PASO 2: ELABORACIÓN"; p = "🔥 EN COCINA..."; break;
+        case 'entregado': s = "¡BUEN PROVECHO!"; p = "✅ ENTREGADO"; break;
     }
     d.innerText = p; l.innerText = s;
 }
@@ -873,11 +882,12 @@ function escucharPedidoActivo() {
     });
 }
 
-// --- REGISTRO Y UTILIDADES ---
+// --- UTILIDADES EXTRAS ---
+
 function guardarRegistro() {
-    const nombre = document.getElementById('reg-nombre').value;
-    const telf = document.getElementById('reg-telf').value;
-    const dir = document.getElementById('reg-dir').value;
+    const nombre = document.getElementById('reg-nombre').value.trim();
+    const telf = document.getElementById('reg-telf').value.trim();
+    const dir = document.getElementById('reg-dir').value.trim();
     const legal = document.getElementById('reg-legal').checked;
 
     if (!nombre || !telf || !dir || !legal) {
@@ -891,8 +901,12 @@ function guardarRegistro() {
 
 function toggleZoom(el) { el.classList.toggle('img-zoom'); }
 
-// ARRANQUE FINAL
+// ARRANQUE FINAL UNIFICADO
 init();
 </script>
+
+<div id="btn-reabrir-seguimiento" onclick="renderSeguimiento()" class="fixed bottom-24 right-6 z-[6000] bg-cyan-400 text-black p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce text-center cursor-pointer" style="display: none;">
+    <span class="text-2xl" style="pointer-events: none;">🛵</span>
+    <span class="block text-[8px] font-black uppercase" style="pointer-events: none;">Seguir</span>
 </div>
 <audio id="audio-llegada" src="https://assets.mixkit.co/active_storage/sfx/2596/2596-preview.mp3" preload="auto"></audio>

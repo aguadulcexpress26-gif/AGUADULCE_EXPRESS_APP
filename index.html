@@ -771,13 +771,13 @@ function abrirCheckout() {
     btn.innerText = "⏳ ENVIANDO...";
     btn.disabled = true;
 
-    // 4. EL PAQUETE PARA GOOGLE SHEETS
-    // IMPORTANTE: i.plato es lo que usas en tu cesta, no i.nombre
+   // 4. EL PAQUETE PARA GOOGLE SHEETS
+    // CORRECCIÓN: Usamos i.nombre que es la propiedad real que tiene tu cesta
     const paquete = {
         cliente_info: u.nombre,
         telf_info: u.telf,
         dir_info: u.dir,
-        pedido_info: cesta.map(i => `${i.cantidad}x ${i.plato}`).join(" | "),
+        pedido_info: cesta.map(i => i.nombre).join(" | "), // <-- Cambiado i.plato por i.nombre
         total_info: totalFinal + "€",
         pago_info: document.getElementById('metodo-pago').value,
         id_res_info: rActivo.id,
@@ -788,7 +788,7 @@ function abrirCheckout() {
         const formData = new FormData();
         formData.append("data", JSON.stringify(paquete));
 
-        // ENVÍO A EXCEL (Google Apps Script)
+        // ENVÍO A EXCEL
         const res = await fetch(scriptURL, {
             method: "POST",
             body: formData
@@ -797,21 +797,17 @@ function abrirCheckout() {
         const respuestaScript = await res.json();
         const pidReal = respuestaScript.idPedido; 
 
-        // TIEMPOS
-        const tiempoEstimado = 45;
-        const entregaTimestamp = Date.now() + (tiempoEstimado * 60000);
-
-        // ENVÍO A FIREBASE (Sincronización en tiempo real)
+        // ENVÍO A FIREBASE
         await database.ref('pedidos/' + pidReal).set({
             id: pidReal,
             cliente: u.nombre,
             direccion: u.dir,
             telefono: u.telf,
-            items: cesta.map(i => `${i.cantidad}x ${i.plato}`),
+            items: cesta.map(i => i.nombre), // <-- Cambiado i.plato por i.nombre
             total: paquete.total_info,
             estado: 'recibido',
-            timestamp_final: entregaTimestamp,
-            restaurante_id: rActivo.id // Útil para el panel del restaurante
+            timestamp_final: Date.now() + (45 * 60000),
+            restaurante_id: rActivo.id 
         });
 
         // 5. GUARDAR ID PARA SEGUIMIENTO Y LIMPIAR

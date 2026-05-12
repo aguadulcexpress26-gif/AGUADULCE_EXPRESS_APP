@@ -784,56 +784,54 @@ function abrirCheckout() {
         notas_info: document.getElementById('cliente-notas') ? document.getElementById('cliente-notas').value : "Sin notas"
     };
 
-    try {
+   try {
         const formData = new FormData();
         formData.append("data", JSON.stringify(paquete));
 
-        // ENVÍO A EXCEL
-        const res = await fetch(scriptURL, {
-            method: "POST",
-            body: formData
-        });
+        // 1. Enviamos al Excel (sin bloquearnos si tarda)
+        fetch(scriptURL, { method: "POST", body: formData }); 
 
-        const respuestaScript = await res.json();
-        const pidReal = respuestaScript.idPedido; 
+        // 2. Generamos un ID local para no depender de la respuesta lenta de Google
+        const pidReal = "AE-" + Math.floor(1000 + Math.random() * 9000);
 
-        // ENVÍO A FIREBASE
+        // 3. Registramos en Firebase (que es instantáneo)
         await database.ref('pedidos/' + pidReal).set({
             id: pidReal,
             cliente: u.nombre,
             direccion: u.dir,
-            telefono: u.telf,
-            items: cesta.map(i => i.nombre), // <-- Cambiado i.plato por i.nombre
+            items: cesta.map(i => i.nombre),
             total: paquete.total_info,
             estado: 'recibido',
-            timestamp_final: Date.now() + (45 * 60000),
-            restaurante_id: rActivo.id 
+            timestamp: Date.now()
         });
 
-        // 5. GUARDAR ID PARA SEGUIMIENTO Y LIMPIAR
+        // 4. LIMPIEZA INMEDIATA (Para que no se quede "pensando")
         localStorage.setItem('ae_pedido_id', pidReal);
-        
-        // Usamos SweetAlert para que sea elegante
-        await Swal.fire({
-            title: "✅ ¡Pedido Recibido!",
-            text: "Tu orden está en camino. Puedes seguirla en tiempo real.",
-            icon: "success",
-            confirmButtonColor: "#00d2ff"
-        });
-        
         cesta = [];
         actualizarCestaBar();
-        cerrarCheckout(); // Esta es la función que oculta el panel fantasma
-        renderSeguimiento(); // Abre el modal de seguimiento
+        cerrarCheckout(); // Cerramos el panel de pago
+        
+        // 5. Mostramos el éxito
+        Swal.fire({
+            title: "✅ ¡Pedido Enviado!",
+            text: "Tu orden ha sido procesada correctamente.",
+            icon: "success",
+            confirmButtonColor: "#00d2ff"
+        }).then(() => {
+            renderSeguimiento(); // Abrimos el seguimiento
+        });
 
     } catch (e) {
-        console.error("Error en el envío:", e);
-        Swal.fire("Error", "Hubo un problema al procesar tu pedido. Inténtalo de nuevo.", "error");
+        console.error("Error:", e);
+        Swal.fire("Error", "Hubo un fallo en la conexión", "error");
     } finally {
-        btn.disabled = false;
-        btn.innerText = "Procesar Orden";
+        // DESBLOQUEO DEL BOTÓN PASE LO QUE PASE
+        const btn = document.getElementById('btn-final');
+        if (btn) {
+            btn.innerText = "PROCESAR ORDEN";
+            btn.disabled = false;
+        }
     }
-}
     function toggleSel(el, pr, tipo) {
         if (tipo === 'oblig') {
             const s = el.parentElement.querySelectorAll('.selected').length;

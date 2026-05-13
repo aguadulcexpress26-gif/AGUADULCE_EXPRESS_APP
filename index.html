@@ -906,50 +906,55 @@ function escucharPedidoActivo() {
         return;
     }
 
-    // Referencia al pedido
+    // Referencia al pedido en Firebase
     const pedidoRef = database.ref('pedidos/' + pid);
 
     pedidoRef.on('value', (snap) => {
         const data = snap.val();
         
-        // --- 1. SI EL PEDIDO NO EXISTE EN FIREBASE O ESTÁ ENTREGADO ---
+        // --- 1. DETECCIÓN DE PEDIDO INEXISTENTE O FINALIZADO ---
         if (!data || data.estado === 'entregado') {
-            pedidoRef.off(); // Detener escucha inmediatamente
+            pedidoRef.off(); // Apagamos la escucha
             detenerAlarmaLlegada();
             
-            // Limpieza física del navegador
+            // Limpieza inmediata de datos
             localStorage.removeItem('ae_pedido_id');
             cesta = [];
             
-            // Ocultar elementos visuales sin esperar al reload
+            // Ocultar la interfaz visual de inmediato
             if (btnMoto) btnMoto.style.display = 'none';
             const modalExito = document.getElementById('modal-exito');
             if (modalExito) modalExito.style.display = 'none';
 
-            // Solo mostrar alerta si el pedido realmente existía y cambió a entregado
+            // Si el pedido existía y se entregó, mostramos mensaje. 
+            // Si era un "fantasma" (null), recargamos directo para limpiar.
             if (data && data.estado === 'entregado') {
                 Swal.fire({
                     title: '¡Buen provecho!',
                     text: 'Pedido entregado con éxito.',
                     icon: 'success',
                     confirmButtonColor: '#06b6d4'
-                }).then(() => { location.reload(); });
+                }).then(() => { 
+                    location.reload(); 
+                });
             } else {
-                // Si data era null (pedido fantasma), recargamos sin alerta para limpiar la interfaz
+                // Caso fantasma: limpiamos y volvemos al inicio sin avisar
                 location.reload();
             }
             return;
         }
 
-        // --- 2. GESTIÓN ACTIVA ---
+        // --- 2. GESTIÓN DEL PEDIDO EN CURSO ---
         if (btnMoto) btnMoto.style.display = 'block';
+        
         const est = String(data.estado || "").toLowerCase();
         
-        // Actualizar luces (Asegúrate de tener esta función definida)
+        // Actualización de las luces de la barra
         if (typeof actualizarLucesBarra === 'function') {
             actualizarLucesBarra(est);
         }
 
+        // Control de sonido de llegada
         if (est.includes('llegó')) {
             reproducirAlarmaLlegada();
         } else {

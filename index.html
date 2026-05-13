@@ -909,44 +909,47 @@ function escucharPedidoActivo() {
     database.ref('pedidos/' + pid).on('value', (snap) => {
         const data = snap.val();
         
-        // 1. GESTIÓN DE CIERRE (Cuando ya no hay datos o está entregado)
         if (!data || data.estado === 'entregado') {
+            // A. Frenar todo
             detenerAlarmaLlegada();
-            localStorage.removeItem('ae_pedido_id');
-            if (btnMoto) btnMoto.style.display = 'none';
-            
-            // CERRAR MODAL Y AGRADECER (Esto es lo que te faltaba)
+            database.ref('pedidos/' + pid).off(); // Dejamos de escuchar para evitar bucles
+
+            // B. LIMPIEZA TOTAL DE INTERFAZ (Ocultar los dos modales)
             const modalExito = document.getElementById('modal-exito');
+            const modalCheckout = document.getElementById('modal-checkout');
             if (modalExito) modalExito.style.display = 'none';
+            if (modalCheckout) modalCheckout.style.display = 'none';
+            if (btnMoto) btnMoto.style.display = 'none';
+
+            // C. Borrar rastro del pedido
+            localStorage.removeItem('ae_pedido_id');
+            cesta = []; // Vaciamos la cesta para que no reaparezca el pago
+            actualizarCestaBar();
 
             Swal.fire({
                 title: '¡Buen provecho!',
-                text: 'Pedido entregado con éxito. Gracias por elegir Aguadulce Express.',
+                text: 'Pedido entregado. Gracias por elegir Aguadulce Express.',
                 icon: 'success',
                 confirmButtonColor: '#06b6d4'
             }).then(() => {
+                // VOLVER AL INICIO (Restaurantes)
                 location.reload(); 
             });
             return;
         }
 
-        // 2. GESTIÓN ACTIVA (Si el pedido sigue vivo)
+        // GESTIÓN ACTIVA
         if (btnMoto) btnMoto.style.display = 'block';
-        
         const est = String(data.estado || "").toLowerCase();
-
-        // DELEGAMOS TODO LO VISUAL A LA OTRA FUNCIÓN (Sin duplicados)
         actualizarLucesBarra(est);
 
-        // Control de alarma de llegada
-        if (est === 'llegó' || est === 'llegó 📍') {
+        if (est.includes('llegó')) {
             reproducirAlarmaLlegada();
         } else {
             detenerAlarmaLlegada();
         }
-    }); // Cierre del .on('value')
-} // <--- ¡ESTA LLAVE ES LA QUE FALTA EN TU IMAGEN! (Cierre de escucharPedidoActivo)
-
+    });
+}
 let intervaloAlarma = null;
 function reproducirAlarmaLlegada() {
     if (intervaloAlarma) return;
@@ -1049,49 +1052,31 @@ function escucharPedidoActivo() {
 }
 
 // --- FUNCIÓN QUIRÚRGICA: CONTROL DE LUCES Y MENSAJES DE ESTADO ---
-function actualizarLucesBarra(estado) {
-    const est = String(estado).toLowerCase();
-    const nodos = document.querySelectorAll('.track-node');
-    
-    // 1. CONTROL DE LUCES (Tu lógica actual)
-    if (nodos.length > 0) {
-        nodos.forEach(n => n.classList.remove('active'));
-        document.getElementById('node-recibido')?.classList.add('active');
-        if (est !== 'recibido') {
-            document.getElementById('node-cocina')?.classList.add('active');
-        }
-        if (['en camino', 'llegó', 'llegó 📍', 'entregado'].includes(est)) {
-            document.getElementById('node-camino')?.classList.add('active');
-        }
-    }
+function actualizarLucesBarra(est) {
+    // 1. Limpiar todos los nodos
+    document.querySelectorAll('.track-node').forEach(n => n.classList.remove('active'));
 
-    // 2. CONTROL DE MENSAJES (Reparando el cuadro de estado)
-    const d = document.getElementById('countdown-display');
-    const l = document.getElementById('timer-label');
-    
-    if (d && l) {
-        let principal = "📝 ORDEN RECIBIDA";
-        let secundario = "PASO 1: CONFIRMACIÓN";
+    // 2. Encender según el estado
+    const nRecibido = document.getElementById('node-recibido');
+    const nCocina = document.getElementById('node-cocina');
+    const nCamino = document.getElementById('node-camino');
+    const display = document.getElementById('countdown-display');
+    const label = document.getElementById('timer-label');
 
-        if (est === 'en camino') {
-            secundario = "PASO 3: REPARTO";
-            principal = "🛵 ¡EN CAMINO HACIA TI!";
-        } 
-        else if (est === 'llegó' || est === 'llegó 📍') {
-            secundario = "¡YA ESTAMOS AQUÍ!";
-            principal = "📍 ¡SAL A POR TU PEDIDO!";
-        } 
-        else if (est === 'cocinando' || est === 'preparando' || est === 'cocina') {
-            secundario = "PASO 2: ELABORACIÓN";
-            principal = "🔥 ESTAMOS COCINANDO...";
-        } 
-        else if (est === 'entregado') {
-            secundario = "¡BUEN PROVECHO!";
-            principal = "✅ PEDIDO ENTREGADO";
-        }
+    if (nRecibido) nRecibido.classList.add('active');
 
-        d.innerText = principal;
-        l.innerText = secundario;
+    if (est.includes('cocina') || est.includes('prepara')) {
+        if (nCocina) nCocina.classList.add('active');
+        if (display) display.innerText = "🔥 EN COCINA...";
+        if (label) label.innerText = "PASO 2: ELABORACIÓN";
+    } 
+    else if (est.includes('camino') || est.includes('llegó')) {
+        if (nCocina) nCocina.classList.add('active');
+        if (nCamino) nCamino.classList.add('active');
+        if (display) display.innerText = est.includes('llegó') ? "📍 ¡SAL A RECOGER!" : "🛵 ¡EN CAMINO!";
+        if (label) label.innerText = est.includes('llegó') ? "¡REPARTO COMPLETADO!" : "PASO 3: REPARTO";
+    } else {
+        if (display) display.innerText = "📝 ORDEN RECIBIDA";
     }
 }
 function toggleZoom(el) {

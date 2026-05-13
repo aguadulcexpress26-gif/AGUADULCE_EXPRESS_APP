@@ -906,42 +906,49 @@ function escucharPedidoActivo() {
         return;
     }
 
-    database.ref('pedidos/' + pid).on('value', (snap) => {
+    // Referencia al pedido
+    const pedidoRef = database.ref('pedidos/' + pid);
+
+    pedidoRef.on('value', (snap) => {
         const data = snap.val();
         
+        // --- 1. SI EL PEDIDO NO EXISTE EN FIREBASE O ESTÁ ENTREGADO ---
         if (!data || data.estado === 'entregado') {
-            // A. Frenar todo
+            pedidoRef.off(); // Detener escucha inmediatamente
             detenerAlarmaLlegada();
-            database.ref('pedidos/' + pid).off(); // Dejamos de escuchar para evitar bucles
-
-            // B. LIMPIEZA TOTAL DE INTERFAZ (Ocultar los dos modales)
-            const modalExito = document.getElementById('modal-exito');
-            const modalCheckout = document.getElementById('modal-checkout');
-            if (modalExito) modalExito.style.display = 'none';
-            if (modalCheckout) modalCheckout.style.display = 'none';
-            if (btnMoto) btnMoto.style.display = 'none';
-
-            // C. Borrar rastro del pedido
+            
+            // Limpieza física del navegador
             localStorage.removeItem('ae_pedido_id');
-            cesta = []; // Vaciamos la cesta para que no reaparezca el pago
-            actualizarCestaBar();
+            cesta = [];
+            
+            // Ocultar elementos visuales sin esperar al reload
+            if (btnMoto) btnMoto.style.display = 'none';
+            const modalExito = document.getElementById('modal-exito');
+            if (modalExito) modalExito.style.display = 'none';
 
-            Swal.fire({
-                title: '¡Buen provecho!',
-                text: 'Pedido entregado. Gracias por elegir Aguadulce Express.',
-                icon: 'success',
-                confirmButtonColor: '#06b6d4'
-            }).then(() => {
-                // VOLVER AL INICIO (Restaurantes)
-                location.reload(); 
-            });
+            // Solo mostrar alerta si el pedido realmente existía y cambió a entregado
+            if (data && data.estado === 'entregado') {
+                Swal.fire({
+                    title: '¡Buen provecho!',
+                    text: 'Pedido entregado con éxito.',
+                    icon: 'success',
+                    confirmButtonColor: '#06b6d4'
+                }).then(() => { location.reload(); });
+            } else {
+                // Si data era null (pedido fantasma), recargamos sin alerta para limpiar la interfaz
+                location.reload();
+            }
             return;
         }
 
-        // GESTIÓN ACTIVA
+        // --- 2. GESTIÓN ACTIVA ---
         if (btnMoto) btnMoto.style.display = 'block';
         const est = String(data.estado || "").toLowerCase();
-        actualizarLucesBarra(est);
+        
+        // Actualizar luces (Asegúrate de tener esta función definida)
+        if (typeof actualizarLucesBarra === 'function') {
+            actualizarLucesBarra(est);
+        }
 
         if (est.includes('llegó')) {
             reproducirAlarmaLlegada();

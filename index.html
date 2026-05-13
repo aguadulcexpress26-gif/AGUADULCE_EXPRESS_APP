@@ -899,68 +899,59 @@ function renderSeguimiento() {
 
 function escucharPedidoActivo() {
     const pid = localStorage.getItem('ae_pedido_id');
-    const btnMoto = document.getElementById('btn-reabrir-seguimiento');
-    
-    if (!pid || typeof database === 'undefined') {
-        if (btnMoto) btnMoto.style.display = 'none';
-        return;
-    }
+    if (!pid) return;
 
-    // Referencia al pedido en Firebase
+    console.log("📡 Escuchando cambios para el pedido:", pid);
+
+    // Referencia directa al pedido
     const pedidoRef = database.ref('pedidos/' + pid);
 
+    // Usamos .on para que cualquier cambio en Firebase se refleje al instante
     pedidoRef.on('value', (snap) => {
         const data = snap.val();
         
-        // --- 1. DETECCIÓN DE PEDIDO INEXISTENTE O FINALIZADO ---
-        if (!data || data.estado === 'entregado') {
-            pedidoRef.off(); // Apagamos la escucha
-            detenerAlarmaLlegada();
-            
-            // Limpieza inmediata de datos
-            localStorage.removeItem('ae_pedido_id');
-            cesta = [];
-            
-            // Ocultar la interfaz visual de inmediato
-            if (btnMoto) btnMoto.style.display = 'none';
-            const modalExito = document.getElementById('modal-exito');
-            if (modalExito) modalExito.style.display = 'none';
-
-            // Si el pedido existía y se entregó, mostramos mensaje. 
-            // Si era un "fantasma" (null), recargamos directo para limpiar.
-            if (data && data.estado === 'entregado') {
-                Swal.fire({
-                    title: '¡Buen provecho!',
-                    text: 'Pedido entregado con éxito.',
-                    icon: 'success',
-                    confirmButtonColor: '#06b6d4'
-                }).then(() => { 
-                    location.reload(); 
-                });
-            } else {
-                // Caso fantasma: limpiamos y volvemos al inicio sin avisar
-                location.reload();
-            }
+        if (!data) {
+            console.log("❌ El pedido ya no existe en la base de datos.");
+            limpiarPedidoYRefrescar();
             return;
         }
 
-        // --- 2. GESTIÓN DEL PEDIDO EN CURSO ---
+        console.log("🔔 Cambio detectado. Estado actual:", data.estado);
+
+        // 1. SI EL REPARTIDOR MARCA ENTREGADO
+        if (data.estado.toLowerCase() === 'entregado') {
+            pedidoRef.off(); // Dejamos de escuchar
+            limpiarPedidoYRefrescar(true); // true para mostrar el mensaje de éxito
+            return;
+        }
+
+        // 2. SI EL PEDIDO SIGUE ACTIVO (ACTUALIZAR LUCES)
+        const btnMoto = document.getElementById('btn-reabrir-seguimiento');
         if (btnMoto) btnMoto.style.display = 'block';
+
+        const est = data.estado.toLowerCase();
         
-        const est = String(data.estado || "").toLowerCase();
-        
-        // Actualización de las luces de la barra
+        // Aquí forzamos la actualización visual de las luces
         if (typeof actualizarLucesBarra === 'function') {
             actualizarLucesBarra(est);
         }
-
-        // Control de sonido de llegada
-        if (est.includes('llegó')) {
-            reproducirAlarmaLlegada();
-        } else {
-            detenerAlarmaLlegada();
-        }
     });
+}
+
+// Función auxiliar para no repetir código de limpieza
+function limpiarPedidoYRefrescar(mostrarMensaje = false) {
+    localStorage.removeItem('ae_pedido_id');
+    cesta = [];
+    
+    if (mostrarMensaje) {
+        Swal.fire({
+            title: '¡Buen provecho!',
+            text: 'Tu pedido ha sido entregado.',
+            icon: 'success'
+        }).then(() => { location.reload(); });
+    } else {
+        location.reload();
+    }
 }
 let intervaloAlarma = null;
 function reproducirAlarmaLlegada() {

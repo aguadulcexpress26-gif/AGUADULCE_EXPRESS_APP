@@ -646,80 +646,103 @@ async function enviarPedido() {
         Swal.fire('Error', 'No pudimos conectar con el servidor', 'error');
     }
 }
-       // ==========================================
-// BLOQUE 7. MOTOR DE SEGUIMIENTO (MOTO)
+      // ==========================================
+// BLOQUE 7. MOTOR DE SEGUIMIENTO (SANEADO)
 // ==========================================
+
 function escucharPedidoActivo() {
     const pedidoId = localStorage.getItem('ae_pedido_id');
     const semaforo = document.getElementById('semaforo-pedido');
     const textoSemaforo = document.getElementById('texto-semaforo');
     const audio = document.getElementById('audio-notificacion');
 
-    if (!pedidoId) return;
+    // IMPORTANTE: Pon tu URL real aquí para evitar el error de image_76615d.png
+    const URL_APP_SCRIPT = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec'; 
 
-    // Conexión con tu base de datos (simulado con el intervalo que ya usas)
-    setInterval(async () => {
+    if (!pedidoId || URL_APP_SCRIPT.includes('TU_URL')) {
+        console.warn("⚠️ Seguimiento inactivo: Falta ID o URL de AppScript configurada.");
+        return;
+    }
+
+    const intervaloSeguimiento = setInterval(async () => {
         try {
-            // Aquí haces tu fetch a la URL de Google Sheets/AppScript
-            const response = await fetch(`TU_URL_DE_APPSCRIPT?id=${pedidoId}`);
+            const response = await fetch(`${URL_APP_SCRIPT}?id=${pedidoId}`);
+            
+            // Si el servidor falla (404), detenemos el radar para no saturar como en image_76615d.png
+            if (!response.ok) throw new Error("URL no encontrada");
+
             const data = await response.json();
             const estado = data.estado.toUpperCase();
 
-            // Si el pedido ya se entregó, desaparece el botón
+            // CASO: ENTREGADO (Cierre de ciclo)
             if (estado === 'ENTREGADO') {
-                semaforo.classList.add('hidden');
+                if(semaforo) semaforo.classList.add('hidden');
                 localStorage.removeItem('ae_pedido_id');
+                clearInterval(intervaloSeguimiento);
                 return;
             }
 
-            // Mostramos el botón
-            semaforo.classList.remove('hidden');
+            // Mostramos el semáforo si hay datos
+            if(semaforo) semaforo.classList.remove('hidden');
 
-            // Lógica de Colores y Alertas
+            // --- LÓGICA DE SEMÁFORO ---
             switch (estado) {
                 case 'RECIBIDO':
                 case 'ACEPTADO':
                     semaforo.style.backgroundColor = '#ef4444'; // ROJO
                     textoSemaforo.innerText = '🔴 Recibido';
+                    actualizarMiniStatus("ESTADO: RECIBIDO", "Tu pedido está en proceso");
                     break;
                     
                 case 'EN CAMINO':
                     semaforo.style.backgroundColor = '#facc15'; // AMARILLO
                     textoSemaforo.innerText = '🟡 En Camino';
-                    semaforo.classList.remove('animate-pulse'); // Deja de parpadear para ser sólido
+                    semaforo.classList.remove('animate-pulse');
+                    actualizarMiniStatus("ESTADO: EN CAMINO", "El repartidor va hacia tu casa");
                     break;
 
                 case 'LLEGO':
                 case 'EN LA PUERTA':
-                    // Si el color cambia a verde por primera vez, vibramos y sonamos
                     if (semaforo.style.backgroundColor !== 'rgb(34, 197, 94)') {
                         semaforo.style.backgroundColor = '#22c55e'; // VERDE
                         textoSemaforo.innerText = '🟢 ¡Llegué a tu Puerta!';
+                        actualizarMiniStatus("ESTADO: ¡LLEGÓ!", "Sal a recibir tu pedido");
                         
-                        // ALERTA: Sonido y Vibración
-                        audio.play().catch(e => console.log("Esperando interacción para sonar"));
-                        if ("vibrate" in navigator) {
-                            navigator.vibrate([500, 200, 500]); // Vibra-Pausa-Vibra
-                        }
+                        // ALERTA
+                        audio.play().catch(e => console.log("Audio esperando interacción"));
+                        if ("vibrate" in navigator) navigator.vibrate([500, 200, 500]);
                     }
                     break;
             }
         } catch (error) {
-            console.error("Error siguiendo pedido:", error);
+            console.error("❌ Error en el radar:", error.message);
+            // Si hay error persistente, apagamos para evitar lo que sale en image_76615d.png
+            clearInterval(intervaloSeguimiento);
         }
-    }, 5000); // Revisa cada 5 segundos
+    }, 7000); // Revisamos cada 7 segundos para mayor estabilidad
 }
+
 function actualizarMiniStatus(titulo, subtitulo, esFinal) {
     let el = document.getElementById('mini-status-pedido');
     if (!el) {
         el = document.createElement('div');
         el.id = 'mini-status-pedido';
-        el.className = "fixed bottom-24 left-4 right-4 bg-black/90 p-4 rounded-2xl z-[5000] flex justify-between items-center";
+        el.className = "fixed bottom-24 left-4 right-4 bg-black/90 p-4 rounded-2xl z-[5000] border border-cyan-500/30 flex justify-between items-center animate-bounce";
         document.body.appendChild(el);
     }
     el.innerHTML = `<div><p class="text-cyan-400 font-black text-[10px]">${titulo}</p><p class="text-white text-[9px]">${subtitulo}</p></div>`;
-    if(esFinal) { localStorage.removeItem('ae_pedido_id'); }
+    
+    if(esFinal) { 
+        localStorage.removeItem('ae_pedido_id');
+        setTimeout(() => el.remove(), 5000); 
+    }
 }
+
+// INICIO AUTOMÁTICO AL CARGAR LA APP
+window.addEventListener('load', () => {
+    // Iniciamos el radar si el usuario ya tenía un pedido abierto
+    escucharPedidoActivo();
+});
         // ==========================================
 // BLOQUE 8. FINALIZACIÓN Y ALARMAS
 // ==========================================

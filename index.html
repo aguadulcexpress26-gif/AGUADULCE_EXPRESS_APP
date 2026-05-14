@@ -716,218 +716,36 @@ function confirmarVaciarFinal() {
     verMenu(); 
 }
 
-function abrirCheckout() {
-    const pedidoActivo = localStorage.getItem('ae_pedido_id');
-    if (pedidoActivo) {
-        Swal.fire({
-            title: 'PEDIDO EN CURSO',
-            html: `Ya tienes una orden activa (Ref: <b>${pedidoActivo}</b>).<br><br>Espera a recibirla antes de realizar una nueva.`,
-            icon: 'warning',
-            background: '#0a0a0a',
-            color: '#fff',
-            confirmButtonColor: '#00d2ff'
-        }).then(() => { renderSeguimiento(); });
-        return;
-    }
-
-    const subtotal = cesta.reduce((acc, i) => acc + i.total, 0);
-    const envio = 2.50;
-    const gestion = 0.99;
-    const deuda = parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0;
-    const totalFinal = subtotal + envio + gestion + deuda;
-
-    const contenedor = document.getElementById('desglose-pago');
-    if (contenedor) {
-        contenedor.innerHTML = `
-            <div class="bg-white/5 p-5 rounded-3xl space-y-3 border border-white/5 shadow-inner">
-                <div class="flex justify-between text-gray-400 text-sm italic"><span>Subtotal Productos</span><span class="text-white font-bold">${subtotal.toFixed(2)}€</span></div>
-                <div class="flex justify-between text-gray-400 text-sm italic"><span>Gastos de Envío</span><span class="text-white font-bold">${envio.toFixed(2)}€</span></div>
-                <div class="flex justify-between text-gray-400 text-sm italic text-white/40"><span>Gestión Plataforma</span><span class="font-bold">${gestion.toFixed(2)}€</span></div>
-                ${deuda > 0 ? `<div class="flex justify-between text-red-400 text-sm font-bold border-t border-white/5 pt-2 italic"><span>Saldo Pendiente (Deuda)</span><span>${deuda.toFixed(2)}€</span></div>` : ''}
-                <div class="flex justify-between text-cyan-400 font-black text-xl border-t border-white/10 pt-3 mt-1 uppercase italic">
-                    <span>Total a Pagar</span><span>${totalFinal.toFixed(2)}€</span>
-                </div>
-            </div>
-
-            <div class="mt-6">
-                <p class="text-[10px] font-black uppercase text-cyan-400 mb-2 ml-2 italic">Instrucciones para el repartidor</p>
-                <textarea id="cliente-notas" placeholder="Ej: Piso 3, puerta B. El timbre no funciona..."
-                    class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-xs h-24 focus:outline-none focus:border-cyan-400 transition-all resize-none shadow-inner"></textarea>
-            </div>
-        `;
-    }
-
-    const panel = document.getElementById('panel-checkout');
-    if (panel) {
-        panel.style.setProperty('display', 'block', 'important');
-        panel.classList.remove('hidden');
-    }
- 
-    actualizarResumenFinal();
-}
-
-function cerrarCheckout() {
-    const panel = document.getElementById('panel-checkout');
-    if (panel) {
-        panel.style.setProperty('display', 'none', 'important');
-        panel.classList.add('hidden');
-    }
-}
-
-/**
- * 4. ENVÍO FINAL DE PEDIDO
- * (Punto 3: Blindaje para que no se trabe el botón)
- */
-async function enviarPedidoFinal() {
-    const cache = localStorage.getItem('ae_cliente');
-    if (!cache) {
-        Swal.fire("⚠️ Datos no encontrados", "Por favor, regístrate.", "warning");
-        document.getElementById('modal-registro').style.display = 'flex';
-        return;
-    }
-    const u = JSON.parse(cache);
-
-    const subtotal = cesta.reduce((a, b) => a + b.total, 0);
-    const totalFinal = (subtotal + 2.50 + 0.99 + (parseFloat(localStorage.getItem('ae_deuda_pendiente')) || 0)).toFixed(2);
-
-    const btn = document.getElementById('btn-final');
-    const originalText = btn.innerText;
-    
-    btn.innerText = "⏳ ENVIANDO...";
-    btn.disabled = true;
-
-    const paquete = {
-        cliente_info: u.nombre,
-        telf_info: u.telf,
-        dir_info: u.dir,
-        pedido_info: cesta.map(i => i.nombre).join(" | "), // Usamos .nombre que ya trae cantidad y extras
-        total_info: totalFinal + "€",
-        pago_info: document.getElementById('metodo-pago').value,
-        id_res_info: rActivo.id,
-        notas_info: document.getElementById('cliente-notas')?.value || "Sin notas"
-    };
-
-    try {
-        const formData = new FormData();
-        formData.append("data", JSON.stringify(paquete));
-
-        // 1. Envío a Google Sheets
-        const res = await fetch(scriptURL, { method: "POST", body: formData });
-        const respuestaScript = await res.json();
-        const pidReal = respuestaScript.idPedido || "TEMP-" + Date.now();
-
-        // 2. Envío a Firebase
-        const tiempoEstimado = 45;
-        const entregaTimestamp = Date.now() + (tiempoEstimado * 60000);
-
-        await database.ref('pedidos/' + pidReal).set({
-            id: pidReal,
-            cliente: u.nombre,
-            direccion: u.dir,
-            telefono: u.telf,
-            items: paquete.pedido_info,
-            total: paquete.total_info,
-            estado: 'recibido',
-            timestamp_final: entregaTimestamp,
-            restaurante_id: rActivo.id
-        });
-
-        localStorage.setItem('ae_pedido_id', pidReal);
- 
-        await Swal.fire({
-            title: "✅ ¡Pedido Recibido!",
-            text: "Tu orden está en camino.",
-            icon: "success",
-            confirmButtonColor: "#00d2ff"
-        });
- 
-        cesta = [];
-        actualizarCestaBar();
-        cerrarCheckout();
-        renderSeguimiento();
-
-    } catch (e) {
-        console.error("Error en el envío:", e);
-        Swal.fire("Error", "Hubo un problema al procesar tu pedido. Reintenta.", "error");
-        
-        // Punto 3: Si falla, devolvemos el botón a su estado original para reintentar
-        btn.disabled = false;
-        btn.innerText = originalText;
-    }
-}
-    function toggleSel(el, pr, tipo) {
-        if (tipo === 'oblig') {
-            const s = el.parentElement.querySelectorAll('.selected').length;
-            if (el.classList.contains('selected')) el.classList.remove('selected');
-            else if (s < 5) el.classList.add('selected');
-        } else { el.parentElement.querySelectorAll('.grid-option').forEach(o => o.classList.remove('selected')); el.classList.add('selected'); }
-        let eg = 0; document.querySelectorAll('.grid-option.selected').forEach(s => { if(s.innerText.includes('+')) eg += parseFloat(s.innerText.split('+')[1]) || 0; });
-        itemActual.pOpciones = eg; itemActual.obligatorioOk = !itemActual.data.SELECCION_OBLIGATORIA || document.querySelectorAll('#contenedor-pasos .grid-option.selected').length > 0;
-        actualizarBarraModal();
-    }
-    function updEx(btn, mod, pr) { const s = btn.parentElement.querySelector('.qty'); let v = parseInt(s.innerText) + mod; if(v >= 0) { s.innerText = v; itemActual.pExtras += (mod * pr); actualizarBarraModal(); } }
-    function actualizarBarraModal() { const total = (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras) * itemActual.cantidad; document.getElementById('total-modal-btn').innerText = total.toFixed(2) + "€"; const btn = document.getElementById('btn-anadir-modal'); btn.disabled = !itemActual.obligatorioOk; btn.style.opacity = itemActual.obligatorioOk ? "1" : "0.3"; }
-    function eliminarItem(i) { cesta.splice(i, 1); if(cesta.length === 0) document.getElementById('panel-revision').style.display = 'none'; else abrirRevision(); actualizarCestaBar(); }
-    function mostrarAviso(t, m, c, cb) { document.getElementById('titulo-alerta').innerText = t; document.getElementById('texto-alerta').innerText = m; const cnt = document.getElementById('contenedor-botones-alerta'); cnt.innerHTML = c ? `<button onclick="${cb}" class="w-full bg-cyan-400 text-black py-4 rounded-xl font-black uppercase text-xs">Confirmar</button><button onclick="cerrarAvisoPro()" class="w-full bg-white/10 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button>` : `<button onclick="cerrarAvisoPro()" class="w-full bg-cyan-400 text-black py-4 rounded-xl font-black uppercase text-xs">Entendido</button>`; document.getElementById('modal-alerta-pro').style.display = 'flex'; }
-    function cerrarAvisoPro() { document.getElementById('modal-alerta-pro').style.display = 'none'; }
-    function vaciarCesta() { cesta = []; actualizarCestaBar(); cerrarAvisoPro(); }
-    function cerrarModal() { document.getElementById('modal-plato').style.display = 'none'; }
-    function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
-    function abrirLegal() { document.getElementById('texto-legal-completo').innerText = db.legal; document.getElementById('modal-legal').style.display = 'flex'; }
-    function filtrarCat(cat, el) { document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.plato-card').forEach(p => { p.style.display = (cat === 'TODOS' || p.dataset.cat === cat) ? 'flex' : 'none'; }); }
-
-    // ==========================================
-// 🏍️ MOTOR DE SEGUIMIENTO (TODA TU LÓGICA)
+// ==========================================
+// 🏍️ MOTOR DE SEGUIMIENTO (OPTIMIZADO)
 // ==========================================
 
+/**
+ * Sustituye al antiguo renderSeguimiento()
+ * Ahora solo muestra un sticker informativo que no bloquea la pantalla.
+ */
 function renderSeguimiento() {
     const pid = localStorage.getItem('ae_pedido_id');
-    const modalExito = document.getElementById('modal-exito');
-    const card = document.getElementById('card-seguimiento');
-
-    if (!modalExito || !card) return;
-
-    modalExito.style.setProperty('display', 'flex', 'important');
-    modalExito.classList.remove('hidden');
-
+    
+    // Si no hay pedido, nos aseguramos de que no haya rastro visual
     if (!pid) {
-        card.innerHTML = `<p class="text-white italic text-center">No hay pedidos activos.</p>`;
+        const miniStatus = document.getElementById('mini-status-pedido');
+        if (miniStatus) miniStatus.remove();
         return;
     }
 
-    // Diseño base con la barra de nodos (luces)
-    card.innerHTML = `
-        <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-\[0\_0\_20px\_rgba(6,182,212,0.5)]">
-            <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
-        </div>
-        <h2 class="text-xl font-black italic uppercase text-white mb-1 text-center">¡ORDEN RECIBIDA!</h2>
-        <p class="text-\[10px] text-white/50 mb-6 italic tracking-widest uppercase text-center">Ref: ${pid}</p>
- 
-        <div id="status-timer" class="mb-8 bg-white/5 border border-white/10 p-4 rounded-3xl text-center">
-            <p id="timer-label" class="text-\[9px] text-cyan-400 font-black uppercase mb-1">Estado del Pedido</p>
-            <div id="countdown-display" class="text-sm font-bold italic text-white uppercase">Sincronizando...</div>
-        </div>
-
-        <div class="flex justify-between items-start w-full relative mb-12 px-2">
-            <div class="track-node" id="node-recibido"><div class="track-line"></div><div class="track-dot">✔</div><span class="text-\[8px] font-black uppercase mt-2">Recibido</span></div>
-            <div class="track-node" id="node-cocina"><div class="track-line"></div><div class="track-dot">🍳</div><span class="text-\[8px] font-black uppercase mt-2">Cocina</span></div>
-            <div class="track-node" id="node-camino"><div class="track-dot">🛵</div><span class="text-\[8px] font-black uppercase mt-2">Camino</span></div>
-        </div>
-
-        <button onclick="window.open('https://wa.me/34643261881', '\_blank')" class="w-full bg-\[#25D366] text-white py-4 rounded-2xl font-black uppercase text-\[10px] mb-3">WhatsApp Soporte</button>
-        <button onclick="document.getElementById('modal-exito').style.display='none'" class="w-full bg-white/5 text-white/40 py-4 rounded-2xl font-black uppercase text-\[10px]">Cerrar</button>
-    `;
-
+    // Iniciamos la escucha en Firebase
     escucharPedidoActivo();
 }
 
-// --- SISTEMA DE SEGUIMIENTO EVOLUCIONADO ---
 function escucharPedidoActivo() {
     const pid = localStorage.getItem('ae_pedido_id');
     const btnMoto = document.getElementById('btn-reabrir-seguimiento');
 
     if (!pid || typeof database === 'undefined') {
         if (btnMoto) btnMoto.style.display = 'none';
+        const miniStatus = document.getElementById('mini-status-pedido');
+        if (miniStatus) miniStatus.remove();
         return;
     }
 
@@ -937,27 +755,38 @@ function escucharPedidoActivo() {
 
         const est = String(data.estado || "").toLowerCase();
 
-        // 1. GESTIÓN DE ESTADOS CRÍTICOS (Sin desmejorar el auto-reload)
+        // 1. GESTIÓN DE CIERRE AUTOMÁTICO (Cuando se entrega)
         if (est === 'entregado') {
             if (btnMoto) btnMoto.style.display = 'none';
             detenerAlarmaLlegada();
+            
+            // LIBERACIÓN TOTAL: Borramos el ID para permitir nuevas compras
             localStorage.removeItem('ae_pedido_id');
-            // Feedback visual antes de recargar
-            Swal.fire({ title: '¡Buen provecho!', text: 'Tu pedido ha sido entregado.', icon: 'success', timer: 3000, showConfirmButton: false });
-            setTimeout(() => location.reload(), 4000);
+            
+            // Sticker en modo éxito
+            actualizarMiniStatus("✅ PEDIDO ENTREGADO", "¡Buen provecho! Ya puedes pedir de nuevo.", true);
             return;
         }
         
         if (btnMoto) btnMoto.style.display = 'block';
 
-        // 2. INTERFAZ DE PROGRESO DINÁMICO (Mejora de experiencia)
-        actualizarTimelineVisual(est);
+        // 2. ACTUALIZACIÓN DEL STICKER INFORMATIVO
+        let textoLabel = "PROCESANDO...";
+        let subLabel = "Tu orden está en camino";
 
-        // 3. SISTEMA DE ALERTAS PRO (Alarma + Vibración + Título)
+        if (est.includes('recibido')) { textoLabel = "RECIBIDO"; subLabel = "El restaurante tiene tu orden"; }
+        if (est.includes('proceso') || est.includes('cocina')) { textoLabel = "EN COCINA"; subLabel = "Preparando tus platos..."; }
+        if (est.includes('listo')) { textoLabel = "¡LISTO!"; subLabel = "Esperando al repartidor"; }
+        if (est.includes('camino')) { textoLabel = "EN CAMINO"; subLabel = "El repartidor va hacia tu dirección"; }
+        if (est.includes('llegó')) { textoLabel = "¡YA ESTAMOS AQUÍ!"; subLabel = "📍 Sal a recoger tu pedido"; }
+
+        actualizarMiniStatus(`🚀 ${textoLabel}`, subLabel, false);
+
+        // 3. ALERTAS DE LLEGADA
         if (est.includes('llegó')) {
             reproducirAlarmaLlegada();
-            if ("vibrate" in navigator) navigator.vibrate([500, 300, 500]); // Vibración en móviles
-            document.title = "📍 ¡HA LLEGADO TU PEDIDO!";
+            if ("vibrate" in navigator) navigator.vibrate([500, 300, 500]);
+            document.title = "📍 ¡SAL A RECOGER!";
         } else {
             detenerAlarmaLlegada();
             document.title = "Aguadulce Express";
@@ -965,49 +794,32 @@ function escucharPedidoActivo() {
     });
 }
 
-function actualizarTimelineVisual(estRaw) {
-    const est = String(estRaw || "").trim().toUpperCase();
+/**
+ * Función que crea/actualiza el sticker visual discreto
+ */
+function actualizarMiniStatus(titulo, subtitulo, esFinal) {
+    let el = document.getElementById('mini-status-pedido');
     
-    const estados = {
-        'RECIBIDO':    { nodo: 'node-recibido', texto: 'Recibido', sub: 'PASO 1: CONFIRMACIÓN' },
-        'EN PROCESO':  { nodo: 'node-cocina',   texto: '🔥 EN COCINA...', sub: 'PASO 2: ELABORACIÓN' },
-        'LISTO':       { nodo: 'node-cocina',   texto: '✅ ¡LISTO!', sub: 'ESPERANDO REPARTIDOR' },
-        'EN CAMINO':   { nodo: 'node-camino',   texto: '🛵 ¡EN CAMINO!', sub: 'PASO 3: REPARTO' },
-        'LLEGÓ':       { nodo: 'node-camino',   texto: '📍 ¡SAL A RECOGER!', sub: '¡YA ESTAMOS AQUÍ!' },
-        'LLEGÓ 📍':    { nodo: 'node-camino',   texto: '📍 ¡SAL A RECOGER!', sub: '¡YA ESTAMOS AQUÍ!' },
-        // --- ESTO ES LO QUE FALTABA ---
-        'ENTREGADO':   { nodo: 'node-camino',   texto: '✅ ¡PEDIDO ENTREGADO!', sub: '¡GRACIAS POR TU COMPRA!' }
-    };
-
-    const info = estados[est] || estados['RECIBIDO'];
-
-    // 1. Limpieza de Nodos
-    document.querySelectorAll('.track-node').forEach(n => {
-        n.classList.remove('active', 'scale-110', 'shadow-[0_0_20px_cyan]');
-        n.style.opacity = "0.4"; 
-    });
-
-    // 2. Encendido de luces (Añadimos ENTREGADO a la lógica de iluminación)
-    const nRecibido = document.getElementById('node-recibido');
-    const nCocina = document.getElementById('node-cocina');
-    const nCamino = document.getElementById('node-camino');
-
-    if (nRecibido) { nRecibido.classList.add('active'); nRecibido.style.opacity = "1"; }
-    
-    if (['EN PROCESO', 'LISTO', 'EN CAMINO', 'LLEGÓ', 'LLEGÓ 📍', 'ENTREGADO'].includes(est)) {
-        if (nCocina) { nCocina.classList.add('active'); nCocina.style.opacity = "1"; }
-    }
-    
-    if (['EN CAMINO', 'LLEGÓ', 'LLEGÓ 📍', 'ENTREGADO'].includes(est)) {
-        if (nCamino) { nCamino.classList.add('active', 'scale-110', 'shadow-[0_0_20px_cyan]'); nCamino.style.opacity = "1"; }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'mini-status-pedido';
+        // Diseño estilo Apple/High-Tech que flota abajo
+        el.className = "fixed bottom-24 left-4 right-4 bg-black/90 border border-cyan-400/30 p-4 rounded-2xl shadow-2xl z-[5000] flex justify-between items-center backdrop-blur-md";
+        document.body.appendChild(el);
     }
 
-    // 3. Actualización de Textos
-    const d = document.getElementById('countdown-display');
-    const l = document.getElementById('timer-label');
-    if (d) d.innerText = info.texto;
-    if (l) l.innerText = info.sub;
+    el.innerHTML = `
+        <div style="pointer-events: none;">
+            <p class="text-cyan-400 font-black text-[10px] italic uppercase tracking-tighter">${titulo}</p>
+            <p class="text-white text-[9px] opacity-70">${subtitulo}</p>
+        </div>
+        ${esFinal 
+            ? `<button onclick="this.parentElement.remove(); location.reload();" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-black text-[10px] animate-pulse">NUEVA COMPRA</button>` 
+            : `<div class="flex gap-1"><span class="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping"></span></div>`
+        }
+    `;
 }
+
 // --- REGISTRO CON BLINDAJE DE ERRORES ---
 function verificarEstadoLogin() {
     try {
@@ -1035,9 +847,7 @@ function verificarEstadoLogin() {
         localStorage.removeItem('ae_cliente');
     }
 }
-// --- [AQUÍ PEGAS EL CÓDIGO EVOLUCIONADO QUE TE PASÉ ANTES] ---
 
-// --- 4. FUNCIONES DE APOYO (RESTAURADAS Y MEJORADAS) ---
 function guardarRegistro() {
     const nombre = document.getElementById('reg-nombre')?.value.trim();
     const telf = document.getElementById('reg-telf')?.value.trim();
@@ -1045,7 +855,7 @@ function guardarRegistro() {
     const legal = document.getElementById('reg-legal')?.checked;
 
     if (!nombre || nombre.length < 3 || !telf || telf.length < 9 || !dir || !legal) {
-        Swal.fire({ title: 'Atención', text: 'Rellena todos los campos correctamente.', icon: 'warning' });
+        Swal.fire({ title: 'Atención', text: 'Rellena todos los campos correctamente.', icon: 'warning', background: '#0a0a0a', color: '#fff' });
         return;
     }
 
@@ -1053,7 +863,7 @@ function guardarRegistro() {
     localStorage.setItem('ae_cliente', JSON.stringify(usuario));
     cerrarModalRegistro();
     verificarEstadoLogin();
-    Swal.fire({ title: '¡Perfecto!', text: 'Ya puedes realizar tu pedido.', icon: 'success', timer: 2000 });
+    Swal.fire({ title: '¡Perfecto!', text: 'Ya puedes realizar tu pedido.', icon: 'success', timer: 2000, showConfirmButton: false });
 }
 
 function cerrarModalRegistro() {
@@ -1068,7 +878,9 @@ function borrarRegistro() {
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, borrar',
-        cancelButtonText: 'Cancelar'
+        cancelButtonText: 'Cancelar',
+        background: '#0a0a0a',
+        color: '#fff'
     }).then((result) => {
         if (result.isConfirmed) {
             localStorage.removeItem('ae_cliente');
@@ -1081,14 +893,11 @@ function toggleZoom(el) {
     el.classList.toggle('img-zoom');
 }
 
-// --- 5. DISPARADOR DE ARRANQUE (EL CIERRE FINAL) ---
 async function iniciarApp() {
     try {
-        // Asumiendo que tu función de carga inicial se llama init()
         if (typeof init === 'function') await init(); 
-        
         verificarEstadoLogin();
-        escucharPedidoActivo();
+        renderSeguimiento(); // Llamamos al nuevo renderizador
         console.log("🚀 Aguadulce Express Operativa");
     } catch (error) {
         console.error("Error al iniciar la app:", error);
@@ -1097,15 +906,3 @@ async function iniciarApp() {
 
 // Ejecución inmediata
 iniciarApp();
-
-</script>
-
-<!-- ELEMENTOS HTML ADICIONALES (FUERA DEL SCRIPT) -->
-<div id="btn-reabrir-seguimiento" onclick="renderSeguimiento()" 
-     class="fixed bottom-24 right-6 z-[6000] bg-cyan-400 text-black p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce text-center cursor-pointer" 
-     style="display: none;">
-    <span class="text-2xl" style="pointer-events: none;">🛵</span>
-    <span class="block text-[8px] font-black uppercase" style="pointer-events: none;">Seguir</span>
-</div>
-
-<audio id="audio-llegada" src="https://assets.mixkit.co/active_storage/sfx/2596/2596-preview.mp3" preload="auto"></audio>

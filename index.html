@@ -950,37 +950,49 @@ function escucharPedidoActivo() {
     });
 }
 
-function actualizarTimelineVisual(est) {
-    const nodes = {
-        'recibido': { n: 'node-recibido', p: 0, msg: "CONFIRMACIÓN", t: "Recibido" },
-        'cocinando': { n: 'node-cocina', p: 50, msg: "ELABORACIÓN", t: "🔥 EN COCINA..." },
-        'preparando': { n: 'node-cocina', p: 50, msg: "ELABORACIÓN", t: "🔥 EN COCINA..." },
-        'en camino': { n: 'node-camino', p: 100, msg: "REPARTO", t: "🛵 ¡EN CAMINO!" },
-        'llegó': { n: 'node-camino', p: 100, msg: "¡YA ESTAMOS AQUÍ!", t: "📍 ¡SAL A RECOGER!" }
+function actualizarTimelineVisual(estRaw) {
+    // Normalizamos el estado para que no importen mayúsculas ni espacios
+    const est = String(estRaw || "").trim().toUpperCase();
+    
+    // Diccionario de equivalencias (Mapeamos lo que envían el Rest. y Repartidor)
+    const estados = {
+        'RECIBIDO':    { nodo: 'node-recibido', texto: 'Recibido', sub: 'PASO 1: CONFIRMACIÓN' },
+        'EN PROCESO':  { nodo: 'node-cocina',   texto: '🔥 EN COCINA...', sub: 'PASO 2: ELABORACIÓN' },
+        'LISTO':       { nodo: 'node-cocina',   texto: '✅ ¡LISTO!', sub: 'ESPERANDO REPARTIDOR' },
+        'EN CAMINO':   { nodo: 'node-camino',   texto: '🛵 ¡EN CAMINO!', sub: 'PASO 3: REPARTO' },
+        'LLEGÓ':       { nodo: 'node-camino',   texto: '📍 ¡SAL A RECOGER!', sub: '¡YA ESTAMOS AQUÍ!' },
+        'LLEGÓ 📍':    { nodo: 'node-camino',   texto: '📍 ¡SAL A RECOGER!', sub: '¡YA ESTAMOS AQUÍ!' }
     };
 
-    const info = nodes[Object.keys(nodes).find(key => est.includes(key))] || nodes['recibido'];
+    const info = estados[est] || estados['RECIBIDO'];
 
-    // Activar nodos con transición suave
+    // 1. Limpieza y Animación de Nodos
     document.querySelectorAll('.track-node').forEach(n => {
-        n.style.transition = "all 0.5s ease";
-        n.classList.remove('active', 'scale-110', 'shadow-[0_0_15px_cyan]');
+        n.classList.remove('active', 'scale-110', 'shadow-[0_0_20px_cyan]');
+        n.style.opacity = "0.4"; 
     });
 
-    const activeNode = document.getElementById(info.n);
-    if (activeNode) {
-        activeNode.classList.add('active', 'scale-110', 'shadow-[0_0_15px_cyan]');
+    // 2. Encendido progresivo de luces
+    const nRecibido = document.getElementById('node-recibido');
+    const nCocina = document.getElementById('node-cocina');
+    const nCamino = document.getElementById('node-camino');
+
+    if (nRecibido) { nRecibido.classList.add('active'); nRecibido.style.opacity = "1"; }
+    
+    if (['EN PROCESO', 'LISTO', 'EN CAMINO', 'LLEGÓ', 'LLEGÓ 📍'].includes(est)) {
+        if (nCocina) { nCocina.classList.add('active'); nCocina.style.opacity = "1"; }
+    }
+    
+    if (['EN CAMINO', 'LLEGÓ', 'LLEGÓ 📍'].includes(est)) {
+        if (nCamino) { nCamino.classList.add('active', 'scale-110', 'shadow-[0_0_20px_cyan]'); nCamino.style.opacity = "1"; }
     }
 
-    // Actualizar Textos
+    // 3. Actualización de Textos en Pantalla
     const d = document.getElementById('countdown-display');
     const l = document.getElementById('timer-label');
-    if (d && l) {
-        d.innerText = info.t;
-        l.innerText = `PASO: ${info.msg}`;
-    }
+    if (d) d.innerText = info.texto;
+    if (l) l.innerText = info.sub;
 }
-
 // --- REGISTRO CON BLINDAJE DE ERRORES ---
 function verificarEstadoLogin() {
     try {

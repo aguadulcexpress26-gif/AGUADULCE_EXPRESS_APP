@@ -463,108 +463,128 @@ function verMenu() {
     document.getElementById('app-container').innerHTML = html + "</div>";
 }
         // ==========================================
-// BLOQUE 4. DETALLES DE PRODUCTO Y OPCIONES + LÓGICA DE CARRITO
+// BLOQUE 4 & 5 FUSIONADOS: DETALLE, OPCIONES Y CARRITO
 // ==========================================
 
 function abrirDetalle(p) {
-    itemActual = { pBase: parseFloat(p.PRECIO), pOpciones: 0, pExtras: 0, cantidad: 1, data: p };
+    // Inicializamos el item con toda la data del Excel
+    itemActual = { 
+        pBase: parseFloat(p.PRECIO), 
+        pOpciones: 0, 
+        pExtras: 0, 
+        cantidad: 1, 
+        obligatorioOk: !p.SELECCION_OBLIGATORIA, 
+        data: p 
+    };
+
+    // 1. Cargamos Textos y Descripciones
     document.getElementById('modal-titulo').innerText = p.PLATO;
-    document.getElementById('modal-img').src = p.FOTO_PLATO;
+    document.getElementById('modal-desc').innerText = p.DESCRIPCION || "Sin descripción disponible";
+    document.getElementById('modal-precio-base').innerText = itemActual.pBase.toFixed(2) + "€";
+    
+    // 2. Imagen con Zoom
+    const modalImg = document.getElementById('modal-img');
+    modalImg.src = p.FOTO_PLATO;
+    modalImg.setAttribute('onclick', 'toggleZoom(this)');
+    
+    if(document.getElementById('cant-plato-modal')) {
+        document.getElementById('cant-plato-modal').innerText = 1;
+    }
+
+    // 3. Render de Opciones y Extras (Tu lógica original)
+    let html = "";
+    const renderGrid = (titulo, datos, tipo) => {
+        if (!datos || datos.trim() === "") return "";
+        let res = `<div class="text-left mb-6"><span class="step-tag">${titulo}</span><div class="grid grid-cols-2 gap-2">`;
+        datos.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombre = partes[0].trim();
+            const precio = parseFloat(partes[1]) || 0;
+            res += `<div class="grid-option" onclick="toggleSel(this, ${precio}, '${tipo}')">${nombre}${precio > 0 ? ' +'+precio.toFixed(2)+'€' : ''}</div>`;
+        });
+        return res + `</div></div>`;
+    };
+
+    html += renderGrid("Selección Obligatoria", p.SELECCION_OBLIGATORIA, 'oblig');
+    html += renderGrid("Opciones", p.SELECCION_UNICA, 'unica');
+
+    if (p.EXTRAS) {
+        html += `<div class="text-left pb-40"><span class="step-tag">Extras y Bebidas</span><div class="space-y-2">`;
+        p.EXTRAS.split(',').forEach(d => {
+            const partes = d.split(':');
+            const nombreExtra = partes[0].trim();
+            const precioExtra = parseFloat(partes[1]) || 0;
+            html += `<div class="flex justify-between items-center py-3 border-b border-white/5">
+                <span class="text-[11px] font-bold uppercase text-white/80 extra-item-name">${nombreExtra}</span>
+                <div class="flex items-center gap-4">
+                    <span class="text-cyan-400 font-black text-[10px]">+${precioExtra.toFixed(2)}€</span>
+                    <div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl">
+                        <button onclick="updEx(this, -1, ${precioExtra})" class="w-8 h-8 rounded-lg bg-white/5 text-white">-</button>
+                        <span class="qty text-xs font-black" data-nombre="${nombreExtra}">0</span>
+                        <button onclick="updEx(this, 1, ${precioExtra})" class="w-8 h-8 rounded-lg bg-cyan-400 text-black font-bold">+</button>
+                    </div>
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    document.getElementById('contenedor-pasos').innerHTML = html;
     document.getElementById('modal-plato').style.display = 'flex';
-    // Nota: Aquí se activaría la lógica de opciones/extras si los hubiera
+    actualizarBarraModal(); // Asegúrate de tener esta función para sumar en el modal
 }
 
-function toggleZoom(el) { 
-    el.classList.toggle('img-zoom'); 
-}
-
-function cerrarModal() { 
-    document.getElementById('modal-plato').style.display = 'none'; 
-}
-
-// --- INCORPORACIÓN QUIRÚRGICA: GESTIÓN DE CANTIDADES ---
-// Soluciona el error "cambiarCantPlato is not defined" de image_77c2b9.png
-
-function cambiarCantPlato(index, delta) {
-    // 1. Modificamos la cantidad en el arreglo
-    carrito[index].cantidad += delta;
-    
-    // 2. Si llega a cero, eliminamos el producto
-    if (carrito[index].cantidad <= 0) {
-        carrito.splice(index, 1);
-    }
-    
-    // 3. Refrescamos la barra inferior (Precios y totales)
-    actualizarBarraCarrito();
-    
-    // 4. Si el usuario está viendo el desglose, lo actualizamos en tiempo real
-    if (document.getElementById('detalle-revision')) {
-        abrirRevision();
-    }
-}
-
-// --- INCORPORACIÓN QUIRÚRGICA: LIMPIEZA ---
-// Soluciona que el botón "VACIAR" de image_77c692.png no haga nada
-
-function vaciarCarrito() {
-    if(confirm("¿Estás seguro de que quieres vaciar el carrito?")) {
-        carrito = [];
-        actualizarBarraCarrito();
-        renderHome(); // Cerramos cualquier menú abierto
-        console.log("✅ Carrito vaciado");
-    }
-}
-       // ==========================================
-// BLOQUE 5. GESTIÓN DE CESTA Y CÁLCULOS (CORREGIDO)
-// ==========================================
 function confirmarAnadir() {
+    // 1. Verificación de Usuario
     if (!localStorage.getItem('ae_cliente')) {
         cerrarModal();
-        setTimeout(() => { 
-            document.getElementById('modal-registro').style.display = 'flex'; 
+        setTimeout(() => {
+            if (confirm("✨ ¡Hola! Regístrate para poder realizar tu pedido. ¿Quieres hacerlo ahora?")) {
+                document.getElementById('modal-registro').style.display = 'flex';
+            }
         }, 300);
         return;
     }
 
-    // Cambiamos 'cesta' por 'carrito' para que coincida con el resto de la app
-    // Y guardamos los datos limpios para poder sumar/restar después
-    carrito.push({
-        nombre: itemActual.data.PLATO,
-        precio: itemActual.pBase + itemActual.pOpciones + itemActual.pExtras,
-        cantidad: itemActual.cantidad,
-        foto: itemActual.data.FOTO_PLATO
-    });
+    // 2. Captura de Opciones Seleccionadas
+    try {
+        let sel = [];
+        document.querySelectorAll('.grid-option.selected').forEach(el => {
+            let texto = el.innerText.split('+')[0].trim();
+            if (texto) sel.push(texto);
+        });
 
-    actualizarBarraCarrito(); // Usamos el nombre de función que espera tu HTML
-    cerrarModal();
-    console.log("🛒 Producto añadido al carrito");
+        document.querySelectorAll('.qty').forEach(el => {
+            const cant = parseInt(el.innerText) || 0;
+            if (cant > 0) sel.push(`${cant}x ${el.dataset.nombre}`);
+        });
+
+        const detalle = sel.length > 0 ? ` [${sel.join(', ')}]` : "";
+
+        // 3. Empuje al CARRITO (Cambiado de 'cesta' a 'carrito')
+        carrito.push({
+            nombre: `${itemActual.data.PLATO}${detalle}`,
+            precio: (itemActual.pBase + itemActual.pOpciones + itemActual.pExtras),
+            cantidad: itemActual.cantidad
+        });
+
+        actualizarBarraCarrito(); // Actualiza la barra blanca inferior
+        cerrarModal();
+
+    } catch (e) {
+        console.error("Error al añadir:", e);
+    }
 }
 
 function actualizarBarraCarrito() {
-    const barra = document.getElementById('cesta-flotante'); // El ID que se ve en image_77c692.png
-    const infoTexto = document.getElementById('cesta-info');
-    const totalTexto = document.getElementById('cesta-total');
-
-    if (carrito.length === 0) {
-        if(barra) barra.classList.add('hidden');
-        return;
-    }
-
-    // Cálculo real del total sumando cada producto por su cantidad
-    const total = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
-
-    if(barra) barra.classList.remove('hidden');
+    const totalPlatos = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
+    const barra = document.getElementById('cesta-flotante');
     
-    // Actualizamos los textos de la barra blanca que ves en la imagen image_77c692.png
-    if(infoTexto) infoTexto.innerText = `${carrito.length} PRODUCTOS`;
-    if(totalTexto) totalTexto.innerText = `${total.toFixed(2)}€ TOTAL`;
-}
-
-// Inyectamos aquí la función que falta según el error de image_77c2b9.png
-function abrirRevision() {
-    // Esta función es la que genera la pantalla de "Confirmar y Pagar"
-    // Sin ella, el botón de la barra blanca no hace nada.
-    renderPantallaRevision(); 
+    if(barra) {
+        barra.classList.toggle('hidden', carrito.length === 0);
+        document.getElementById('cesta-info').innerText = `${carrito.length} PRODUCTOS`;
+        document.getElementById('cesta-total').innerText = `${totalPlatos.toFixed(2)}€ TOTAL`;
+    }
 }
         // ==========================================
 // BLOQUE 6. SISTEMA DE USUARIOS Y ENVÍO AL EXCEL

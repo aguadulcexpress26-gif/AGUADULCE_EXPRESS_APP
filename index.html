@@ -886,16 +886,36 @@
         // ==========================================
         // SISTEMA DE TRACKING UNIFICADO
         // ==========================================
-        function initAudio() {
-            if (!audioElement) {
-                audioElement = document.getElementById('audio-llegada');
-                if (!audioElement) {
-                    audioElement = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                    audioElement.preload = 'auto';
-                }
-            }
-            return audioElement;
+       function initAudio() {
+    if (!audioElement) {
+        audioElement = document.getElementById('audio-llegada');
+        if (!audioElement) {
+            audioElement = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audioElement.preload = 'auto';
         }
+    }
+    return audioElement;
+}
+
+// 👇 AGREGAR ESTA FUNCIÓN NUEVA DESPUÉS
+function probarAlarma() {
+    console.log("Probando alarma...");
+    
+    if (navigator.vibrate) {
+        navigator.vibrate([500, 200, 500]);
+        console.log("✅ Vibración activada");
+    } else {
+        console.log("❌ Este navegador no soporta vibración");
+    }
+    
+    const audio = initAudio();
+    audio.volume = 1;
+    audio.play().then(() => {
+        console.log("✅ Sonido reproducido");
+    }).catch(e => {
+        console.log("❌ Error con sonido:", e);
+    });
+}
 
        function iniciarSeguimientoPedido(idPedido) {
     if (!idPedido) return false;
@@ -957,8 +977,10 @@ async function cargarEstadoActualPedido(idPedido) {
     const estado = (data.estado || 'recibido').toLowerCase();
     console.log("🔄 Actualizando UI a estado:", estado);
     
+    // Configuración de cada estado
     const configs = {
         'recibido': { width: '15%', texto: 'RECIBIDO', mensaje: '✅ El restaurante ha recibido tu pedido', emoji: '📥', paso: 1 },
+        'confirmado': { width: '30%', texto: 'CONFIRMADO', mensaje: '👍 Pedido confirmado', emoji: '✓', paso: 1 },
         'preparando': { width: '45%', texto: 'PREPARANDO', mensaje: '👨‍🍳 Tu pedido está siendo preparado', emoji: '🍳', paso: 2 },
         'cocinando': { width: '60%', texto: 'COCINANDO', mensaje: '🔥 ¡Ya casi está listo!', emoji: '🔥', paso: 2 },
         'en_camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
@@ -969,14 +991,17 @@ async function cargarEstadoActualPedido(idPedido) {
     
     const cfg = configs[estado] || configs['recibido'];
     
-    // Actualizar barra de progreso
+    // ===== 1. ACTUALIZAR BARRA DE PROGRESO =====
     const progress = document.getElementById('tracking-progress');
     if (progress) {
         progress.style.transition = 'width 0.5s ease';
         progress.style.width = cfg.width;
+        console.log("📊 Barra actualizada a:", cfg.width);
+    } else {
+        console.error("❌ No encontré #tracking-progress");
     }
     
-    // Actualizar textos
+    // ===== 2. ACTUALIZAR TEXTOS =====
     const estadoTxt = document.getElementById('tracking-estado');
     const mensaje = document.getElementById('tracking-mensaje');
     const emoji = document.getElementById('tracking-emoji');
@@ -985,98 +1010,111 @@ async function cargarEstadoActualPedido(idPedido) {
     if (mensaje) mensaje.innerText = cfg.mensaje;
     if (emoji) emoji.innerText = cfg.emoji;
     
-    // Actualizar pasos (FORZAR actualización de clases)
+    // ===== 3. ACTUALIZAR LOS PASOS (LUCES) =====
     for (let i = 1; i <= 4; i++) {
         const step = document.getElementById(`step-${i}`);
         if (step) {
             if (i <= cfg.paso) {
                 step.classList.add('active');
+                // Forzar estilo visual
+                const dot = step.querySelector('.step-dot');
+                if (dot) {
+                    dot.style.background = '#06b6d4';
+                    dot.style.color = 'black';
+                    dot.style.boxShadow = '0 0 20px #06b6d4';
+                }
             } else {
                 step.classList.remove('active');
+                const dot = step.querySelector('.step-dot');
+                if (dot) {
+                    dot.style.background = '#1e293b';
+                    dot.style.color = 'white';
+                    dot.style.boxShadow = 'none';
+                }
             }
         }
     }
     
-    // Actualizar información adicional
+    // ===== 4. ACTUALIZAR INFORMACIÓN =====
     const info = document.getElementById('tracking-info');
-   if (info && data) {
-    // Determinar el ID correctamente (puede venir en diferentes campos)
-    const idPedido = data.id || data.idPedido || data.idExcel || '---';
-    
-    // Determinar el total correctamente
-    let totalMostrar = '---';
-    if (data.total) {
-        totalMostrar = typeof data.total === 'number' ? data.total.toFixed(2) + '€' : data.total + '€';
+    if (info && data) {
+        info.innerHTML = `
+            <div style="display: grid; gap: 8px;">
+                <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${data.id || data.idPedido || '---'}</strong></div>
+                <div><span style="color:#06b6d4;">👤 Cliente:</span> ${data.cliente || '---'}</div>
+                <div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? (typeof data.total === 'number' ? data.total.toFixed(2) + '€' : data.total) : '---'}</div>
+            </div>
+        `;
     }
     
-    // Determinar el cliente
-    const clienteNombre = data.cliente || data.cliente_info || '---';
-    
-    // Determinar el estado actual
-    const estadoActual = data.estado || 'recibido';
-    const estadoTexto = {
-        'recibido': 'RECIBIDO ✅',
-        'preparando': 'PREPARANDO 👨‍🍳',
-        'cocinando': 'COCINANDO 🔥',
-        'en_camino': 'EN CAMINO 🛵',
-        'llegando': '¡LLEGANDO! 🔔',
-        'entregado': 'ENTREGADO 🎉',
-        'cancelado': 'CANCELADO ❌'
-    }[estadoActual] || estadoActual.toUpperCase();
-    
-    info.innerHTML = `
-        <div style="display: grid; gap: 10px;">
-            <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${idPedido}</strong></div>
-            <div><span style="color:#06b6d4;">👤 Cliente:</span> ${clienteNombre}</div>
-            <div><span style="color:#06b6d4;">💰 Total:</span> ${totalMostrar}</div>
-            <div><span style="color:#06b6d4;">📌 Estado:</span> ${estadoTexto}</div>
-        </div>
-    `;
-}
-    
-    // ALARMA cuando está llegando
+    // ===== 5. ALARMA Y VIBRACIÓN CUANDO LLEGA =====
     if (estado === 'llegando') {
-        if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
-        const audio = initAudio();
-        audio.play().catch(() => {});
+        console.log("🔔 ¡PEDIDO LLEGANDO! Activando alarma y vibración");
         
+        // Vibrar en móvil
+        if (navigator.vibrate) {
+            navigator.vibrate([500, 200, 500, 200, 1000]);
+        }
+        
+        // Reproducir sonido
+        const audio = initAudio();
+        audio.volume = 0.8;
+        audio.play().catch(e => console.log("Audio no disponible:", e));
+        
+        // Alarma periódica cada 10 segundos
         if (alarmaInterval) clearInterval(alarmaInterval);
         alarmaInterval = setInterval(() => {
-            audio.play().catch(() => {});
-            if (navigator.vibrate) navigator.vibrate(300);
-        }, 15000);
+            if (document.visibilityState === 'visible') {
+                audio.play().catch(() => {});
+                if (navigator.vibrate) navigator.vibrate(500);
+            }
+        }, 10000);
+        
+        // Mostrar alerta visual
+        Swal.fire({
+            title: '🔔 ¡TU PEDIDO ESTÁ LLEGANDO!',
+            text: 'El repartidor está cerca. Prepárate para recibir tu pedido.',
+            icon: 'info',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#06b6d4',
+            timer: 5000,
+            showConfirmButton: false
+        });
     }
     
-    // PEDIDO ENTREGADO
+    // ===== 6. CUANDO ENTREGAN =====
     if (estado === 'entregado') {
-        if (alarmaInterval) clearInterval(alarmaInterval);
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+        console.log("🎉 PEDIDO ENTREGADO");
         
-        // Mostrar alerta de éxito
+        if (alarmaInterval) {
+            clearInterval(alarmaInterval);
+            alarmaInterval = null;
+        }
+        
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200, 100, 500, 200, 200]);
+        }
+        
         setTimeout(() => {
-            Swal.fire({ 
-                title: '🎉 ¡Pedido Entregado!', 
-                text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!', 
-                icon: 'success', 
-                background: '#020617', 
-                color: 'white', 
+            Swal.fire({
+                title: '🎉 ¡Pedido Entregado!',
+                text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!',
+                icon: 'success',
+                background: '#020617',
+                color: 'white',
                 confirmButtonColor: '#06b6d4',
                 confirmButtonText: '¡Genial!'
+            }).then(() => {
+                limpiarSeguimientoCompleto();
+                cerrarModalTracking();
             });
         }, 500);
-        
-        // Limpiar después de 5 segundos
-        setTimeout(() => {
-            limpiarSeguimientoCompleto();
-            // Cerrar modal automáticamente
-            cerrarModalTracking();
-        }, 5000);
     }
     
-    // Actualizar badge flotante
+    // Actualizar icono del botón flotante
     actualizarBadgeFlotante(estado);
 }
-
         function mostrarBotonSeguimiento() {
             let btn = document.getElementById('btn-reabrir-seguimiento');
             if (btn) btn.style.display = 'flex';

@@ -898,124 +898,208 @@
         }
 
         function iniciarSeguimientoPedido(idPedido) {
-            if (!idPedido) return false;
-            
-            localStorage.setItem('ae_pedido_activo', idPedido);
-            localStorage.setItem('ae_tracking_id', idPedido);
-            
-            if (trackingListenerRef) {
-                trackingListenerRef.off();
-                trackingListenerRef = null;
-            }
-            
-            trackingListenerRef = database.ref('pedidos/' + idPedido);
-            trackingListenerRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) actualizarInterfazSeguimiento(data);
-            });
-            
-            mostrarBotonSeguimiento();
-            return true;
+    if (!idPedido) return false;
+    
+    console.log("🔥 Iniciando seguimiento para:", idPedido);
+    
+    localStorage.setItem('ae_pedido_activo', idPedido);
+    localStorage.setItem('ae_tracking_id', idPedido);
+    
+    // Limpiar listener anterior
+    if (trackingListenerRef) {
+        trackingListenerRef.off();
+        trackingListenerRef = null;
+    }
+    
+    // Crear nuevo listener con manejo de errores
+    trackingListenerRef = database.ref('pedidos/' + idPedido);
+    trackingListenerRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        console.log("📡 Datos recibidos de Firebase:", data);
+        
+        if (data) {
+            actualizarInterfazSeguimiento(data);
+        } else {
+            console.warn("⚠️ No hay datos para el pedido:", idPedido);
         }
+    }, (error) => {
+        console.error("❌ Error en listener:", error);
+    });
+    
+    // Mostrar botón flotante
+    const btn = document.getElementById('btn-reabrir-seguimiento');
+    if (btn) btn.style.display = 'flex';
+    
+    // Si el modal está abierto, actualizarlo inmediatamente
+    if (document.getElementById('tracking-modal').style.display === 'block') {
+        cargarEstadoActualPedido(idPedido);
+    }
+    
+    return true;
+}
 
-        function actualizarInterfazSeguimiento(data) {
-            const estado = (data.estado || 'recibido').toLowerCase();
-            
-            const configs = {
-                'recibido': { width: '15%', texto: 'RECIBIDO', mensaje: '✅ El restaurante ha recibido tu pedido', emoji: '📥', paso: 1 },
-                'confirmado': { width: '30%', texto: 'CONFIRMADO', mensaje: '👍 Pedido confirmado', emoji: '✓', paso: 1 },
-                'preparando': { width: '45%', texto: 'PREPARANDO', mensaje: '👨‍🍳 Tu pedido está siendo preparado', emoji: '🍳', paso: 2 },
-                'cocinando': { width: '60%', texto: 'COCINANDO', mensaje: '🔥 ¡Ya casi está listo!', emoji: '🔥', paso: 2 },
-                'en_camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
-                'llegando': { width: '95%', texto: '¡LLEGANDO!', mensaje: '📍 Tu pedido está a punto de llegar', emoji: '🔔', paso: 3 },
-                'entregado': { width: '100%', texto: 'ENTREGADO', mensaje: '🎉 ¡Pedido entregado!', emoji: '✅', paso: 4 },
-                'cancelado': { width: '100%', texto: 'CANCELADO', mensaje: '❌ Pedido cancelado', emoji: '⚠️', paso: 0 }
-            };
-            
-            const cfg = configs[estado] || configs['recibido'];
-            
-            const progress = document.getElementById('tracking-progress');
-            const estadoTxt = document.getElementById('tracking-estado');
-            const mensaje = document.getElementById('tracking-mensaje');
-            const emoji = document.getElementById('tracking-emoji');
-            const info = document.getElementById('tracking-info');
-            
-            if (progress) progress.style.width = cfg.width;
-            if (estadoTxt) estadoTxt.innerText = cfg.texto;
-            if (mensaje) mensaje.innerText = cfg.mensaje;
-            if (emoji) emoji.innerText = cfg.emoji;
-            
-            for (let i = 1; i <= 4; i++) {
-                const step = document.getElementById(`step-${i}`);
-                if (step) {
-                    if (i <= cfg.paso) step.classList.add('active');
-                    else step.classList.remove('active');
-                }
-            }
-            
-            if (info && data) {
-                info.innerHTML = `<div><span style="color:#06b6d4;">📋 Pedido:</span> #${(data.id || '---').slice(-8)}</div>
-                                 <div><span style="color:#06b6d4;">👤 Cliente:</span> ${data.cliente || '---'}</div>
-                                 <div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? data.total.toFixed(2) + '€' : '---'}</div>`;
-            }
-            
-            if (estado === 'llegando') {
-                if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
-                const audio = initAudio();
-                audio.play().catch(() => {});
-                
-                if (alarmaInterval) clearInterval(alarmaInterval);
-                alarmaInterval = setInterval(() => {
-                    audio.play().catch(() => {});
-                    if (navigator.vibrate) navigator.vibrate(300);
-                }, 15000);
-            }
-            
-            if (estado === 'entregado') {
-                if (alarmaInterval) clearInterval(alarmaInterval);
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
-                setTimeout(() => {
-                    Swal.fire({ title: '🎉 ¡Pedido Entregado!', text: 'Esperamos que disfrutes tu comida', icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
-                    setTimeout(() => limpiarSeguimientoCompleto(), 3000);
-                }, 500);
-            }
-            
-            if (estado === 'cancelado') {
-                if (alarmaInterval) clearInterval(alarmaInterval);
-                Swal.fire({ title: '❌ Pedido Cancelado', text: 'Contacta con soporte', icon: 'error', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
-            }
-            
-            actualizarBadgeFlotante(estado);
+// Función auxiliar para cargar estado actual
+async function cargarEstadoActualPedido(idPedido) {
+    try {
+        const snapshot = await database.ref('pedidos/' + idPedido).once('value');
+        const data = snapshot.val();
+        if (data) {
+            actualizarInterfazSeguimiento(data);
         }
+    } catch (error) {
+        console.error("Error cargando estado:", error);
+    }
+}
+        function actualizarInterfazSeguimiento(data) {
+    if (!data) return;
+    
+    const estado = (data.estado || 'recibido').toLowerCase();
+    console.log("🔄 Actualizando UI a estado:", estado);
+    
+    const configs = {
+        'recibido': { width: '15%', texto: 'RECIBIDO', mensaje: '✅ El restaurante ha recibido tu pedido', emoji: '📥', paso: 1 },
+        'preparando': { width: '45%', texto: 'PREPARANDO', mensaje: '👨‍🍳 Tu pedido está siendo preparado', emoji: '🍳', paso: 2 },
+        'cocinando': { width: '60%', texto: 'COCINANDO', mensaje: '🔥 ¡Ya casi está listo!', emoji: '🔥', paso: 2 },
+        'en_camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
+        'llegando': { width: '95%', texto: '¡LLEGANDO!', mensaje: '📍 Tu pedido está a punto de llegar', emoji: '🔔', paso: 3 },
+        'entregado': { width: '100%', texto: 'ENTREGADO', mensaje: '🎉 ¡Pedido entregado!', emoji: '✅', paso: 4 },
+        'cancelado': { width: '100%', texto: 'CANCELADO', mensaje: '❌ Pedido cancelado', emoji: '⚠️', paso: 0 }
+    };
+    
+    const cfg = configs[estado] || configs['recibido'];
+    
+    // Actualizar barra de progreso
+    const progress = document.getElementById('tracking-progress');
+    if (progress) {
+        progress.style.transition = 'width 0.5s ease';
+        progress.style.width = cfg.width;
+    }
+    
+    // Actualizar textos
+    const estadoTxt = document.getElementById('tracking-estado');
+    const mensaje = document.getElementById('tracking-mensaje');
+    const emoji = document.getElementById('tracking-emoji');
+    
+    if (estadoTxt) estadoTxt.innerText = cfg.texto;
+    if (mensaje) mensaje.innerText = cfg.mensaje;
+    if (emoji) emoji.innerText = cfg.emoji;
+    
+    // Actualizar pasos (FORZAR actualización de clases)
+    for (let i = 1; i <= 4; i++) {
+        const step = document.getElementById(`step-${i}`);
+        if (step) {
+            if (i <= cfg.paso) {
+                step.classList.add('active');
+            } else {
+                step.classList.remove('active');
+            }
+        }
+    }
+    
+    // Actualizar información adicional
+    const info = document.getElementById('tracking-info');
+    if (info && data) {
+        info.innerHTML = `
+            <div style="display: grid; gap: 8px;">
+                <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${data.id || data.idPedido || '---'}</strong></div>
+                <div><span style="color:#06b6d4;">👤 Cliente:</span> ${data.cliente || '---'}</div>
+                <div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? data.total.toFixed(2) + '€' : '---'}</div>
+                <div><span style="color:#06b6d4;">⏱️ Estado:</span> ${cfg.texto}</div>
+            </div>
+        `;
+    }
+    
+    // ALARMA cuando está llegando
+    if (estado === 'llegando') {
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+        const audio = initAudio();
+        audio.play().catch(() => {});
+        
+        if (alarmaInterval) clearInterval(alarmaInterval);
+        alarmaInterval = setInterval(() => {
+            audio.play().catch(() => {});
+            if (navigator.vibrate) navigator.vibrate(300);
+        }, 15000);
+    }
+    
+    // PEDIDO ENTREGADO
+    if (estado === 'entregado') {
+        if (alarmaInterval) clearInterval(alarmaInterval);
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+        
+        // Mostrar alerta de éxito
+        setTimeout(() => {
+            Swal.fire({ 
+                title: '🎉 ¡Pedido Entregado!', 
+                text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!', 
+                icon: 'success', 
+                background: '#020617', 
+                color: 'white', 
+                confirmButtonColor: '#06b6d4',
+                confirmButtonText: '¡Genial!'
+            });
+        }, 500);
+        
+        // Limpiar después de 5 segundos
+        setTimeout(() => {
+            limpiarSeguimientoCompleto();
+            // Cerrar modal automáticamente
+            cerrarModalTracking();
+        }, 5000);
+    }
+    
+    // Actualizar badge flotante
+    actualizarBadgeFlotante(estado);
+}
 
         function mostrarBotonSeguimiento() {
             let btn = document.getElementById('btn-reabrir-seguimiento');
             if (btn) btn.style.display = 'flex';
         }
 
-        function actualizarBadgeFlotante(estado) {
-            const btn = document.getElementById('btn-reabrir-seguimiento');
-            if (!btn) return;
-            const iconos = { 'recibido': '📋', 'preparando': '👨‍🍳', 'cocinando': '🔥', 'en_camino': '🛵', 'llegando': '🔔', 'entregado': '✅' };
-            btn.innerHTML = iconos[estado] || '📦';
-        }
+       function actualizarBadgeFlotante(estado) {
+    const btn = document.getElementById('btn-reabrir-seguimiento');
+    if (!btn) return;
+    const iconos = { 'recibido': '📋', 'preparando': '👨‍🍳', 'cocinando': '🔥', 'en_camino': '🛵', 'llegando': '🔔', 'entregado': '✅' };
+    btn.innerHTML = iconos[estado] || '📦';
+}
 
-        function abrirModalTracking() {
-            document.getElementById('tracking-modal').style.display = 'block';
-        }
+function abrirModalTracking() {
+    document.getElementById('tracking-modal').style.display = 'block';
+}
 
-        function cerrarModalTracking() {
-            document.getElementById('tracking-modal').style.display = 'none';
-        }
+function cerrarModalTracking() {
+    document.getElementById('tracking-modal').style.display = 'none';
+}
 
-        function limpiarSeguimientoCompleto() {
-            if (trackingListenerRef) { trackingListenerRef.off(); trackingListenerRef = null; }
-            if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
-            localStorage.removeItem('ae_pedido_activo');
-            localStorage.removeItem('ae_tracking_id');
-            document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-        }
-
+// FUNCIÓN ÚNICA PARA LIMPIAR COMPLETAMENTE EL SEGUIMIENTO
+function limpiarSeguimientoCompleto() {
+    // Limpiar listener de Firebase
+    if (trackingListenerRef) {
+        trackingListenerRef.off();
+        trackingListenerRef = null;
+    }
+    
+    // Limpiar alarma
+    if (alarmaInterval) {
+        clearInterval(alarmaInterval);
+        alarmaInterval = null;
+    }
+    
+    // Limpiar localStorage
+    localStorage.removeItem('ae_pedido_activo');
+    localStorage.removeItem('ae_tracking_id');
+    
+    // Ocultar botón flotante
+    const btn = document.getElementById('btn-reabrir-seguimiento');
+    if (btn) btn.style.display = 'none';
+    
+    // Cerrar modal
+    cerrarModalTracking();
+    
+    // Mostrar mensaje
+    mostrarToast("Seguimiento finalizado. ¡Puedes hacer un nuevo pedido!", "✅");
+}
         function restaurarPedidoActivo() {
             const idPedido = localStorage.getItem('ae_pedido_activo');
             if (idPedido) iniciarSeguimientoPedido(idPedido);

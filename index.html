@@ -343,7 +343,9 @@
     </div>
 
     <script>
-// --- CONFIGURACIÓN DE FIREBASE ---
+// ==========================================
+// CONFIGURACIÓN Y VARIABLES GLOBALES
+// ==========================================
 const firebaseConfig = {
     apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
     authDomain: "aguadulce-notificaciones.firebaseapp.com",
@@ -357,24 +359,30 @@ const firebaseConfig = {
 
 if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
 const database = firebase.database();
-
-// --- VARIABLES GLOBALES DEL SISTEMA ---
 const scriptURL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+
+// Variables de Estado (Restauradas al 100%)
 let db = { menu: [], restaurantes: [], config: {}, anuncios: [], legal: "" };
 let cesta = []; 
 let rActivo = { id: null, nombre: "", foto: "" };
 let fondoOriginal = ""; 
 let itemActual = { pBase: 0, pOpciones: 0, pExtras: 0, cantidad: 1, obligatorioOk: false, data: null };
 let intervaloAlarma = null;
-        async function init() {
+
+// ==========================================
+// FUNCIÓN DE ARRANQUE (INIT) - ELIMINA EL "PENSANDO"
+// ==========================================
+async function init() {
     const loader = document.getElementById('loader');
-    console.log("🚀 Iniciando sistema Aguadulce Express...");
+    console.log("🚀 Iniciando Aguadulce Express...");
     
     try {
         const res = await fetch(scriptURL);
+        if (!res.ok) throw new Error("Error en red");
         const data = await res.json();
-        
-        // 1. Identidad Visual (Logo y Fondo)
+        console.log("✅ Datos recibidos de Google Sheets");
+
+        // 1. Identidad Visual
         if (data.CONFIG && data.CONFIG[0]) {
             const config = data.CONFIG[0];
             const logoImg = document.getElementById('app-logo');
@@ -386,34 +394,45 @@ let intervaloAlarma = null;
             }
         }
 
-        // 2. Datos de Negocio
+        // 2. Base de Datos Local
         db.restaurantes = data.RESTAURANTES.filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
         db.menu = data.MENU_GENERAL;
         db.anuncios = data.ANUNCIOS || [];
         db.legal = data.LEGAL && data.LEGAL[0] ? data.LEGAL[0].TEXTO : "Tratamiento de datos personales...";
 
-        // 3. Cintillo de Anuncios
+        // 3. Anuncios Marquee
         if(db.anuncios.length > 0) {
             const marquee = document.getElementById('texto-anuncio');
             if(marquee) marquee.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
         }
 
+        // 4. PERSISTENCIA: Recuperar carrito si existía
+        const temporal = localStorage.getItem('ae_cesta_temporal');
+        if (temporal) {
+            cesta = JSON.parse(temporal);
+            actualizarCestaBar();
+        }
+
+        // 5. QUITAR LOADER Y DIBUJAR
         if (loader) loader.style.display = 'none';
         renderHome();
-
-        // 4. Truco de Audio para móviles
-        document.body.addEventListener('click', () => {
-            const audio = document.getElementById('audio-llegada');
-            if (audio) {
-                audio.play().then(() => { audio.pause(); audio.currentTime = 0; }).catch(e => {});
-            }
-        }, { once: true });
+        
+        // 6. ACTIVAR SEMÁFORO (Si hay pedido activo)
+        activarSemaforo();
 
     } catch (e) {
         console.error("❌ Error en arranque:", e);
         if (loader) loader.style.display = 'none';
+        // Si falla el servidor, intentamos renderizar lo que haya en caché
+        renderHome();
     }
 }
+
+// Ejecutamos al cargar la ventana
+window.onload = () => {
+    init();
+    verificarEstadoLogin(); // Tu función de registro original
+};
         function renderHome() {
     document.getElementById('header-bg').style.backgroundImage = `url('${fondoOriginal}')`;
     let html = `<p class="step-tag mb-6 ml-2 italic text-left text-white/50">Selecciona un restaurante</p>`;

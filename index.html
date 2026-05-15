@@ -1024,117 +1024,117 @@
         // ==========================================
         // ENVIAR PEDIDO FINAL
         // ==========================================
-        async function enviarPedidoFinal() {
-            const cliente = obtenerCliente();
-            if (!cliente) {
-                alertaError("Registro requerido", "Debes registrarte primero");
-                return;
-            }
+       async function enviarPedidoFinal() {
+    const cliente = obtenerCliente();
+    if (!cliente) {
+        alertaError("Registro requerido", "Debes registrarte primero");
+        return;
+    }
+    
+    if (cesta.length === 0) {
+        alertaError("Carrito vacío", "No hay productos");
+        return;
+    }
+    
+    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+    const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
+    const iva = subtotal * 0.10;
+    const total = subtotal + iva;
+    
+    // Construir detalle del pedido
+    const detalleTexto = cesta.map(item => {
+        const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
+        return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
+    }).join(" | ");
+    
+    const datosPedido = {
+        telf_info: cliente.telf,
+        cliente_info: cliente.nombre,
+        id_res_info: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre,
+        dir_info: cliente.dir,
+        pedido_info: detalleTexto,
+        total_info: total.toFixed(2),
+        pago_info: metodo,
+        items: cesta.map(item => ({
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            precio_unitario: item.precio_unitario,
+            opciones: item.opciones || "",
+            extras_precio: item.extras_precio || 0,
+            total: item.total
+        })),
+        fecha: new Date().toISOString()
+    };
+    
+    Swal.fire({ 
+        title: 'Enviando pedido...', 
+        text: 'Por favor espera',
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+    });
+    
+    try {
+        // Enviar a Google Sheets y obtener respuesta
+        const formData = new FormData();
+        formData.append('data', JSON.stringify(datosPedido));
+        
+        // 🔥 IMPORTANTE: Usar fetch normal (no mode: 'no-cors') para leer la respuesta
+        const response = await fetch(scriptURL, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === "OK") {
+            const idPedido = result.idPedido; // 🔥 Usar el ID que devuelve el servidor
             
-            if (cesta.length === 0) {
-                alertaError("Carrito vacío", "No hay productos");
-                return;
-            }
+            Swal.close();
             
-            const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
-            const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
-            const iva = subtotal * 0.10;
-            const total = subtotal + iva;
-            const pedidoId = "PED-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+            // Guardar en localStorage
+            localStorage.setItem('ultimoPedido', JSON.stringify({ 
+                id: idPedido, 
+                cliente: cliente.nombre, 
+                total: total, 
+                fecha: new Date().toISOString() 
+            }));
             
-            // Construir detalle del pedido para el texto
-            const detalleTexto = cesta.map(item => {
-                const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
-                return `${item.cantidad}x ${item.nombre}${opcionesTexto} - ${euros(item.total)}`;
-            }).join(" | ");
+            // Mostrar modal de éxito
+            document.getElementById('exito-mensaje').innerHTML = `Tu pedido #${idPedido} ha sido recibido<br>📱 Podrás seguir su estado en tiempo real`;
+            document.getElementById('modal-exito').style.display = 'flex';
             
-            const datosPedido = {
-                telf_info: cliente.telf,
-                cliente_info: cliente.nombre,
-                id_res_info: restauranteActivo.id,
-                restaurante_nombre: restauranteActivo.nombre,
-                dir_info: cliente.dir,
-                pedido_info: detalleTexto,
-                total_info: total.toFixed(2),
-                pago_info: metodo,
-                items: cesta.map(item => ({
-                    nombre: item.nombre,
-                    cantidad: item.cantidad,
-                    precio_unitario: item.precio_unitario,
-                    opciones: item.opciones || "",
-                    extras_precio: item.extras_precio || 0,
-                    total: item.total
-                })),
-                id_pedido: pedidoId,
-                fecha: new Date().toISOString()
-            };
+            // Limpiar carrito
+            cesta = [];
+            actualizarCestaVisual();
+            cerrarCheckout();
             
-            Swal.fire({ 
-                title: 'Enviando pedido...', 
-                text: 'Por favor espera',
-                allowOutsideClick: false, 
-                didOpen: () => Swal.showLoading() 
-            });
+            // Iniciar tracking con el ID correcto
+            iniciarSeguimientoPedido(idPedido);
+            mostrarToast("Pedido enviado correctamente", "✅");
             
-            try {
-                // Enviar a Google Sheets
-                const formData = new FormData();
-                formData.append('data', JSON.stringify(datosPedido));
-                fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: formData }).catch(() => {});
-                
-                // Guardar en Firebase
-                const pedidoFirebase = {
-                    id: pedidoId,
-                    cliente: cliente.nombre,
-                    telefono: cliente.telf,
-                    direccion: cliente.dir,
-                    items: cesta.map(item => ({ 
-                        nombre: item.nombre, 
-                        cantidad: item.cantidad, 
-                        precio_unitario: item.precio_unitario,
-                        opciones: item.opciones || "",
-                        total: item.total 
-                    })),
-                    subtotal: subtotal, iva: iva, total: total,
-                    metodo_pago: metodo,
-                    restaurante_id: restauranteActivo.id,
-                    restaurante_nombre: restauranteActivo.nombre,
-                    estado: "recibido",
-                    fecha: new Date().toISOString(),
-                    timestamp: Date.now()
-                };
-                await database.ref('pedidos/' + pedidoId).set(pedidoFirebase);
-                
-                Swal.close();
-                
-                // Guardar en localStorage
-                localStorage.setItem('ultimoPedido', JSON.stringify({ id: pedidoId, cliente: cliente.nombre, total: total, fecha: new Date().toISOString() }));
-                
-                // Mostrar modal de éxito
-                document.getElementById('exito-mensaje').innerHTML = `Tu pedido #${pedidoId.slice(-8)} ha sido recibido<br>📱 Podrás seguir su estado en tiempo real`;
-                document.getElementById('modal-exito').style.display = 'flex';
-                
-                // Limpiar carrito
-                cesta = [];
-                actualizarCestaVisual();
-                cerrarCheckout();
-                
-                // Iniciar tracking
-                iniciarSeguimientoPedido(pedidoId);
-                mostrarToast("Pedido enviado correctamente", "✅");
-                
-            } catch (error) {
-                Swal.close();
-                console.error("Error:", error);
-                
-                // Fallback offline
-                const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');
-                pedidosOffline.push({ ...datosPedido, timestamp: Date.now(), id_local: Date.now() });
-                localStorage.setItem('ae_pedidos_offline', JSON.stringify(pedidosOffline));
-                alertaError("Error de conexión", "El pedido se ha guardado localmente y se enviará cuando haya conexión");
-                sincronizarPedidosOffline();
-            }
+        } else {
+            throw new Error(result.message || "Error al enviar pedido");
         }
+        
+    } catch (error) {
+        Swal.close();
+        console.error("Error:", error);
+        
+        // Fallback offline
+        const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');
+        const pedidoIdLocal = "OFF-" + Date.now();
+        pedidosOffline.push({ 
+            ...datosPedido, 
+            id_local: pedidoIdLocal,
+            timestamp: Date.now() 
+        });
+        localStorage.setItem('ae_pedidos_offline', JSON.stringify(pedidosOffline));
+        
+        alertaError("Error de conexión", "El pedido se ha guardado localmente y se enviará cuando haya conexión");
+        sincronizarPedidosOffline();
+    }
+}
 
         async function sincronizarPedidosOffline() {
             const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');

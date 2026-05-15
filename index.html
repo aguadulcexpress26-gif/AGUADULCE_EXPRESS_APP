@@ -897,7 +897,7 @@
             return audioElement;
         }
 
-        function iniciarSeguimientoPedido(idPedido) {
+       function iniciarSeguimientoPedido(idPedido) {
     if (!idPedido) return false;
     
     console.log("🔥 Iniciando seguimiento para:", idPedido);
@@ -905,35 +905,36 @@
     localStorage.setItem('ae_pedido_activo', idPedido);
     localStorage.setItem('ae_tracking_id', idPedido);
     
-    // Limpiar listener anterior
     if (trackingListenerRef) {
         trackingListenerRef.off();
         trackingListenerRef = null;
     }
     
-    // Crear nuevo listener con manejo de errores
     trackingListenerRef = database.ref('pedidos/' + idPedido);
     trackingListenerRef.on('value', (snapshot) => {
         const data = snapshot.val();
-        console.log("📡 Datos recibidos de Firebase:", data);
+        console.log("📡 Datos recibidos:", data);
         
         if (data) {
             actualizarInterfazSeguimiento(data);
-        } else {
-            console.warn("⚠️ No hay datos para el pedido:", idPedido);
+            // ✅ FORZAR que el modal se abra si está cerrado
+            const modal = document.getElementById('tracking-modal');
+            if (modal && modal.style.display !== 'block') {
+                // No abrir automáticamente, solo actualizar datos
+            }
         }
     }, (error) => {
-        console.error("❌ Error en listener:", error);
+        console.error("❌ Error:", error);
     });
     
-    // Mostrar botón flotante
+    // ✅ Cargar datos inmediatamente
+    database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
+        const data = snapshot.val();
+        if (data) actualizarInterfazSeguimiento(data);
+    });
+    
     const btn = document.getElementById('btn-reabrir-seguimiento');
     if (btn) btn.style.display = 'flex';
-    
-    // Si el modal está abierto, actualizarlo inmediatamente
-    if (document.getElementById('tracking-modal').style.display === 'block') {
-        cargarEstadoActualPedido(idPedido);
-    }
     
     return true;
 }
@@ -998,16 +999,40 @@ async function cargarEstadoActualPedido(idPedido) {
     
     // Actualizar información adicional
     const info = document.getElementById('tracking-info');
-    if (info && data) {
-        info.innerHTML = `
-            <div style="display: grid; gap: 8px;">
-                <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${data.id || data.idPedido || '---'}</strong></div>
-                <div><span style="color:#06b6d4;">👤 Cliente:</span> ${data.cliente || '---'}</div>
-                <div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? data.total.toFixed(2) + '€' : '---'}</div>
-                <div><span style="color:#06b6d4;">⏱️ Estado:</span> ${cfg.texto}</div>
-            </div>
-        `;
+   if (info && data) {
+    // Determinar el ID correctamente (puede venir en diferentes campos)
+    const idPedido = data.id || data.idPedido || data.idExcel || '---';
+    
+    // Determinar el total correctamente
+    let totalMostrar = '---';
+    if (data.total) {
+        totalMostrar = typeof data.total === 'number' ? data.total.toFixed(2) + '€' : data.total + '€';
     }
+    
+    // Determinar el cliente
+    const clienteNombre = data.cliente || data.cliente_info || '---';
+    
+    // Determinar el estado actual
+    const estadoActual = data.estado || 'recibido';
+    const estadoTexto = {
+        'recibido': 'RECIBIDO ✅',
+        'preparando': 'PREPARANDO 👨‍🍳',
+        'cocinando': 'COCINANDO 🔥',
+        'en_camino': 'EN CAMINO 🛵',
+        'llegando': '¡LLEGANDO! 🔔',
+        'entregado': 'ENTREGADO 🎉',
+        'cancelado': 'CANCELADO ❌'
+    }[estadoActual] || estadoActual.toUpperCase();
+    
+    info.innerHTML = `
+        <div style="display: grid; gap: 10px;">
+            <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${idPedido}</strong></div>
+            <div><span style="color:#06b6d4;">👤 Cliente:</span> ${clienteNombre}</div>
+            <div><span style="color:#06b6d4;">💰 Total:</span> ${totalMostrar}</div>
+            <div><span style="color:#06b6d4;">📌 Estado:</span> ${estadoTexto}</div>
+        </div>
+    `;
+}
     
     // ALARMA cuando está llegando
     if (estado === 'llegando') {

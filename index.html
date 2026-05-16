@@ -883,10 +883,11 @@
             abrirModalTracking();
         }
 
-        // ==========================================
-        // SISTEMA DE TRACKING UNIFICADO
-        // ==========================================
-       function initAudio() {
+       // ==========================================
+// SISTEMA DE TRACKING UNIFICADO (MEJORADO)
+// ==========================================
+
+function initAudio() {
     if (!audioElement) {
         audioElement = document.getElementById('audio-llegada');
         if (!audioElement) {
@@ -897,17 +898,14 @@
     return audioElement;
 }
 
-// 👇 AGREGAR ESTA FUNCIÓN NUEVA DESPUÉS
 function probarAlarma() {
     console.log("Probando alarma...");
-    
     if (navigator.vibrate) {
         navigator.vibrate([500, 200, 500]);
         console.log("✅ Vibración activada");
     } else {
         console.log("❌ Este navegador no soporta vibración");
     }
-    
     const audio = initAudio();
     audio.volume = 1;
     audio.play().then(() => {
@@ -917,7 +915,7 @@ function probarAlarma() {
     });
 }
 
-       function iniciarSeguimientoPedido(idPedido) {
+function iniciarSeguimientoPedido(idPedido) {
     if (!idPedido) return false;
     
     console.log("🔥 Iniciando seguimiento para:", idPedido);
@@ -937,17 +935,11 @@ function probarAlarma() {
         
         if (data) {
             actualizarInterfazSeguimiento(data);
-            // ✅ FORZAR que el modal se abra si está cerrado
-            const modal = document.getElementById('tracking-modal');
-            if (modal && modal.style.display !== 'block') {
-                // No abrir automáticamente, solo actualizar datos
-            }
         }
     }, (error) => {
         console.error("❌ Error:", error);
     });
     
-    // ✅ Cargar datos inmediatamente
     database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
         const data = snapshot.val();
         if (data) actualizarInterfazSeguimiento(data);
@@ -959,7 +951,6 @@ function probarAlarma() {
     return true;
 }
 
-// Función auxiliar para cargar estado actual
 async function cargarEstadoActualPedido(idPedido) {
     try {
         const snapshot = await database.ref('pedidos/' + idPedido).once('value');
@@ -971,13 +962,13 @@ async function cargarEstadoActualPedido(idPedido) {
         console.error("Error cargando estado:", error);
     }
 }
-        function actualizarInterfazSeguimiento(data) {
+
+function actualizarInterfazSeguimiento(data) {
     if (!data) return;
     
     const estado = (data.estado || 'recibido').toLowerCase();
     console.log("🔄 Actualizando UI a estado:", estado);
     
-    // Configuración de cada estado
     const configs = {
         'recibido': { width: '15%', texto: 'RECIBIDO', mensaje: '✅ El restaurante ha recibido tu pedido', emoji: '📥', paso: 1 },
         'confirmado': { width: '30%', texto: 'CONFIRMADO', mensaje: '👍 Pedido confirmado', emoji: '✓', paso: 1 },
@@ -1016,7 +1007,6 @@ async function cargarEstadoActualPedido(idPedido) {
         if (step) {
             if (i <= cfg.paso) {
                 step.classList.add('active');
-                // Forzar estilo visual
                 const dot = step.querySelector('.step-dot');
                 if (dot) {
                     dot.style.background = '#06b6d4';
@@ -1051,17 +1041,14 @@ async function cargarEstadoActualPedido(idPedido) {
     if (estado === 'llegando') {
         console.log("🔔 ¡PEDIDO LLEGANDO! Activando alarma y vibración");
         
-        // Vibrar en móvil
         if (navigator.vibrate) {
             navigator.vibrate([500, 200, 500, 200, 1000]);
         }
         
-        // Reproducir sonido
         const audio = initAudio();
         audio.volume = 0.8;
         audio.play().catch(e => console.log("Audio no disponible:", e));
         
-        // Alarma periódica cada 10 segundos
         if (alarmaInterval) clearInterval(alarmaInterval);
         alarmaInterval = setInterval(() => {
             if (document.visibilityState === 'visible') {
@@ -1070,7 +1057,6 @@ async function cargarEstadoActualPedido(idPedido) {
             }
         }, 10000);
         
-        // Mostrar alerta visual
         Swal.fire({
             title: '🔔 ¡TU PEDIDO ESTÁ LLEGANDO!',
             text: 'El repartidor está cerca. Prepárate para recibir tu pedido.',
@@ -1112,18 +1098,70 @@ async function cargarEstadoActualPedido(idPedido) {
         }, 500);
     }
     
+    // ===== 7. NUEVO: CUANDO CANCELAN (CLIENTE NO RECOGIÓ) =====
+    if (estado === 'cancelado') {
+        console.log("❌ PEDIDO CANCELADO - Acumulando deuda al cliente");
+        
+        if (alarmaInterval) {
+            clearInterval(alarmaInterval);
+            alarmaInterval = null;
+        }
+        
+        if (navigator.vibrate) {
+            navigator.vibrate([500, 300, 500]);
+        }
+        
+        const deudaAcumulada = data.deuda_acumulada || data.total || 0;
+        const motivoCancelacion = data.motivo_cancelacion || "No se pudo completar la entrega";
+        const canceladoPor = data.cancelado_por || "sistema";
+        
+        // Mostrar mensaje elegante de cancelación con deuda
+        Swal.fire({
+            title: '❌ Pedido Cancelado',
+            html: `
+                <div style="text-align: left;">
+                    <p>⚠️ <strong>Tu pedido ha sido cancelado</strong></p>
+                    <br>
+                    <p>📝 <strong>Motivo:</strong> ${motivoCancelacion}</p>
+                    <br>
+                    <p>💰 <strong>Deuda acumulada:</strong> ${typeof deudaAcumulada === 'number' ? deudaAcumulada.toFixed(2) + '€' : deudaAcumulada}</p>
+                    <br>
+                    <p>📞 Esta deuda quedará registrada en tu cuenta.</p>
+                    <p>Para realizar nuevos pedidos, deberás regularizar esta situación.</p>
+                    <br>
+                    <p>🛵 Contacta con soporte para más información.</p>
+                    <p>📧 aguadulcexpress26@gmail.com</p>
+                </div>
+            `,
+            icon: 'error',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#06b6d4',
+            confirmButtonText: 'Entendido'
+        }).then(() => {
+            limpiarSeguimientoCompleto();
+            cerrarModalTracking();
+            // Limpiar carrito si existe
+            if (typeof cesta !== 'undefined') {
+                cesta = [];
+                if (typeof actualizarCestaVisual === 'function') actualizarCestaVisual();
+            }
+        });
+    }
+    
     // Actualizar icono del botón flotante
     actualizarBadgeFlotante(estado);
 }
-        function mostrarBotonSeguimiento() {
-            let btn = document.getElementById('btn-reabrir-seguimiento');
-            if (btn) btn.style.display = 'flex';
-        }
 
-       function actualizarBadgeFlotante(estado) {
+function mostrarBotonSeguimiento() {
+    let btn = document.getElementById('btn-reabrir-seguimiento');
+    if (btn) btn.style.display = 'flex';
+}
+
+function actualizarBadgeFlotante(estado) {
     const btn = document.getElementById('btn-reabrir-seguimiento');
     if (!btn) return;
-    const iconos = { 'recibido': '📋', 'preparando': '👨‍🍳', 'cocinando': '🔥', 'en_camino': '🛵', 'llegando': '🔔', 'entregado': '✅' };
+    const iconos = { 'recibido': '📋', 'preparando': '👨‍🍳', 'cocinando': '🔥', 'en_camino': '🛵', 'llegando': '🔔', 'entregado': '✅', 'cancelado': '❌' };
     btn.innerHTML = iconos[estado] || '📦';
 }
 
@@ -1161,13 +1199,15 @@ function limpiarSeguimientoCompleto() {
     cerrarModalTracking();
     
     // Mostrar mensaje
-    mostrarToast("Seguimiento finalizado. ¡Puedes hacer un nuevo pedido!", "✅");
+    if (typeof mostrarToast === 'function') {
+        mostrarToast("Seguimiento finalizado. ¡Puedes hacer un nuevo pedido!", "✅");
+    }
 }
-        function restaurarPedidoActivo() {
-            const idPedido = localStorage.getItem('ae_pedido_activo');
-            if (idPedido) iniciarSeguimientoPedido(idPedido);
-        }
 
+function restaurarPedidoActivo() {
+    const idPedido = localStorage.getItem('ae_pedido_activo');
+    if (idPedido) iniciarSeguimientoPedido(idPedido);
+}
         // ==========================================
         // ENVIAR PEDIDO FINAL
         // ==========================================

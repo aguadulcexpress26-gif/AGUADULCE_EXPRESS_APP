@@ -159,6 +159,10 @@
             animation: pulse 1s infinite;
         }
         
+        .estado-badge.cancelado {
+            background: #ef4444;
+        }
+        
         @keyframes pulse {
             0% { opacity: 0.7; transform: scale(1); }
             50% { opacity: 1; transform: scale(1.05); }
@@ -180,33 +184,88 @@
             word-break: break-word;
         }
         
-        .cliente-info {
-            font-size: 12px;
-            color: rgba(255,255,255,0.6);
+        /* DATOS DEL CLIENTE - NUEVO BLOQUE MEJORADO */
+        .cliente-completo {
+            background: #0f172a;
+            border-radius: 20px;
+            padding: 16px;
             margin-bottom: 16px;
+            border: 1px solid rgba(6,182,212,0.3);
         }
         
-        /* TIEMPO DE COCINA */
-        .tiempo-cocina {
-            background: rgba(6,182,212,0.1);
-            border: 1px solid rgba(6,182,212,0.3);
-            border-radius: 12px;
-            padding: 8px 12px;
-            font-size: 12px;
+        .cliente-nombre {
+            font-size: 14px;
             font-weight: 900;
             color: #06b6d4;
-            display: inline-block;
+            margin-bottom: 8px;
+        }
+        
+        .cliente-telefono {
+            font-size: 16px;
+            font-weight: 900;
+            color: white;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .btn-llamar, .btn-whatsapp-cliente {
+            background: #22c55e;
+            color: black;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-whatsapp-cliente {
+            background: #25D366;
+        }
+        
+        /* TIEMPO DE COCINA - MÁS GRANDE Y VISIBLE */
+        .tiempo-cocina {
+            background: rgba(6,182,212,0.15);
+            border: 2px solid rgba(6,182,212,0.5);
+            border-radius: 20px;
+            padding: 14px 20px;
+            font-size: 18px;
+            font-weight: 900;
+            color: #06b6d4;
+            display: block;
             margin-bottom: 16px;
+            text-align: center;
+            letter-spacing: 1px;
         }
         
         .tiempo-listo {
             background: rgba(34,197,94,0.2);
             border-color: #22c55e;
             color: #22c55e;
+            font-size: 20px;
         }
         
         .tiempo-alerta {
             animation: pulse 1s infinite;
+        }
+        
+        /* TIMER DE ESPERA (5 MINUTOS) - VISIBLE */
+        .timer-espera {
+            background: #eab308;
+            color: black;
+            padding: 14px;
+            border-radius: 20px;
+            margin: 12px 0;
+            text-align: center;
+            font-weight: 900;
+            font-size: 16px;
+            border: 2px solid #fbbf24;
         }
         
         /* BOTONES DE MAPA Y WHATSAPP */
@@ -291,6 +350,11 @@
         .btn-principal.blue {
             background: #06b6d4;
             color: black;
+        }
+        
+        .btn-principal.red {
+            background: #ef4444;
+            color: white;
         }
         
         .total {
@@ -404,7 +468,6 @@
         <p style="color:#06b6d4; font-size:10px; font-weight:900;">Iniciando Terminal de Reparto...</p>
     </div>
 
-    <!-- AUDIO PARA NOTIFICACIONES -->
     <audio id="audio-notificacion" preload="auto">
         <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
     </audio>
@@ -458,6 +521,7 @@
         let pedidosActivos = [];
         let audioNotificacion = null;
         let listenerRef = null;
+        let temporizadoresActivos = {};
 
         // ============================================
         // INICIALIZACIÓN
@@ -473,7 +537,6 @@
             document.getElementById('codigo-ui').innerText = `ID: ${miCodigo}`;
             audioNotificacion = document.getElementById('audio-notificacion');
             
-            // Escuchar cambios en tiempo real
             if(listenerRef) listenerRef.off();
             listenerRef = database.ref('pedidosActivos');
             listenerRef.on('value', () => refrescarDatos());
@@ -497,9 +560,7 @@
                     return;
                 }
                 
-                // Guardar IDs anteriores para detectar nuevos pedidos
                 const idsAnteriores = pedidosActivos.map(p => p.ID_PEDIDO);
-                
                 pedidosActivos = data.pedidos || [];
                 const saldo = parseFloat(data.saldo) || 0;
                 
@@ -509,7 +570,6 @@
                 document.getElementById('txt-estado').innerText = "Disponible";
                 document.getElementById('txt-estado').className = "disponible";
                 
-                // Detectar pedidos nuevos (asignados al repartidor)
                 const idsNuevos = pedidosActivos.map(p => p.ID_PEDIDO).filter(id => !idsAnteriores.includes(id));
                 if(idsNuevos.length > 0) {
                     if(audioNotificacion) {
@@ -520,7 +580,6 @@
                     mostrarToast(`📦 Nuevo pedido asignado`, "success");
                 }
                 
-                // Obtener tiempos de cocina desde Firebase
                 const snapshot = await database.ref('pedidos').once('value');
                 const fbData = snapshot.val() || {};
                 
@@ -531,7 +590,9 @@
                         timestampListo: fbPedido ? fbPedido.timestampListo : null,
                         tiempoEstimado: fbPedido ? fbPedido.tiempoEstimado : null,
                         horaSalida: fbPedido ? fbPedido.horaSalida : null,
-                        estadoFirebase: fbPedido ? fbPedido.estado : p.ESTADO
+                        estadoFirebase: fbPedido ? fbPedido.estado : p.ESTADO,
+                        telefono: p.telf || p.WHATSAPP || "",
+                        cliente: p.CLIENTE || p.cliente
                     };
                 });
                 
@@ -571,12 +632,11 @@
                 const tiempoRestante = tieneTiempo ? calcularTiempoRestante(p.timestampListo) : null;
                 const esListo = tiempoRestante && tiempoRestante.listo;
                 const total = parseFloat(p.TOTAL) || 0;
+                const telefonoLimpio = String(p.telefono || p.telf || p.WHATSAPP || '').replace(/\D/g, '');
                 
-                // Determinar qué botones mostrar según el estado
                 let botonesHTML = '';
                 
                 if (estadoActual === 'LISTO' || esListo) {
-                    // Pedido listo para recoger
                     botonesHTML = `
                         <div class="botones-estado">
                             <button onclick="recogerPedido('${p.ID_PEDIDO}')" class="btn-principal blue">
@@ -585,7 +645,6 @@
                         </div>
                     `;
                 } else if (estadoActual === 'EN CAMINO') {
-                    // Repartidor en camino
                     botonesHTML = `
                         <div class="botones-estado">
                             <button onclick="marcarLlegada('${p.ID_PEDIDO}')" class="btn-principal yellow">
@@ -594,25 +653,30 @@
                         </div>
                     `;
                 } else if (estadoActual === 'LLEGÓ' || estadoActual === 'LLEGO') {
-                    // Repartidor llegó, falta cobrar
+                    // Verificar si hay temporizador activo para este pedido
+                    const hayTimer = temporizadoresActivos[p.ID_PEDIDO];
                     botonesHTML = `
+                        ${hayTimer ? `<div id="timer-${p.ID_PEDIDO}" class="timer-espera">⏰ Esperando al cliente...</div>` : ''}
                         <div class="botones-estado">
                             <button onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})" class="btn-principal green">
                                 💰 COBRAR Y ENTREGAR (${total.toFixed(2)}€)
                             </button>
+                            ${!hayTimer ? `<button onclick="iniciarTemporizadorCancelacion('${p.ID_PEDIDO}', ${total})" class="btn-principal red" style="background:#ef4444;">
+                                ⏰ CLIENTE NO RESPONDE - ESPERAR 5 MIN
+                            </button>` : ''}
                         </div>
                     `;
                 } else {
-                    // Pedido en preparación - mostrar tiempo estimado
+                    const tiempoMostrar = tieneTiempo ? `${tiempoRestante.min}m ${tiempoRestante.seg}s` : 'Calculando...';
                     botonesHTML = `
                         <div class="tiempo-cocina ${esListo ? 'tiempo-listo tiempo-alerta' : ''}">
-                            ${esListo ? '🔔 ¡PEDIDO LISTO PARA RECOGER!' : (tieneTiempo ? `⏳ COCINA: ${tiempoRestante.min}m ${tiempoRestante.seg}s` : '⏳ ESPERANDO COCINA')}
+                            ${esListo ? '🔔 ¡PEDIDO LISTO PARA RECOGER!' : `⏳ TIEMPO DE COCINA: ${tiempoMostrar}`}
                         </div>
                     `;
                 }
                 
                 return `
-                    <div class="card-pedido">
+                    <div class="card-pedido" data-id="${p.ID_PEDIDO}">
                         <div class="card-header">
                             <span class="estado-badge ${esListo || estadoActual === 'LISTO' ? 'listo' : ''}">
                                 ${esListo || estadoActual === 'LISTO' ? '📦 LISTO' : (estadoActual || 'PREPARANDO')}
@@ -622,8 +686,19 @@
                         
                         <div class="direccion">${p.DIRECCION || p.direccion}</div>
                         
-                        <div class="cliente-info">
-                            👤 ${p.CLIENTE || p.cliente} • 💳 ${p.PAGO || p.pago}
+                        <!-- DATOS COMPLETOS DEL CLIENTE -->
+                        <div class="cliente-completo">
+                            <div class="cliente-nombre">👤 ${p.CLIENTE || p.cliente}</div>
+                            <div class="cliente-telefono">
+                                📞 ${p.telefono || p.telf || 'No disponible'}
+                                <div style="display: flex; gap: 8px;">
+                                    <a href="tel:${telefonoLimpio}" class="btn-llamar">📞 Llamar</a>
+                                    <a href="https://wa.me/${telefonoLimpio}" target="_blank" class="btn-whatsapp-cliente">💬 WhatsApp</a>
+                                </div>
+                            </div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">
+                                💳 Pago: ${p.PAGO || p.pago}
+                            </div>
                         </div>
                         
                         <div class="botones-accion">
@@ -631,7 +706,7 @@
                                 <span class="icono">📍</span>
                                 <span class="btn-mapa-texto">Ver Mapa</span>
                             </a>
-                            <a href="https://wa.me/${String(p.telf || p.WHATSAPP || '').replace(/\D/g,'')}" target="_blank" class="btn-whatsapp">
+                            <a href="https://wa.me/${telefonoLimpio}" target="_blank" class="btn-whatsapp">
                                 <span class="icono">💬</span>
                                 <span class="btn-whatsapp-texto">WhatsApp</span>
                             </a>
@@ -651,7 +726,6 @@
         // ACCIONES DEL REPARTIDOR
         // ============================================
         
-        // 1. Recoger pedido (cambia a EN CAMINO)
         async function recogerPedido(id) {
             mostrarLoader(true);
             try {
@@ -670,7 +744,6 @@
             }
         }
         
-        // 2. Marcar llegada al cliente (alerta al cliente)
         async function marcarLlegada(id) {
             mostrarLoader(true);
             try {
@@ -680,8 +753,7 @@
                     timestamp_llegada: Date.now()
                 });
                 
-                // Sonido y vibración para el cliente (se maneja en la app del cliente)
-                mostrarToast("📍 Has llegado al cliente. Procede a cobrar.", "success");
+                mostrarToast("📍 Has llegado al cliente. Esperando...", "success");
                 if(navigator.vibrate) navigator.vibrate([300, 100, 300]);
                 await refrescarDatos();
             } catch (e) {
@@ -691,11 +763,108 @@
             }
         }
         
-        // 3. Confirmar entrega (con mensaje elegante de cobro)
+        function iniciarTemporizadorCancelacion(idPedido, total) {
+            if (temporizadoresActivos[idPedido]) {
+                mostrarToast("Ya hay un temporizador activo para este pedido", "warning");
+                return;
+            }
+            
+            mostrarToast("⏰ Iniciando temporizador de 5 minutos. Espera al cliente...", "warning");
+            
+            let tiempoRestante = 300; // 5 minutos
+            let timerDiv = document.getElementById(`timer-${idPedido}`);
+            if (!timerDiv) {
+                const card = document.querySelector(`.card-pedido[data-id="${idPedido}"]`);
+                if (card) {
+                    const botonesDiv = card.querySelector('.botones-estado');
+                    if (botonesDiv) {
+                        timerDiv = document.createElement('div');
+                        timerDiv.id = `timer-${idPedido}`;
+                        timerDiv.className = 'timer-espera';
+                        timerDiv.style.background = '#eab308';
+                        timerDiv.style.color = 'black';
+                        timerDiv.style.padding = '14px';
+                        timerDiv.style.borderRadius = '20px';
+                        timerDiv.style.margin = '12px 0';
+                        timerDiv.style.textAlign = 'center';
+                        timerDiv.style.fontWeight = '900';
+                        timerDiv.style.fontSize = '16px';
+                        botonesDiv.insertAdjacentElement('beforebegin', timerDiv);
+                    }
+                }
+            }
+            
+            temporizadoresActivos[idPedido] = setInterval(() => {
+                tiempoRestante--;
+                const minutos = Math.floor(tiempoRestante / 60);
+                const segundos = tiempoRestante % 60;
+                
+                if (timerDiv) {
+                    timerDiv.innerHTML = `⏰ ESPERANDO AL CLIENTE: ${minutos}:${segundos.toString().padStart(2, '0')} - Intenta contactarlo 📞`;
+                }
+                
+                if (tiempoRestante <= 0) {
+                    clearInterval(temporizadoresActivos[idPedido]);
+                    delete temporizadoresActivos[idPedido];
+                    if (timerDiv) timerDiv.remove();
+                    
+                    // Mostrar botón de cancelar
+                    const card = document.querySelector(`.card-pedido[data-id="${idPedido}"]`);
+                    if (card) {
+                        const btnEntregar = card.querySelector('.btn-principal.green');
+                        if (btnEntregar) btnEntregar.style.display = 'none';
+                        
+                        const btnCancelar = document.createElement('button');
+                        btnCancelar.className = 'btn-principal red';
+                        btnCancelar.style.background = '#ef4444';
+                        btnCancelar.style.color = 'white';
+                        btnCancelar.innerHTML = `❌ CANCELAR PEDIDO (Cliente no recogió - Deuda ${total.toFixed(2)}€)`;
+                        btnCancelar.onclick = () => cancelarPorCliente(idPedido, total);
+                        
+                        const botonesDiv = card.querySelector('.botones-estado');
+                        if (botonesDiv) {
+                            botonesDiv.appendChild(btnCancelar);
+                        }
+                    }
+                }
+            }, 1000);
+        }
+        
+        async function cancelarPorCliente(idPedido, total) {
+            const confirmacion = confirm(`⚠️ CANCELAR PEDIDO ⚠️\n\nEsta acción:\n• Acumulará deuda de ${total.toFixed(2)}€ al cliente\n• El pedido se marcará como CANCELADO\n• El cliente será notificado\n\n¿Estás seguro?`);
+            
+            if (!confirmacion) return;
+            
+            mostrarLoader(true);
+            try {
+                const pedido = pedidosActivos.find(p => p.ID_PEDIDO === idPedido);
+                
+                await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${idPedido}&nuevoEstado=CANCELADO&tiempo=cliente_no_recogio_${Date.now()}`);
+                
+                await database.ref('pedidos/' + idPedido).update({
+                    estado: 'cancelado',
+                    cancelado_por: 'cliente_no_recogio',
+                    deuda_acumulada: total,
+                    monto_deuda: total,
+                    timestamp_cancelacion: Date.now(),
+                    repartidor_que_cancelo: miCodigo
+                });
+                
+                mostrarToast(`❌ Pedido #${idPedido} cancelado. Deuda de ${total.toFixed(2)}€ acumulada al cliente.`, "warning");
+                if(navigator.vibrate) navigator.vibrate([500, 300, 500]);
+                
+                await refrescarDatos();
+            } catch(e) {
+                console.error("Error:", e);
+                mostrarToast("Error al cancelar el pedido", "error");
+            } finally {
+                mostrarLoader(false);
+            }
+        }
+        
         function confirmarEntrega(id, total) {
             mostrarToast(`💵 Prepara el cobro de ${total.toFixed(2)}€ al cliente`, "warning");
             
-            // Mostrar modal elegante de confirmación
             const confirmado = confirm(`=========================================\n
 🛵 AGUADULCE EXPRESS - REPARTO\n=========================================\n
 📋 Pedido: ${id}\n💰 Monto a cobrar: ${total.toFixed(2)}€\n
@@ -720,7 +889,6 @@
                     entregado_en: new Date().toISOString()
                 });
                 
-                // Mensaje elegante de éxito
                 setTimeout(() => {
                     alert(`🎉 ENTREGA COMPLETADA 🎉\n\n✅ Pedido: ${id}\n💰 Monto cobrado: ${total.toFixed(2)}€\n👤 Cliente ha pagado correctamente\n\n📊 El monto ha sido añadido a tu billetera.\n\n¡Gracias por tu trabajo! 🚀`);
                 }, 500);
@@ -758,14 +926,12 @@
             }
         }
         
-        // Actualizar contadores de tiempo cada segundo
         setInterval(() => {
             if(pedidosActivos.length > 0) {
                 renderPedidos();
             }
         }, 1000);
         
-        // Iniciar la app
         initReparto();
     </script>
 </body>

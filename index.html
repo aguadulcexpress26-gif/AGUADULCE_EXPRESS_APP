@@ -447,7 +447,7 @@
         <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
     </audio>
 
-   <script>
+ <script>
         // ==========================================
         // CONFIGURACIÓN FIREBASE
         // ==========================================
@@ -478,67 +478,65 @@
         let audioElement = null;
         
         // ==========================================
-        // SISTEMA DE NAVEGACIÓN SIMPLIFICADO
+        // SISTEMA DE NAVEGACIÓN CON STACK
         // ==========================================
-        let navegacionIniciada = false;
         
-        function cerrarTodosLosModales() {
-            const modalPlato = document.getElementById('modal-plato');
-            const panelRevision = document.getElementById('panel-revision');
-            const panelCheckout = document.getElementById('panel-checkout');
-            const trackingModal = document.getElementById('tracking-modal');
-            const modalRegistro = document.getElementById('modal-registro');
-            
-            if (modalPlato && modalPlato.style.display === 'block') modalPlato.style.display = 'none';
-            if (panelRevision && panelRevision.style.display === 'block') panelRevision.style.display = 'none';
-            if (panelCheckout && panelCheckout.style.display === 'block') panelCheckout.style.display = 'none';
-            if (trackingModal && trackingModal.style.display === 'block') trackingModal.style.display = 'none';
-            if (modalRegistro && modalRegistro.style.display === 'flex') modalRegistro.style.display = 'none';
+        // Pila de pantallas (stack)
+        let pantallaStack = ['home'];
+        let navegando = false;
+        
+        // Función para agregar pantalla al stack
+        function pushPantalla(pantalla) {
+            if (pantallaStack[pantallaStack.length - 1] !== pantalla) {
+                pantallaStack.push(pantalla);
+                history.pushState({ pantalla: pantalla }, null, window.location.href);
+                console.log("📌 Stack:", pantallaStack);
+            }
         }
         
-        window.addEventListener('popstate', function(event) {
-            event.preventDefault();
+        // Función para volver a la pantalla anterior
+        function popPantalla() {
+            if (navegando) return;
+            navegando = true;
             
-            // Verificar qué está abierto y cerrarlo en orden
-            const modalPlato = document.getElementById('modal-plato');
-            const panelRevision = document.getElementById('panel-revision');
-            const panelCheckout = document.getElementById('panel-checkout');
-            const trackingModal = document.getElementById('tracking-modal');
-            const modalRegistro = document.getElementById('modal-registro');
-            
-            if (modalPlato && modalPlato.style.display === 'block') {
-                modalPlato.style.display = 'none';
-                return;
-            }
-            
-            if (panelRevision && panelRevision.style.display === 'block') {
-                panelRevision.style.display = 'none';
-                return;
-            }
-            
-            if (panelCheckout && panelCheckout.style.display === 'block') {
-                panelCheckout.style.display = 'none';
-                return;
-            }
-            
-            if (trackingModal && trackingModal.style.display === 'block') {
-                trackingModal.style.display = 'none';
-                return;
-            }
-            
-            if (modalRegistro && modalRegistro.style.display === 'flex') {
-                modalRegistro.style.display = 'none';
-                return;
-            }
-            
-            // Si estamos en el menú principal, preguntar si salir
-            const isHome = document.getElementById('app-container') && 
-                          !modalPlato?.style.display === 'block' &&
-                          !panelRevision?.style.display === 'block' &&
-                          !panelCheckout?.style.display === 'block' &&
-                          !trackingModal?.style.display === 'block';
-            
-            if (isHome || (!modalPlato && !panelRevision && !panelCheckout && !trackingModal)) {
+            if (pantallaStack.length > 1) {
+                // Quitar pantalla actual
+                pantallaStack.pop();
+                const pantallaAnterior = pantallaStack[pantallaStack.length - 1];
+                console.log("🔙 Volviendo a:", pantallaAnterior);
+                
+                // Cerrar todos los paneles/modales
+                cerrarTodosLosPaneles();
+                
+                // Mostrar la pantalla anterior
+                switch(pantallaAnterior) {
+                    case 'home':
+                        renderHome();
+                        break;
+                    case 'restaurante':
+                        if (restauranteActivo.id) {
+                            renderMenu();
+                        } else {
+                            renderHome();
+                        }
+                        break;
+                    case 'plato':
+                        // El modal ya se cerró con cerrarTodosLosPaneles()
+                        break;
+                    case 'revision':
+                        abrirRevision();
+                        break;
+                    case 'checkout':
+                        abrirCheckout();
+                        break;
+                    case 'tracking':
+                        abrirModalTracking();
+                        break;
+                    default:
+                        renderHome();
+                }
+            } else {
+                // Estamos en home, preguntar si salir
                 Swal.fire({
                     title: '¿Salir de la app?',
                     text: '¿Estás seguro?',
@@ -551,15 +549,41 @@
                     showCancelButton: true
                 }).then(result => {
                     if (!result.isConfirmed) {
-                        history.pushState(null, null, window.location.href);
+                        history.pushState({ pantalla: 'home' }, null, window.location.href);
                     }
+                    navegando = false;
                 });
+                return;
             }
+            
+            navegando = false;
+        }
+        
+        // Cerrar todos los paneles/modales
+        function cerrarTodosLosPaneles() {
+            const modalPlato = document.getElementById('modal-plato');
+            const panelRevision = document.getElementById('panel-revision');
+            const panelCheckout = document.getElementById('panel-checkout');
+            const trackingModal = document.getElementById('tracking-modal');
+            const modalRegistro = document.getElementById('modal-registro');
+            
+            if (modalPlato) modalPlato.style.display = 'none';
+            if (panelRevision) panelRevision.style.display = 'none';
+            if (panelCheckout) panelCheckout.style.display = 'none';
+            if (trackingModal) trackingModal.style.display = 'none';
+            if (modalRegistro) modalRegistro.style.display = 'none';
+        }
+        
+        // Evento de navegación (botón atrás y gesto)
+        window.addEventListener('popstate', function(event) {
+            event.preventDefault();
+            popPantalla();
         });
         
-        if (!navegacionIniciada) {
-            history.pushState(null, null, window.location.href);
-            navegacionIniciada = true;
+        // Inicializar historial
+        if (!window.navegacionIniciada) {
+            history.replaceState({ pantalla: 'home' }, null, window.location.href);
+            window.navegacionIniciada = true;
         }
         
         // ==========================================
@@ -578,8 +602,8 @@
         function abrirModalTracking() {
             const modal = document.getElementById('tracking-modal');
             if (modal) {
+                pushPantalla('tracking');
                 modal.style.display = 'block';
-                history.pushState(null, null, window.location.href);
             }
         }
         
@@ -822,6 +846,7 @@
             const bg = document.getElementById("header-bg");
             if (bg) bg.style.backgroundImage = `url('${foto}')`;
             renderMenu();
+            pushPantalla('restaurante');
         }
         
         function renderMenu() {
@@ -847,6 +872,10 @@
             restauranteActivo = { id: null, nombre: "", foto: "" };
             guardarCesta();
             if (db.config.FONDO_URL) document.getElementById("header-bg").style.backgroundImage = `url('${db.config.FONDO_URL}')`;
+            // Limpiar stack hasta home
+            while (pantallaStack.length > 1 && pantallaStack[pantallaStack.length - 1] !== 'home') {
+                pantallaStack.pop();
+            }
             renderHome();
         }
         
@@ -860,6 +889,8 @@
         // SISTEMA DE OPCIONES DEL PLATO
         // ==========================================
         function abrirDetalle(p) {
+            pushPantalla('plato');
+            
             itemActual = {
                 id: p.ID_PLATO || Date.now(),
                 data: p,
@@ -879,7 +910,6 @@
             document.getElementById('cant-plato-modal').innerText = "1";
             actualizarTotalModal();
             document.getElementById('modal-plato').style.display = 'block';
-            history.pushState(null, null, window.location.href);
         }
         
         function toggleZoom(img) {
@@ -996,13 +1026,13 @@
         // REVISIÓN Y CHECKOUT
         // ==========================================
         function abrirRevision() {
+            pushPantalla('revision');
             const panel = document.getElementById('panel-revision');
             const container = document.getElementById('items-revision');
             if (!container) return;
             container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover"><div class="flex-1 text-left"><p class="font-black text-sm">${item.nombre}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${item.opciones}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
             if (cesta.length === 0) container.innerHTML = '<p class="text-center text-white/50">Carrito vacío</p>';
             panel.style.display = 'block';
-            history.pushState(null, null, window.location.href);
         }
         
         function abrirCheckout() {
@@ -1010,7 +1040,14 @@
                 Swal.fire({ title: '⚠️ Pedido en curso', text: 'Ya tienes un pedido activo. Espera a que termine.', icon: 'warning', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
                 return;
             }
-            if (!obtenerCliente()) { document.getElementById('panel-revision').style.display = 'none'; document.getElementById('modal-registro').style.display = 'flex'; return; }
+            if (!obtenerCliente()) { 
+                document.getElementById('panel-revision').style.display = 'none'; 
+                document.getElementById('modal-registro').style.display = 'flex'; 
+                return; 
+            }
+            
+            pushPantalla('checkout');
+            
             document.getElementById('panel-revision').style.display = 'none';
             document.getElementById('panel-checkout').style.display = 'block';
             actualizarClienteUI();
@@ -1028,7 +1065,6 @@
                 <div class="border-t border-white/20 my-2"></div>
                 <div class="flex justify-between text-xl font-black mt-2"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div>
             </div>`;
-            history.pushState(null, null, window.location.href);
         }
         
         function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }

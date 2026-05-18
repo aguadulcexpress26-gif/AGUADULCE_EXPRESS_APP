@@ -607,55 +607,68 @@ function estaAppAbierta() {
         // ==========================================
         // FUNCIÓN PARA VERIFICAR HORARIO (NUEVA)
         // ==========================================
-        function estaRestauranteAbierto(restaurante) {
-            const ahora = new Date();
-            const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+        // Función final que debes usar en tu cliente.html
+function estaRestauranteAbierto(restaurante) {
+    const ahora = new Date();
+    const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
+    const diaActual = diasSemana[ahora.getDay()];
+    const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+    
+    function parseHora(horaStr) {
+        if (!horaStr || horaStr === "") return null;
+        if (horaStr.toUpperCase() === "CERRADO") return "CERRADO";
+        const [h, m] = horaStr.split(":").map(Number);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    }
+    
+    let apertura1 = null, cierre1 = null, apertura2 = null, cierre2 = null;
+    let horarioActivo = "";
+    let estaCerrado = false;
+    
+    if (db.horariosPorDia && db.horariosPorDia[restaurante.ID_RESTAURANTE]) {
+        const horarioDia = db.horariosPorDia[restaurante.ID_RESTAURANTE][diaActual];
+        if (horarioDia) {
+            const a1 = parseHora(horarioDia.apertura1);
+            const c1 = parseHora(horarioDia.cierre1);
+            const a2 = parseHora(horarioDia.apertura2);
+            const c2 = parseHora(horarioDia.cierre2);
             
-            function parseHora(horaStr) {
-                if (!horaStr || horaStr === "" || horaStr === "0" || horaStr === "00:00") return null;
-                const [h, m] = horaStr.split(":").map(Number);
-                if (isNaN(h) || isNaN(m)) return null;
-                return h * 60 + m;
+            if (a1 === "CERRADO" || c1 === "CERRADO" || a2 === "CERRADO" || c2 === "CERRADO") {
+                estaCerrado = true;
             }
             
-            const apertura1 = parseHora(restaurante.HORA_APERTURA_1);
-            const cierre1 = parseHora(restaurante.HORA_CIERRE_1);
-            const apertura2 = parseHora(restaurante.HORA_APERTURA_2);
-            const cierre2 = parseHora(restaurante.HORA_CIERRE_2);
-            
-            let estaAbierto = false;
-            let horarioActivo = "";
-            
-            if (apertura1 !== null && cierre1 !== null) {
-                if (cierre1 < apertura1) {
-                    if (horaActual >= apertura1 || horaActual <= cierre1) {
-                        estaAbierto = true;
-                        horarioActivo = `${restaurante.HORA_APERTURA_1} - ${restaurante.HORA_CIERRE_1}`;
-                    }
-                } else {
-                    if (horaActual >= apertura1 && horaActual <= cierre1) {
-                        estaAbierto = true;
-                        horarioActivo = `${restaurante.HORA_APERTURA_1} - ${restaurante.HORA_CIERRE_1}`;
-                    }
-                }
-            }
-            
-            if (!estaAbierto && apertura2 !== null && cierre2 !== null) {
-                if (cierre2 < apertura2) {
-                    if (horaActual >= apertura2 || horaActual <= cierre2) {
-                        estaAbierto = true;
-                        horarioActivo = `${restaurante.HORA_APERTURA_2} - ${restaurante.HORA_CIERRE_2}`;
-                    }
-                } else {
-                    if (horaActual >= apertura2 && horaActual <= cierre2) {
-                        estaAbierto = true;
-                        horarioActivo = `${restaurante.HORA_APERTURA_2} - ${restaurante.HORA_CIERRE_2}`;
-                    }
-                }
-            }
-            
-            return { abierto: estaAbierto, horario: horarioActivo };
+            apertura1 = typeof a1 === "number" ? a1 : null;
+            cierre1 = typeof c1 === "number" ? c1 : null;
+            apertura2 = typeof a2 === "number" ? a2 : null;
+            cierre2 = typeof c2 === "number" ? c2 : null;
+            horarioActivo = `${horarioDia.apertura1 || "?"} - ${horarioDia.cierre1 || "?"}`;
         }
+    }
+    
+    if (estaCerrado) return { abierto: false, horario: "Cerrado" };
+    if (apertura1 === null && apertura2 === null) return { abierto: false, horario: "Sin horario" };
+    
+    let estaAbierto = false;
+    
+    if (apertura1 !== null && cierre1 !== null) {
+        if (cierre1 < apertura1) {
+            if (horaActual >= apertura1 || horaActual <= cierre1) estaAbierto = true;
+        } else {
+            if (horaActual >= apertura1 && horaActual <= cierre1) estaAbierto = true;
+        }
+    }
+    
+    if (!estaAbierto && apertura2 !== null && cierre2 !== null) {
+        if (cierre2 < apertura2) {
+            if (horaActual >= apertura2 || horaActual <= cierre2) estaAbierto = true;
+        } else {
+            if (horaActual >= apertura2 && horaActual <= cierre2) estaAbierto = true;
+        }
+    }
+    
+    return { abierto: estaAbierto, horario: horarioActivo };
+}
         
         // ==========================================
         // CARGA DE DATOS (MODIFICADA)

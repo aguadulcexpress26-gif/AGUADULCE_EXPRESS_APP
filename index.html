@@ -1084,24 +1084,35 @@
 }        
         function restaurarPedidoActivo() {
     const idPedido = localStorage.getItem('ae_pedido_activo');
-    if (idPedido) {
-        console.log("🔄 Restaurando pedido activo:", idPedido);
-        // Verificar si el pedido aún existe en Firebase
-        database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
-            const data = snapshot.val();
-            if (data && data.estado !== 'entregado' && data.estado !== 'cancelado') {
-                iniciarSeguimientoPedido(idPedido);
-            } else if (data && (data.estado === 'entregado' || data.estado === 'cancelado')) {
-                console.log("📦 Pedido ya finalizado, limpiando...");
-                limpiarSeguimientoCompleto();
-            } else {
-                console.log("⚠️ Pedido no encontrado en Firebase, limpiando...");
-                limpiarSeguimientoCompleto();
-            }
-        }).catch(error => {
-            console.error("❌ Error verificando pedido:", error);
-        });
+    console.log("🔄 restaurarPedidoActivo - ID encontrado:", idPedido);
+    
+    if (!idPedido) {
+        console.log("⚠️ No hay pedido activo en localStorage");
+        return;
     }
+    
+    database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
+        const data = snapshot.val();
+        console.log("📦 Datos del pedido en Firebase:", data);
+        
+        if (!data) {
+            console.log("⚠️ Pedido no encontrado, limpiando...");
+            limpiarSeguimientoCompleto();
+            return;
+        }
+        
+        const estado = (data.estado || '').toLowerCase();
+        if (estado === 'entregado' || estado === 'cancelado') {
+            console.log("📦 Pedido ya finalizado, limpiando...");
+            limpiarSeguimientoCompleto();
+        } else {
+            console.log("✅ Iniciando seguimiento para:", idPedido);
+            iniciarSeguimientoPedido(idPedido);
+        }
+    }).catch(error => {
+        console.error("❌ Error:", error);
+        limpiarSeguimientoCompleto();
+    });
 }
         
         // ==========================================

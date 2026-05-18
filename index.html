@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Aguadulce">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -570,17 +570,83 @@
         function borrarRegistro() { localStorage.removeItem("ae_cliente"); actualizarClienteUI(); mostrarToast("Sesión cerrada", "👋"); }
         
         // ==========================================
-        // CARGA DE DATOS
+        // FUNCIÓN PARA VERIFICAR HORARIO (NUEVA)
+        // ==========================================
+        function estaRestauranteAbierto(restaurante) {
+            const ahora = new Date();
+            const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+            
+            function parseHora(horaStr) {
+                if (!horaStr || horaStr === "" || horaStr === "0" || horaStr === "00:00") return null;
+                const [h, m] = horaStr.split(":").map(Number);
+                if (isNaN(h) || isNaN(m)) return null;
+                return h * 60 + m;
+            }
+            
+            const apertura1 = parseHora(restaurante.HORA_APERTURA_1);
+            const cierre1 = parseHora(restaurante.HORA_CIERRE_1);
+            const apertura2 = parseHora(restaurante.HORA_APERTURA_2);
+            const cierre2 = parseHora(restaurante.HORA_CIERRE_2);
+            
+            let estaAbierto = false;
+            let horarioActivo = "";
+            
+            if (apertura1 !== null && cierre1 !== null) {
+                if (cierre1 < apertura1) {
+                    if (horaActual >= apertura1 || horaActual <= cierre1) {
+                        estaAbierto = true;
+                        horarioActivo = `${restaurante.HORA_APERTURA_1} - ${restaurante.HORA_CIERRE_1}`;
+                    }
+                } else {
+                    if (horaActual >= apertura1 && horaActual <= cierre1) {
+                        estaAbierto = true;
+                        horarioActivo = `${restaurante.HORA_APERTURA_1} - ${restaurante.HORA_CIERRE_1}`;
+                    }
+                }
+            }
+            
+            if (!estaAbierto && apertura2 !== null && cierre2 !== null) {
+                if (cierre2 < apertura2) {
+                    if (horaActual >= apertura2 || horaActual <= cierre2) {
+                        estaAbierto = true;
+                        horarioActivo = `${restaurante.HORA_APERTURA_2} - ${restaurante.HORA_CIERRE_2}`;
+                    }
+                } else {
+                    if (horaActual >= apertura2 && horaActual <= cierre2) {
+                        estaAbierto = true;
+                        horarioActivo = `${restaurante.HORA_APERTURA_2} - ${restaurante.HORA_CIERRE_2}`;
+                    }
+                }
+            }
+            
+            return { abierto: estaAbierto, horario: horarioActivo };
+        }
+        
+        // ==========================================
+        // CARGA DE DATOS (MODIFICADA)
         // ==========================================
         async function cargarBaseDatos() {
             const response = await fetch(scriptURL);
             if (!response.ok) throw new Error("No se pudo conectar");
             const data = await response.json();
-            db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+            
+            // Cargar restaurantes y calcular estado por horario
+            const restaurantesCrudos = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+            
+            db.restaurantes = restaurantesCrudos.map(r => {
+                const { abierto, horario } = estaRestauranteAbierto(r);
+                return {
+                    ...r,
+                    ESTADO: abierto ? "Abierto" : "Cerrado",
+                    HORARIO_INFO: horario || r.HORARIO_INFO || "Horario no disponible"
+                };
+            });
+            
             db.menu = data.MENU_GENERAL || [];
             db.anuncios = data.ANUNCIOS || [];
             db.config = data.CONFIG?.[0] || {};
             db.legal = data.LEGAL?.[0]?.TEXTO || "";
+            
             const logo = document.getElementById("app-logo");
             const bg = document.getElementById("header-bg");
             const txt = document.getElementById("texto-anuncio");
@@ -590,20 +656,23 @@
         }
         
         // ==========================================
-        // RENDER PRINCIPAL
+        // RENDER PRINCIPAL (MODIFICADA)
         // ==========================================
         function renderHome() {
             const app = document.getElementById("app-container");
             if (!app) return;
             let html = `<p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
             db.restaurantes.forEach(rest => {
-                const cerrado = String(rest.ESTADO || "").toLowerCase() === "cerrado";
-                html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${cerrado ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" onclick="abrirRestaurante('${rest.ID_RESTAURANTE}', '${rest.NOMBRE_RESTAURANTE}', '${rest.FOTO}', '${rest.ESTADO}')">
+                // Recalcular estado por si cambió la hora
+                const { abierto, horario } = estaRestauranteAbierto(rest);
+                const cerrado = !abierto;
+                const estadoTexto = cerrado ? 'CERRADO' : (horario || 'ABIERTO');
+                html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${cerrado ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" onclick="${cerrado ? '' : `abrirRestaurante('${rest.ID_RESTAURANTE}', '${rest.NOMBRE_RESTAURANTE}', '${rest.FOTO}', '${rest.ESTADO}')`}">
                             <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
                             <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
                             <div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${rest.NOMBRE_RESTAURANTE}</h2></div>
                             <div class="absolute bottom-6 right-6 bg-black/80 px-3 py-1 rounded-xl">
-                                <p class="text-[10px] font-black uppercase italic ${cerrado ? 'text-red-400' : 'text-cyan-400'}">${cerrado ? 'CERRADO' : (rest.HORARIO_INFO || 'ABIERTO')}</p>
+                                <p class="text-[10px] font-black uppercase italic ${cerrado ? 'text-red-400' : 'text-cyan-400'}">${estadoTexto}</p>
                             </div>
                         </div>`;
             });
@@ -611,8 +680,23 @@
         }
         
         function abrirRestaurante(id, nombre, foto, estado) {
-            if (String(estado || "").toLowerCase() === "cerrado") { alertaInfo("RESTAURANTE CERRADO", "Ahora mismo no acepta pedidos"); return; }
-            if (cesta.length > 0 && restauranteActivo.id && restauranteActivo.id !== id) { alertaInfo("PEDIDO ACTIVO", "Ya tienes productos de otro restaurante"); return; }
+            // Recalcular estado actual por si cambió
+            const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === id);
+            if (restaurante) {
+                const { abierto } = estaRestauranteAbierto(restaurante);
+                if (!abierto) { 
+                    alertaInfo("RESTAURANTE CERRADO", "Ahora mismo no acepta pedidos"); 
+                    return; 
+                }
+            } else if (String(estado || "").toLowerCase() === "cerrado") { 
+                alertaInfo("RESTAURANTE CERRADO", "Ahora mismo no acepta pedidos"); 
+                return; 
+            }
+            
+            if (cesta.length > 0 && restauranteActivo.id && restauranteActivo.id !== id) { 
+                alertaInfo("PEDIDO ACTIVO", "Ya tienes productos de otro restaurante"); 
+                return; 
+            }
             restauranteActivo = { id, nombre, foto };
             guardarCesta();
             const bg = document.getElementById("header-bg");
@@ -833,7 +917,6 @@
         function limpiarSeguimientoCompleto() {
             console.log("🧹 Limpiando seguimiento completo...");
             
-            // 1. Detener listener de Firebase
             if (trackingListenerRef) {
                 console.log("🛑 Deteniendo listener de Firebase");
                 try {
@@ -844,30 +927,25 @@
                 trackingListenerRef = null;
             }
             
-            // 2. Limpiar localStorage
             localStorage.removeItem('ae_pedido_activo');
             localStorage.removeItem('ae_tracking_id');
             localStorage.removeItem('ultimoEstadoPedido');
             
-            // 3. Limpiar intervalos de alarma
             if (alarmaInterval) {
                 clearInterval(alarmaInterval);
                 alarmaInterval = null;
             }
             
-            // 4. Detener audio si está sonando
             if (audioElement) {
                 audioElement.pause();
                 audioElement.currentTime = 0;
             }
             
-            // 5. Ocultar botón flotante de seguimiento
             const btnFlotante = document.getElementById('btn-reabrir-seguimiento');
             if (btnFlotante) {
                 btnFlotante.style.display = 'none';
             }
             
-            // 6. Cerrar modal de tracking si está abierto
             const trackingModal = document.getElementById('tracking-modal');
             if (trackingModal && trackingModal.style.display === 'block') {
                 trackingModal.style.display = 'none';
@@ -892,11 +970,9 @@
             
             console.log("🔥 Iniciando seguimiento para:", idPedido);
             
-            // Guardar en localStorage
             localStorage.setItem('ae_pedido_activo', idPedido);
             localStorage.setItem('ae_tracking_id', idPedido);
             
-            // Limpiar listener anterior si existe
             if (trackingListenerRef) {
                 console.log("🔄 Limpiando listener anterior");
                 try {
@@ -907,14 +983,12 @@
                 trackingListenerRef = null;
             }
             
-            // Asegurar que el modal de tracking existe
             const trackingModal = document.getElementById('tracking-modal');
             if (!trackingModal) {
                 console.error("❌ No se encontró el modal de tracking");
                 return false;
             }
             
-            // Crear nuevo listener con manejo de errores robusto
             try {
                 trackingListenerRef = database.ref('pedidos/' + idPedido);
                 trackingListenerRef.on('value', (snapshot) => {
@@ -931,7 +1005,6 @@
                     console.error("❌ Error en listener de Firebase:", error);
                 });
                 
-                // Cargar datos iniciales inmediatamente
                 database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
                     const data = snapshot.val();
                     if (data) {
@@ -945,7 +1018,6 @@
                     console.error("❌ Error cargando pedido inicial:", error);
                 });
                 
-                // Mostrar botón flotante
                 const btn = document.getElementById('btn-reabrir-seguimiento');
                 if (btn) btn.style.display = 'flex';
                 
@@ -982,7 +1054,6 @@
                 'cancelado': { width: '100%', texto: 'CANCELADO', mensaje: '❌ Pedido cancelado', emoji: '⚠️', paso: 0 }
             };
             
-            // Buscar configuración
             let cfg = configs[estado];
             if (!cfg) {
                 for (const [key, value] of Object.entries(configs)) {
@@ -994,14 +1065,12 @@
             }
             if (!cfg) cfg = configs['recibido'];
             
-            // Actualizar barra de progreso
             const progress = document.getElementById('tracking-progress');
             if (progress) {
                 progress.style.transition = 'width 0.5s ease';
                 progress.style.width = cfg.width;
             }
             
-            // Actualizar textos
             const estadoTxt = document.getElementById('tracking-estado');
             const mensaje = document.getElementById('tracking-mensaje');
             const emoji = document.getElementById('tracking-emoji');
@@ -1010,7 +1079,6 @@
             if (mensaje) mensaje.innerText = cfg.mensaje;
             if (emoji) emoji.innerText = cfg.emoji;
             
-            // Actualizar los pasos
             for (let i = 1; i <= 4; i++) {
                 const step = document.getElementById(`step-${i}`);
                 if (step) {
@@ -1034,7 +1102,6 @@
                 }
             }
             
-            // Actualizar información
             const info = document.getElementById('tracking-info');
             if (info && data) {
                 info.innerHTML = `
@@ -1047,7 +1114,6 @@
                 `;
             }
             
-            // Alarma y vibración cuando llega
             if (estado === 'llegando' || estado === 'llegó') {
                 console.log("🔔 ¡PEDIDO LLEGANDO! Activando alarma y vibración");
                 
@@ -1079,9 +1145,8 @@
                 });
             }
             
-            // Cuando entregan
             if (estado === 'entregado') {
-                console.log("🎉 PEDIDO ENTREGADO - Mostrando mensaje al cliente");
+                console.log("🎉 PEDIDO ENTREGADO - Cerrando seguimiento");
                 
                 if (alarmaInterval) {
                     clearInterval(alarmaInterval);
@@ -1092,6 +1157,11 @@
                     navigator.vibrate([200, 100, 200, 100, 500, 200, 200]);
                 }
                 
+                cerrarModalTracking();
+                
+                const btnFlotante = document.getElementById('btn-reabrir-seguimiento');
+                if (btnFlotante) btnFlotante.style.display = 'none';
+                
                 Swal.fire({
                     title: '🎉 ¡Pedido Entregado!',
                     text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!',
@@ -1099,16 +1169,15 @@
                     background: '#020617',
                     color: 'white',
                     confirmButtonColor: '#06b6d4',
-                    confirmButtonText: '¡Genial!'
+                    confirmButtonText: '¡Genial!',
+                    timer: 3000
                 }).then(() => {
                     limpiarSeguimientoCompleto();
-                    cerrarModalTracking();
                     cesta = [];
                     actualizarCestaVisual();
                 });
             }
             
-            // Cuando cancelan
             if (estado === 'cancelado') {
                 console.log("❌ PEDIDO CANCELADO");
                 
@@ -1196,127 +1265,60 @@
         // ==========================================
         // ENVIAR PEDIDO FINAL
         // ==========================================
-       async function enviarPedidoFinal() {
-    const cliente = obtenerCliente();
-    if (!cliente) { alertaError("Registro requerido", "Debes registrarte primero"); return; }
-    if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
-    
-    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
-    const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
-    const envio = 2.50;
-    const usoApp = 0.99;
-    const total = subtotal + envio + usoApp;
-    
-    const detalleTexto = cesta.map(item => {
-        const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
-        return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
-    }).join(" | ");
-    
-    const datosPedido = {
-        telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
-        restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
-        total_info: total.toFixed(2), pago_info: metodo,
-        items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
-        fecha: new Date().toISOString()
-    };
-    
-    // ID temporal para mostrar algo mientras se procesa
-    const idTemp = "TMP-" + Date.now();
-    localStorage.setItem('ae_pedido_activo', idTemp);
-    
-    // Mostrar modal de seguimiento inmediatamente
-    abrirModalTracking();
-    actualizarInterfazSeguimiento({ 
-        estado: 'recibido', 
-        cliente: cliente.nombre, 
-        total: total, 
-        id: 'Procesando...' 
-    });
-    
-    // Limpiar carrito visualmente
-    cesta = [];
-    actualizarCestaVisual();
-    cerrarCheckout();
-    
-    // Enviar pedido
-    const formData = new FormData();
-    formData.append('data', JSON.stringify(datosPedido));
-    
-    try {
-        const response = await fetch(scriptURL, { method: 'POST', body: formData });
-        const result = await response.json();
-        
-        console.log("📦 Respuesta del servidor:", result);
-        
-        // Intentar obtener el ID de diferentes formas posibles
-        let idReal = null;
-        
-        if (result && result.status === "OK") {
-            // Probar diferentes nombres de campo
-            idReal = result.idPedido || result.id || result.pedido_id || result.orderId;
+        async function enviarPedidoFinal() {
+            const cliente = obtenerCliente();
+            if (!cliente) { alertaError("Registro requerido", "Debes registrarte primero"); return; }
+            if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
             
-            if (!idReal && result.data && result.data.idPedido) {
-                idReal = result.data.idPedido;
-            }
+            const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+            const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
+            const envio = 2.50;
+            const usoApp = 0.99;
+            const total = subtotal + envio + usoApp;
             
-            if (!idReal) {
-                // Si no hay ID, generar uno basado en timestamp
-                idReal = "AE-" + Date.now();
-                console.warn("⚠️ No se recibió ID del servidor, generando:", idReal);
-            }
+            const detalleTexto = cesta.map(item => {
+                const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
+                return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
+            }).join(" | ");
             
-            console.log("✅ ID Real obtenido:", idReal);
-            
-            // Guardar en localStorage
-            localStorage.setItem('ae_pedido_activo', idReal);
-            localStorage.setItem('ae_tracking_id', idReal);
-            
-            // Crear pedido en Firebase
-            const pedidoFirebase = { 
-                id: idReal, 
-                cliente: cliente.nombre, 
-                telefono: cliente.telf, 
-                direccion: cliente.dir, 
-                items: datosPedido.items, 
-                subtotal: subtotal, 
-                envio: envio, 
-                usoApp: usoApp, 
-                total: total, 
-                metodo_pago: metodo, 
-                restaurante_id: restauranteActivo.id, 
-                restaurante_nombre: restauranteActivo.nombre, 
-                estado: "recibido", 
-                fecha: new Date().toISOString(), 
-                timestamp: Date.now() 
+            const datosPedido = {
+                telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
+                restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
+                total_info: total.toFixed(2), pago_info: metodo,
+                items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
+                fecha: new Date().toISOString()
             };
             
-            await database.ref('pedidos/' + idReal).set(pedidoFirebase);
-            console.log("✅ Pedido registrado en Firebase");
+            const idTemp = "TMP-" + Date.now();
+            localStorage.setItem('ae_pedido_activo', idTemp);
             
-            // Iniciar seguimiento con el ID real
-            iniciarSeguimientoPedido(idReal);
+            Swal.fire({ title: '✅ ¡Pedido Enviado!', html: `Tu pedido está siendo procesado.<br>Recibirás notificaciones en tiempo real.`, icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Ver seguimiento', timer: 3000, timerProgressBar: true }).then(() => {
+                abrirModalTracking();
+                actualizarInterfazSeguimiento({ estado: 'recibido', cliente: cliente.nombre, total: total, id: 'Procesando...' });
+            });
             
-            mostrarToast("Pedido enviado correctamente", "✅");
+            cesta = [];
+            actualizarCestaVisual();
+            cerrarCheckout();
             
-        } else {
-            throw new Error(result?.message || "Error al enviar pedido");
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(datosPedido));
+            
+            fetch(scriptURL, { method: 'POST', body: formData })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status === "OK" && result.idPedido) {
+                        const idReal = result.idPedido;
+                        localStorage.setItem('ae_pedido_activo', idReal);
+                        localStorage.setItem('ae_tracking_id', idReal);
+                        const pedidoFirebase = { id: idReal, cliente: cliente.nombre, telefono: cliente.telf, direccion: cliente.dir, items: datosPedido.items, subtotal: subtotal, envio: envio, usoApp: usoApp, total: total, metodo_pago: metodo, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, estado: "recibido", fecha: new Date().toISOString(), timestamp: Date.now() };
+                        return database.ref('pedidos/' + idReal).set(pedidoFirebase);
+                    }
+                    throw new Error(result.message || "Error al enviar");
+                })
+                .then(() => { console.log("✅ Pedido registrado"); iniciarSeguimientoPedido(idReal); })
+                .catch(error => { console.error("Error:", error); mostrarToast("Hubo un problema, pero tu pedido está en proceso", "⚠️"); const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]'); pedidosOffline.push({ ...datosPedido, timestamp: Date.now() }); localStorage.setItem('ae_pedidos_offline', JSON.stringify(pedidosOffline)); });
         }
-        
-    } catch (error) {
-        console.error("❌ Error al enviar pedido:", error);
-        mostrarToast("Hubo un problema, pero tu pedido está en proceso", "⚠️");
-        
-        // Guardar para reintentar después
-        const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');
-        pedidosOffline.push({ ...datosPedido, timestamp: Date.now() });
-        localStorage.setItem('ae_pedidos_offline', JSON.stringify(pedidosOffline));
-        
-        // Seguir con un ID temporal
-        const idTempFinal = "OFFLINE-" + Date.now();
-        localStorage.setItem('ae_pedido_activo', idTempFinal);
-        iniciarSeguimientoPedido(idTempFinal);
-    }
-}
         
         async function sincronizarPedidosOffline() {
             const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');

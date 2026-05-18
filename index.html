@@ -568,7 +568,42 @@
             mostrarToast("Registro exitoso", "🎉");
         }
         function borrarRegistro() { localStorage.removeItem("ae_cliente"); actualizarClienteUI(); mostrarToast("Sesión cerrada", "👋"); }
-        
+
+        // ==========================================
+// FUNCIÓN PARA VERIFICAR HORARIO GLOBAL
+// ==========================================
+function estaAppAbierta() {
+    const ahora = new Date();
+    const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+    
+    const horarios = db.horarios || { HORA_APERTURA: "00:00", HORA_CIERRE: "23:59" };
+    const aperturaStr = horarios.HORA_APERTURA || "00:00";
+    const cierreStr = horarios.HORA_CIERRE || "23:59";
+    
+    function parseHora(horaStr) {
+        if (!horaStr || horaStr === "") return null;
+        const [h, m] = horaStr.split(":").map(Number);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    }
+    
+    const apertura = parseHora(aperturaStr) || 0;
+    let cierre = parseHora(cierreStr) || 1440;
+    
+    if (cierre === 0) cierre = 1440;
+    
+    let estaAbierto = false;
+    if (cierre < apertura) {
+        estaAbierto = (horaActual >= apertura || horaActual <= cierre);
+    } else {
+        estaAbierto = (horaActual >= apertura && horaActual <= cierre);
+    }
+    
+    // Si hay ESTADO_GLOBAL manual, respetarlo
+    if (horarios.ESTADO_GLOBAL === "CERRADO") estaAbierto = false;
+    
+    return estaAbierto;
+}
         // ==========================================
         // FUNCIÓN PARA VERIFICAR HORARIO (NUEVA)
         // ==========================================
@@ -625,84 +660,87 @@
         // ==========================================
         // CARGA DE DATOS (MODIFICADA)
         // ==========================================
-        async function cargarBaseDatos() {
-            const response = await fetch(scriptURL);
-            if (!response.ok) throw new Error("No se pudo conectar");
-            const data = await response.json();
-            
-            // Cargar restaurantes y calcular estado por horario
-            const restaurantesCrudos = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
-            
-            db.restaurantes = restaurantesCrudos.map(r => {
-                const { abierto, horario } = estaRestauranteAbierto(r);
-                return {
-                    ...r,
-                    ESTADO: abierto ? "Abierto" : "Cerrado",
-                    HORARIO_INFO: horario || r.HORARIO_INFO || "Horario no disponible"
-                };
-            });
-            
-            db.menu = data.MENU_GENERAL || [];
-            db.anuncios = data.ANUNCIOS || [];
-            db.config = data.CONFIG?.[0] || {};
-            db.legal = data.LEGAL?.[0]?.TEXTO || "";
-            
-            const logo = document.getElementById("app-logo");
-            const bg = document.getElementById("header-bg");
-            const txt = document.getElementById("texto-anuncio");
-            if (db.config.LOGO_URL && logo) logo.src = db.config.LOGO_URL;
-            if (db.config.FONDO_URL && bg) bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
-            if (db.anuncios.length && txt) txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
-        }
+       async function cargarBaseDatos() {
+    const response = await fetch(scriptURL);
+    if (!response.ok) throw new Error("No se pudo conectar");
+    const data = await response.json();
+    
+    // Leer CONFIGURACION (horarios globales)
+    const configuracion = data.CONFIGURACION?.[0] || {};
+    db.horarios = {
+        HORA_APERTURA: configuracion.HORA_APERTURA || "00:00",
+        HORA_CIERRE: configuracion.HORA_CIERRE || "23:59",
+        ESTADO_GLOBAL: configuracion.ESTADO_GLOBAL || "ABIERTO"
+    };
+    
+    console.log("🕐 Horarios globales:", db.horarios);
+    
+    db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+    db.menu = data.MENU_GENERAL || [];
+    db.anuncios = data.ANUNCIOS || [];
+    db.config = data.CONFIG?.[0] || {};
+    db.legal = data.LEGAL?.[0]?.TEXTO || "";
+    
+    const logo = document.getElementById("app-logo");
+    const bg = document.getElementById("header-bg");
+    const txt = document.getElementById("texto-anuncio");
+    if (db.config.LOGO_URL && logo) logo.src = db.config.LOGO_URL;
+    if (db.config.FONDO_URL && bg) bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
+    if (db.anuncios.length && txt) txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+}
         
         // ==========================================
         // RENDER PRINCIPAL (MODIFICADA)
         // ==========================================
         function renderHome() {
-            const app = document.getElementById("app-container");
-            if (!app) return;
-            let html = `<p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
-            db.restaurantes.forEach(rest => {
-                // Recalcular estado por si cambió la hora
-                const { abierto, horario } = estaRestauranteAbierto(rest);
-                const cerrado = !abierto;
-                const estadoTexto = cerrado ? 'CERRADO' : (horario || 'ABIERTO');
-                html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${cerrado ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" onclick="${cerrado ? '' : `abrirRestaurante('${rest.ID_RESTAURANTE}', '${rest.NOMBRE_RESTAURANTE}', '${rest.FOTO}', '${rest.ESTADO}')`}">
-                            <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
-                            <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
-                            <div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${rest.NOMBRE_RESTAURANTE}</h2></div>
-                            <div class="absolute bottom-6 right-6 bg-black/80 px-3 py-1 rounded-xl">
-                                <p class="text-[10px] font-black uppercase italic ${cerrado ? 'text-red-400' : 'text-cyan-400'}">${estadoTexto}</p>
-                            </div>
-                        </div>`;
-            });
-            app.innerHTML = html;
-        }
+    const app = document.getElementById("app-container");
+    if (!app) return;
+    
+    const appAbierta = estaAppAbierta();
+    const horarioTexto = db.horarios ? `${db.horarios.HORA_APERTURA || "00:00"} - ${db.horarios.HORA_CIERRE || "23:59"}` : "";
+    
+    let html = `<p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
+    
+    if (!appAbierta) {
+        html += `<div class="text-center py-10 bg-red-500/20 rounded-2xl mb-6 border border-red-500/30">
+                    <p class="text-red-400 font-black uppercase">🔴 SERVICIO CERRADO</p>
+                    <p class="text-white/70 text-sm mt-2">Horario de atención: ${horarioTexto}</p>
+                </div>`;
+    }
+    
+    db.restaurantes.forEach(rest => {
+        const cerrado = !appAbierta;
+        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${cerrado ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" 
+                        ${!cerrado ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}', '${rest.NOMBRE_RESTAURANTE}', '${rest.FOTO}', '${rest.ESTADO}')"` : ''}>
+                    <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
+                    <div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${rest.NOMBRE_RESTAURANTE}</h2></div>
+                    <div class="absolute bottom-6 right-6 bg-black/80 px-3 py-1 rounded-xl">
+                        <p class="text-[10px] font-black uppercase italic ${cerrado ? 'text-red-400' : 'text-cyan-400'}">${cerrado ? 'CERRADO' : 'ABIERTO'}</p>
+                    </div>
+                    ${cerrado && horarioTexto ? `<div class="absolute bottom-20 right-6 bg-black/60 px-2 py-0.5 rounded-lg"><p class="text-[8px] text-white/60">${horarioTexto}</p></div>` : ''}
+                </div>`;
+    });
+    app.innerHTML = html;
+}
         
         function abrirRestaurante(id, nombre, foto, estado) {
-            // Recalcular estado actual por si cambió
-            const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === id);
-            if (restaurante) {
-                const { abierto } = estaRestauranteAbierto(restaurante);
-                if (!abierto) { 
-                    alertaInfo("RESTAURANTE CERRADO", "Ahora mismo no acepta pedidos"); 
-                    return; 
-                }
-            } else if (String(estado || "").toLowerCase() === "cerrado") { 
-                alertaInfo("RESTAURANTE CERRADO", "Ahora mismo no acepta pedidos"); 
-                return; 
-            }
-            
-            if (cesta.length > 0 && restauranteActivo.id && restauranteActivo.id !== id) { 
-                alertaInfo("PEDIDO ACTIVO", "Ya tienes productos de otro restaurante"); 
-                return; 
-            }
-            restauranteActivo = { id, nombre, foto };
-            guardarCesta();
-            const bg = document.getElementById("header-bg");
-            if (bg) bg.style.backgroundImage = `url('${foto}')`;
-            renderMenu();
-        }
+    // Verificar horario global
+    if (!estaAppAbierta()) { 
+        alertaInfo("SERVICIO CERRADO", `El servicio está cerrado en este horario.\nHorario: ${db.horarios?.HORA_APERTURA || "00:00"} - ${db.horarios?.HORA_CIERRE || "23:59"}`); 
+        return; 
+    }
+    
+    if (cesta.length > 0 && restauranteActivo.id && restauranteActivo.id !== id) { 
+        alertaInfo("PEDIDO ACTIVO", "Ya tienes productos de otro restaurante"); 
+        return; 
+    }
+    restauranteActivo = { id, nombre, foto };
+    guardarCesta();
+    const bg = document.getElementById("header-bg");
+    if (bg) bg.style.backgroundImage = `url('${foto}')`;
+    renderMenu();
+}
         
         function renderMenu() {
             const app = document.getElementById("app-container");

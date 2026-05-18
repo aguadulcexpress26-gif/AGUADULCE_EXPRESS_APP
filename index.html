@@ -660,20 +660,26 @@ function estaAppAbierta() {
         // ==========================================
         // CARGA DE DATOS (MODIFICADA)
         // ==========================================
-       async function cargarBaseDatos() {
+      async function cargarBaseDatos() {
     const response = await fetch(scriptURL);
     if (!response.ok) throw new Error("No se pudo conectar");
     const data = await response.json();
     
-    // Leer CONFIGURACION (horarios globales)
-    const configuracion = data.CONFIGURACION?.[0] || {};
-    db.horarios = {
-        HORA_APERTURA: configuracion.HORA_APERTURA || "00:00",
-        HORA_CIERRE: configuracion.HORA_CIERRE || "23:59",
-        ESTADO_GLOBAL: configuracion.ESTADO_GLOBAL || "ABIERTO"
-    };
+    // Leer horarios por restaurante y día
+    const horariosData = data.HORARIOS_RESTAURANTES || [];
+    db.horariosPorDia = {};
     
-    console.log("🕐 Horarios globales:", db.horarios);
+    horariosData.forEach(row => {
+        const idRest = row.ID_RESTAURANTE;
+        const dia = String(row.DIA_SEMANA).toUpperCase();
+        if (!db.horariosPorDia[idRest]) db.horariosPorDia[idRest] = {};
+        db.horariosPorDia[idRest][dia] = {
+            apertura1: row.HORA_APERTURA_1,
+            cierre1: row.HORA_CIERRE_1,
+            apertura2: row.HORA_APERTURA_2,
+            cierre2: row.HORA_CIERRE_2
+        };
+    });
     
     db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
     db.menu = data.MENU_GENERAL || [];

@@ -477,26 +477,104 @@
         let alarmaInterval = null;
         let audioElement = null;
         
-        // Historial para botón atrás
-        let historialPantallas = ['home'];
-        window.addEventListener('popstate', function(event) {
-            if (historialPantallas.length > 1) {
-                event.preventDefault();
-                historialPantallas.pop();
-                const pantalla = historialPantallas[historialPantallas.length - 1];
-                if (pantalla === 'home') {
-                    cerrarModalTracking(); cerrarCheckout(); cerrarModalPlato();
-                    document.getElementById('panel-revision').style.display = 'none';
-                    renderHome();
-                } else if (pantalla === 'checkout') { cerrarCheckout(); abrirRevision(); }
-                else if (pantalla === 'modal-plato') { cerrarModalPlato(); }
-                else if (pantalla === 'tracking') { cerrarModalTracking(); }
-            } else {
-                Swal.fire({ title: '¿Salir de la app?', text: '¿Estás seguro?', icon: 'question', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Sí', cancelButtonText: 'Cancelar', showCancelButton: true })
-                    .then(r => { if (!r.isConfirmed) history.pushState(null, null, window.location.href); });
+       // ==========================================
+// SISTEMA DE NAVEGACIÓN MEJORADO
+// ==========================================
+let historialPantallas = ['home'];
+let navegando = false; // Evita procesos duplicados
+
+window.addEventListener('popstate', function(event) {
+    if (navegando) return;
+    navegando = true;
+    
+    try {
+        // Prevenir el comportamiento por defecto
+        event.preventDefault();
+        
+        // Obtener pantalla actual y anterior
+        const pantallaActual = historialPantallas[historialPantallas.length - 1];
+        
+        console.log("🔙 Navegación - Pantalla actual:", pantallaActual);
+        console.log("📜 Historial completo:", historialPantallas);
+        
+        // Verificar si hay modales/paneles abiertos
+        const modalPlato = document.getElementById('modal-plato');
+        const panelRevision = document.getElementById('panel-revision');
+        const panelCheckout = document.getElementById('panel-checkout');
+        const trackingModal = document.getElementById('tracking-modal');
+        
+        // Cerrar en orden inverso (primero lo más interno)
+        if (modalPlato && modalPlato.style.display === 'block') {
+            console.log("🔙 Cerrando modal de plato");
+            cerrarModalPlato();
+            navegando = false;
+            return;
+        }
+        
+        if (panelRevision && panelRevision.style.display === 'block') {
+            console.log("🔙 Cerrando panel de revisión");
+            panelRevision.style.display = 'none';
+            historialPantallas.pop();
+            navegando = false;
+            return;
+        }
+        
+        if (panelCheckout && panelCheckout.style.display === 'block') {
+            console.log("🔙 Cerrando panel de checkout");
+            cerrarCheckout();
+            navegando = false;
+            return;
+        }
+        
+        if (trackingModal && trackingModal.style.display === 'block') {
+            console.log("🔙 Cerrando tracking");
+            cerrarModalTracking();
+            navegando = false;
+            return;
+        }
+        
+        // Si no hay modales, manejar navegación entre pantallas principales
+        if (historialPantallas.length > 1) {
+            historialPantallas.pop();
+            const pantallaAnterior = historialPantallas[historialPantallas.length - 1];
+            console.log("🔙 Volviendo a:", pantallaAnterior);
+            
+            if (pantallaAnterior === 'home') {
+                cerrarModalTracking();
+                cerrarCheckout();
+                cerrarModalPlato();
+                if (panelRevision) panelRevision.style.display = 'none';
+                renderHome();
             }
-        });
-        history.pushState(null, null, window.location.href);
+        } else {
+            // Estamos en home, preguntar si quiere salir
+            Swal.fire({
+                title: '¿Salir de la app?',
+                text: '¿Estás seguro?',
+                icon: 'question',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#06b6d4',
+                confirmButtonText: 'Sí',
+                cancelButtonText: 'Cancelar',
+                showCancelButton: true
+            }).then(result => {
+                if (!result.isConfirmed) {
+                    // Si cancela, volver a agregar el estado al historial
+                    history.pushState(null, null, window.location.href);
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error("❌ Error en navegación:", error);
+    }
+    
+    navegando = false;
+});
+
+// Inicializar historial
+history.pushState(null, null, window.location.href);
         
         // ==========================================
         // UTILIDADES

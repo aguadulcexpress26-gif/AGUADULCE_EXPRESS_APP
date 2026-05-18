@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reparto - Aguadulce Express</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #020617;
+            color: white;
+            padding: 16px;
+        }
+        .header {
+            background: linear-gradient(135deg, #06b6d4, #020617);
+            margin: -16px -16px 16px -16px;
+            padding: 20px 16px;
+        }
+        .flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn-salir {
+            background: rgba(0,0,0,0.5);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 12px;
+            color: white;
+            cursor: pointer;
+        }
+        .repartidor-nombre {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .repartidor-id {
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        .billetera-monto {
+            font-size: 18px;
+            font-weight: bold;
+            color: #22c55e;
+        }
+        .status-bar {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .contador {
+            background: #06b6d4;
+            color: black;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .card {
+            background: rgba(30,41,59,0.8);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .ref {
+            background: rgba(6,182,212,0.2);
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #06b6d4;
+        }
+        .direccion {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 12px 0;
+        }
+        .cliente-box {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 12px;
+            margin: 12px 0;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            border: none;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+        .btn-blue { background: #06b6d4; color: black; }
+        .btn-yellow { background: #eab308; color: black; }
+        .btn-green { background: #22c55e; color: white; }
+        .sin-pedidos {
+            text-align: center;
+            padding: 40px;
+            opacity: 0.5;
+        }
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #020617;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(6,182,212,0.2);
+            border-top-color: #06b6d4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .mt-2 { margin-top: 8px; }
+        a { text-decoration: none; }
+        .inline-flex { display: inline-flex; gap: 8px; }
+    </style>
+</head>
+<body>
+
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <p style="color:#06b6d4; margin-top: 15px;">Iniciando...</p>
+</div>
+
+<div id="app" style="display: none;">
+    <div class="header">
+        <div class="flex">
+            <button class="btn-salir" onclick="cerrarSesion()">🚪 Salir</button>
+            <div>
+                <div class="repartidor-nombre" id="nombreRep">Cargando...</div>
+                <div class="repartidor-id" id="codigoRep"></div>
+            </div>
+            <div>
+                <div style="font-size: 10px;">💰 Billetera</div>
+                <div class="billetera-monto" id="saldo">0€</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span>📡 <span id="estado">Conectado</span></span>
+        <span class="contador" id="contador">0 pedidos</span>
+    </div>
+
+    <div id="listaPedidos"></div>
+</div>
+
+<script>
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+    
+    let codigo = localStorage.getItem('codigo_reparto');
+    let pedidos = [];
+    let intervalo = null;
+    
+    async function cargarPedidos() {
+        try {
+            const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo);
+            const resp = await fetch(url);
+            const data = await resp.json();
+            
+            if (data.error) {
+                document.getElementById('estado').innerHTML = 'Error';
+                return;
+            }
+            
+            pedidos = data.pedidos || [];
+            const saldo = parseFloat(data.saldo) || 0;
+            
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
+            document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
+            document.getElementById('saldo').innerHTML = saldo.toFixed(2) + '€';
+            document.getElementById('contador').innerHTML = pedidos.length + ' pedido' + (pedidos.length !== 1 ? 's' : '');
+            document.getElementById('estado').innerHTML = 'Conectado';
+            
+            renderizar();
+        } catch(e) {
+            console.log(e);
+            document.getElementById('estado').innerHTML = 'Offline';
+        }
+    }
+    
+    function renderizar() {
+        const container = document.getElementById('listaPedidos');
+        
+        if (!pedidos.length) {
+            container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
+            return;
+        }
+        
+        let html = '';
+        for (let i = 0; i < pedidos.length; i++) {
+            const p = pedidos[i];
+            const estado = (p.ESTADO || '').toUpperCase();
+            const total = parseFloat(p.TOTAL) || 0;
+            const telefono = p.telf || p.WHATSAPP || '';
+            const telefonoLimpio = telefono.replace(/\D/g, '');
+            
+            let botones = '';
+            if (estado === 'LISTO') {
+                botones = '<button class="btn-blue" onclick="recoger(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER PEDIDO</button>';
+            } else if (estado === 'EN CAMINO') {
+                botones = '<button class="btn-yellow" onclick="llegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO</button>';
+            } else if (estado === 'LLEGÓ') {
+                botones = '<button class="btn-green" onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 COBRAR Y ENTREGAR</button>';
+            } else {
+                botones = '<div style="background:rgba(6,182,212,0.2);padding:12px;text-align:center;">⏳ Preparando pedido...</div>';
+            }
+            
+            html += '<div class="card">';
+            html += '<div class="flex">';
+            html += '<span class="ref">📋 ' + p.ID_PEDIDO + '</span>';
+            html += '<span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span>';
+            html += '</div>';
+            html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+            html += '<div class="cliente-box">';
+            html += '<div style="color:#06b6d4;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+            html += '<div class="flex mt-2">';
+            html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
+            if (telefonoLimpio) {
+                html += '<div class="inline-flex">';
+                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;">📞</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;">💬</a>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '<div class="mt-2" style="font-size:11px;">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
+            html += '</div>';
+            html += '<div class="flex" style="margin:12px 0;">';
+            html += '<span style="color:#06b6d4;">💰 ' + total.toFixed(2) + '€</span>';
+            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" style="color:#06b6d4;">📍 Mapa</a>';
+            html += '</div>';
+            html += botones;
+            html += '</div>';
+        }
+        container.innerHTML = html;
+    }
+    
+    window.recoger = async function(id) {
+        await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+        Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+        cargarPedidos();
+    };
+    
+    window.llegada = async function(id) {
+        await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+        Swal.fire({ title: '📍 Llegaste al cliente', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+        cargarPedidos();
+    };
+    
+    window.entregar = function(id, total) {
+        Swal.fire({
+            title: '💰 Cobrar ' + total.toFixed(2) + '€',
+            text: '¿Confirmas el pago?',
+            icon: 'question',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#22c55e',
+            confirmButtonText: '✅ Sí',
+            showCancelButton: true
+        }).then(async (res) => {
+            if (res.isConfirmed) {
+                await fetch(SCRIPT_URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
+                Swal.fire({ title: '🎉 Entregado!', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+                cargarPedidos();
+            }
+        });
+    };
+    
+    window.cerrarSesion = async function() {
+        const confirm = await Swal.fire({
+            title: '¿Cerrar sesión?',
+            icon: 'question',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#ef4444',
+            showCancelButton: true
+        });
+        if (confirm.isConfirmed) {
+            if (intervalo) clearInterval(intervalo);
+            localStorage.removeItem('codigo_reparto');
+            location.reload();
+        }
+    };
+    
+    async function init() {
+        if (!codigo) {
+            const res = await Swal.fire({
+                title: '🔐 Código de Repartidor',
+                input: 'text',
+                inputPlaceholder: 'Ej: R001',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#06b6d4'
+            });
+            if (res.value) {
+                codigo = res.value.trim().toUpperCase();
+                localStorage.setItem('codigo_reparto', codigo);
+            } else {
+                location.reload();
+                return;
+            }
+        }
+        
+        await cargarPedidos();
+        intervalo = setInterval(cargarPedidos, 10000);
+        
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+    }
+    
+    init();
+</script>
+</body>
+</html>

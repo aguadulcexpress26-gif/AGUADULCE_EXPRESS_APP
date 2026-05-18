@@ -1196,60 +1196,127 @@
         // ==========================================
         // ENVIAR PEDIDO FINAL
         // ==========================================
-        async function enviarPedidoFinal() {
-            const cliente = obtenerCliente();
-            if (!cliente) { alertaError("Registro requerido", "Debes registrarte primero"); return; }
-            if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
+       async function enviarPedidoFinal() {
+    const cliente = obtenerCliente();
+    if (!cliente) { alertaError("Registro requerido", "Debes registrarte primero"); return; }
+    if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
+    
+    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+    const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
+    const envio = 2.50;
+    const usoApp = 0.99;
+    const total = subtotal + envio + usoApp;
+    
+    const detalleTexto = cesta.map(item => {
+        const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
+        return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
+    }).join(" | ");
+    
+    const datosPedido = {
+        telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
+        total_info: total.toFixed(2), pago_info: metodo,
+        items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
+        fecha: new Date().toISOString()
+    };
+    
+    // ID temporal para mostrar algo mientras se procesa
+    const idTemp = "TMP-" + Date.now();
+    localStorage.setItem('ae_pedido_activo', idTemp);
+    
+    // Mostrar modal de seguimiento inmediatamente
+    abrirModalTracking();
+    actualizarInterfazSeguimiento({ 
+        estado: 'recibido', 
+        cliente: cliente.nombre, 
+        total: total, 
+        id: 'Procesando...' 
+    });
+    
+    // Limpiar carrito visualmente
+    cesta = [];
+    actualizarCestaVisual();
+    cerrarCheckout();
+    
+    // Enviar pedido
+    const formData = new FormData();
+    formData.append('data', JSON.stringify(datosPedido));
+    
+    try {
+        const response = await fetch(scriptURL, { method: 'POST', body: formData });
+        const result = await response.json();
+        
+        console.log("📦 Respuesta del servidor:", result);
+        
+        // Intentar obtener el ID de diferentes formas posibles
+        let idReal = null;
+        
+        if (result && result.status === "OK") {
+            // Probar diferentes nombres de campo
+            idReal = result.idPedido || result.id || result.pedido_id || result.orderId;
             
-            const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
-            const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
-            const envio = 2.50;
-            const usoApp = 0.99;
-            const total = subtotal + envio + usoApp;
+            if (!idReal && result.data && result.data.idPedido) {
+                idReal = result.data.idPedido;
+            }
             
-            const detalleTexto = cesta.map(item => {
-                const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
-                return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
-            }).join(" | ");
+            if (!idReal) {
+                // Si no hay ID, generar uno basado en timestamp
+                idReal = "AE-" + Date.now();
+                console.warn("⚠️ No se recibió ID del servidor, generando:", idReal);
+            }
             
-            const datosPedido = {
-                telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
-                restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
-                total_info: total.toFixed(2), pago_info: metodo,
-                items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
-                fecha: new Date().toISOString()
+            console.log("✅ ID Real obtenido:", idReal);
+            
+            // Guardar en localStorage
+            localStorage.setItem('ae_pedido_activo', idReal);
+            localStorage.setItem('ae_tracking_id', idReal);
+            
+            // Crear pedido en Firebase
+            const pedidoFirebase = { 
+                id: idReal, 
+                cliente: cliente.nombre, 
+                telefono: cliente.telf, 
+                direccion: cliente.dir, 
+                items: datosPedido.items, 
+                subtotal: subtotal, 
+                envio: envio, 
+                usoApp: usoApp, 
+                total: total, 
+                metodo_pago: metodo, 
+                restaurante_id: restauranteActivo.id, 
+                restaurante_nombre: restauranteActivo.nombre, 
+                estado: "recibido", 
+                fecha: new Date().toISOString(), 
+                timestamp: Date.now() 
             };
             
-            const idTemp = "TMP-" + Date.now();
-            localStorage.setItem('ae_pedido_activo', idTemp);
+            await database.ref('pedidos/' + idReal).set(pedidoFirebase);
+            console.log("✅ Pedido registrado en Firebase");
             
-            Swal.fire({ title: '✅ ¡Pedido Enviado!', html: `Tu pedido está siendo procesado.<br>Recibirás notificaciones en tiempo real.`, icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Ver seguimiento', timer: 3000, timerProgressBar: true }).then(() => {
-                abrirModalTracking();
-                actualizarInterfazSeguimiento({ estado: 'recibido', cliente: cliente.nombre, total: total, id: 'Procesando...' });
-            });
+            // Iniciar seguimiento con el ID real
+            iniciarSeguimientoPedido(idReal);
             
-            cesta = [];
-            actualizarCestaVisual();
-            cerrarCheckout();
+            mostrarToast("Pedido enviado correctamente", "✅");
             
-            const formData = new FormData();
-            formData.append('data', JSON.stringify(datosPedido));
-            
-            fetch(scriptURL, { method: 'POST', body: formData })
-                .then(response => response.json())
-                .then(result => {
-                    if (result.status === "OK" && result.idPedido) {
-                        const idReal = result.idPedido;
-                        localStorage.setItem('ae_pedido_activo', idReal);
-                        localStorage.setItem('ae_tracking_id', idReal);
-                        const pedidoFirebase = { id: idReal, cliente: cliente.nombre, telefono: cliente.telf, direccion: cliente.dir, items: datosPedido.items, subtotal: subtotal, envio: envio, usoApp: usoApp, total: total, metodo_pago: metodo, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, estado: "recibido", fecha: new Date().toISOString(), timestamp: Date.now() };
-                        return database.ref('pedidos/' + idReal).set(pedidoFirebase);
-                    }
-                    throw new Error(result.message || "Error al enviar");
-                })
-                .then(() => { console.log("✅ Pedido registrado"); iniciarSeguimientoPedido(idReal); })
-                .catch(error => { console.error("Error:", error); mostrarToast("Hubo un problema, pero tu pedido está en proceso", "⚠️"); const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]'); pedidosOffline.push({ ...datosPedido, timestamp: Date.now() }); localStorage.setItem('ae_pedidos_offline', JSON.stringify(pedidosOffline)); });
+        } else {
+            throw new Error(result?.message || "Error al enviar pedido");
         }
+        
+    } catch (error) {
+        console.error("❌ Error al enviar pedido:", error);
+        mostrarToast("Hubo un problema, pero tu pedido está en proceso", "⚠️");
+        
+        // Guardar para reintentar después
+        const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');
+        pedidosOffline.push({ ...datosPedido, timestamp: Date.now() });
+        localStorage.setItem('ae_pedidos_offline', JSON.stringify(pedidosOffline));
+        
+        // Seguir con un ID temporal
+        const idTempFinal = "OFFLINE-" + Date.now();
+        localStorage.setItem('ae_pedido_activo', idTempFinal);
+        iniciarSeguimientoPedido(idTempFinal);
+    }
+}
         
         async function sincronizarPedidosOffline() {
             const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');

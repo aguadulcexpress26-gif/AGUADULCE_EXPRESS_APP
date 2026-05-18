@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repartidor Express</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body {
+            background: #020617;
+            color: white;
+            font-family: Arial;
+            padding: 20px;
+        }
+        .card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        button {
+            background: #06b6d4;
+            color: black;
+            border: none;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+        .flex {
+            display: flex;
+            justify-content: space-between;
+        }
+        .codigo {
+            background: #06b6d420;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #020617;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(6,182,212,0.2);
+            border-top-color: #06b6d4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <p style="color:#06b6d4; margin-top: 15px;">Cargando...</p>
+</div>
+
+<div id="app" style="display: none;">
+    <div class="flex">
+        <h2>🚚 Repartidor</h2>
+        <button onclick="cerrarSesion()" style="width: auto; background: #ef4444;">Salir</button>
+    </div>
+    <div class="flex" style="margin: 15px 0;">
+        <span id="nombreRep">Cargando...</span>
+        <span id="saldo" style="color: #22c55e;">0€</span>
+    </div>
+    <div class="flex" style="margin-bottom: 15px;">
+        <span>📡 <span id="estado">Conectado</span></span>
+        <span id="contador" class="codigo">0 pedidos</span>
+    </div>
+    <div id="lista"></div>
+</div>
+
+<script>
+    const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+    let codigo = localStorage.getItem('reparto_code');
+    let intervalo = null;
+    
+    async function cargar() {
+        try {
+            const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + codigo);
+            const data = await res.json();
+            
+            if (data.error) {
+                document.getElementById('estado').innerHTML = 'Error';
+                return;
+            }
+            
+            const pedidos = data.pedidos || [];
+            const saldo = parseFloat(data.saldo) || 0;
+            
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
+            document.getElementById('saldo').innerHTML = saldo.toFixed(2) + '€';
+            document.getElementById('contador').innerHTML = pedidos.length + ' pedidos';
+            document.getElementById('estado').innerHTML = 'Conectado';
+            
+            const contenedor = document.getElementById('lista');
+            
+            if (pedidos.length === 0) {
+                contenedor.innerHTML = '<div style="text-align:center; opacity:0.5;">📭 Sin pedidos</div>';
+                return;
+            }
+            
+            let html = '';
+            for (let p of pedidos) {
+                const estado = (p.ESTADO || '').toUpperCase();
+                const total = parseFloat(p.TOTAL) || 0;
+                const tel = p.telf || p.WHATSAPP || '';
+                const telLimpio = tel.replace(/\D/g, '');
+                
+                let btn = '';
+                if (estado === 'LISTO') {
+                    btn = '<button onclick="recoger(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER</button>';
+                } else if (estado === 'EN CAMINO') {
+                    btn = '<button onclick="llegada(\'' + p.ID_PEDIDO + '\')">📍 LLEGUE</button>';
+                } else if (estado === 'LLEGÓ') {
+                    btn = '<button onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 COBRAR Y ENTREGAR</button>';
+                } else {
+                    btn = '<div style="background: #06b6d420; padding: 12px; text-align: center;">⏳ Preparando...</div>';
+                }
+                
+                html += '<div class="card">';
+                html += '<div class="flex">';
+                html += '<span class="codigo">📋 ' + p.ID_PEDIDO + '</span>';
+                html += '<span style="background:#06b6d4;color:black;padding:2px 8px;border-radius:10px;">' + (estado || 'PREPARANDO') + '</span>';
+                html += '</div>';
+                html += '<div style="margin: 12px 0;">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+                html += '<div style="background:#0f172a; padding: 12px; border-radius: 12px;">';
+                html += '<div>👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+                html += '<div class="flex" style="margin-top: 8px;">';
+                html += '<span>📞 ' + (tel || 'No disponible') + '</span>';
+                if (telLimpio) {
+                    html += '<div>';
+                    html += '<a href="tel:' + telLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;">📞</a> ';
+                    html += '<a href="https://wa.me/' + telLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;">💬</a>';
+                    html += '</div>';
+                }
+                html += '</div>';
+                html += '<div style="margin-top: 8px;">💳 ' + (p.PAGO || 'Efectivo') + '</div>';
+                html += '</div>';
+                html += '<div class="flex" style="margin: 12px 0;">';
+                html += '<span style="color:#06b6d4;">💰 ' + total.toFixed(2) + '€</span>';
+                html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" style="color:#06b6d4;">📍 Mapa</a>';
+                html += '</div>';
+                html += btn;
+                html += '</div>';
+            }
+            contenedor.innerHTML = html;
+        } catch(e) {
+            document.getElementById('estado').innerHTML = 'Offline';
+        }
+    }
+    
+    window.recoger = async function(id) {
+        await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+        Swal.fire({ title: '✅ Recogido', icon: 'success', timer: 1500, showConfirmButton: false });
+        cargar();
+    };
+    
+    window.llegada = async function(id) {
+        await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+        Swal.fire({ title: '📍 Llegaste', icon: 'success', timer: 1500, showConfirmButton: false });
+        cargar();
+    };
+    
+    window.entregar = function(id, total) {
+        Swal.fire({
+            title: '💰 Cobrar ' + total.toFixed(2) + '€',
+            text: '¿Confirmas pago?',
+            icon: 'question',
+            confirmButtonColor: '#22c55e',
+            confirmButtonText: '✅ Si',
+            showCancelButton: true
+        }).then(async (res) => {
+            if (res.isConfirmed) {
+                await fetch(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
+                Swal.fire({ title: '🎉 Entregado!', icon: 'success', timer: 1500, showConfirmButton: false });
+                cargar();
+            }
+        });
+    };
+    
+    window.cerrarSesion = function() {
+        localStorage.removeItem('reparto_code');
+        location.reload();
+    };
+    
+    (async function() {
+        if (!codigo) {
+            const res = await Swal.fire({
+                title: 'Código de Repartidor',
+                input: 'text',
+                inputPlaceholder: 'Ej: R001',
+                confirmButtonColor: '#06b6d4'
+            });
+            if (res.value) {
+                codigo = res.value.trim().toUpperCase();
+                localStorage.setItem('reparto_code', codigo);
+            } else {
+                document.getElementById('loader').style.display = 'none';
+                document.body.innerHTML = '<h2>❌ Código no ingresado</h2>';
+                return;
+            }
+        }
+        
+        await cargar();
+        intervalo = setInterval(cargar, 10000);
+        
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+    })();
+</script>
+</body>
+</html>

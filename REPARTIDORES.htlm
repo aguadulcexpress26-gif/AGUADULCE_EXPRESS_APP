@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Repartidor Express</title>
+    <title>Repartidor - Aguadulce Express</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
@@ -12,16 +12,16 @@
             box-sizing: border-box;
         }
         body {
-            font-family: Arial, sans-serif;
+            font-family: system-ui, -apple-system, sans-serif;
             background: #020617;
             color: white;
-            padding: 20px;
-            padding-bottom: 40px;
+            padding: 16px;
+            padding-bottom: 80px;
         }
         .header {
             background: linear-gradient(135deg, #06b6d4, #020617);
-            margin: -20px -20px 20px -20px;
-            padding: 25px 20px;
+            margin: -16px -16px 16px -16px;
+            padding: 20px 16px;
         }
         .flex {
             display: flex;
@@ -31,10 +31,11 @@
         .btn-salir {
             background: rgba(0,0,0,0.5);
             border: none;
-            padding: 8px 15px;
+            padding: 8px 16px;
             border-radius: 12px;
             color: white;
             cursor: pointer;
+            font-weight: bold;
         }
         .repartidor-nombre {
             font-size: 18px;
@@ -43,9 +44,6 @@
         .repartidor-id {
             font-size: 10px;
             opacity: 0.7;
-        }
-        .billetera {
-            text-align: right;
         }
         .billetera-monto {
             font-size: 20px;
@@ -56,7 +54,7 @@
             background: rgba(255,255,255,0.05);
             border-radius: 16px;
             padding: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             display: flex;
             justify-content: space-between;
         }
@@ -83,7 +81,7 @@
             color: #06b6d4;
         }
         .direccion {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
             margin: 12px 0;
             word-break: break-word;
@@ -96,7 +94,7 @@
         }
         button {
             width: 100%;
-            padding: 12px;
+            padding: 14px;
             border-radius: 14px;
             font-weight: bold;
             border: none;
@@ -108,15 +106,6 @@
         .btn-yellow { background: #eab308; color: black; }
         .btn-green { background: #22c55e; color: white; }
         .btn-red { background: #ef4444; color: white; }
-        .timer-box {
-            background: #eab308;
-            color: black;
-            padding: 10px;
-            border-radius: 14px;
-            text-align: center;
-            font-weight: bold;
-            margin: 10px 0;
-        }
         .sin-pedidos {
             text-align: center;
             padding: 60px 20px;
@@ -147,13 +136,10 @@
             to { transform: rotate(360deg); }
         }
         .mt-2 { margin-top: 8px; }
-        .mb-2 { margin-bottom: 8px; }
-        .gap-2 { gap: 8px; }
         a { text-decoration: none; }
-        .inline-flex { display: inline-flex; gap: 5px; }
+        .inline-flex { display: inline-flex; gap: 8px; }
+        .text-center { text-align: center; }
     </style>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -167,11 +153,11 @@
         <div class="flex">
             <button class="btn-salir" onclick="cerrarSesion()">🚪 Salir</button>
             <div>
-                <div class="repartidor-nombre" id="nombreRep">Repartidor</div>
-                <div class="repartidor-id" id="codigoRep">Cargando...</div>
+                <div class="repartidor-nombre" id="nombreRep">Cargando...</div>
+                <div class="repartidor-id" id="codigoRep"></div>
             </div>
-            <div class="billetera">
-                <div style="font-size: 10px; opacity: 0.7;">💰 Billetera</div>
+            <div class="text-center">
+                <div style="font-size: 10px;">💰 Billetera</div>
                 <div class="billetera-monto" id="saldo">0.00€</div>
             </div>
         </div>
@@ -182,259 +168,174 @@
         <span class="contador" id="contador">0 pedidos</span>
     </div>
 
-    <div id="listaPedidos">
-        <div class="sin-pedidos">Cargando pedidos...</div>
-    </div>
+    <div id="listaPedidos"></div>
 </div>
 
 <script>
-    var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+    // Configuración
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
-    var firebaseConfig = {
-        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
-        authDomain: "aguadulce-notificaciones.firebaseapp.com",
-        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
-        projectId: "aguadulce-notificaciones",
-        storageBucket: "aguadulce-notificaciones.firebasestorage.app",
-        messagingSenderId: "940283725281",
-        appId: "1:940283725281:web:3b388d2e7f362a99d2bea0"
-    };
+    let codigo = localStorage.getItem('repartidor_codigo');
+    let pedidos = [];
+    let intervalId = null;
     
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    var database = firebase.database();
-    
-    var codigo = localStorage.getItem('repartidor_codigo');
-    var pedidos = [];
-    var timers = {};
-    var intervalo = null;
-    
-    function mostrarMensaje(texto, tipo) {
+    // Mostrar mensaje
+    function mensaje(texto, icono) {
         Swal.fire({
-            title: tipo === 'error' ? 'Error' : (tipo === 'success' ? 'Exito' : 'Info'),
             text: texto,
-            icon: tipo || 'info',
+            icon: icono || 'info',
             background: '#020617',
             color: 'white',
-            confirmButtonColor: '#06b6d4'
+            confirmButtonColor: '#06b6d4',
+            timer: 2000,
+            showConfirmButton: false
         });
     }
     
-    function mostrarToast(texto) {
-        var t = document.createElement('div');
-        t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#06b6d4;color:black;padding:10px 20px;border-radius:30px;font-weight:bold;z-index:9999';
-        t.innerText = texto;
-        document.body.appendChild(t);
-        setTimeout(function() { t.remove(); }, 2500);
-    }
-    
+    // Cargar pedidos
     async function cargarPedidos() {
         try {
-            var url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
-            var resp = await fetch(url);
-            var data = await resp.json();
+            const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
+            const resp = await fetch(url);
+            const data = await resp.json();
             
             if (data.error) {
-                mostrarMensaje(data.error, 'error');
+                document.getElementById('estado').innerHTML = 'Error';
                 return;
             }
             
             pedidos = data.pedidos || [];
-            var saldo = parseFloat(data.saldo) || 0;
+            const saldo = parseFloat(data.saldo) || 0;
             
-            document.getElementById('nombreRep').innerText = data.nombre || 'Repartidor';
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
             document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
-            document.getElementById('saldo').innerText = saldo.toFixed(2) + '€';
-            document.getElementById('contador').innerText = pedidos.length + ' pedido' + (pedidos.length !== 1 ? 's' : '');
+            document.getElementById('saldo').innerHTML = saldo.toFixed(2) + '€';
+            document.getElementById('contador').innerHTML = pedidos.length + ' pedido' + (pedidos.length !== 1 ? 's' : '');
+            document.getElementById('estado').innerHTML = 'Conectado';
             
-            var fb = await database.ref('pedidos').once('value');
-            var fbData = fb.val() || {};
-            for (var i = 0; i < pedidos.length; i++) {
-                var fbPedido = fbData[pedidos[i].ID_PEDIDO];
-                if (fbPedido) {
-                    pedidos[i].timestampListo = fbPedido.timestampListo;
-                }
-            }
-            
-            renderizarPedidos();
+            renderizar();
         } catch(e) {
-            console.log(e);
-            document.getElementById('estado').innerText = 'Offline';
+            console.error(e);
+            document.getElementById('estado').innerHTML = 'Offline';
         }
     }
     
-    function renderizarPedidos() {
-        var contenedor = document.getElementById('listaPedidos');
-        if (pedidos.length === 0) {
-            contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
+    // Renderizar
+    function renderizar() {
+        const container = document.getElementById('listaPedidos');
+        
+        if (!pedidos.length) {
+            container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
             return;
         }
         
-        var html = '';
-        for (var i = 0; i < pedidos.length; i++) {
-            var p = pedidos[i];
-            var estado = (p.ESTADO || '').toUpperCase();
-            var total = parseFloat(p.TOTAL) || 0;
-            var telefono = p.telefono || p.telf || p.WHATSAPP || '';
-            var telefonoLimpio = telefono.replace(/\D/g, '');
+        let html = '';
+        for (let p of pedidos) {
+            const estado = (p.ESTADO || '').toUpperCase();
+            const total = parseFloat(p.TOTAL) || 0;
+            const telefono = p.telf || p.WHATSAPP || p.telefono || '';
+            const telefonoLimpio = telefono.replace(/\D/g, '');
             
-            var tiempoHtml = '';
-            var esListo = false;
-            if (p.timestampListo) {
-                var diff = p.timestampListo - Date.now();
-                if (diff <= 0) {
-                    esListo = true;
-                    tiempoHtml = '<div style="background:#22c55e20;padding:12px;border-radius:14px;text-align:center;margin:10px 0;border:2px solid #22c55e;font-weight:bold;">🔔 ¡PEDIDO LISTO PARA RECOGER!</div>';
-                } else {
-                    var min = Math.floor(diff / 60000);
-                    var seg = Math.floor((diff % 60000) / 1000);
-                    tiempoHtml = '<div style="background:#06b6d420;padding:12px;border-radius:14px;text-align:center;margin:10px 0;">⏳ Cocina: ' + min + 'm ' + seg + 's</div>';
-                }
-            }
+            let botones = '';
             
-            var botones = '';
-            if (estado === 'LISTO' || esListo) {
-                botones = '<button class="btn-blue" onclick="recogerPedido(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER PEDIDO</button>';
+            if (estado === 'LISTO') {
+                botones = '<button class="btn-blue" onclick="recoger(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER PEDIDO</button>';
             } else if (estado === 'EN CAMINO') {
-                botones = '<button class="btn-yellow" onclick="marcarLlegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO AL CLIENTE</button>';
+                botones = '<button class="btn-yellow" onclick="llegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO</button>';
             } else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
-                var tieneTimer = timers[p.ID_PEDIDO];
-                botones = '<button class="btn-green" onclick="confirmarEntrega(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 COBRAR Y ENTREGAR (' + total.toFixed(2) + '€)</button>';
-                if (!tieneTimer) {
-                    botones += '<button class="btn-red" onclick="iniciarTimer(\'' + p.ID_PEDIDO + '\', ' + total + ')">⏰ CLIENTE NO RESPONDE</button>';
-                }
-                if (tieneTimer) {
-                    botones = '<div class="timer-box">⏰ Esperando al cliente...</div>' + botones;
-                }
+                botones = '<button class="btn-green" onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 COBRAR Y ENTREGAR (' + total.toFixed(2) + '€)</button>';
             } else {
-                botones = tiempoHtml;
+                botones = '<div style="background: #06b6d420; padding: 12px; border-radius: 14px; text-align: center;">⏳ Preparando pedido...</div>';
             }
             
             html += '<div class="card">';
             html += '<div class="flex">';
             html += '<span class="ref">📋 ' + p.ID_PEDIDO + '</span>';
-            html += '<span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:12px;font-size:10px;font-weight:bold;">' + (estado || 'PREPARANDO') + '</span>';
+            html += '<span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:12px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span>';
             html += '</div>';
             html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
             html += '<div class="cliente-box">';
-            html += '<div style="color:#06b6d4;font-weight:bold;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+            html += '<div style="color:#06b6d4;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
             html += '<div class="flex mt-2">';
             html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
             if (telefonoLimpio) {
                 html += '<div class="inline-flex">';
-                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:12px;font-size:11px;font-weight:bold;">📞 Llamar</a>';
-                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:12px;font-size:11px;font-weight:bold;">💬 WhatsApp</a>';
+                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:12px;font-size:11px;">📞</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:12px;font-size:11px;">💬</a>';
                 html += '</div>';
             }
             html += '</div>';
             html += '<div class="mt-2" style="font-size:11px;opacity:0.7;">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
             html += '</div>';
             html += '<div class="flex" style="margin:12px 0;">';
-            html += '<span style="font-weight:bold;color:#06b6d4;">💰 Total: ' + total.toFixed(2) + '€</span>';
-            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" style="color:#06b6d4;text-decoration:none;">📍 Mapa</a>';
+            html += '<span style="color:#06b6d4;">💰 ' + total.toFixed(2) + '€</span>';
+            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" style="color:#06b6d4;">📍 Mapa</a>';
             html += '</div>';
             html += botones;
             html += '</div>';
         }
-        contenedor.innerHTML = html;
+        container.innerHTML = html;
     }
     
-    window.recogerPedido = async function(id) {
-        var confirm = await Swal.fire({ title: '¿Recoger pedido?', icon: 'question', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', showCancelButton: true });
-        if (!confirm.isConfirmed) return;
-        
+    // Acciones
+    window.recoger = async function(id) {
         await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-        await database.ref('pedidos/' + id).update({ estado: 'en_camino' });
-        mostrarToast('✅ Pedido recogido');
+        mensaje('✅ Pedido recogido', 'success');
         cargarPedidos();
     };
     
-    window.marcarLlegada = async function(id) {
-        var confirm = await Swal.fire({ title: '¿Has llegado al cliente?', icon: 'question', background: '#020617', color: 'white', confirmButtonColor: '#eab308', showCancelButton: true });
-        if (!confirm.isConfirmed) return;
-        
+    window.llegada = async function(id) {
         await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
-        await database.ref('pedidos/' + id).update({ estado: 'llegando' });
-        mostrarToast('📍 Llegaste al cliente');
+        mensaje('📍 Llegaste al cliente', 'success');
         cargarPedidos();
     };
     
-    window.iniciarTimer = function(id, total) {
-        if (timers[id]) {
-            mostrarMensaje('Ya hay un temporizador activo', 'warning');
-            return;
-        }
-        
-        mostrarMensaje('⏰ El cliente tiene 5 minutos para responder', 'info');
-        
-        var tiempo = 300;
-        timers[id] = setInterval(async function() {
-            tiempo--;
-            if (tiempo <= 0) {
-                clearInterval(timers[id]);
-                delete timers[id];
-                await cancelarPedido(id, total);
-            }
-        }, 1000);
-        
-        setTimeout(function() { cargarPedidos(); }, 100);
-    };
-    
-    window.cancelarPedido = async function(id, total) {
-        var confirm = await Swal.fire({
-            title: 'Cancelar pedido',
-            html: 'Se acumulara una deuda de <strong>' + total.toFixed(2) + '€</strong> al cliente',
-            icon: 'warning',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Cancelar pedido'
-        });
-        if (!confirm.isConfirmed) return;
-        
-        await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=CANCELADO&tiempo=cliente_no_recogio');
-        await database.ref('pedidos/' + id).update({ estado: 'cancelado', deuda_acumulada: total });
-        mostrarMensaje('Pedido cancelado. Deuda: ' + total.toFixed(2) + '€', 'error');
-        cargarPedidos();
-    };
-    
-    window.confirmarEntrega = function(id, total) {
+    window.entregar = function(id, total) {
         Swal.fire({
             title: '💰 Cobrar ' + total.toFixed(2) + '€',
-            text: '¿El cliente ya pago?',
+            text: '¿Confirmas el pago?',
             icon: 'question',
             background: '#020617',
             color: 'white',
             confirmButtonColor: '#22c55e',
-            confirmButtonText: '✅ Si, cobrar y entregar',
+            confirmButtonText: '✅ Si',
             showCancelButton: true
-        }).then(async function(res) {
+        }).then(async (res) => {
             if (res.isConfirmed) {
                 await fetch(SCRIPT_URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
-                await database.ref('pedidos/' + id).update({ estado: 'entregado', cobrado: total });
-                mostrarMensaje('🎉 Pedido entregado. +' + total.toFixed(2) + '€ en tu billetera', 'success');
+                mensaje('🎉 Pedido entregado! +' + total.toFixed(2) + '€', 'success');
                 cargarPedidos();
             }
         });
     };
     
     window.cerrarSesion = async function() {
-        var confirm = await Swal.fire({ title: '¿Cerrar sesion?', icon: 'question', background: '#020617', color: 'white', confirmButtonColor: '#ef4444', showCancelButton: true });
+        const confirm = await Swal.fire({
+            title: '¿Cerrar sesión?',
+            icon: 'question',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#ef4444',
+            showCancelButton: true
+        });
         if (confirm.isConfirmed) {
-            if (intervalo) clearInterval(intervalo);
+            if (intervalId) clearInterval(intervalId);
             localStorage.removeItem('repartidor_codigo');
             location.reload();
         }
     };
     
+    // Inicio
     async function init() {
         if (!codigo) {
-            var res = await Swal.fire({
-                title: 'Codigo de Repartidor',
+            const res = await Swal.fire({
+                title: '🔐 Código de Repartidor',
                 input: 'text',
                 inputPlaceholder: 'Ej: R001',
                 background: '#020617',
                 color: 'white',
-                confirmButtonColor: '#06b6d4'
+                confirmButtonColor: '#06b6d4',
+                showCancelButton: false
             });
             if (res.value) {
                 codigo = res.value.trim().toUpperCase();
@@ -446,12 +347,7 @@
         }
         
         await cargarPedidos();
-        
-        database.ref('pedidosActivos').on('value', function() {
-            cargarPedidos();
-        });
-        
-        intervalo = setInterval(cargarPedidos, 10000);
+        intervalId = setInterval(cargarPedidos, 10000);
         
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';

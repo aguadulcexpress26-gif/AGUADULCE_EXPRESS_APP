@@ -511,6 +511,19 @@
         
         function hayPedidoActivo() { return localStorage.getItem('ae_pedido_activo') !== null; }
         
+        function abrirModalTracking() {
+            const modal = document.getElementById('tracking-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                historialPantallas.push('tracking');
+            }
+        }
+        
+        function cerrarModalTracking() {
+            const modal = document.getElementById('tracking-modal');
+            if (modal) modal.style.display = 'none';
+        }
+        
         // ==========================================
         // CESTA
         // ==========================================
@@ -815,6 +828,55 @@
         function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
         
         // ==========================================
+        // LIMPIEZA COMPLETA DE SEGUIMIENTO
+        // ==========================================
+        function limpiarSeguimientoCompleto() {
+            console.log("🧹 Limpiando seguimiento completo...");
+            
+            // 1. Detener listener de Firebase
+            if (trackingListenerRef) {
+                console.log("🛑 Deteniendo listener de Firebase");
+                try {
+                    trackingListenerRef.off();
+                } catch(e) {
+                    console.warn("Error al detener listener:", e);
+                }
+                trackingListenerRef = null;
+            }
+            
+            // 2. Limpiar localStorage
+            localStorage.removeItem('ae_pedido_activo');
+            localStorage.removeItem('ae_tracking_id');
+            localStorage.removeItem('ultimoEstadoPedido');
+            
+            // 3. Limpiar intervalos de alarma
+            if (alarmaInterval) {
+                clearInterval(alarmaInterval);
+                alarmaInterval = null;
+            }
+            
+            // 4. Detener audio si está sonando
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.currentTime = 0;
+            }
+            
+            // 5. Ocultar botón flotante de seguimiento
+            const btnFlotante = document.getElementById('btn-reabrir-seguimiento');
+            if (btnFlotante) {
+                btnFlotante.style.display = 'none';
+            }
+            
+            // 6. Cerrar modal de tracking si está abierto
+            const trackingModal = document.getElementById('tracking-modal');
+            if (trackingModal && trackingModal.style.display === 'block') {
+                trackingModal.style.display = 'none';
+            }
+            
+            console.log("✅ Seguimiento limpiado completamente");
+        }
+        
+        // ==========================================
         // SISTEMA DE TRACKING
         // ==========================================
         function initAudio() {
@@ -822,298 +884,314 @@
             return audioElement;
         }
         
-       function iniciarSeguimientoPedido(idPedido) {
-    if (!idPedido) {
-        console.error("❌ No se proporcionó ID de pedido");
-        return false;
-    }
-    
-    console.log("🔥 Iniciando seguimiento para:", idPedido);
-    
-    // Guardar en localStorage
-    localStorage.setItem('ae_pedido_activo', idPedido);
-    localStorage.setItem('ae_tracking_id', idPedido);
-    
-    // Limpiar listener anterior si existe
-    if (trackingListenerRef) {
-        console.log("🔄 Limpiando listener anterior");
-        trackingListenerRef.off();
-        trackingListenerRef = null;
-    }
-    
-    // Crear nuevo listener con manejo de errores
-    trackingListenerRef = database.ref('pedidos/' + idPedido);
-    trackingListenerRef.on('value', (snapshot) => {
-        const data = snapshot.val();
-        console.log("📡 Datos recibidos de Firebase en tiempo real:", data);
-        
-        if (data) {
-            actualizarInterfazSeguimiento(data);
-        } else {
-            console.warn("⚠️ No hay datos para el pedido:", idPedido);
+        function iniciarSeguimientoPedido(idPedido) {
+            if (!idPedido) {
+                console.error("❌ No se proporcionó ID de pedido");
+                return false;
+            }
+            
+            console.log("🔥 Iniciando seguimiento para:", idPedido);
+            
+            // Guardar en localStorage
+            localStorage.setItem('ae_pedido_activo', idPedido);
+            localStorage.setItem('ae_tracking_id', idPedido);
+            
+            // Limpiar listener anterior si existe
+            if (trackingListenerRef) {
+                console.log("🔄 Limpiando listener anterior");
+                try {
+                    trackingListenerRef.off();
+                } catch(e) {
+                    console.warn("Error al limpiar listener:", e);
+                }
+                trackingListenerRef = null;
+            }
+            
+            // Asegurar que el modal de tracking existe
+            const trackingModal = document.getElementById('tracking-modal');
+            if (!trackingModal) {
+                console.error("❌ No se encontró el modal de tracking");
+                return false;
+            }
+            
+            // Crear nuevo listener con manejo de errores robusto
+            try {
+                trackingListenerRef = database.ref('pedidos/' + idPedido);
+                trackingListenerRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    console.log("📡 Datos recibidos de Firebase en tiempo real:", data?.estado);
+                    
+                    if (data) {
+                        actualizarInterfazSeguimiento(data);
+                    } else {
+                        console.warn("⚠️ No hay datos para el pedido:", idPedido);
+                        limpiarSeguimientoCompleto();
+                    }
+                }, (error) => {
+                    console.error("❌ Error en listener de Firebase:", error);
+                });
+                
+                // Cargar datos iniciales inmediatamente
+                database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
+                    const data = snapshot.val();
+                    if (data) {
+                        console.log("📦 Datos iniciales cargados:", data.estado);
+                        actualizarInterfazSeguimiento(data);
+                    } else {
+                        console.warn("⚠️ Pedido no encontrado en Firebase:", idPedido);
+                        limpiarSeguimientoCompleto();
+                    }
+                }).catch(error => {
+                    console.error("❌ Error cargando pedido inicial:", error);
+                });
+                
+                // Mostrar botón flotante
+                const btn = document.getElementById('btn-reabrir-seguimiento');
+                if (btn) btn.style.display = 'flex';
+                
+                console.log("✅ Seguimiento iniciado correctamente para:", idPedido);
+                return true;
+                
+            } catch (error) {
+                console.error("❌ Error crítico al iniciar seguimiento:", error);
+                return false;
+            }
         }
-    }, (error) => {
-        console.error("❌ Error en listener de Firebase:", error);
-    });
-    
-    // Cargar datos inmediatamente
-    database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
-        const data = snapshot.val();
-        if (data) {
-            console.log("📦 Datos iniciales cargados:", data);
-            actualizarInterfazSeguimiento(data);
-        } else {
-            console.warn("⚠️ Pedido no encontrado en Firebase:", idPedido);
-        }
-    }).catch(error => {
-        console.error("❌ Error cargando pedido:", error);
-    });
-    
-    // Mostrar botón flotante
-    const btn = document.getElementById('btn-reabrir-seguimiento');
-    if (btn) btn.style.display = 'flex';
-    
-    console.log("✅ Seguimiento iniciado correctamente para:", idPedido);
-    return true;
-}
         
         function actualizarInterfazSeguimiento(data) {
-    if (!data) {
-        console.warn("⚠️ actualizarInterfazSeguimiento llamada sin datos");
-        return;
-    }
-    
-    const estado = (data.estado || 'recibido').toLowerCase();
-    console.log("🔄 ACTUALIZANDO UI - Nuevo estado:", estado);
-    console.log("📦 Datos completos recibidos:", data);
-    
-    const configs = {
-        'recibido': { width: '15%', texto: 'RECIBIDO', mensaje: '✅ El restaurante ha recibido tu pedido', emoji: '📥', paso: 1 },
-        'confirmado': { width: '30%', texto: 'CONFIRMADO', mensaje: '👍 Pedido confirmado', emoji: '✓', paso: 1 },
-        'en proceso': { width: '45%', texto: 'EN PROCESO', mensaje: '👨‍🍳 El restaurante está preparando tu pedido', emoji: '🍳', paso: 2 },
-        'preparando': { width: '45%', texto: 'PREPARANDO', mensaje: '👨‍🍳 Tu pedido está siendo preparado', emoji: '🍳', paso: 2 },
-        'cocinando': { width: '60%', texto: 'COCINANDO', mensaje: '🔥 ¡Ya casi está listo!', emoji: '🔥', paso: 2 },
-        'listo': { width: '75%', texto: 'LISTO', mensaje: '✅ Tu pedido está listo para recoger', emoji: '📦', paso: 2 },
-        'en_camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
-        'en camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
-        'llegando': { width: '95%', texto: '¡LLEGÓ!', mensaje: '📍 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
-        'llegó': { width: '95%', texto: '¡LLEGÓ!', mensaje: '📍 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
-        'entregado': { width: '100%', texto: 'ENTREGADO', mensaje: '🎉 ¡Pedido entregado!', emoji: '✅', paso: 4 },
-        'cancelado': { width: '100%', texto: 'CANCELADO', mensaje: '❌ Pedido cancelado', emoji: '⚠️', paso: 0 }
-    };
-    
-    // Buscar configuración (normalizar estado)
-    let cfg = configs[estado];
-    if (!cfg) {
-        // Buscar por coincidencia parcial
-        for (const [key, value] of Object.entries(configs)) {
-            if (estado.includes(key) || key.includes(estado)) {
-                cfg = value;
-                break;
+            if (!data) {
+                console.warn("⚠️ actualizarInterfazSeguimiento llamada sin datos");
+                return;
             }
-        }
-    }
-    if (!cfg) cfg = configs['recibido'];
-    
-    console.log("📊 Configuración aplicada:", cfg);
-    
-    // 1. ACTUALIZAR BARRA DE PROGRESO
-    const progress = document.getElementById('tracking-progress');
-    if (progress) {
-        progress.style.transition = 'width 0.5s ease';
-        progress.style.width = cfg.width;
-        console.log("📊 Barra actualizada a:", cfg.width);
-    } else {
-        console.error("❌ No encontré #tracking-progress");
-    }
-    
-    // 2. ACTUALIZAR TEXTOS
-    const estadoTxt = document.getElementById('tracking-estado');
-    const mensaje = document.getElementById('tracking-mensaje');
-    const emoji = document.getElementById('tracking-emoji');
-    
-    if (estadoTxt) estadoTxt.innerText = cfg.texto;
-    if (mensaje) mensaje.innerText = cfg.mensaje;
-    if (emoji) emoji.innerText = cfg.emoji;
-    
-    // 3. ACTUALIZAR LOS PASOS (LUCES)
-    for (let i = 1; i <= 4; i++) {
-        const step = document.getElementById(`step-${i}`);
-        if (step) {
-            if (i <= cfg.paso) {
-                step.classList.add('active');
-                const dot = step.querySelector('.step-dot');
-                if (dot) {
-                    dot.style.background = '#06b6d4';
-                    dot.style.color = 'black';
-                    dot.style.boxShadow = '0 0 20px #06b6d4';
-                }
-            } else {
-                step.classList.remove('active');
-                const dot = step.querySelector('.step-dot');
-                if (dot) {
-                    dot.style.background = '#1e293b';
-                    dot.style.color = 'white';
-                    dot.style.boxShadow = 'none';
+            
+            const estado = (data.estado || 'recibido').toLowerCase();
+            console.log("🔄 ACTUALIZANDO UI - Nuevo estado:", estado);
+            
+            const configs = {
+                'recibido': { width: '15%', texto: 'RECIBIDO', mensaje: '✅ El restaurante ha recibido tu pedido', emoji: '📥', paso: 1 },
+                'confirmado': { width: '30%', texto: 'CONFIRMADO', mensaje: '👍 Pedido confirmado', emoji: '✓', paso: 1 },
+                'en proceso': { width: '45%', texto: 'EN PROCESO', mensaje: '👨‍🍳 El restaurante está preparando tu pedido', emoji: '🍳', paso: 2 },
+                'preparando': { width: '45%', texto: 'PREPARANDO', mensaje: '👨‍🍳 Tu pedido está siendo preparado', emoji: '🍳', paso: 2 },
+                'cocinando': { width: '60%', texto: 'COCINANDO', mensaje: '🔥 ¡Ya casi está listo!', emoji: '🔥', paso: 2 },
+                'listo': { width: '75%', texto: 'LISTO', mensaje: '✅ Tu pedido está listo para recoger', emoji: '📦', paso: 2 },
+                'en_camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
+                'en camino': { width: '80%', texto: 'EN CAMINO', mensaje: '🛵 Tu repartidor va hacia tu dirección', emoji: '🛵', paso: 3 },
+                'llegando': { width: '95%', texto: '¡LLEGÓ!', mensaje: '📍 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
+                'llegó': { width: '95%', texto: '¡LLEGÓ!', mensaje: '📍 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
+                'entregado': { width: '100%', texto: 'ENTREGADO', mensaje: '🎉 ¡Pedido entregado!', emoji: '✅', paso: 4 },
+                'cancelado': { width: '100%', texto: 'CANCELADO', mensaje: '❌ Pedido cancelado', emoji: '⚠️', paso: 0 }
+            };
+            
+            // Buscar configuración
+            let cfg = configs[estado];
+            if (!cfg) {
+                for (const [key, value] of Object.entries(configs)) {
+                    if (estado.includes(key) || key.includes(estado)) {
+                        cfg = value;
+                        break;
+                    }
                 }
             }
-        }
-    }
-    
-    // 4. ACTUALIZAR INFORMACIÓN
-    const info = document.getElementById('tracking-info');
-    if (info && data) {
-        info.innerHTML = `
-            <div style="display: grid; gap: 8px;">
-                <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${data.id || data.idPedido || '---'}</strong></div>
-                <div><span style="color:#06b6d4;">👤 Cliente:</span> ${data.cliente || '---'}</div>
-                <div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? (typeof data.total === 'number' ? data.total.toFixed(2) + '€' : data.total) : '---'}</div>
-                <div><span style="color:#06b6d4;">📌 Estado actual:</span> ${cfg.texto}</div>
-            </div>
-        `;
-    }
-    
-    // 5. ALARMA Y VIBRACIÓN CUANDO LLEGA
-    if (estado === 'llegando' || estado === 'llegó') {
-        console.log("🔔 ¡PEDIDO LLEGANDO! Activando alarma y vibración");
-        
-        if (navigator.vibrate) {
-            navigator.vibrate([500, 200, 500, 200, 1000]);
-        }
-        
-        const audio = initAudio();
-        audio.volume = 0.8;
-        audio.play().catch(e => console.log("Audio no disponible:", e));
-        
-        if (alarmaInterval) clearInterval(alarmaInterval);
-        alarmaInterval = setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                audio.play().catch(() => {});
-                if (navigator.vibrate) navigator.vibrate(500);
+            if (!cfg) cfg = configs['recibido'];
+            
+            // Actualizar barra de progreso
+            const progress = document.getElementById('tracking-progress');
+            if (progress) {
+                progress.style.transition = 'width 0.5s ease';
+                progress.style.width = cfg.width;
             }
-        }, 10000);
-        
-        Swal.fire({
-            title: '🔔 ¡TU PEDIDO ESTÁ LLEGANDO!',
-            text: 'El repartidor está cerca. Prepárate para recibir tu pedido.',
-            icon: 'info',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#06b6d4',
-            timer: 5000,
-            showConfirmButton: false
-        });
-    }
-    
-    // 6. CUANDO ENTREGAN
-    if (estado === 'entregado') {
-        console.log("🎉 PEDIDO ENTREGADO - Mostrando mensaje al cliente");
-        
-        if (alarmaInterval) {
-            clearInterval(alarmaInterval);
-            alarmaInterval = null;
+            
+            // Actualizar textos
+            const estadoTxt = document.getElementById('tracking-estado');
+            const mensaje = document.getElementById('tracking-mensaje');
+            const emoji = document.getElementById('tracking-emoji');
+            
+            if (estadoTxt) estadoTxt.innerText = cfg.texto;
+            if (mensaje) mensaje.innerText = cfg.mensaje;
+            if (emoji) emoji.innerText = cfg.emoji;
+            
+            // Actualizar los pasos
+            for (let i = 1; i <= 4; i++) {
+                const step = document.getElementById(`step-${i}`);
+                if (step) {
+                    if (i <= cfg.paso) {
+                        step.classList.add('active');
+                        const dot = step.querySelector('.step-dot');
+                        if (dot) {
+                            dot.style.background = '#06b6d4';
+                            dot.style.color = 'black';
+                            dot.style.boxShadow = '0 0 20px #06b6d4';
+                        }
+                    } else {
+                        step.classList.remove('active');
+                        const dot = step.querySelector('.step-dot');
+                        if (dot) {
+                            dot.style.background = '#1e293b';
+                            dot.style.color = 'white';
+                            dot.style.boxShadow = 'none';
+                        }
+                    }
+                }
+            }
+            
+            // Actualizar información
+            const info = document.getElementById('tracking-info');
+            if (info && data) {
+                info.innerHTML = `
+                    <div style="display: grid; gap: 8px;">
+                        <div><span style="color:#06b6d4;">📋 Pedido:</span> <strong>${data.id || data.idPedido || '---'}</strong></div>
+                        <div><span style="color:#06b6d4;">👤 Cliente:</span> ${data.cliente || '---'}</div>
+                        <div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? (typeof data.total === 'number' ? data.total.toFixed(2) + '€' : data.total) : '---'}</div>
+                        <div><span style="color:#06b6d4;">📌 Estado actual:</span> ${cfg.texto}</div>
+                    </div>
+                `;
+            }
+            
+            // Alarma y vibración cuando llega
+            if (estado === 'llegando' || estado === 'llegó') {
+                console.log("🔔 ¡PEDIDO LLEGANDO! Activando alarma y vibración");
+                
+                if (navigator.vibrate) {
+                    navigator.vibrate([500, 200, 500, 200, 1000]);
+                }
+                
+                const audio = initAudio();
+                audio.volume = 0.8;
+                audio.play().catch(e => console.log("Audio no disponible:", e));
+                
+                if (alarmaInterval) clearInterval(alarmaInterval);
+                alarmaInterval = setInterval(() => {
+                    if (document.visibilityState === 'visible') {
+                        audio.play().catch(() => {});
+                        if (navigator.vibrate) navigator.vibrate(500);
+                    }
+                }, 10000);
+                
+                Swal.fire({
+                    title: '🔔 ¡TU PEDIDO ESTÁ LLEGANDO!',
+                    text: 'El repartidor está cerca. Prepárate para recibir tu pedido.',
+                    icon: 'info',
+                    background: '#020617',
+                    color: 'white',
+                    confirmButtonColor: '#06b6d4',
+                    timer: 5000,
+                    showConfirmButton: false
+                });
+            }
+            
+            // Cuando entregan
+            if (estado === 'entregado') {
+                console.log("🎉 PEDIDO ENTREGADO - Mostrando mensaje al cliente");
+                
+                if (alarmaInterval) {
+                    clearInterval(alarmaInterval);
+                    alarmaInterval = null;
+                }
+                
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200, 100, 500, 200, 200]);
+                }
+                
+                Swal.fire({
+                    title: '🎉 ¡Pedido Entregado!',
+                    text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!',
+                    icon: 'success',
+                    background: '#020617',
+                    color: 'white',
+                    confirmButtonColor: '#06b6d4',
+                    confirmButtonText: '¡Genial!'
+                }).then(() => {
+                    limpiarSeguimientoCompleto();
+                    cerrarModalTracking();
+                    cesta = [];
+                    actualizarCestaVisual();
+                });
+            }
+            
+            // Cuando cancelan
+            if (estado === 'cancelado') {
+                console.log("❌ PEDIDO CANCELADO");
+                
+                if (alarmaInterval) {
+                    clearInterval(alarmaInterval);
+                    alarmaInterval = null;
+                }
+                
+                if (navigator.vibrate) {
+                    navigator.vibrate([500, 300, 500]);
+                }
+                
+                const deuda = data.deuda_acumulada || data.total || 0;
+                const motivo = data.motivo_cancelacion || "No se pudo completar la entrega";
+                
+                Swal.fire({
+                    title: '❌ Pedido Cancelado',
+                    html: `<div style="text-align:left;">
+                        <p>⚠️ <strong>Tu pedido ha sido cancelado</strong></p>
+                        <br>
+                        <p>📝 <strong>Motivo:</strong> ${motivo}</p>
+                        <br>
+                        <p>💰 <strong>Deuda acumulada:</strong> ${typeof deuda === 'number' ? deuda.toFixed(2) + '€' : deuda}</p>
+                        <br>
+                        <p>📞 Esta deuda quedará registrada en tu cuenta.</p>
+                        <p>Para realizar nuevos pedidos, deberás regularizar esta situación.</p>
+                        <br>
+                        <p>🛵 Contacta con soporte.</p>
+                    </div>`,
+                    icon: 'error',
+                    background: '#020617',
+                    color: 'white',
+                    confirmButtonColor: '#06b6d4',
+                    confirmButtonText: 'Entendido'
+                }).then(() => {
+                    limpiarSeguimientoCompleto();
+                    cerrarModalTracking();
+                    cesta = [];
+                    actualizarCestaVisual();
+                });
+            }
         }
         
-        if (navigator.vibrate) {
-            navigator.vibrate([200, 100, 200, 100, 500, 200, 200]);
-        }
-        
-        // Mostrar mensaje inmediatamente
-        Swal.fire({
-            title: '🎉 ¡Pedido Entregado!',
-            text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!',
-            icon: 'success',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#06b6d4',
-            confirmButtonText: '¡Genial!'
-        }).then(() => {
-            limpiarSeguimientoCompleto();
-            cerrarModalTracking();
-            // Limpiar carrito también
-            cesta = [];
-            actualizarCestaVisual();
-        });
-    }
-    
-    // 7. CUANDO CANCELAN
-    if (estado === 'cancelado') {
-        console.log("❌ PEDIDO CANCELADO");
-        
-        if (alarmaInterval) {
-            clearInterval(alarmaInterval);
-            alarmaInterval = null;
-        }
-        
-        if (navigator.vibrate) {
-            navigator.vibrate([500, 300, 500]);
-        }
-        
-        const deuda = data.deuda_acumulada || data.total || 0;
-        const motivo = data.motivo_cancelacion || "No se pudo completar la entrega";
-        
-        Swal.fire({
-            title: '❌ Pedido Cancelado',
-            html: `<div style="text-align:left;">
-                <p>⚠️ <strong>Tu pedido ha sido cancelado</strong></p>
-                <br>
-                <p>📝 <strong>Motivo:</strong> ${motivo}</p>
-                <br>
-                <p>💰 <strong>Deuda acumulada:</strong> ${typeof deuda === 'number' ? deuda.toFixed(2) + '€' : deuda}</p>
-                <br>
-                <p>📞 Esta deuda quedará registrada en tu cuenta.</p>
-                <p>Para realizar nuevos pedidos, deberás regularizar esta situación.</p>
-                <br>
-                <p>🛵 Contacta con soporte.</p>
-            </div>`,
-            icon: 'error',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#06b6d4',
-            confirmButtonText: 'Entendido'
-        }).then(() => {
-            limpiarSeguimientoCompleto();
-            cerrarModalTracking();
-            cesta = [];
-            actualizarCestaVisual();
-        });
-    }
-    
-    // Actualizar icono del botón flotante
-    actualizarBadgeFlotante(estado);
-}        
         function restaurarPedidoActivo() {
-    const idPedido = localStorage.getItem('ae_pedido_activo');
-    console.log("🔄 restaurarPedidoActivo - ID encontrado:", idPedido);
-    
-    if (!idPedido) {
-        console.log("⚠️ No hay pedido activo en localStorage");
-        return;
-    }
-    
-    database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
-        const data = snapshot.val();
-        console.log("📦 Datos del pedido en Firebase:", data);
-        
-        if (!data) {
-            console.log("⚠️ Pedido no encontrado, limpiando...");
-            limpiarSeguimientoCompleto();
-            return;
+            const idPedido = localStorage.getItem('ae_pedido_activo');
+            console.log("🔄 restaurarPedidoActivo - ID encontrado:", idPedido);
+            
+            if (!idPedido) {
+                console.log("⚠️ No hay pedido activo en localStorage");
+                return;
+            }
+            
+            database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
+                const data = snapshot.val();
+                console.log("📦 Datos del pedido en Firebase:", data);
+                
+                if (!data) {
+                    console.log("⚠️ Pedido no encontrado en Firebase, limpiando...");
+                    limpiarSeguimientoCompleto();
+                    return;
+                }
+                
+                const estado = (data.estado || '').toLowerCase();
+                
+                if (estado === 'entregado' || estado === 'cancelado') {
+                    console.log("📦 Pedido ya finalizado (", estado, "), limpiando...");
+                    limpiarSeguimientoCompleto();
+                } else {
+                    console.log("✅ Pedido activo encontrado, iniciando seguimiento para:", idPedido);
+                    
+                    const btnFlotante = document.getElementById('btn-reabrir-seguimiento');
+                    if (btnFlotante) {
+                        btnFlotante.style.display = 'flex';
+                    }
+                    
+                    iniciarSeguimientoPedido(idPedido);
+                    mostrarToast("🔄 Seguimiento restaurado", "✅");
+                }
+            }).catch(error => {
+                console.error("❌ Error al verificar pedido:", error);
+                setTimeout(() => restaurarPedidoActivo(), 5000);
+            });
         }
-        
-        const estado = (data.estado || '').toLowerCase();
-        if (estado === 'entregado' || estado === 'cancelado') {
-            console.log("📦 Pedido ya finalizado, limpiando...");
-            limpiarSeguimientoCompleto();
-        } else {
-            console.log("✅ Iniciando seguimiento para:", idPedido);
-            iniciarSeguimientoPedido(idPedido);
-        }
-    }).catch(error => {
-        console.error("❌ Error:", error);
-        limpiarSeguimientoCompleto();
-    });
-}
         
         // ==========================================
         // ENVIAR PEDIDO FINAL

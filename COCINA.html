@@ -287,32 +287,55 @@
         cargar();
     }
     
-    async function rechazarPedido(id) {
-        const { value: motivo } = await Swal.fire({
-            title: '❌ Rechazar Pedido',
-            input: 'textarea',
-            inputPlaceholder: 'Motivo del rechazo...',
-            icon: 'warning',
+   async function rechazarPedido(id) {
+    const { value: motivo } = await Swal.fire({
+        title: '❌ Rechazar Pedido',
+        text: 'Selecciona el motivo del rechazo',
+        input: 'select',
+        inputOptions: {
+            'No disponible': 'Plato no disponible en este momento',
+            'Ingredientes': 'Ingredientes agotados',
+            'Capacidad': 'Restaurante a máxima capacidad',
+            'Horario': 'Fuera de horario de preparación',
+            'Otro': 'Otro motivo (especificar)'
+        },
+        inputPlaceholder: 'Selecciona un motivo...',
+        icon: 'warning',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Rechazar',
+        showCancelButton: true
+    });
+    
+    if (!motivo) return;
+    
+    let motivoTexto = motivo;
+    if (motivo === 'Otro') {
+        const { value: otro } = await Swal.fire({
+            title: 'Especifica el motivo',
+            input: 'text',
+            inputPlaceholder: 'Ej: Problemas con el repartidor...',
             background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Rechazar',
-            showCancelButton: true
+            color: 'white'
         });
-        
-        if (!motivo) return;
-        
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${encodeURIComponent(motivo)}`);
-        await database.ref('pedidos/'+id).update({ 
-            estado: 'rechazado',
-            motivo_rechazo: motivo,
-            timestamp_rechazo: Date.now()
-        });
-        
-        mostrarMensaje('❌ Pedido Rechazado', `Motivo: ${motivo}`, 'error');
-        aceptados.delete(id);
-        cargar();
+        if (otro) motivoTexto = otro;
     }
+    
+    // Actualizar estado en Excel y Firebase
+    await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${encodeURIComponent(motivoTexto)}`);
+    await database.ref('pedidos/'+id).update({ 
+        estado: 'rechazado',
+        motivo_rechazo: motivoTexto,
+        timestamp_rechazo: Date.now(),
+        // IMPORTANTE: No acumular deuda
+        deuda_acumulada: 0
+    });
+    
+    mostrarMensaje('❌ Pedido Rechazado', `Motivo: ${motivoTexto}\n\nEl cliente será notificado.`, 'error');
+    aceptados.delete(id);
+    cargar();
+}
     
     function verDetalles(id) { 
         let p = [...pedidosActivos, ...historialHoy].find(x=>x.ID_PEDIDO==id); 

@@ -123,7 +123,7 @@
     function playSound() {
         if (audioNotif) {
             audioNotif.currentTime = 0;
-            audioNotif.play().catch(e => console.log('Audio no disponible'));
+            audioNotif.play().catch(e => console.log('Audio bloqueado por el navegador hasta interacción usuario.'));
         }
     }
     
@@ -194,7 +194,12 @@
             const estado = (p.ESTADO || '').toUpperCase();
             const total = parseFloat(p.TOTAL) || 0;
             let telefono = p.telf || '';
-            const telefonoLimpio = String(telefono).replace(/\D/g, '');
+            
+            // Limpiar teléfono y asegurar código de país (Ej: 34 para España)
+            let telefonoLimpio = String(telefono).replace(/\D/g, '');
+            if (telefonoLimpio.length === 9 && (telefonoLimpio.startsWith('6') || telefonoLimpio.startsWith('7'))) {
+                telefonoLimpio = '34' + telefonoLimpio;
+            }
             
             let botones = '';
             
@@ -226,6 +231,7 @@
             html += '</div>';
             
             html += '<div class="acciones">';
+            // URL de Mapas corregida
             html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
             if (telefonoLimpio) {
                 html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
@@ -352,24 +358,17 @@
         });
         
         if (result.isConfirmed) {
-            // Detener intervalo
             if (intervalo) {
                 clearInterval(intervalo);
                 intervalo = null;
             }
-            
-            // Limpiar localStorage
             localStorage.removeItem('rep_code');
-            
-            // Reiniciar variables
             codigoActual = null;
             ultimosIds = [];
             
-            // Ocultar app y mostrar loader
             document.getElementById('app').style.display = 'none';
             document.getElementById('loader').style.display = 'flex';
             
-            // Reiniciar el script completamente
             location.reload();
         }
     }
@@ -378,12 +377,10 @@
     async function iniciarApp() {
         initAudio();
         
-        // Configurar event listeners
         document.getElementById('btnSalir').onclick = cerrarSesion;
         document.getElementById('btnHistorial').onclick = mostrarHistorial;
         document.getElementById('btnCerrarHistorial').onclick = cerrarHistorial;
         
-        // Obtener código del localStorage
         let codigo = localStorage.getItem('rep_code');
         
         if (!codigo) {
@@ -400,6 +397,8 @@
             if (result.value && result.value.trim()) {
                 codigo = result.value.trim().toUpperCase();
                 localStorage.setItem('rep_code', codigo);
+                // Forzar reproducción silenciosa para habilitar audio en iOS/Android tras la interacción
+                if(audioNotif) { audioNotif.play().catch(()=>{}); }
             } else {
                 document.getElementById('loader').innerHTML = '<p style="color:#ef4444;">❌ No se ingresó código. Recarga la página.</p>';
                 return;
@@ -409,29 +408,22 @@
         codigoActual = codigo;
         document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
         
-        // Cargar pedidos
         await cargarPedidos();
         
-        // Ocultar loader y mostrar app
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
         
-        // Iniciar intervalo
         if (intervalo) clearInterval(intervalo);
         intervalo = setInterval(cargarPedidos, 5000);
         
-        // Notificaciones
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
     }
     
-    // Iniciar cuando el DOM esté listo
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', iniciarApp);
     } else {
         iniciarApp();
     }
 </script>
-</body>
-</html>

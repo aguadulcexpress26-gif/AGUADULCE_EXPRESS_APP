@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Repartidor Test</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>Repartidor Express</h1>
+    <div id="info"></div>
+    <div id="pedidos"></div>
+    
+    <script>
+        const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+        
+        let codigo = localStorage.getItem('reparto_code');
+        
+        if (!codigo) {
+            codigo = prompt('Código de repartidor (ej: R001):');
+            if (codigo) {
+                codigo = codigo.trim().toUpperCase();
+                localStorage.setItem('reparto_code', codigo);
+            }
+        }
+        
+        async function cargar() {
+            document.getElementById('info').innerHTML = 'Cargando...';
+            
+            try {
+                const resp = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + codigo);
+                const data = await resp.json();
+                
+                document.getElementById('info').innerHTML = 'Repartidor: ' + (data.nombre || codigo) + ' | Saldo: ' + (data.saldo || 0) + '€';
+                
+                const pedidos = data.pedidos || [];
+                
+                if (pedidos.length === 0) {
+                    document.getElementById('pedidos').innerHTML = '<p>📭 Sin pedidos asignados</p>';
+                    return;
+                }
+                
+                let html = '';
+                for (let i = 0; i < pedidos.length; i++) {
+                    const p = pedidos[i];
+                    html += '<div style="border:1px solid #ccc; margin:10px; padding:10px; border-radius:10px;">';
+                    html += '<p><strong>' + p.ID_PEDIDO + '</strong> - Estado: ' + (p.ESTADO || 'PREPARANDO') + '</p>';
+                    html += '<p>📍 ' + (p.DIRECCION || 'Sin dirección') + '</p>';
+                    html += '<p>👤 ' + (p.CLIENTE || 'Cliente') + '</p>';
+                    html += '<p>💰 ' + (p.TOTAL || 0) + '€</p>';
+                    html += '<button onclick="recoger(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER</button>';
+                    html += '</div>';
+                }
+                document.getElementById('pedidos').innerHTML = html;
+            } catch(e) {
+                document.getElementById('info').innerHTML = 'Error: ' + e.message;
+            }
+        }
+        
+        window.recoger = async function(id) {
+            await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            alert('Pedido recogido');
+            cargar();
+        };
+        
+        cargar();
+        setInterval(cargar, 10000);
+    </script>
+</body>
+</html>

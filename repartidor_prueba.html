@@ -330,7 +330,7 @@
         }
     }
     
-    // ============ INICIALIZACIÓN BLINDADA ============
+    // ============ INICIALIZACIÓN BLINDADA A PRUEBA DE LOCALSTORAGE ============
     async function iniciarApp() {
         console.log("⚙️ Ejecutando iniciarApp()...");
         initAudio();
@@ -339,49 +339,79 @@
         document.getElementById('btnHistorial').onclick = mostrarHistorial;
         document.getElementById('btnCerrarHistorial').onclick = cerrarHistorial;
         
-        let codigo = localStorage.getItem('rep_code');
-        console.log("🔑 Código en almacenamiento:", codigo);
+        let codigo = null;
+        
+        // Intentar leer localStorage de manera segura
+        try {
+            codigo = localStorage.getItem('rep_code');
+            console.log("🔑 Código en almacenamiento:", codigo);
+        } catch (error) {
+            console.warn("⚠️ LocalStorage bloqueado por el navegador. Usando memoria temporal.");
+            codigo = window.memoria_rep_code || null;
+        }
         
         if (!codigo) {
-            // Alternativa nativa si SweetAlert2 falla al cargar por red
+            // Comprobar si existe Swal (SweetAlert2)
             if (typeof Swal === 'undefined') {
                 let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor (Ej: R001):");
                 if (promptCodigo && promptCodigo.trim()) {
                     codigo = promptCodigo.trim().toUpperCase();
-                    localStorage.setItem('rep_code', codigo);
+                    try {
+                        localStorage.setItem('rep_code', codigo);
+                    } catch(e) {
+                        window.memoria_rep_code = codigo; // Fallback si está bloqueado
+                    }
                 } else {
                     document.getElementById('loader').innerHTML = '<p style="color:#ef4444; padding: 20px;">❌ Código requerido. Recarga la página.</p>';
                     return;
                 }
             } else {
-                const result = await Swal.fire({
-                    title: '🔐 Código de Repartidor',
-                    input: 'text',
-                    inputPlaceholder: 'Ej: R001, R003',
-                    background: '#020617', color: 'white', confirmButtonColor: '#06b6d4',
-                    allowOutsideClick: false
-                });
-                
-                if (result.value && result.value.trim()) {
-                    codigo = result.value.trim().toUpperCase();
-                    localStorage.setItem('rep_code', codigo);
-                } else {
-                    document.getElementById('loader').innerHTML = '<p style="color:#ef4444;">❌ Código requerido.</p>';
-                    return;
+                // Si SweetAlert2 está disponible
+                try {
+                    const result = await Swal.fire({
+                        title: '🔐 Código de Repartidor',
+                        input: 'text',
+                        inputPlaceholder: 'Ej: R001, R003',
+                        background: '#020617', color: 'white', confirmButtonColor: '#06b6d4',
+                        allowOutsideClick: false
+                    });
+                    
+                    if (result.value && result.value.trim()) {
+                        codigo = result.value.trim().toUpperCase();
+                        try {
+                            localStorage.setItem('rep_code', codigo);
+                        } catch(e) {
+                            window.memoria_rep_code = codigo;
+                        }
+                    } else {
+                        document.getElementById('loader').innerHTML = '<p style="color:#ef4444; padding: 20px;">❌ Código requerido.</p>';
+                        return;
+                    }
+                } catch(swalError) {
+                    // Si Swal falla por estar la ventana oculta o congelada, usamos el prompt clásico
+                    console.error("Fallo visual en Swal, usando prompt alternativo");
+                    let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor (Ej: R001):");
+                    codigo = (promptCodigo && promptCodigo.trim()) ? promptCodigo.trim().toUpperCase() : null;
                 }
             }
         }
         
+        // Validar que tengamos un código antes de proceder a la API
+        if (!codigo) {
+            document.getElementById('loader').innerHTML = '<p style="color:#ef4444; padding: 20px;">❌ No se pudo validar el código de acceso.</p>';
+            return;
+        }
+
         codigoActual = codigo;
         document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
         
-        console.log("📦 Solicitando primeros pedidos de la API...");
+        console.log("📦 Solicitando primeros pedidos de la API para: " + codigoActual);
         await cargarPedidos();
         
         // Revelamos la UI pase lo que pase
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-        console.log("✅ ¡App lista y visible!");
+        console.log("✅ ¡App lista y visible en pantalla!");
         
         if (intervalo) clearInterval(intervalo);
         intervalo = setInterval(cargarPedidos, 5000);

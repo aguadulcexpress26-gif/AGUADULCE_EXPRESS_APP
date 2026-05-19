@@ -348,34 +348,38 @@
         </div>
     </div>
 
-    <div id="modal-registro" class="modal-overlay">
-        <div class="registration-card">
-            <div class="registration-header">
-                <h2 class="text-2xl font-black uppercase italic text-cyan-400">¡Bienvenido!</h2>
-                <p class="text-gray-400 text-sm mt-2">Regístrate para realizar tu pedido</p>
+   <div id="modal-registro" class="modal-overlay">
+    <div class="registration-card">
+        <div class="registration-header">
+            <h2 class="text-2xl font-black uppercase italic text-cyan-400">¡Bienvenido!</h2>
+            <p class="text-gray-400 text-sm mt-2">Regístrate para realizar tu pedido</p>
+        </div>
+        <div class="registration-body mt-6">
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">Nombre Completo</label>
+                <input type="text" id="reg-nombre" placeholder="Ej. Juan Pérez">
             </div>
-            <div class="registration-body mt-6">
-                <div class="input-group text-left mb-4">
-                    <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">Nombre Completo</label>
-                    <input type="text" id="reg-nombre" placeholder="Ej. Juan Pérez">
-                </div>
-                <div class="input-group text-left mb-4">
-                    <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">Teléfono</label>
-                    <input type="tel" id="reg-telf" placeholder="600000000">
-                </div>
-                <div class="input-group text-left mb-4">
-                    <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">Dirección</label>
-                    <input type="text" id="reg-dir" placeholder="Calle, número, portal">
-                </div>
-                <div class="legal-notice flex items-start gap-3 mb-6">
-                    <input type="checkbox" id="reg-legal" class="w-5 h-5 accent-cyan-400 mt-0.5">
-                    <label class="text-[11px] text-gray-300">Acepto los términos y condiciones</label>
-                </div>
-                <button onclick="guardarRegistro()" class="w-full bg-cyan-400 text-black font-black py-4 rounded-2xl uppercase italic">Guardar y Empezar</button>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">Teléfono</label>
+                <input type="tel" id="reg-telf" placeholder="600000000">
             </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">Dirección</label>
+                <input type="text" id="reg-dir" placeholder="Calle, número, portal">
+            </div>
+            <!-- ========== MODIFICA ESTA PARTE ========== -->
+            <div class="legal-notice flex items-start gap-3 mb-6">
+                <input type="checkbox" id="reg-legal" class="w-5 h-5 accent-cyan-400 mt-0.5">
+                <label class="text-[11px] text-gray-300">
+                    Acepto los 
+                    <button type="button" onclick="verTerminos()" class="text-cyan-400 underline" style="background:none; border:none; cursor:pointer;">términos y condiciones</button>
+                </label>
+            </div>
+            <!-- ========================================== -->
+            <button onclick="guardarRegistro()" class="w-full bg-cyan-400 text-black font-black py-4 rounded-2xl uppercase italic">Guardar y Empezar</button>
         </div>
     </div>
-
+</div>
     <div id="panel-checkout" style="display:none; position:fixed; inset:0; background:#0a0a0a; z-index:4000; overflow-y:auto; padding:20px;">
         <div class="flex items-center gap-4 mb-8">
             <button onclick="cerrarCheckout()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
@@ -627,7 +631,33 @@
             mostrarToast("Registro exitoso", "🎉");
         }
         function borrarRegistro() { localStorage.removeItem("ae_cliente"); actualizarClienteUI(); mostrarToast("Sesión cerrada", "👋"); }
-
+        async function verTerminos() {
+    try {
+        const response = await fetch(scriptURL);
+        const data = await response.json();
+        const legalText = data.LEGAL?.[0]?.TEXTO || "No hay términos disponibles en este momento.";
+        
+        Swal.fire({
+            title: '📋 Términos y Condiciones',
+            html: `<div style="text-align:left; max-height: 400px; overflow-y: auto; padding: 10px;">
+                <p style="white-space: pre-wrap;">${legalText}</p>
+            </div>`,
+            icon: 'info',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#06b6d4',
+            confirmButtonText: 'Cerrar'
+        });
+    } catch(e) {
+        Swal.fire({
+            title: 'Error',
+            text: 'No se pudieron cargar los términos',
+            icon: 'error',
+            background: '#020617',
+            color: 'white'
+        });
+    }
+}
         // ==========================================
         // FUNCIÓN PARA VERIFICAR HORARIO GLOBAL
         // ==========================================
@@ -1082,34 +1112,77 @@
         }
         
         function iniciarSeguimientoPedido(idPedido) {
-            if (!idPedido) { console.error("❌ No se proporcionó ID de pedido"); return false; }
-            console.log("🔥 Iniciando seguimiento para:", idPedido);
-            localStorage.setItem('ae_pedido_activo', idPedido);
-            localStorage.setItem('ae_tracking_id', idPedido);
-            if (trackingListenerRef) {
-                console.log("🔄 Limpiando listener anterior");
-                try { trackingListenerRef.off(); } catch(e) { console.warn("Error al limpiar listener:", e); }
-                trackingListenerRef = null;
-            }
-            const trackingModal = document.getElementById('tracking-modal');
-            if (!trackingModal) { console.error("❌ No se encontró el modal de tracking"); return false; }
-            try {
-                trackingListenerRef = database.ref('pedidos/' + idPedido);
-                trackingListenerRef.on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    console.log("📡 Datos recibidos de Firebase en tiempo real:", data?.estado);
-                    if (data) { actualizarInterfazSeguimiento(data); } else { console.warn("⚠️ No hay datos para el pedido:", idPedido); limpiarSeguimientoCompleto(); }
-                }, (error) => { console.error("❌ Error en listener de Firebase:", error); });
-                database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
-                    const data = snapshot.val();
-                    if (data) { console.log("📦 Datos iniciales cargados:", data.estado); actualizarInterfazSeguimiento(data); } else { console.warn("⚠️ Pedido no encontrado en Firebase:", idPedido); limpiarSeguimientoCompleto(); }
-                }).catch(error => { console.error("❌ Error cargando pedido inicial:", error); });
-                const btn = document.getElementById('btn-reabrir-seguimiento');
-                if (btn) btn.style.display = 'flex';
-                console.log("✅ Seguimiento iniciado correctamente para:", idPedido);
-                return true;
-            } catch (error) { console.error("❌ Error crítico al iniciar seguimiento:", error); return false; }
+    if (!idPedido) { console.error("❌ No se proporcionó ID de pedido"); return false; }
+    console.log("🔥 Iniciando seguimiento para:", idPedido);
+    localStorage.setItem('ae_pedido_activo', idPedido);
+    localStorage.setItem('ae_tracking_id', idPedido);
+    
+    if (trackingListenerRef) {
+        console.log("🔄 Limpiando listener anterior");
+        try { trackingListenerRef.off(); } catch(e) { console.warn("Error al limpiar listener:", e); }
+        trackingListenerRef = null;
+    }
+    
+    const trackingModal = document.getElementById('tracking-modal');
+    if (!trackingModal) { console.error("❌ No se encontró el modal de tracking"); return false; }
+    
+    // ========== NUEVO: Escuchar cancelación / rechazo ==========
+    const cancelacionRef = database.ref('pedidos/' + idPedido);
+    cancelacionRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data && (data.estado === 'cancelado' || data.estado === 'rechazado')) {
+            const motivo = data.motivo_rechazo || data.motivo_cancelacion || 'No especificado';
+            Swal.fire({
+                title: data.estado === 'cancelado' ? '❌ Pedido Cancelado' : '❌ Pedido Rechazado',
+                html: `<div style="text-align:left;">
+                    <p><strong>Lo sentimos, tu pedido ha sido ${data.estado === 'cancelado' ? 'cancelado' : 'rechazado'}.</strong></p>
+                    <br>
+                    <p>📝 <strong>Motivo:</strong> ${motivo}</p>
+                    <br>
+                    <p>🔄 No se ha realizado ningún cobro.</p>
+                    <p>Puedes realizar un nuevo pedido cuando lo desees.</p>
+                    <br>
+                    <p>📞 Disculpa las molestias.</p>
+                </div>`,
+                icon: 'error',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#06b6d4',
+                confirmButtonText: 'Entendido'
+            }).then(() => {
+                limpiarSeguimientoCompleto();
+                cerrarModalTracking();
+                cesta = [];
+                actualizarCestaVisual();
+                location.reload();
+            });
         }
+    });
+    // ============================================================
+    
+    try {
+        trackingListenerRef = database.ref('pedidos/' + idPedido);
+        trackingListenerRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            console.log("📡 Datos recibidos de Firebase en tiempo real:", data?.estado);
+            if (data) { actualizarInterfazSeguimiento(data); } else { console.warn("⚠️ No hay datos para el pedido:", idPedido); limpiarSeguimientoCompleto(); }
+        }, (error) => { console.error("❌ Error en listener de Firebase:", error); });
+        
+        database.ref('pedidos/' + idPedido).once('value').then(snapshot => {
+            const data = snapshot.val();
+            if (data) { console.log("📦 Datos iniciales cargados:", data.estado); actualizarInterfazSeguimiento(data); } else { console.warn("⚠️ Pedido no encontrado en Firebase:", idPedido); limpiarSeguimientoCompleto(); }
+        }).catch(error => { console.error("❌ Error cargando pedido inicial:", error); });
+        
+        const btn = document.getElementById('btn-reabrir-seguimiento');
+        if (btn) btn.style.display = 'flex';
+        console.log("✅ Seguimiento iniciado correctamente para:", idPedido);
+        return true;
+        
+    } catch (error) { 
+        console.error("❌ Error crítico al iniciar seguimiento:", error); 
+        return false; 
+    }
+}
         
         function actualizarInterfazSeguimiento(data) {
             if (!data) { console.warn("⚠️ actualizarInterfazSeguimiento llamada sin datos"); return; }

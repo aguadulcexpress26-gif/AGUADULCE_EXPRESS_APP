@@ -108,6 +108,9 @@
 </div>
 
 <script>
+    // 0. Comprobación inmediata de vida del script en consola
+    console.log("🚀 Script detectado e iniciando ejecución...");
+
     const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
     let codigoActual = null;
@@ -123,7 +126,7 @@
     function playSound() {
         if (audioNotif) {
             audioNotif.currentTime = 0;
-            audioNotif.play().catch(e => console.log('Audio bloqueado por el navegador hasta interacción usuario.'));
+            audioNotif.play().catch(e => console.log('Audio en espera de interacción.'));
         }
     }
     
@@ -142,7 +145,6 @@
     
     async function cargarPedidos() {
         if (!codigoActual) return;
-        
         try {
             const res = await fetchConTimeout(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigoActual) + '&t=' + Date.now());
             const data = await res.json();
@@ -170,7 +172,7 @@
             
             renderizarPedidos(pedidosActivos);
         } catch(e) {
-            console.error(e);
+            console.error("Error en cargarPedidos:", e);
             document.getElementById('estadoConexion').innerHTML = 'Offline';
             document.getElementById('estadoConexion').style.color = '#ef4444';
         }
@@ -178,7 +180,6 @@
     
     function renderizarPedidos(pedidos) {
         const contenedor = document.getElementById('listaPedidos');
-        
         const pedidosFiltrados = pedidos.filter(p => {
             const estado = (p.ESTADO || '').toUpperCase();
             return estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'ENTREGADO';
@@ -194,15 +195,12 @@
             const estado = (p.ESTADO || '').toUpperCase();
             const total = parseFloat(p.TOTAL) || 0;
             let telefono = p.telf || '';
-            
-            // Limpiar teléfono y asegurar código de país (Ej: 34 para España)
             let telefonoLimpio = String(telefono).replace(/\D/g, '');
             if (telefonoLimpio.length === 9 && (telefonoLimpio.startsWith('6') || telefonoLimpio.startsWith('7'))) {
                 telefonoLimpio = '34' + telefonoLimpio;
             }
             
             let botones = '';
-            
             if (estado === 'LISTO') {
                 botones = `<button class="btn-recoger" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
             } else if (estado === 'EN CAMINO') {
@@ -231,7 +229,6 @@
             html += '</div>';
             
             html += '<div class="acciones">';
-            // URL de Mapas corregida
             html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
             if (telefonoLimpio) {
                 html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
@@ -242,11 +239,9 @@
             html += '<span>💰 Total:</span>';
             html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
             html += '</div>';
-            
             html += botones;
             html += '</div>';
         }
-        
         contenedor.innerHTML = html;
     }
     
@@ -254,16 +249,14 @@
         btn.disabled = true;
         const textoOriginal = btn.innerHTML;
         btn.innerHTML = '⏳ Procesando...';
-        
         try {
             await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-            await Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            if(typeof Swal !== 'undefined') await Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
             await cargarPedidos();
         } catch(e) {
-            await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
+            console.error(e);
         } finally {
-            btn.disabled = false;
-            btn.innerHTML = textoOriginal;
+            btn.disabled = false; btn.innerHTML = textoOriginal;
         }
     };
     
@@ -271,110 +264,75 @@
         btn.disabled = true;
         const textoOriginal = btn.innerHTML;
         btn.innerHTML = '⏳ Procesando...';
-        
         try {
             await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
-            await Swal.fire({ title: '📍 Llegaste al cliente', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            if(typeof Swal !== 'undefined') await Swal.fire({ title: '📍 Llegaste al cliente', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
             await cargarPedidos();
         } catch(e) {
-            await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
+            console.error(e);
         } finally {
-            btn.disabled = false;
-            btn.innerHTML = textoOriginal;
+            btn.disabled = false; btn.innerHTML = textoOriginal;
         }
     };
     
     window.confirmarEntrega = function(id, total) {
-        Swal.fire({
-            title: '💰 Confirmar Entrega',
-            html: `Cobrarás <strong>${total.toFixed(2)}€</strong><br>¿Confirmas que el cliente pagó?`,
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#22c55e',
-            confirmButtonText: '✅ Sí, cobrar y entregar',
-            showCancelButton: true,
-            cancelButtonText: 'No'
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                await finalizarEntrega(id, total);
-            }
-        });
+        if(typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: '💰 Confirmar Entrega',
+                html: `Cobrarás <strong>${total.toFixed(2)}€</strong><br>¿Confirmas que el cliente pagó?`,
+                icon: 'question',
+                background: '#020617', color: 'white',
+                confirmButtonColor: '#22c55e', confirmButtonText: '✅ Sí, cobrar y entregar',
+                showCancelButton: true, cancelButtonText: 'No'
+            }).then(async (result) => {
+                if (result.isConfirmed) await finalizarEntrega(id, total);
+            });
+        } else {
+            if(confirm(`¿Confirmar entrega de ${total.toFixed(2)}€?`)) finalizarEntrega(id, total);
+        }
     };
     
     window.finalizarEntrega = async function(id, total) {
         try {
             await fetchConTimeout(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
-            await Swal.fire({ title: '🎉 Entrega Completada', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
+            if(typeof Swal !== 'undefined') await Swal.fire({ title: '🎉 Entrega Completada', text: `+${total.toFixed(2)}€`, icon: 'success', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
             await cargarPedidos();
         } catch(e) {
-            await Swal.fire({ title: 'Error', text: 'Error al finalizar', icon: 'error', background: '#020617', color: 'white' });
+            console.error(e);
         }
     };
     
     async function mostrarHistorial() {
-        const modal = document.getElementById('modalHistorial');
-        modal.style.display = 'flex';
-        
+        document.getElementById('modalHistorial').style.display = 'flex';
         try {
             const res = await fetchConTimeout(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigoActual));
             const data = await res.json();
             const pedidos = data.historial || [];
-            
             let html = '';
             for (let p of pedidos.slice().reverse()) {
                 if (p.ESTADO === 'ENTREGADO') {
-                    html += '<div class="historial-item">';
-                    html += '<div><strong>' + p.ID_PEDIDO + '</strong><br><span style="font-size: 11px;">' + (p.CLIENTE || 'Cliente') + '</span></div>';
-                    html += '<div class="historial-total">' + (parseFloat(p.TOTAL) || 0).toFixed(2) + '€</div>';
-                    html += '</div>';
+                    html += `<div class="historial-item"><div><strong>${p.ID_PEDIDO}</strong><br><span style="font-size: 11px;">${p.CLIENTE || 'Cliente'}</span></div><div class="historial-total">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div></div>`;
                 }
             }
-            
-            if (html === '') {
-                html = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas</div>';
-            }
-            
-            document.getElementById('historialLista').innerHTML = html;
+            document.getElementById('historialLista').innerHTML = html || '<div class="text-center" style="padding: 40px;">📭 No hay entregas</div>';
         } catch(e) {
-            document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
+            document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error</div>';
         }
     }
     
-    function cerrarHistorial() {
-        document.getElementById('modalHistorial').style.display = 'none';
-    }
+    function cerrarHistorial() { document.getElementById('modalHistorial').style.display = 'none'; }
     
     async function cerrarSesion() {
-        const result = await Swal.fire({
-            title: '¿Cerrar sesión?',
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, salir',
-            showCancelButton: true,
-            cancelButtonText: 'No'
-        });
-        
-        if (result.isConfirmed) {
-            if (intervalo) {
-                clearInterval(intervalo);
-                intervalo = null;
-            }
+        if (confirm("¿Cerrar sesión?")) {
+            if (intervalo) clearInterval(intervalo);
             localStorage.removeItem('rep_code');
-            codigoActual = null;
-            ultimosIds = [];
-            
-            document.getElementById('app').style.display = 'none';
-            document.getElementById('loader').style.display = 'flex';
-            
             location.reload();
         }
     }
     
-    // ============ INICIALIZACIÓN ============
+    // ============ INICIALIZACIÓN BLINDADA ============
     async function iniciarApp() {
+        console.log("⚙️ Ejecutando iniciarApp()...");
         initAudio();
         
         document.getElementById('btnSalir').onclick = cerrarSesion;
@@ -382,48 +340,58 @@
         document.getElementById('btnCerrarHistorial').onclick = cerrarHistorial;
         
         let codigo = localStorage.getItem('rep_code');
+        console.log("🔑 Código en almacenamiento:", codigo);
         
         if (!codigo) {
-            const result = await Swal.fire({
-                title: '🔐 Código de Repartidor',
-                input: 'text',
-                inputPlaceholder: 'Ej: R001, R003',
-                background: '#020617',
-                color: 'white',
-                confirmButtonColor: '#06b6d4',
-                allowOutsideClick: false
-            });
-            
-            if (result.value && result.value.trim()) {
-                codigo = result.value.trim().toUpperCase();
-                localStorage.setItem('rep_code', codigo);
-                // Forzar reproducción silenciosa para habilitar audio en iOS/Android tras la interacción
-                if(audioNotif) { audioNotif.play().catch(()=>{}); }
+            // Alternativa nativa si SweetAlert2 falla al cargar por red
+            if (typeof Swal === 'undefined') {
+                let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor (Ej: R001):");
+                if (promptCodigo && promptCodigo.trim()) {
+                    codigo = promptCodigo.trim().toUpperCase();
+                    localStorage.setItem('rep_code', codigo);
+                } else {
+                    document.getElementById('loader').innerHTML = '<p style="color:#ef4444; padding: 20px;">❌ Código requerido. Recarga la página.</p>';
+                    return;
+                }
             } else {
-                document.getElementById('loader').innerHTML = '<p style="color:#ef4444;">❌ No se ingresó código. Recarga la página.</p>';
-                return;
+                const result = await Swal.fire({
+                    title: '🔐 Código de Repartidor',
+                    input: 'text',
+                    inputPlaceholder: 'Ej: R001, R003',
+                    background: '#020617', color: 'white', confirmButtonColor: '#06b6d4',
+                    allowOutsideClick: false
+                });
+                
+                if (result.value && result.value.trim()) {
+                    codigo = result.value.trim().toUpperCase();
+                    localStorage.setItem('rep_code', codigo);
+                } else {
+                    document.getElementById('loader').innerHTML = '<p style="color:#ef4444;">❌ Código requerido.</p>';
+                    return;
+                }
             }
         }
         
         codigoActual = codigo;
         document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
         
+        console.log("📦 Solicitando primeros pedidos de la API...");
         await cargarPedidos();
         
+        // Revelamos la UI pase lo que pase
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
+        console.log("✅ ¡App lista y visible!");
         
         if (intervalo) clearInterval(intervalo);
         intervalo = setInterval(cargarPedidos, 5000);
-        
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
     }
     
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', iniciarApp);
-    } else {
-        iniciarApp();
-    }
+    // Forzamos la ejecución directa ignorando el estado si el DOM ya se estructuró
+    iniciarApp().catch(err => {
+        console.error("💥 Error fatal en inicialización:", err);
+        // Si hay un error destructivo, al menos forzamos mostrar la app para que no se quede negra
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+    });
 </script>

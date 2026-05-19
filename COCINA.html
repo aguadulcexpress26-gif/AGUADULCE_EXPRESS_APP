@@ -41,7 +41,6 @@
         .sidebar.open { right: 0; }
         .historial-card { background: #1e293b; border-radius: 16px; padding: 12px; margin-bottom: 10px; cursor: pointer; }
         
-        /* Z-INDEX RE AJUSTADO A NIVEL SEGURO */
         .loader { position: fixed; inset: 0; background: var(--dark); z-index: 500; display: flex; align-items: center; justify-content: center; flex-direction: column; }
         .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -149,7 +148,6 @@
         Swal.fire({ title: titulo, text: texto, icon: icono, background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
     }
     
-    // CONTROL DE FLUJO SEGURO EN EL ARRANQUE
     window.onload = async () => { 
         initAudio(); 
         if(MI_ID_REST) {
@@ -175,11 +173,9 @@
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
         
-        // Carga primaria antes de activar escuchas en tiempo real
         await cargar();
         
         database.ref('pedidosActivos').on('value', () => {
-            console.log("🔄 Actualización detectada en Firebase");
             cargar();
         });
         
@@ -356,7 +352,7 @@
                 deuda_acumulada: 0
             });
             
-            mostrarMensaje('❌ Pedido">❌ Pedido Rechazado', `Motivo: ${motivoTexto}`, 'error');
+            mostrarMensaje('❌ Pedido Rechazado', `Motivo: ${motivoTexto}`, 'error');
             aceptados.delete(id);
             cargar();
         } catch(e) {
@@ -364,23 +360,111 @@
         }
     }
     
+    // MODAL DE DETALLES OPTIMIZADO CON FUNCIÓN DE IMPRESIÓN DE TICKET DE EMBALAJE
     function verDetalles(id) { 
         let p = [...pedidosActivos, ...historialHoy].find(x=>x.ID_PEDIDO==id); 
         if(p) {
+            let textoMetodo = p.PAGO || 'Efectivo';
+            let informacionPagoExtra = '';
+            let pagaCon = parseFloat(p.PAGA_CON) || 0;
+            if(pagaCon > 0 && textoMetodo.toUpperCase().includes('EFECTIVO')) {
+                let cambio = pagaCon - (parseFloat(p.TOTAL) || 0);
+                informacionPagoExtra = `<br><strong>💵 Paga con:</strong> ${pagaCon.toFixed(2)}€ (Cambio: ${cambio > 0 ? cambio.toFixed(2) : '0.00'}€)`;
+            }
+
             Swal.fire({
                 title: `Pedido #${p.ID_PEDIDO}`,
-                html: `<div style="text-align:left; font-size: 14px; line-height: 1.6;">
+                html: `<div id="ticketModalView" style="text-align:left; font-size: 14px; line-height: 1.6;">
                     <strong>👤 Cliente:</strong> ${p.CLIENTE}<br>
                     <strong>📍 Dirección:</strong> ${p.DIRECCION || 'No especificada'}<br>
-                    <strong>📋 Detalle:</strong><br><span class="text-cyan-400">${(p.PEDIDO_DETALLE || '').replace(/\n/g, '<br>')}</span><br>
-                    <strong>💰 Total:</strong> ${parseFloat(p.TOTAL).toFixed(2)}€
+                    <strong>💳 Método de Pago:</strong> ${textoMetodo}${informacionPagoExtra}<br><br>
+                    <strong style="border-bottom: 1px dashed rgba(255,255,255,0.2); display:block; padding-bottom:4px;">📋 DETALLE DEL PEDIDO:</strong>
+                    <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; margin-top: 6px; font-family: monospace; white-space: pre-wrap; color: #06b6d4;">${p.PEDIDO_DETALLE || ''}</div><br>
+                    <strong>💰 Total:</strong> <span style="font-size:16px; color:#22c55e; font-weight:bold;">${parseFloat(p.TOTAL).toFixed(2)}€</span>
                 </div>`,
                 icon: 'info',
                 background: '#020617',
                 color: 'white',
-                confirmButtonColor: '#06b6d4'
+                showCancelButton: true,
+                confirmButtonColor: '#06b6d4',
+                cancelButtonColor: '#1e293b',
+                confirmButtonText: '🖨️ Imprimir Ticket',
+                cancelButtonText: 'Cerrar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    imprimirTicketFisico(p);
+                }
             });
         }
+    }
+
+    // INYECCIÓN DINÁMICA DE VENTANA OCULTA DE IMPRESIÓN (TÉRMICA DE BOLSA)
+    function imprimirTicketFisico(pedido) {
+        const ventanaImpresion = window.open('', '_blank', 'width=600,height=600');
+        
+        let cambioTexto = '';
+        let pagaCon = parseFloat(pedido.PAGA_CON) || 0;
+        if(pagaCon > 0 && (pedido.PAGO || '').toUpperCase().includes('EFECTIVO')) {
+            let vuelto = pagaCon - (parseFloat(pedido.TOTAL) || 0);
+            cambioTexto = `
+                <p><strong>Paga Con:</strong> ${pagaCon.toFixed(2)}€</p>
+                <p><strong>Cambio a Llevar:</strong> ${vuelto > 0 ? vuelto.toFixed(2) : '0.00'}€</p>
+            `;
+        }
+
+        ventanaImpresion.document.write(`
+            <html>
+            <head>
+                <title>Ticket_Pedido_${pedido.ID_PEDIDO}</title>
+                <style>
+                    body { 
+                        font-family: 'Courier New', Courier, monospace; 
+                        color: #000; 
+                        background: #fff; 
+                        padding: 10px; 
+                        font-size: 14px; 
+                        width: 100%;
+                        max-width: 280px; /* Ancho ideal para impresoras de ticket de 58mm / 80mm */
+                        margin: 0 auto;
+                    }
+                    .text-center { text-align: center; }
+                    .separator { border-top: 1px dashed #000; margin: 10px 0; }
+                    .id-pedido { font-size: 22px; font-weight: bold; margin: 5px 0; }
+                    .detalle-productos { white-space: pre-wrap; font-size: 13px; font-weight: bold; margin: 10px 0; }
+                    .total { font-size: 16px; font-weight: bold; text-align: right; }
+                </style>
+            </head>
+            <body>
+                <div class="text-center">
+                    <h2 style="margin:0; font-size:16px;">AGUADULCE EXPRESS</h2>
+                    <p style="margin:2px 0; font-size:11px;">Control de Cocina y Embalaje</p>
+                    <div class="separator"></div>
+                    <div class="id-pedido">TICKET #${pedido.ID_PEDIDO}</div>
+                    <p style="margin:2px 0; font-size:11px;">${new Date().toLocaleString('es-ES')}</p>
+                </div>
+                <div class="separator"></div>
+                <p><strong>Cliente:</strong> ${pedido.CLIENTE}</p>
+                <p><strong>Dirección:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p>
+                <div class="separator"></div>
+                <div class="detalle-productos">${pedido.PEDIDO_DETALLE || ''}</div>
+                <div class="separator"></div>
+                <p><strong>Pago:</strong> ${pedido.PAGO || 'Efectivo'}</p>
+                ${cambioTexto}
+                <div class="total">TOTAL: ${parseFloat(pedido.TOTAL).toFixed(2)}€</div>
+                <div class="separator"></div>
+                <div class="text-center" style="font-size:11px; margin-top:15px;">
+                    ¡Buen servicio!<br>Verifica bien la bolsa antes de salir.
+                </div>
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function(){ window.close(); }, 500);
+                    };
+                <\/script>
+            </body>
+            </html>
+        `);
+        ventanaImpresion.document.close();
     }
     
     function confirmarListo(id) { 
@@ -462,7 +546,6 @@
         });
     }
     
-    // HISTORIAL CORREGIDO CON LAS CLASES DE TEXTO ESTABLES DE TAILWIND
     function abrirHistorial() {
         let lista = document.getElementById('listaHistorial');
         if(historialHoy.length === 0) {

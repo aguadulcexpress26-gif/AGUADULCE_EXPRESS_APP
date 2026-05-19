@@ -13,7 +13,7 @@
             color: #f8fafc;
             font-family: system-ui, -apple-system, sans-serif;
         }
-        /* LOADER CORREGIDO: z-index bajado a 500 para que SweetAlert (z-index ~1060) se muestre POR ENCIMA */
+        /* LOADER RESTAURADO CON TU COLOR CYAN Y Z-INDEX SEGURO */
         .loader {
             position: fixed;
             top: 0;
@@ -50,10 +50,15 @@
         .flex { display: flex; }
         .justify-between { justify-content: space-between; }
         .items-center { align-items: center; }
+        
+        /* BOTONES ORIGINALES RESTAURADOS CON SU APARIENCIA EXACTA */
         .btn-recoger { background: #06b6d4; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
         .btn-llegada { background: #f59e0b; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
         .btn-entregar { background: #22c55e; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        
         .sin-pedidos { text-align: center; padding: 40px; color: #64748b; font-size: 16px; }
+        
+        /* APARIENCIA DEL MODAL DE HISTORIAL ORIGINAL */
         .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(2,6,23,0.8); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 20px; }
         .modal-content { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 20px; width: 100%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
         .historial-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b; }
@@ -111,10 +116,10 @@
     <script>
         console.log("🚀 Script detectado e iniciando ejecución...");
 
-        // URL de tu implementación de Google Apps Script
         const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
         
         let codigoActual = null;
+        let nombreActualServer = null; // Guarda el nombre real devuelto por la API para el historial
         let intervalo = null;
         let audioNotif = null;
         let ultimosIds = [];
@@ -127,7 +132,7 @@
         function playSound() {
             if (audioNotif) {
                 audioNotif.currentTime = 0;
-                audioNotif.play().catch(e => console.log('Audio en espera de interacción del usuario.'));
+                audioNotif.play().catch(e => console.log('Audio en espera de interacción.'));
             }
         }
         
@@ -144,6 +149,7 @@
             }
         }
         
+        // CORRECCIÓN DEL FILTRO DE ESTADOS IMPREVISTOS
         async function cargarPedidos() {
             if (!codigoActual) return;
             try {
@@ -158,33 +164,39 @@
                 
                 document.getElementById('estadoConexion').innerHTML = 'Conectado';
                 document.getElementById('estadoConexion').style.color = '#22c55e';
-                document.getElementById('nombreRep').innerHTML = data.nombre || codigoActual;
+                
+                // Mapeamos y guardamos el nombre real del servidor para el módulo de historial
+                nombreActualServer = data.nombre || codigoActual;
+                document.getElementById('nombreRep').innerHTML = nombreActualServer;
                 document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
                 
-                const nuevosIds = (data.pedidos || []).map(p => p.ID_PEDIDO);
+                // REPARACIÓN CRÍTICA: Filtramos para que CANCELADO y RECHAZADO mueran de inmediato en la app
+                const pedidosActivosReales = (data.pedidos || []).filter(p => {
+                    const est = (p.ESTADO || '').toUpperCase().trim();
+                    return est !== 'CANCELADO' && est !== 'RECHAZADO' && est !== 'ENTREGADO';
+                });
+
+                const nuevosIds = pedidosActivosReales.map(p => p.ID_PEDIDO);
                 const realmenteNuevos = nuevosIds.filter(id => !ultimosIds.includes(id));
                 if (realmenteNuevos.length > 0) {
                     playSound();
                 }
                 
                 ultimosIds = nuevosIds;
-                const pedidosActivos = data.pedidos || [];
-                document.getElementById('contadorPedidos').innerHTML = pedidosActivos.length + ' pedido' + (pedidosActivos.length !== 1 ? 's' : '');
                 
-                renderizarPedidos(pedidosActivos);
+                // El contador se actualiza dinámicamente con los pedidos que realmente puede trabajar
+                document.getElementById('contadorPedidos').innerHTML = pedidosActivosReales.length + ' pedido' + (pedidosActivosReales.length !== 1 ? 's' : '');
+                
+                renderizarPedidos(pedidosActivosReales);
             } catch(e) {
-                console.error("Error en conexión o parseo de cargarPedidos:", e);
+                console.error("Error en conexión:", e);
                 document.getElementById('estadoConexion').innerHTML = 'Offline';
                 document.getElementById('estadoConexion').style.color = '#ef4444';
             }
         }
         
-        function renderizarPedidos(pedidos) {
+        function renderizarPedidos(pedidosFiltrados) {
             const contenedor = document.getElementById('listaPedidos');
-            const pedidosFiltrados = pedidos.filter(p => {
-                const estado = (p.ESTADO || '').toUpperCase();
-                return estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'ENTREGADO';
-            });
             
             if (pedidosFiltrados.length === 0) {
                 contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
@@ -193,7 +205,7 @@
             
             let html = '';
             for (let p of pedidosFiltrados) {
-                const estado = (p.ESTADO || '').toUpperCase();
+                const estado = (p.ESTADO || '').toUpperCase().trim();
                 const total = parseFloat(p.TOTAL) || 0;
                 let telefono = p.telf || '';
                 let telefonoLimpio = String(telefono).replace(/\D/g, '');
@@ -202,7 +214,7 @@
                 }
                 
                 let botones = '';
-                if (estado === 'LISTO') {
+                if (estado === 'LISTO' || estado === 'RECIBIDO') {
                     botones = `<button class="btn-recoger" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
                 } else if (estado === 'EN CAMINO') {
                     botones = `<button class="btn-llegada" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
@@ -213,9 +225,8 @@
                 }
                 
                 html += '<div class="card">';
-                html += '<div class="flex justify-between items-center" style="margin-bottom: 10px;"><span style="font-weight: bold; color: #06b6d4;">📋 REF: ' + p.ID_PEDIDO + '</span><span style="background:rgba(6,182,212,0.2);color:#06b6d4;padding:3px 10px;border-radius:20px;font-size:11px;font-weight: bold;">' + (estado || 'PREPARANDO') + '</span></div>';
+                html += '<div class="flex justify-between items-center" style="margin-bottom: 10px;"><span style="font-weight: bold; color: #06b6d4;">📋 REF: ' + p.ID_PEDIDO + '</span><span style="background:rgba(6,182,212,0.2);color:#06b6d4;padding:3px 10px;border-radius:20px;font-size:11px;font-weight: bold;">' + estado + '</span></div>';
                 html += '<div style="font-size: 15px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9;">📍 ' + (p.DIRECCION || 'Sin dirección registrada') + '</div>';
-                
                 html += '<div style="background: #1e293b; padding: 10px; border-radius: 12px; margin-bottom: 12px; font-size: 13px;">';
                 html += '<div style="margin-bottom: 4px; color: #e2e8f0;">👤 <strong>' + (p.CLIENTE || 'Cliente Desconocido') + '</strong></div>';
                 html += '<div class="flex justify-between items-center">';
@@ -229,7 +240,6 @@
                 html += '</div>';
                 html += '<div style="margin-top: 6px; color: #94a3b8;">💳 Método: <span style="color:#f1f5f9; font-weight:500;">' + (p.PAGO || 'Efectivo') + '</span></div>';
                 html += '</div>';
-                
                 html += '<div class="flex justify-between items-center" style="margin: 12px 0; padding-top: 4px;">';
                 html += '<span style="color:#94a3b8;">Total a recibir:</span>';
                 html += '<span style="color:#22c55e; font-size: 18px; font-weight: bold;">' + total.toFixed(2) + '€</span>';
@@ -283,16 +293,21 @@
             } catch(e) { console.error(e); }
         };
         
+        // REPARACIÓN COMPLETA DEL MODULO DE HISTORIAL
         async function mostrarHistorial() {
             document.getElementById('modalHistorial').style.display = 'flex';
             document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 20px; color:#64748b;">⏳ Cargando historial...</div>';
+            
+            // Enviamos el nombre real del repartidor (Ej: JUAN SAVERI) que es como se guarda en la hoja "PEDIDOS"
+            const parametroBusqueda = nombreActualServer || codigoActual;
             try {
-                const res = await fetchConTimeout(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigoActual));
+                const res = await fetchConTimeout(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(parametroBusqueda));
                 const data = await res.json();
                 const pedidos = data.historial || [];
                 let html = '';
+                
                 for (let p of pedidos.slice().reverse()) {
-                    if (p.ESTADO === 'ENTREGADO') {
+                    if ((p.ESTADO || '').toUpperCase().trim() === 'ENTREGADO') {
                         html += `<div class="historial-item"><div><strong>Pedido #${p.ID_PEDIDO}</strong><br><span style="font-size: 11px; color:#94a3b8;">👤 ${p.CLIENTE || 'Cliente'}</span></div><div class="historial-total">+${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div></div>`;
                     }
                 }
@@ -305,14 +320,13 @@
         function cerrarHistorial() { document.getElementById('modalHistorial').style.display = 'none'; }
         
         async function cerrarSesion() {
-            if (confirm("¿Seguro que deseas cerrar sesión en este dispositivo?")) {
+            if (confirm("¿Seguro que deseas cerrar sesión?")) {
                 if (intervalo) clearInterval(intervalo);
                 localStorage.removeItem('rep_code');
                 location.reload();
             }
         }
         
-        // ============ SISTEMA DE ARRANQUE PROTEGIDO ============
         async function iniciarApp() {
             console.log("⚙️ Ejecutando iniciarApp()...");
             initAudio();
@@ -326,20 +340,17 @@
                 codigo = localStorage.getItem('rep_code');
                 console.log("🔑 Código en almacenamiento:", codigo);
             } catch (error) {
-                console.warn("⚠️ LocalStorage inaccesible, usando memoria volátil.");
+                console.warn("⚠️ LocalStorage temporal.");
             }
             
-            // Si no hay sesión iniciada, solicitamos código al repartidor
             if (!codigo) {
                 if (typeof Swal === 'undefined') {
-                    console.log("⚠️ SweetAlert no cargó a tiempo. Usando prompt del sistema.");
                     let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor (Ej: R001, R002):");
                     if (promptCodigo && promptCodigo.trim()) {
                         codigo = promptCodigo.trim().toUpperCase();
                         localStorage.setItem('rep_code', codigo);
                     }
                 } else {
-                    console.log("🎨 Solicitando código mediante SweetAlert2...");
                     try {
                         const result = await Swal.fire({
                             title: '🔐 Identificación',
@@ -358,7 +369,6 @@
                             localStorage.setItem('rep_code', codigo);
                         }
                     } catch (swalError) {
-                        console.error("Fallo estructural en el modal. Activando prompt nativo:", swalError);
                         let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor (Ej: R001):");
                         if (promptCodigo && promptCodigo.trim()) {
                             codigo = promptCodigo.trim().toUpperCase();
@@ -369,21 +379,19 @@
             }
             
             if (!codigo) {
-                document.getElementById('loader').innerHTML = '<h2 style="color:#ef4444; font-weight:bold; padding:20px; text-align:center;">❌ Acceso denegado. Se necesita un código de repartidor para continuar.</h2>';
+                document.getElementById('loader').innerHTML = '<h2 style="color:#ef4444; font-weight:bold; padding:20px; text-align:center;">❌ Acceso denegado. Se necesita código.</h2>';
                 return;
             }
 
             codigoActual = codigo;
-            document.getElementById('codigoRep').innerHTML = '🔑 Código de Acceso: ' + codigoActual;
+            document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
             
-            console.log("📦 Solicitando primeros pedidos de la API para el repartidor:", codigoActual);
             try {
                 await cargarPedidos();
             } catch (err) {
-                console.error("Aviso: No se pudieron descargar los datos iniciales, reintentando en segundo plano.", err);
+                console.error("Reintentando conexión diferida.", err);
             }
             
-            // Desactivar el loader y mostrar la pantalla limpia
             document.getElementById('loader').style.display = 'none';
             document.getElementById('app').style.display = 'block';
             console.log("✅ ¡App lista y visible en pantalla!");
@@ -392,9 +400,8 @@
             intervalo = setInterval(cargarPedidos, 5000);
         }
         
-        // Lanzamiento directo sin atascamiento de ciclo de vida
         iniciarApp().catch(err => {
-            console.error("💥 Error crítico fatal en el arranque:", err);
+            console.error("💥 Error fatal:", err);
             document.getElementById('loader').style.display = 'none';
             document.getElementById('app').style.display = 'block';
         });

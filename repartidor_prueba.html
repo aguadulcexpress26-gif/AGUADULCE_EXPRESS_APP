@@ -147,7 +147,7 @@
     let ultimosIds = [];
     let colaPendientes = [];
     
-    // ============ INICIALIZACIÓN ============
+    // ============ FUNCIONES AUXILIARES ============
     function initAudio() {
         audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audioNotif.volume = 0.8;
@@ -347,7 +347,6 @@
             const telefonoLimpio = String(telefono).replace(/\D/g, '');
             const tieneTimer = timersActivos[p.ID_PEDIDO];
             
-            // Calcular tiempo de cocina (timestampListo del backend)
             let tiempoHtml = '';
             if (p.timestampListo && p.timestampListo !== "" && p.timestampListo !== 0) {
                 const tiempo = calcularTiempoRestante(p.timestampListo);
@@ -424,15 +423,20 @@
             return;
         }
         
-        await conLoading(btn, async () => {
-            try {
-                await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-                await Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
-                await cargarPedidos();
-            } catch(e) {
-                await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
-            }
-        });
+        btn.disabled = true;
+        const textoOriginal = btn.innerHTML;
+        btn.innerHTML = '⏳ Procesando...';
+        
+        try {
+            await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            await Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            await cargarPedidos();
+        } catch(e) {
+            await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
     };
     
     window.marcarLlegada = async function(btn, id) {
@@ -441,15 +445,20 @@
             return;
         }
         
-        await conLoading(btn, async () => {
-            try {
-                await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
-                await Swal.fire({ title: '📍 Llegaste al cliente', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
-                await cargarPedidos();
-            } catch(e) {
-                await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
-            }
-        });
+        btn.disabled = true;
+        const textoOriginal = btn.innerHTML;
+        btn.innerHTML = '⏳ Procesando...';
+        
+        try {
+            await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+            await Swal.fire({ title: '📍 Llegaste al cliente', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            await cargarPedidos();
+        } catch(e) {
+            await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
     };
     
     window.iniciarTimerCancelacion = function(idPedido, total) {
@@ -628,19 +637,6 @@
         document.getElementById('modalHistorial').style.display = 'none';
     };
     
-    // ============ UTILIDADES ============
-    async function conLoading(btn, callback) {
-        const textoOriginal = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Procesando...';
-        try {
-            await callback();
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = textoOriginal;
-        }
-    }
-    
     window.cerrarSesion = function() {
         Swal.fire({
             title: '¿Cerrar sesión?',
@@ -661,26 +657,28 @@
         });
     };
     
-    // Solicitar permiso de notificaciones
-    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-        Notification.requestPermission();
-    }
-    
-    // Iniciar
-    initAudio();
-    cargarColaOffline();
-    
-    if (!codigo) {
-        Swal.fire({
-            title: '🔐 Código de Repartidor',
-            input: 'text',
-            inputPlaceholder: 'Ej: R001',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#06b6d4',
-            showCancelButton: false,
-            allowOutsideClick: false
-        }).then(async (result) => {
+    // ============ INICIALIZACIÓN ============
+    async function iniciarApp() {
+        initAudio();
+        cargarColaOffline();
+        
+        // Solicitar permiso de notificaciones
+        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+        
+        if (!codigo) {
+            const result = await Swal.fire({
+                title: '🔐 Código de Repartidor',
+                input: 'text',
+                inputPlaceholder: 'Ej: R001',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#06b6d4',
+                showCancelButton: false,
+                allowOutsideClick: false
+            });
+            
             if (result.value) {
                 codigo = result.value.trim().toUpperCase();
                 localStorage.setItem('rep_code', codigo);
@@ -688,18 +686,27 @@
                 await cargarPedidos();
                 document.getElementById('loader').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
-                window.addEventListener('online', () => { procesarColaOffline(); cargarPedidos(); });
-                window.addEventListener('offline', () => mostrarBannerOffline(true));
+            } else {
+                document.getElementById('loader').innerHTML = '<p>❌ No se ingresó código</p>';
+                return;
             }
+        } else {
+            document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
+            await cargarPedidos();
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+        }
+        
+        window.addEventListener('online', () => { 
+            mostrarBannerOffline(false); 
+            procesarColaOffline(); 
+            cargarPedidos(); 
         });
-    } else {
-        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
-        await cargarPedidos();
-        document.getElementById('loader').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-        window.addEventListener('online', () => { procesarColaOffline(); cargarPedidos(); });
         window.addEventListener('offline', () => mostrarBannerOffline(true));
     }
+    
+    // Ejecutar inicio
+    iniciarApp();
 </script>
 </body>
 </html>

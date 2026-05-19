@@ -2,80 +2,374 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Reparto</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Reparto Express - Aguadulce</title>
     <style>
-        body { background: #020617; color: white; font-family: Arial; padding: 15px; }
-        .card { background: #1e293b; padding: 15px; border-radius: 15px; margin-bottom: 15px; }
-        button { background: #06b6d4; border: none; padding: 10px; border-radius: 10px; font-weight: bold; width: 100%; margin-top: 10px; cursor: pointer; }
-        .verde { background: #22c55e; }
-        .amarillo { background: #eab308; }
-        .rojo { background: #ef4444; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; color: white; font-family: system-ui, -apple-system, sans-serif; padding: 15px; padding-bottom: 30px; }
+        
+        /* Header */
+        .header { background: linear-gradient(135deg, #06b6d4, #020617); margin: -15px -15px 15px -15px; padding: 20px 15px; }
+        .flex { display: flex; justify-content: space-between; align-items: center; }
+        .btn-salir { background: rgba(0,0,0,0.5); border: none; padding: 8px 16px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; }
+        .repartidor-nombre { font-size: 18px; font-weight: bold; }
+        .repartidor-id { font-size: 10px; opacity: 0.7; }
+        .billetera { text-align: right; }
+        .billetera-label { font-size: 9px; opacity: 0.6; }
+        .billetera-monto { font-size: 20px; font-weight: bold; color: #22c55e; }
+        
+        /* Stats */
+        .stats { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+        .contador { background: #06b6d4; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .estado { font-size: 12px; }
+        .estado-online { color: #22c55e; }
+        .estado-offline { color: #ef4444; }
+        
+        /* Tarjeta de pedido */
+        .card { background: rgba(30,41,59,0.9); border-radius: 20px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05); }
+        .ref { background: rgba(6,182,212,0.2); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #06b6d4; display: inline-block; }
+        .direccion { font-size: 16px; font-weight: bold; margin: 12px 0; word-break: break-word; }
+        .cliente-box { background: #0f172a; border-radius: 14px; padding: 12px; margin: 12px 0; }
+        .cliente-nombre { color: #06b6d4; font-weight: bold; margin-bottom: 8px; }
+        .pago { font-size: 11px; opacity: 0.7; margin-top: 8px; }
+        
+        /* Botones */
+        button { width: 100%; padding: 14px; border-radius: 14px; font-weight: bold; border: none; margin-top: 10px; cursor: pointer; font-size: 14px; transition: transform 0.1s; }
+        button:active { transform: scale(0.98); }
+        .btn-recoger { background: white; color: black; }
+        .btn-llegada { background: #eab308; color: black; }
+        .btn-entregar { background: #22c55e; color: white; }
+        .btn-cancelar { background: #ef4444; color: white; }
+        
+        /* Timer */
+        .timer-box { background: #eab308; color: black; padding: 12px; border-radius: 14px; text-align: center; font-weight: bold; margin: 10px 0; font-size: 16px; }
+        
+        /* Mapa y WhatsApp */
+        .acciones { display: flex; gap: 10px; margin: 12px 0; }
+        .accion { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; text-align: center; text-decoration: none; color: white; font-size: 12px; }
+        .accion:hover { background: rgba(255,255,255,0.1); }
+        
+        /* Historial */
+        .historial { margin-top: 20px; }
+        .historial-titulo { font-size: 14px; color: #06b6d4; margin-bottom: 10px; }
+        .historial-item { background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px; margin-bottom: 8px; font-size: 12px; display: flex; justify-content: space-between; }
+        .historial-total { color: #22c55e; font-weight: bold; }
+        
+        .sin-pedidos { text-align: center; padding: 40px; opacity: 0.5; }
+        .loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020617; display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.2); border-top-color: #06b6d4; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .text-center { text-align: center; }
+        .mt-2 { margin-top: 8px; }
+        .mb-2 { margin-bottom: 8px; }
     </style>
 </head>
 <body>
-<h2>🚚 Reparto</h2>
-<div id="info"></div>
-<div id="lista"></div>
+
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <p style="color:#06b6d4; margin-top: 15px;">Iniciando...</p>
+</div>
+
+<div id="app" style="display: none;">
+    <div class="header">
+        <div class="flex">
+            <button class="btn-salir" onclick="cerrarSesion()">🚪 Salir</button>
+            <div>
+                <div class="repartidor-nombre" id="nombreRep">Cargando...</div>
+                <div class="repartidor-id" id="codigoRep"></div>
+            </div>
+            <div class="billetera">
+                <div class="billetera-label">💰 Billetera</div>
+                <div class="billetera-monto" id="saldo">0.00€</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats">
+        <span class="estado">📡 <span id="estadoConexion" class="estado-online">Conectado</span></span>
+        <span class="contador" id="contadorPedidos">0 pedidos</span>
+    </div>
+
+    <div id="listaPedidos"></div>
+    
+    <div class="historial" id="historialContainer" style="display: none;">
+        <div class="historial-titulo">📋 Historial de entregas hoy</div>
+        <div id="historialLista"></div>
+        <div class="flex" style="margin-top: 10px; justify-content: space-between;">
+            <span>💰 Total hoy:</span>
+            <span id="totalHoy" style="color: #22c55e; font-weight: bold;">0.00€</span>
+        </div>
+    </div>
+</div>
 
 <script>
-(async function() {
     const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
     let codigo = localStorage.getItem('rep_code');
-    if (!codigo) {
-        codigo = prompt('Codigo (R001, R002, R003, R004):');
-        if (codigo) localStorage.setItem('rep_code', codigo.toUpperCase());
-        else return;
+    let pedidosActivos = [];
+    let historialHoy = [];
+    let timers = {};
+    let intervalo = null;
+    
+    async function init() {
+        if (!codigo) {
+            const input = prompt('🔐 Código de repartidor (R001, R002, R003, R004):');
+            if (input) {
+                codigo = input.trim().toUpperCase();
+                localStorage.setItem('rep_code', codigo);
+            } else {
+                document.getElementById('loader').innerHTML = '<p>❌ No se ingresó código</p>';
+                return;
+            }
+        }
+        
+        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
+        
+        await cargarTodo();
+        
+        intervalo = setInterval(cargarTodo, 8000);
+        
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
     }
     
-    async function cargar() {
-        const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + codigo);
-        const data = await res.json();
+    async function cargarTodo() {
+        try {
+            const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + codigo + '&t=' + Date.now());
+            const data = await res.json();
+            
+            if (data.error) {
+                document.getElementById('estadoConexion').innerHTML = 'Error';
+                document.getElementById('estadoConexion').className = 'estado-offline';
+                return;
+            }
+            
+            document.getElementById('estadoConexion').innerHTML = 'Conectado';
+            document.getElementById('estadoConexion').className = 'estado-online';
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
+            document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
+            
+            pedidosActivos = data.pedidos || [];
+            document.getElementById('contadorPedidos').innerHTML = pedidosActivos.length + ' pedido' + (pedidosActivos.length !== 1 ? 's' : '');
+            
+            // Cargar historial de entregas de hoy
+            await cargarHistorial();
+            
+            renderizarPedidos();
+        } catch(e) {
+            console.error(e);
+            document.getElementById('estadoConexion').innerHTML = 'Offline';
+            document.getElementById('estadoConexion').className = 'estado-offline';
+        }
+    }
+    
+    async function cargarHistorial() {
+        try {
+            const res = await fetch(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigo));
+            const data = await res.json();
+            
+            if (data.historial) {
+                const hoy = new Date().toLocaleDateString('es-ES');
+                historialHoy = data.historial.filter(p => {
+                    const fechaPedido = p.FECHA ? p.FECHA.substring(0, 10) : '';
+                    return fechaPedido === hoy && p.ESTADO === 'ENTREGADO';
+                });
+                
+                const totalHoy = historialHoy.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
+                
+                if (historialHoy.length > 0) {
+                    document.getElementById('historialContainer').style.display = 'block';
+                    document.getElementById('totalHoy').innerHTML = totalHoy.toFixed(2) + '€';
+                    
+                    let html = '';
+                    for (let p of historialHoy.slice(-5).reverse()) {
+                        html += '<div class="historial-item">';
+                        html += '<span>' + p.ID_PEDIDO + '</span>';
+                        html += '<span class="historial-total">' + (parseFloat(p.TOTAL) || 0).toFixed(2) + '€</span>';
+                        html += '</div>';
+                    }
+                    document.getElementById('historialLista').innerHTML = html;
+                } else {
+                    document.getElementById('historialContainer').style.display = 'none';
+                }
+            }
+        } catch(e) {
+            console.error('Error cargando historial:', e);
+        }
+    }
+    
+    function renderizarPedidos() {
+        const contenedor = document.getElementById('listaPedidos');
         
-        document.getElementById('info').innerHTML = data.nombre + ' | Saldo: ' + (data.saldo || 0) + '€';
+        if (pedidosActivos.length === 0) {
+            contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
+            return;
+        }
         
-        const pedidos = data.pedidos || [];
         let html = '';
-        
-        for (let p of pedidos) {
-            let estado = (p.ESTADO || '').toUpperCase();
-            let boton = '';
+        for (let p of pedidosActivos) {
+            const estado = (p.ESTADO || '').toUpperCase();
+            const total = parseFloat(p.TOTAL) || 0;
+            const telefono = p.telf || p.WHATSAPP || '';
+            const telefonoLimpio = telefono.replace(/\D/g, '');
+            const tieneTimer = timers[p.ID_PEDIDO];
             
-            if (estado === 'LISTO') boton = '<button onclick="recoger(\'' + p.ID_PEDIDO + '\')">RECOGER</button>';
-            else if (estado === 'EN CAMINO') boton = '<button class="amarillo" onclick="llegar(\'' + p.ID_PEDIDO + '\')">HE LLEGADO</button>';
-            else if (estado === 'LLEGÓ') boton = '<button class="verde" onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + p.TOTAL + ')">ENTREGAR</button>';
-            else boton = '<div>Estado: ' + estado + '</div>';
+            let botones = '';
+            let timerHtml = '';
             
-            html += '<div class="card">';
-            html += '<div><strong>' + p.ID_PEDIDO + '</strong></div>';
-            html += '<div>' + p.DIRECCION + '</div>';
-            html += '<div>' + p.CLIENTE + '</div>';
-            html += '<div>' + p.TOTAL + '€</div>';
-            html += boton;
+            if (estado === 'LISTO') {
+                botones = '<button class="btn-recoger" onclick="recogerPedido(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER PEDIDO</button>';
+            } else if (estado === 'EN CAMINO') {
+                botones = '<button class="btn-llegada" onclick="marcarLlegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO AL CLIENTE</button>';
+            } else if (estado === 'LLEGÓ') {
+                if (tieneTimer) {
+                    timerHtml = '<div class="timer-box" id="timer-' + p.ID_PEDIDO + '">⏰ Esperando al cliente...</div>';
+                }
+                botones = '<div style="display: flex; gap: 10px;">' +
+                    '<button class="btn-entregar" style="flex:1;" onclick="confirmarEntrega(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 ENTREGAR</button>' +
+                    (!tieneTimer ? '<button class="btn-cancelar" style="flex:1;" onclick="iniciarTimerCancelacion(\'' + p.ID_PEDIDO + '\', ' + total + ')">⏰ CLIENTE NO RESPONDE</button>' : '') +
+                    '</div>';
+            } else {
+                botones = '<div style="background: rgba(6,182,212,0.2); padding: 14px; border-radius: 14px; text-align: center;">⏳ ' + (estado || 'PREPARANDO') + '</div>';
+            }
+            
+            html += '<div class="card" data-id="' + p.ID_PEDIDO + '">';
+            html += '<div class="flex"><span class="ref">📋 ' + p.ID_PEDIDO + '</span><span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span></div>';
+            html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+            html += '<div class="cliente-box">';
+            html += '<div class="cliente-nombre">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+            html += '<div class="flex">';
+            html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
+            if (telefonoLimpio) {
+                html += '<div style="display: flex; gap: 5px;">';
+                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '<div class="pago">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
+            html += '</div>';
+            
+            html += '<div class="acciones">';
+            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
+            if (telefonoLimpio) {
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
+            }
+            html += '</div>';
+            
+            html += '<div class="flex" style="margin: 12px 0;">';
+            html += '<span>💰 Total:</span>';
+            html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
+            html += '</div>';
+            
+            html += timerHtml;
+            html += botones;
             html += '</div>';
         }
         
-        document.getElementById('lista').innerHTML = html || 'Sin pedidos';
+        contenedor.innerHTML = html;
     }
     
-    window.recoger = async function(id) {
-        await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-        cargar();
+    // Acciones
+    window.recogerPedido = async function(id) {
+        try {
+            await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            mostrarToast('✅ Pedido recogido', 'success');
+            await cargarTodo();
+        } catch(e) {
+            mostrarToast('Error al recoger', 'error');
+        }
     };
     
-    window.llegar = async function(id) {
-        await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
-        cargar();
+    window.marcarLlegada = async function(id) {
+        try {
+            await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+            mostrarToast('📍 Llegaste al cliente', 'success');
+            await cargarTodo();
+        } catch(e) {
+            mostrarToast('Error al marcar llegada', 'error');
+        }
     };
     
-    window.entregar = async function(id, total) {
-        await fetch(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
-        cargar();
+    window.iniciarTimerCancelacion = function(idPedido, total) {
+        if (timers[idPedido]) {
+            mostrarToast('Ya hay un temporizador activo', 'warning');
+            return;
+        }
+        
+        mostrarToast('⏰ El cliente tiene 5 minutos para responder', 'info');
+        
+        let tiempo = 300;
+        timers[idPedido] = setInterval(async () => {
+            tiempo--;
+            const timerDiv = document.getElementById('timer-' + idPedido);
+            if (timerDiv) {
+                const min = Math.floor(tiempo / 60);
+                const seg = tiempo % 60;
+                timerDiv.innerHTML = '⏰ Esperando al cliente: ' + min + ':' + (seg < 10 ? '0' : '') + seg + ' - Intenta contactarlo 📞';
+            }
+            
+            if (tiempo <= 0) {
+                clearInterval(timers[idPedido]);
+                delete timers[idPedido];
+                await cancelarPedido(idPedido, total);
+            }
+        }, 1000);
+        
+        cargarTodo();
     };
     
-    cargar();
-    setInterval(cargar, 5000);
-})();
+    window.cancelarPedido = async function(idPedido, total) {
+        const confirmar = confirm('❌ ¿Cancelar pedido? Se acumulará deuda de ' + total.toFixed(2) + '€ al cliente');
+        if (!confirmar) return;
+        
+        try {
+            await fetch(URL + '?action=actualizarEstado&idPedido=' + idPedido + '&nuevoEstado=CANCELADO&tiempo=cliente_no_recogio');
+            mostrarToast('Pedido cancelado. Deuda: ' + total.toFixed(2) + '€', 'error');
+            await cargarTodo();
+        } catch(e) {
+            mostrarToast('Error al cancelar', 'error');
+        }
+    };
+    
+    window.confirmarEntrega = function(id, total) {
+        const confirmar = confirm('💰 Cobrar ' + total.toFixed(2) + '€? ¿El cliente pagó?');
+        if (confirmar) {
+            finalizarEntrega(id, total);
+        }
+    };
+    
+    window.finalizarEntrega = async function(id, total) {
+        try {
+            await fetch(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
+            mostrarToast('🎉 Pedido entregado! +' + total.toFixed(2) + '€', 'success');
+            await cargarTodo();
+        } catch(e) {
+            mostrarToast('Error al entregar', 'error');
+        }
+    };
+    
+    window.cerrarSesion = function() {
+        if (confirm('¿Cerrar sesión?')) {
+            if (intervalo) clearInterval(intervalo);
+            localStorage.removeItem('rep_code');
+            location.reload();
+        }
+    };
+    
+    function mostrarToast(mensaje, tipo) {
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:' + 
+            (tipo === 'success' ? '#22c55e' : (tipo === 'error' ? '#ef4444' : '#06b6d4')) + 
+            ';color:black;padding:10px 20px;border-radius:30px;font-weight:bold;z-index:10000;font-size:14px;';
+        toast.innerText = mensaje;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
+    }
+    
+    init();
 </script>
 </body>
 </html>

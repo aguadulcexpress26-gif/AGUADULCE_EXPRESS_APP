@@ -10,7 +10,7 @@
         body { background: #020617; color: white; font-family: system-ui, -apple-system, sans-serif; padding: 15px; padding-bottom: 30px; }
         
         .header { background: linear-gradient(135deg, #06b6d4, #020617); margin: -15px -15px 15px -15px; padding: 20px 15px; }
-        .flex { display: flex; justify-content: space-between; align-items: center; }
+        .flex { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
         .btn-salir { background: rgba(0,0,0,0.5); border: none; padding: 8px 16px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; }
         .repartidor-nombre { font-size: 18px; font-weight: bold; }
         .repartidor-id { font-size: 10px; opacity: 0.7; }
@@ -18,7 +18,7 @@
         .billetera-label { font-size: 9px; opacity: 0.6; }
         .billetera-monto { font-size: 20px; font-weight: bold; color: #22c55e; }
         
-        .stats { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .stats { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .contador { background: #06b6d4; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
         .btn-historial { background: rgba(6,182,212,0.2); border: none; padding: 6px 12px; border-radius: 20px; color: #06b6d4; font-size: 11px; cursor: pointer; }
         
@@ -51,13 +51,13 @@
         .accion { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; text-align: center; text-decoration: none; color: white; font-size: 12px; }
         
         .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 10000; display: none; flex-direction: column; padding: 20px; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .modal-header h2 { color: #06b6d4; }
         .modal-header button { width: auto; padding: 10px 20px; background: #ef4444; margin: 0; }
         .modal-content { flex: 1; overflow-y: auto; }
-        .historial-item { background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .historial-item { background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .historial-total { color: #22c55e; font-weight: bold; font-size: 16px; }
-        .resumen { background: #0f172a; border-radius: 12px; padding: 15px; margin-top: 20px; display: flex; justify-content: space-between; }
+        .resumen { background: #0f172a; border-radius: 12px; padding: 15px; margin-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
         
         .sin-pedidos { text-align: center; padding: 40px; opacity: 0.5; }
         .loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020617; display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column; }
@@ -74,13 +74,19 @@
         
         .pago-info { background: #06b6d420; border-radius: 10px; padding: 8px; margin-top: 8px; font-size: 13px; }
         .pago-info span { color: #22c55e; font-weight: bold; }
+        
+        .offline-banner { background: #ef4444; color: white; text-align: center; padding: 8px; font-size: 12px; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; display: none; }
+        
+        @media (max-width: 480px) {
+            .stats { flex-direction: column; align-items: stretch; }
+        }
     </style>
 </head>
 <body>
 
 <div id="loader" class="loader">
     <div class="spinner"></div>
-    <p style="color:#06b6d4; margin-top: 15px;">Iniciando...</p>
+    <p style="color:#06b6d4; margin-top: 15px;">Iniciando Reparto Express...</p>
 </div>
 
 <div id="app" style="display: none;">
@@ -99,7 +105,10 @@
     </div>
 
     <div class="stats">
-        <span>📡 <span id="estadoConexion" style="color:#22c55e;">Conectado</span></span>
+        <div class="flex" style="gap: 10px;">
+            <span>📡 <span id="estadoConexion" style="color:#22c55e;">Conectado</span></span>
+            <span>🔄 <span id="ultimaActualizacion">-</span></span>
+        </div>
         <div style="display: flex; gap: 10px;">
             <span class="contador" id="contadorPedidos">0 pedidos</span>
             <button class="btn-historial" onclick="mostrarHistorial()">📋 Historial</button>
@@ -121,24 +130,30 @@
     </div>
 </div>
 
+<div id="offlineBanner" class="offline-banner">
+    📡 Sin conexión - Los cambios se guardarán localmente
+</div>
+
 <script>
+    // ============ CONFIGURACIÓN ============
     const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
+    // ============ VARIABLES GLOBALES ============
     let codigo = localStorage.getItem('rep_code');
     let pedidosActivos = [];
     let timersActivos = {};
     let intervalo = null;
     let audioNotif = null;
     let ultimosIds = [];
+    let colaPendientes = [];
     
-    // Inicializar audio
+    // ============ INICIALIZACIÓN ============
     function initAudio() {
         audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audioNotif.volume = 0.8;
         audioNotif.preload = 'auto';
     }
     
-    // Reproducir sonido
     function playSound() {
         if (audioNotif) {
             audioNotif.currentTime = 0;
@@ -146,20 +161,82 @@
         }
     }
     
-    // Función para mostrar loading en botones
-    async function conLoading(btn, callback) {
-        const textoOriginal = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Procesando...';
-        try {
-            await callback();
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = textoOriginal;
+    function cargarColaOffline() {
+        const guardado = localStorage.getItem('cola_offline_repartidor');
+        if (guardado) {
+            colaPendientes = JSON.parse(guardado);
+            if (colaPendientes.length > 0 && navigator.onLine) {
+                procesarColaOffline();
+            }
         }
     }
     
-    // Función para fetch con timeout
+    function guardarEnCola(accion, data) {
+        colaPendientes.push({ accion, data, timestamp: Date.now() });
+        localStorage.setItem('cola_offline_repartidor', JSON.stringify(colaPendientes));
+        console.log('📦 Acción guardada en cola:', accion);
+        Swal.fire({
+            title: '📡 Modo Offline',
+            text: 'Acción guardada. Se sincronizará cuando recuperes conexión.',
+            icon: 'info',
+            background: '#020617',
+            color: 'white',
+            timer: 2000,
+            showConfirmButton: false
+        });
+    }
+    
+    async function procesarColaOffline() {
+        if (!navigator.onLine || colaPendientes.length === 0) return;
+        
+        console.log(`🔄 Procesando ${colaPendientes.length} acciones pendientes...`);
+        const copiaCola = [...colaPendientes];
+        colaPendientes = [];
+        
+        for (const item of copiaCola) {
+            try {
+                await ejecutarAccionOffline(item.accion, item.data);
+                await new Promise(resolve => setTimeout(resolve, 500));
+            } catch (e) {
+                console.error('Error procesando acción:', e);
+                colaPendientes.push(item);
+            }
+        }
+        
+        localStorage.setItem('cola_offline_repartidor', JSON.stringify(colaPendientes));
+        if (colaPendientes.length === 0) {
+            Swal.fire({ title: '✅ Sincronizado', text: 'Todas las acciones pendientes se completaron', icon: 'success', background: '#020617', color: 'white', timer: 2000 });
+        }
+    }
+    
+    async function ejecutarAccionOffline(accion, data) {
+        const url = new URL(URL);
+        switch(accion) {
+            case 'recoger':
+                url.searchParams.append('action', 'actualizarEstado');
+                url.searchParams.append('idPedido', data.id);
+                url.searchParams.append('nuevoEstado', 'EN CAMINO');
+                break;
+            case 'llegada':
+                url.searchParams.append('action', 'actualizarEstado');
+                url.searchParams.append('idPedido', data.id);
+                url.searchParams.append('nuevoEstado', 'LLEGÓ');
+                break;
+            case 'entregar':
+                url.searchParams.append('action', 'finalizarEntrega');
+                url.searchParams.append('idPedido', data.id);
+                url.searchParams.append('total', data.total);
+                break;
+            case 'cancelar':
+                url.searchParams.append('action', 'actualizarEstado');
+                url.searchParams.append('idPedido', data.id);
+                url.searchParams.append('nuevoEstado', 'CANCELADO');
+                url.searchParams.append('tiempo', 'cliente_no_recogio_' + Date.now());
+                break;
+        }
+        await fetch(url.toString());
+    }
+    
     async function fetchConTimeout(url, timeout = 10000) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -173,11 +250,27 @@
         }
     }
     
-    // Calcular tiempo restante
+    function mostrarBannerOffline(mostrar) {
+        const banner = document.getElementById('offlineBanner');
+        banner.style.display = mostrar ? 'block' : 'none';
+        if (mostrar) {
+            document.getElementById('estadoConexion').innerHTML = 'Offline';
+            document.getElementById('estadoConexion').style.color = '#ef4444';
+        }
+    }
+    
+    function iniciarIntervaloInteligente() {
+        if (intervalo) clearInterval(intervalo);
+        const tiempo = pedidosActivos.length > 0 ? 3000 : 10000;
+        intervalo = setInterval(cargarPedidos, tiempo);
+    }
+    
     function calcularTiempoRestante(timestamp) {
-        if (!timestamp || timestamp === 0) return null;
+        if (!timestamp || timestamp === 0 || timestamp === "") return null;
         const ahora = Date.now();
-        const diff = timestamp - ahora;
+        const ts = typeof timestamp === 'number' ? timestamp : parseInt(timestamp);
+        if (isNaN(ts)) return null;
+        const diff = ts - ahora;
         if (diff <= 0) return { min: 0, seg: 0, listo: true };
         return {
             min: Math.floor(diff / 60000),
@@ -186,41 +279,15 @@
         };
     }
     
-    async function init() {
-        initAudio();
-        
-        if (!codigo) {
-            const { value: inputCodigo } = await Swal.fire({
-                title: '🔐 Código de Repartidor',
-                input: 'text',
-                inputPlaceholder: 'Ej: R001',
-                background: '#020617',
-                color: 'white',
-                confirmButtonColor: '#06b6d4',
-                showCancelButton: false
-            });
-            if (inputCodigo) {
-                codigo = inputCodigo.trim().toUpperCase();
-                localStorage.setItem('rep_code', codigo);
-            } else {
-                document.getElementById('loader').innerHTML = '<p>❌ No se ingresó código</p>';
-                return;
-            }
+    // ============ FUNCIÓN PRINCIPAL ============
+    async function cargarPedidos() {
+        if (!navigator.onLine) {
+            mostrarBannerOffline(true);
+            return;
         }
         
-        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
-        
-        await cargarPedidos();
-        
-        intervalo = setInterval(cargarPedidos, 5000);
-        
-        document.getElementById('loader').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-    }
-    
-    async function cargarPedidos() {
         try {
-            const res = await fetchConTimeout(URL + '?action=getPedidosReparto&idRepartidor=' + codigo + '&t=' + Date.now());
+            const res = await fetchConTimeout(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now());
             const data = await res.json();
             
             if (data.error) {
@@ -229,18 +296,20 @@
                 return;
             }
             
+            mostrarBannerOffline(false);
             document.getElementById('estadoConexion').innerHTML = 'Conectado';
             document.getElementById('estadoConexion').style.color = '#22c55e';
+            document.getElementById('ultimaActualizacion').innerHTML = new Date().toLocaleTimeString();
             document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
             document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
             
             const nuevosIds = (data.pedidos || []).map(p => p.ID_PEDIDO);
-            
-            // Detectar nuevos pedidos
             const realmenteNuevos = nuevosIds.filter(id => !ultimosIds.includes(id));
             if (realmenteNuevos.length > 0) {
                 playSound();
-                console.log('🔔 Nuevo pedido asignado!');
+                if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+                    new Notification('Nuevo pedido asignado', { body: `Tienes ${realmenteNuevos.length} pedido(s) nuevo(s)` });
+                }
             }
             
             ultimosIds = nuevosIds;
@@ -249,6 +318,7 @@
             
             renderizarPedidos();
             await cargarHistorialResumen();
+            iniciarIntervaloInteligente();
         } catch(e) {
             console.error(e);
             document.getElementById('estadoConexion').innerHTML = 'Offline';
@@ -256,108 +326,104 @@
         }
     }
     
-   function renderizarPedidos() {
-    const contenedor = document.getElementById('listaPedidos');
-    
-    // Filtrar pedidos cancelados o rechazados
-    const pedidosFiltrados = pedidosActivos.filter(p => {
-        const estado = (p.ESTADO || '').toUpperCase();
-        return estado !== 'CANCELADO' && estado !== 'RECHAZADO';
-    });
-    
-    if (pedidosFiltrados.length === 0) {
-        contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
-        return;
-    }
-    
-    let html = '';
-    for (let p of pedidosFiltrados) {
-        const estado = (p.ESTADO || '').toUpperCase();
-        const total = parseFloat(p.TOTAL) || 0;
-        let telefono = p.telf || p.WHATSAPP || '';
-        const telefonoLimpio = String(telefono).replace(/\D/g, '');
-        const tieneTimer = timersActivos[p.ID_PEDIDO];
+    function renderizarPedidos() {
+        const contenedor = document.getElementById('listaPedidos');
         
-        // Calcular tiempo de cocina
-        let tiempoHtml = '';
-        if (p.timestampListo && p.timestampListo > 0) {
-            const tiempo = calcularTiempoRestante(p.timestampListo);
-            if (tiempo) {
-                if (tiempo.listo) {
-                    tiempoHtml = '<div class="tiempo-cocina" style="background:#22c55e20; border-color:#22c55e; color:#22c55e;">🔔 ¡PEDIDO LISTO PARA RECOGER!</div>';
-                } else {
-                    tiempoHtml = `<div class="tiempo-cocina">⏳ COCINA: ${tiempo.min}m ${tiempo.seg}s</div>`;
+        const pedidosFiltrados = pedidosActivos.filter(p => {
+            const estado = (p.ESTADO || '').toUpperCase();
+            return estado !== 'CANCELADO' && estado !== 'RECHAZADO';
+        });
+        
+        if (pedidosFiltrados.length === 0) {
+            contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
+            return;
+        }
+        
+        let html = '';
+        for (let p of pedidosFiltrados) {
+            const estado = (p.ESTADO || '').toUpperCase();
+            const total = parseFloat(p.TOTAL) || 0;
+            let telefono = p.telf || p.WHATSAPP || '';
+            const telefonoLimpio = String(telefono).replace(/\D/g, '');
+            const tieneTimer = timersActivos[p.ID_PEDIDO];
+            
+            // Calcular tiempo de cocina (timestampListo del backend)
+            let tiempoHtml = '';
+            if (p.timestampListo && p.timestampListo !== "" && p.timestampListo !== 0) {
+                const tiempo = calcularTiempoRestante(p.timestampListo);
+                if (tiempo) {
+                    if (tiempo.listo) {
+                        tiempoHtml = '<div class="tiempo-cocina" style="background:#22c55e20; border-color:#22c55e; color:#22c55e;">🔔 ¡PEDIDO LISTO PARA RECOGER!</div>';
+                    } else {
+                        tiempoHtml = `<div class="tiempo-cocina">⏳ COCINA: ${tiempo.min}m ${tiempo.seg}s</div>`;
+                    }
                 }
             }
-        }
-        
-        // Información de pago del cliente
-        let pagoHtml = '';
-        if (p.monto_paga && p.monto_paga > 0) {
-            const cambio = p.monto_paga - total;
-            pagoHtml = `<div class="pago-info">💵 Cliente paga con: ${p.monto_paga.toFixed(2)}€ | Cambio: ${cambio.toFixed(2)}€</div>`;
-        }
-        
-        let botones = '';
-        let timerHtml = '';
-        
-        if (estado === 'LISTO') {
-            botones = `<button class="btn-recoger" data-id="${p.ID_PEDIDO}" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
-        } else if (estado === 'EN CAMINO') {
-            botones = `<button class="btn-llegada" data-id="${p.ID_PEDIDO}" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
-        } else if (estado === 'LLEGÓ') {
-            if (tieneTimer) {
-                timerHtml = '<div class="timer-box" id="timer-' + p.ID_PEDIDO + '">⏰ Esperando al cliente...</div>';
+            
+            let botones = '';
+            let timerHtml = '';
+            
+            if (estado === 'LISTO') {
+                botones = `<button class="btn-recoger" data-id="${p.ID_PEDIDO}" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
+            } else if (estado === 'EN CAMINO') {
+                botones = `<button class="btn-llegada" data-id="${p.ID_PEDIDO}" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+            } else if (estado === 'LLEGÓ') {
+                if (tieneTimer) {
+                    timerHtml = '<div class="timer-box" id="timer-' + p.ID_PEDIDO + '">⏰ Esperando al cliente...</div>';
+                }
+                botones = '<div style="display: flex; gap: 10px; flex-wrap: wrap;">' +
+                    `<button class="btn-entregar" style="flex:1;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 ENTREGAR</button>` +
+                    (!tieneTimer ? `<button class="btn-timer" style="flex:1;" onclick="iniciarTimerCancelacion('${p.ID_PEDIDO}', ${total})">⏰ CLIENTE NO RESPONDE</button>` : '') +
+                    '</div>';
+            } else {
+                botones = '<div style="background: rgba(6,182,212,0.2); padding: 14px; border-radius: 14px; text-align: center;">⏳ ' + (estado || 'PREPARANDO') + '</div>';
             }
-            botones = '<div style="display: flex; gap: 10px;">' +
-                `<button class="btn-entregar" style="flex:1;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 ENTREGAR</button>` +
-                (!tieneTimer ? `<button class="btn-timer" style="flex:1;" onclick="iniciarTimerCancelacion('${p.ID_PEDIDO}', ${total})">⏰ CLIENTE NO RESPONDE</button>` : '') +
-                '</div>';
-        } else {
-            botones = '<div style="background: rgba(6,182,212,0.2); padding: 14px; border-radius: 14px; text-align: center;">⏳ ' + (estado || 'PREPARANDO') + '</div>';
-        }
-        
-        html += '<div class="card" data-id="' + p.ID_PEDIDO + '">';
-        html += '<div class="flex"><span class="ref">📋 ' + p.ID_PEDIDO + '</span><span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span></div>';
-        html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
-        html += '<div class="cliente-box">';
-        html += '<div class="cliente-nombre">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
-        html += '<div class="flex">';
-        html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
-        if (telefonoLimpio) {
-            html += '<div style="display: flex; gap: 5px;">';
-            html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>';
-            html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>';
+            
+            html += '<div class="card" data-id="' + p.ID_PEDIDO + '">';
+            html += '<div class="flex"><span class="ref">📋 ' + p.ID_PEDIDO + '</span><span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span></div>';
+            html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+            html += '<div class="cliente-box">';
+            html += '<div class="cliente-nombre">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+            html += '<div class="flex" style="justify-content: space-between; align-items: center;">';
+            html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
+            if (telefonoLimpio) {
+                html += '<div style="display: flex; gap: 5px;">';
+                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '<div class="pago">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
+            html += '</div>';
+            
+            html += '<div class="acciones">';
+            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
+            if (telefonoLimpio) {
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
+            }
+            html += '</div>';
+            
+            html += '<div class="flex" style="margin: 12px 0;">';
+            html += '<span>💰 Total:</span>';
+            html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
+            html += '</div>';
+            
+            html += tiempoHtml;
+            html += timerHtml;
+            html += botones;
             html += '</div>';
         }
-        html += '</div>';
-        html += '<div class="pago">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
-        html += pagoHtml;
-        html += '</div>';
         
-        html += '<div class="acciones">';
-        html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
-        if (telefonoLimpio) {
-            html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
-        }
-        html += '</div>';
-        
-        html += '<div class="flex" style="margin: 12px 0;">';
-        html += '<span>💰 Total:</span>';
-        html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
-        html += '</div>';
-        
-        html += tiempoHtml;
-        html += timerHtml;
-        html += botones;
-        html += '</div>';
+        contenedor.innerHTML = html;
     }
     
-    contenedor.innerHTML = html;
-}
-    
-    // Acciones con loading visual
+    // ============ ACCIONES PRINCIPALES ============
     window.recogerPedido = async function(btn, id) {
+        if (!navigator.onLine) {
+            guardarEnCola('recoger', { id });
+            return;
+        }
+        
         await conLoading(btn, async () => {
             try {
                 await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
@@ -370,6 +436,11 @@
     };
     
     window.marcarLlegada = async function(btn, id) {
+        if (!navigator.onLine) {
+            guardarEnCola('llegada', { id });
+            return;
+        }
+        
         await conLoading(btn, async () => {
             try {
                 await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
@@ -405,8 +476,6 @@
                 await cancelarPedido(idPedido, total);
             }
         }, 1000);
-        
-        cargarPedidos();
     };
     
     window.cancelarPedido = async function(idPedido, total) {
@@ -423,6 +492,11 @@
         });
         
         if (!result.isConfirmed) return;
+        
+        if (!navigator.onLine) {
+            guardarEnCola('cancelar', { id: idPedido });
+            return;
+        }
         
         try {
             await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + idPedido + '&nuevoEstado=CANCELADO&tiempo=cliente_no_recogio_' + Date.now());
@@ -446,6 +520,10 @@
             cancelButtonText: 'No'
         }).then(async (result) => {
             if (result.isConfirmed) {
+                if (!navigator.onLine) {
+                    guardarEnCola('entregar', { id, total });
+                    return;
+                }
                 await finalizarEntrega(id, total);
             }
         });
@@ -453,7 +531,7 @@
     
     window.finalizarEntrega = async function(id, total) {
         try {
-            await fetchConTimeout(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
+            await fetchConTimeout(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
             await Swal.fire({ title: '🎉 Entrega Completada', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
             await cargarPedidos();
         } catch(e) {
@@ -461,7 +539,7 @@
         }
     };
     
-    // Historial
+    // ============ HISTORIAL ============
     window.mostrarHistorial = async function() {
         const modal = document.getElementById('modalHistorial');
         modal.style.display = 'flex';
@@ -503,6 +581,8 @@
     };
     
     async function cargarHistorialResumen() {
+        if (!navigator.onLine) return;
+        
         try {
             const res = await fetchConTimeout(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigo));
             const data = await res.json();
@@ -548,6 +628,19 @@
         document.getElementById('modalHistorial').style.display = 'none';
     };
     
+    // ============ UTILIDADES ============
+    async function conLoading(btn, callback) {
+        const textoOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Procesando...';
+        try {
+            await callback();
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
+    }
+    
     window.cerrarSesion = function() {
         Swal.fire({
             title: '¿Cerrar sesión?',
@@ -562,12 +655,51 @@
             if (result.isConfirmed) {
                 if (intervalo) clearInterval(intervalo);
                 localStorage.removeItem('rep_code');
+                localStorage.removeItem('cola_offline_repartidor');
                 location.reload();
             }
         });
     };
     
-    init();
+    // Solicitar permiso de notificaciones
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+    }
+    
+    // Iniciar
+    initAudio();
+    cargarColaOffline();
+    
+    if (!codigo) {
+        Swal.fire({
+            title: '🔐 Código de Repartidor',
+            input: 'text',
+            inputPlaceholder: 'Ej: R001',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#06b6d4',
+            showCancelButton: false,
+            allowOutsideClick: false
+        }).then(async (result) => {
+            if (result.value) {
+                codigo = result.value.trim().toUpperCase();
+                localStorage.setItem('rep_code', codigo);
+                document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
+                await cargarPedidos();
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                window.addEventListener('online', () => { procesarColaOffline(); cargarPedidos(); });
+                window.addEventListener('offline', () => mostrarBannerOffline(true));
+            }
+        });
+    } else {
+        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
+        await cargarPedidos();
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        window.addEventListener('online', () => { procesarColaOffline(); cargarPedidos(); });
+        window.addEventListener('offline', () => mostrarBannerOffline(true));
+    }
 </script>
 </body>
 </html>

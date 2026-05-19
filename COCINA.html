@@ -2,587 +2,464 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cocina Express - Aguadulce</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aguadulce Express - Repartidores</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root { --cyan: #06b6d4; --dark: #020617; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--dark); color: white; }
+        body {
+            background-color: #020617;
+            color: #f8fafc;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #020617;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #1e293b;
+            border-top: 5px solid #06b6d4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .card {
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .flex { display: flex; }
+        .justify-between { justify-content: space-between; }
+        .items-center { align-items: center; }
         
-        .pedido-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 2rem; padding: 20px; margin-bottom: 15px; transition: all 0.2s; }
-        .pedido-card.nuevo { animation: pulse-card 1s ease-in-out; background: rgba(6,182,212,0.15); }
-        @keyframes pulse-card { 0% { background: rgba(6,182,212,0.4); } 100% { background: rgba(255,255,255,0.05); } }
+        .btn-recoger { background: #06b6d4; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-llegada { background: #f59e0b; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-entregar { background: #22c55e; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
         
-        .pedido-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
-        .pedido-id { font-weight: 900; font-size: 18px; color: var(--cyan); }
-        .pedido-cliente { font-size: 12px; opacity: 0.7; }
-        .pedido-total { font-weight: 900; font-size: 18px; color: var(--cyan); }
+        .sin-pedidos { text-align: center; padding: 40px; color: #64748b; font-size: 16px; }
         
-        .tiempos { display: flex; gap: 10px; margin-bottom: 15px; }
-        .btn-tiempo { flex: 1; text-align: center; padding: 10px; border-radius: 16px; font-weight: 900; font-size: 12px; cursor: pointer; transition: transform 0.1s; background: rgba(255,255,255,0.05); }
-        .btn-tiempo:active { transform: scale(0.95); }
-        .t-15 { background: rgba(6,182,212,0.2); color: var(--cyan); }
-        .t-30 { background: rgba(6,182,212,0.2); color: var(--cyan); }
-        .t-45 { background: rgba(6,182,212,0.2); color: var(--cyan); }
-        
-        .acciones { display: flex; gap: 10px; }
-        .btn-aceptar { flex: 1; background: var(--cyan); color: black; padding: 12px; border-radius: 16px; font-weight: 900; font-size: 12px; border: none; cursor: pointer; }
-        .btn-aceptar.aceptado { background: #22c55e; color: white; }
-        .btn-detalles { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 16px; font-weight: 900; font-size: 12px; cursor: pointer; }
-        .btn-listo { flex: 1; background: #eab308; color: black; padding: 12px; border-radius: 16px; font-weight: 900; font-size: 12px; border: none; cursor: pointer; }
-        .btn-rechazar { flex: 1; background: #ef4444; color: white; padding: 12px; border-radius: 16px; font-weight: 900; font-size: 12px; border: none; cursor: pointer; }
-        
-        .tiempo { font-size: 10px; opacity: 0.5; margin-top: 5px; }
-        
-        .sidebar { position: fixed; top: 0; right: -100%; width: 85%; max-width: 350px; height: 100%; background: #0f172a; z-index: 2000; transition: 0.3s ease; padding: 20px; overflow-y: auto; }
-        .sidebar.open { right: 0; }
-        .historial-card { background: #1e293b; border-radius: 16px; padding: 12px; margin-bottom: 10px; cursor: pointer; }
-        
-        .loader { position: fixed; inset: 0; background: var(--dark); z-index: 500; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-        .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        .estado-badge { padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 900; }
-        .estado-badge.abierto { background: #22c55e; color: black; }
-        .estado-badge.cerrado { background: #ef4444; color: white; }
-        
-        .hidden { display: none; }
-        .flex-between { display: flex; justify-content: space-between; align-items: center; }
-        .text-center { text-align: center; }
-        .mb-2 { margin-bottom: 8px; }
-        .mt-2 { margin-top: 8px; }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(2,6,23,0.8); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 20px; }
+        .modal-content { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 20px; width: 100%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+        .historial-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b; }
+        .historial-total { color: #22c55e; font-weight: bold; }
+
+        .badge-contador {
+            background: rgba(234, 179, 8, 0.15);
+            color: #eab308;
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
     </style>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
-<div id="loader" class="loader">
-    <div class="spinner"></div>
-    <p style="color:#06b6d4; margin-top: 15px; font-weight: bold; tracking-widest;">SINCRONIZANDO COCINA EXPRESS...</p>
-</div>
+    <div id="loader" class="loader">
+        <div class="spinner"></div>
+        <h2 style="font-size: 20px; font-weight: bold; color: #06b6d4;">SINCRONIZANDO AGUADULCE EXPRESS...</h2>
+    </div>
 
-<div id="loginScreen" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 20px;">
-    <h1 class="text-3xl font-black italic uppercase text-cyan-400 mb-8">Aguadulce</h1>
-    <p class="text-white/50 text-xs mb-4">🔐 INGRESA TU PIN DE ACCESO</p>
-    <input type="password" id="pinInput" maxlength="6" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white focus:outline-none focus:border-cyan-400">
-    <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase tracking-wider transition-transform active:scale-95">Ingresar</button>
-</div>
-
-<div id="appContent" class="hidden">
-    <div class="p-5">
-        <div class="flex-between mb-6">
-            <button onclick="preguntarSalir()" class="p-3 bg-white/5 border border-white/10 rounded-2xl active:scale-95 transition-transform">🚪</button>
-            <div class="text-center">
-                <h1 id="resNombreDisplay" class="text-xl font-black italic uppercase">CARGANDO...</h1>
-                <div class="flex gap-2 items-center justify-center mt-1">
-                    <span id="txtEstado" class="estado-badge">---</span>
-                    <span class="contador-pendientes" id="contadorPendientes" style="background: #ef4444; color: white; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: bold;">0</span>
-                </div>
+    <div id="app" style="display: none; padding: 12px; max-width: 600px; margin: 0 auto;">
+        
+        <div class="flex justify-between items-center" style="margin-bottom: 20px; background: #0f172a; padding: 12px; border-radius: 14px; border: 1px solid #1e293b;">
+            <div>
+                <h1 id="nombreRep" style="font-size: 20px; font-weight: bold; color: #fff;">Cargando...</h1>
+                <span id="codigoRep" style="font-size: 12px; color: #64748b; font-weight: 500;">🔑 ---</span>
             </div>
-            <div class="text-right">
-                <div class="text-[8px] opacity-50 font-bold">HOY / SEMANA</div>
-                <div class="text-sm font-bold"><span id="statHoy">0.00</span>€ / <span id="statSemana">0.00</span>€</div>
-                <label class="flex items-center gap-2 mt-1 justify-end">
-                    <span class="text-[10px]">🔌</span>
-                    <input type="checkbox" id="tiendaToggle" onchange="confirmarToggleTienda()" class="rounded bg-white/10 border-white/20 text-cyan-400 focus:ring-0">
-                </label>
+            <div style="text-align: right;">
+                <span style="font-size: 11px; color: #64748b; display: block;">💰 Billetera</span>
+                <span id="saldo" style="font-size: 18px; font-weight: bold; color: #22c55e;">0.00€</span>
             </div>
         </div>
 
-        <div class="flex gap-2 mb-4">
-            <button onclick="abrirHistorial()" class="flex-1 bg-white/5 border border-white/10 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider active:scale-[0.98] transition-transform">📋 Historial de Entregas</button>
+        <div class="flex justify-between items-center" style="margin-bottom: 16px;">
+            <div class="flex items-center" style="gap: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #22c55e; border-radius: 50%;"></span>
+                <span id="estadoConexion" style="font-size: 14px; color: #22c55e; font-weight: 500;">Conectado</span>
+            </div>
+            <div class="flex" style="gap: 8px;">
+                <button id="btnHistorial" style="background: #1e293b; color: #f8fafc; font-size: 13px; padding: 8px 14px; border-radius: 10px; cursor: pointer;">📋 Historial</button>
+                <button id="btnSalir" style="background: #334155; color: #f8fafc; font-size: 13px; padding: 8px 14px; border-radius: 10px; cursor: pointer;">🚪 Salir</button>
+            </div>
         </div>
 
-        <div id="lista" class="space-y-4 pb-32"></div>
+        <div style="margin-bottom: 14px; font-size: 14px; color: #94a3b8;">
+            Tienes <span id="contadorPedidos" style="color: #06b6d4; font-weight: bold;">0 pedidos</span> activos
+        </div>
+
+        <div id="listaPedidos"></div>
     </div>
-</div>
 
-<div id="sideHistorial" class="sidebar">
-    <div class="flex-between mb-6 border-b border-white/10 pb-3">
-        <h2 class="text-xl font-black italic text-cyan-400">HISTORIAL HOY</h2>
-        <button onclick="cerrarHistorial()" class="p-2 bg-white/10 rounded-xl text-xs">✕</button>
-    </div>
-    <div id="listaHistorial" class="space-y-3">Cargando...</div>
-</div>
-
-<script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
-        authDomain: "aguadulce-notificaciones.firebaseapp.com",
-        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
-        projectId: "aguadulce-notificaciones",
-        storageBucket: "aguadulce-notificaciones.firebasestorage.app",
-        messagingSenderId: "940283725281",
-        appId: "1:940283725281:web:3b388d2e7f362a99d2bea0"
-    };
-    
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
-    
-    const ACCESS_DB = { "DELI10":"6G4L1V", "CHUN20":"RT33M5", "HARO30":"8N3Z7K", "SUCU40":"TR92X5", "PERU50":"9V1L8K", "LIMA60":"FL44K8", "PECA70":"CV11Q9" };
-    const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
-
-    let MI_ID_REST = localStorage.getItem('AE_REST_ID') || "";
-    let pedidosActivos = [], historialHoy = [], aceptados = new Set(), tiendaAbierta = false, ultimoConteo = 0;
-    let audioNotif = null;
-    let intervaloTiempos = null;
-    
-    function initAudio() {
-        audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-        audioNotif.volume = 0.8;
-        audioNotif.preload = 'auto';
-    }
-    
-    function playSound() {
-        if (audioNotif) {
-            audioNotif.currentTime = 0;
-            audioNotif.play().catch(e => console.log('Audio en espera de interacción:', e));
-        }
-    }
-    
-    function mostrarMensaje(titulo, texto, icono) {
-        Swal.fire({ title: titulo, text: texto, icon: icono, background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
-    }
-    
-    window.onload = async () => { 
-        initAudio(); 
-        if(MI_ID_REST) {
-            await iniciarApp();
-        } else {
-            document.getElementById('loader').style.display = 'none';
-        }
-    };
-    
-    function verificarPIN() {
-        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
-        if (ACCESS_DB[pin]) {
-            MI_ID_REST = ACCESS_DB[pin];
-            localStorage.setItem('AE_REST_ID', MI_ID_REST);
-            document.getElementById('loader').style.display = 'flex';
-            iniciarApp();
-        } else { 
-            mostrarMensaje('PIN Incorrecto', 'El código ingresado no es válido', 'error');
-        }
-    }
-    
-    async function iniciarApp() {
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('appContent').classList.remove('hidden');
-        
-        await cargar();
-        
-        database.ref('pedidosActivos').on('value', () => {
-            cargar();
-        });
-        
-        if (intervaloTiempos) clearInterval(intervaloTiempos);
-        intervaloTiempos = setInterval(actualizarContadores, 1000);
-        
-        document.getElementById('loader').style.display = 'none';
-    }
-    
-    async function cargar() {
-        if (!MI_ID_REST) return;
-        try {
-            const r = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}&t=${Date.now()}`);
-            const data = await r.json();
-            
-            if(data.tienda) {
-                document.getElementById('resNombreDisplay').innerText = data.tienda.nombre || "Establecimiento";
-                tiendaAbierta = (data.tienda.estado || "").toLowerCase() === "abierto";
-                document.getElementById('tiendaToggle').checked = tiendaAbierta;
-                let txtE = document.getElementById('txtEstado');
-                txtE.innerText = tiendaAbierta ? "ABIERTO" : "CERRADO";
-                txtE.className = tiendaAbierta ? "estado-badge abierto" : "estado-badge cerrado";
-            }
-            
-            let stats = data.stats || {};
-            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2) + "€";
-            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2) + "€";
-            
-            const nuevosIds = (data.pedidos || []).map(p => p.ID_PEDIDO);
-            const realmenteNuevos = nuevosIds.filter(id => !aceptados.has(id));
-            
-            if (realmenteNuevos.length > 0 && aceptados.size > 0) {
-                playSound();
-                mostrarMensaje('📦 Nuevo Pedido', 'Tienes un nuevo pedido en la lista', 'info');
-                if(navigator.vibrate) navigator.vibrate(500);
-            }
-            
-            pedidosActivos = (data.pedidos || []).sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
-            historialHoy = data.historial || [];
-            ultimoConteo = pedidosActivos.filter(p=>!aceptados.has(p.ID_PEDIDO)).length;
-            document.getElementById('contadorPendientes').innerText = ultimoConteo;
-            
-            render();
-        } catch(e) { 
-            console.error("Error en consulta remota panel de cocina:", e); 
-        }
-    }
-    
-    function render() {
-        let cont = document.getElementById('lista');
-        if(pedidosActivos.length === 0) { 
-            cont.innerHTML = '<div class="text-center py-20 opacity-20 font-bold tracking-widest text-sm">SIN PEDIDOS ACTIVOS</div>'; 
-            return; 
-        }
-        
-        cont.innerHTML = pedidosActivos.map(p => {
-            const esNuevo = !aceptados.has(p.ID_PEDIDO);
-            return `
-            <div class="pedido-card ${esNuevo ? 'nuevo' : ''}" data-id="${p.ID_PEDIDO}">
-                <div class="pedido-header">
-                    <div>
-                        <div class="pedido-id">#${p.ID_PEDIDO}</div>
-                        <div class="pedido-cliente font-bold text-white/90 mt-0.5">${p.CLIENTE}</div>
-                        <div class="tiempo font-medium text-white/50">⏱️ ${calcularTiempo(p.FECHA)}</div>
-                    </div>
-                    <div class="pedido-total">${parseFloat(p.TOTAL).toFixed(2)}€</div>
-                </div>
-                <div class="tiempos">
-                    <div onclick="asignarTiempo('${p.ID_PEDIDO}',15)" class="btn-tiempo t-15">15 MIN</div>
-                    <div onclick="asignarTiempo('${p.ID_PEDIDO}',30)" class="btn-tiempo t-30">30 MIN</div>
-                    <div onclick="asignarTiempo('${p.ID_PEDIDO}',45)" class="btn-tiempo t-45">45 MIN</div>
-                </div>
-                <div class="acciones">
-                    <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-aceptar ${aceptados.has(p.ID_PEDIDO) ? 'aceptado' : ''}">${aceptados.has(p.ID_PEDIDO) ? '✓ ACEPTADO' : 'ACEPTAR'}</button>
-                    <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-detalles">DETALLES</button>
-                    <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-rechazar">RECHAZAR</button>
-                    <button onclick="confirmarListo('${p.ID_PEDIDO}')" class="btn-listo">LISTO</button>
-                </div>
+    <div id="modalHistorial" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center" style="margin-bottom: 16px; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">
+                <h3 style="font-size: 18px; font-weight: bold;">✅ Mis Entregas de Hoy</h3>
+                <button id="btnCerrarHistorial" style="background: transparent; color: #64748b; font-size: 20px; cursor: pointer;">✕</button>
             </div>
-        `}).join('');
-    }
-    
-    function calcularTiempo(fechaStr) {
-        if(!fechaStr) return "---";
-        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
-        if(diff < 1) return "Ahora mismo";
-        if(diff < 60) return `Hace ${diff} min`;
-        return `Hace ${Math.floor(diff/60)}h ${diff%60}min`;
-    }
-    
-    async function aceptarPedido(id) { 
-        aceptados.add(id); 
-        let ahora = Date.now();
-        let timestampFin = ahora + (20 * 60 * 1000);
-        try {
-            await database.ref('pedidos/'+id).update({ 
-                estado: 'en proceso',
-                tiempo_elaboracion: 20,
-                timestamp_inicio: ahora,
-                timestamp_fin_elaboracion: timestampFin
-            });
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
-            render(); 
-            cargar();
-            mostrarMensaje('✅ Pedido Aceptado', 'El pedido está en proceso de preparación', 'success');
-        } catch(err) {
-            console.error(err);
-        }
-    }
-    
-    async function asignarTiempo(id, min) {
-        let ahora = Date.now();
-        let timestampFin = ahora + (min * 60 * 1000);
-        let horaStr = new Date(timestampFin).getHours().toString().padStart(2,'0') + ":" + new Date(timestampFin).getMinutes().toString().padStart(2,'0');
-        
-        try {
-            await database.ref('pedidos/'+id).update({ 
-                tiempo_elaboracion: min,
-                timestamp_inicio: ahora,
-                timestamp_fin_elaboracion: timestampFin,
-                tiempoEstimado: min, 
-                horaSalida: horaStr
-            });
-            
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${min}`);
-            mostrarMensaje('⏳ Tiempo Asignado', `Pedido #${id} listo a las ${horaStr}`, 'success');
-            cargar();
-        } catch(e) {
-            console.error(e);
-        }
-    }
-    
-    async function rechazarPedido(id) {
-        const { value: motivo } = await Swal.fire({
-            title: '❌ Rechazar Pedido',
-            text: 'Selecciona el motivo del rechazo',
-            input: 'select',
-            inputOptions: {
-                'No disponible': 'Plato no disponible en este momento',
-                'Ingredientes': 'Ingredientes agotados',
-                'Capacidad': 'Restaurante a máxima capacidad',
-                'Horario': 'Fuera de horario de preparación',
-                'Otro': 'Otro motivo (especificar)'
-            },
-            inputPlaceholder: 'Selecciona un motivo...',
-            icon: 'warning',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Rechazar',
-            showCancelButton: true
-        });
-        
-        if (!motivo) return;
-        
-        let motivoTexto = motivo;
-        if (motivo === 'Otro') {
-            const { value: otro } = await Swal.fire({
-                title: 'Especifica el motivo',
-                input: 'text',
-                inputPlaceholder: 'Ej: Problemas con el repartidor...',
-                background: '#020617',
-                color: 'white'
-            });
-            if (otro) motivoTexto = otro;
-        }
-        
-        try {
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${encodeURIComponent(motivoTexto)}`);
-            await database.ref('pedidos/'+id).update({ 
-                estado: 'rechazado',
-                motivo_rechazo: motivoTexto,
-                timestamp_rechazo: Date.now(),
-                deuda_acumulada: 0
-            });
-            
-            mostrarMensaje('❌ Pedido Rechazado', `Motivo: ${motivoTexto}`, 'error');
-            aceptados.delete(id);
-            cargar();
-        } catch(e) {
-            console.error(e);
-        }
-    }
-    
-    // MODAL DE DETALLES OPTIMIZADO CON FUNCIÓN DE IMPRESIÓN DE TICKET DE EMBALAJE
-    function verDetalles(id) { 
-        let p = [...pedidosActivos, ...historialHoy].find(x=>x.ID_PEDIDO==id); 
-        if(p) {
-            let textoMetodo = p.PAGO || 'Efectivo';
-            let informacionPagoExtra = '';
-            let pagaCon = parseFloat(p.PAGA_CON) || 0;
-            if(pagaCon > 0 && textoMetodo.toUpperCase().includes('EFECTIVO')) {
-                let cambio = pagaCon - (parseFloat(p.TOTAL) || 0);
-                informacionPagoExtra = `<br><strong>💵 Paga con:</strong> ${pagaCon.toFixed(2)}€ (Cambio: ${cambio > 0 ? cambio.toFixed(2) : '0.00'}€)`;
-            }
+            <div id="historialLista"></div>
+        </div>
+    </div>
 
-            Swal.fire({
-                title: `Pedido #${p.ID_PEDIDO}`,
-                html: `<div id="ticketModalView" style="text-align:left; font-size: 14px; line-height: 1.6;">
-                    <strong>👤 Cliente:</strong> ${p.CLIENTE}<br>
-                    <strong>📍 Dirección:</strong> ${p.DIRECCION || 'No especificada'}<br>
-                    <strong>💳 Método de Pago:</strong> ${textoMetodo}${informacionPagoExtra}<br><br>
-                    <strong style="border-bottom: 1px dashed rgba(255,255,255,0.2); display:block; padding-bottom:4px;">📋 DETALLE DEL PEDIDO:</strong>
-                    <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; margin-top: 6px; font-family: monospace; white-space: pre-wrap; color: #06b6d4;">${p.PEDIDO_DETALLE || ''}</div><br>
-                    <strong>💰 Total:</strong> <span style="font-size:16px; color:#22c55e; font-weight:bold;">${parseFloat(p.TOTAL).toFixed(2)}€</span>
-                </div>`,
-                icon: 'info',
-                background: '#020617',
-                color: 'white',
-                showCancelButton: true,
-                confirmButtonColor: '#06b6d4',
-                cancelButtonColor: '#1e293b',
-                confirmButtonText: '🖨️ Imprimir Ticket',
-                cancelButtonText: 'Cerrar'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    imprimirTicketFisico(p);
+    <script>
+        console.log("🚀 Script detectado e iniciando ejecución...");
+
+        const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+        
+        let codigoActual = null;
+        let nombreActualServer = null;
+        let intervalo = null;
+        let intervaloRelojes = null; 
+        let audioNotif = null;
+        let ultimosIds = [];
+        
+        function initAudio() {
+            audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audioNotif.volume = 0.8;
+        }
+        
+        function playSound() {
+            if (audioNotif) {
+                audioNotif.currentTime = 0;
+                audioNotif.play().catch(e => console.log('Audio en espera de interacción.'));
+            }
+        }
+        
+        async function fetchConTimeout(url, timeout = 10000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                return response;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                throw error;
+            }
+        }
+        
+        async function cargarPedidos() {
+            if (!codigoActual) return;
+            try {
+                const res = await fetchConTimeout(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigoActual) + '&t=' + Date.now());
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('estadoConexion').innerHTML = 'Error de Permisos';
+                    document.getElementById('estadoConexion').style.color = '#ef4444';
+                    return;
+                }
+                
+                document.getElementById('estadoConexion').innerHTML = 'Conectado';
+                document.getElementById('estadoConexion').style.color = '#22c55e';
+                
+                nombreActualServer = data.nombre || codigoActual;
+                document.getElementById('nombreRep').innerHTML = nombreActualServer;
+                document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
+                
+                const pedidosActivosReales = (data.pedidos || []).filter(p => {
+                    const est = (p.ESTADO || '').toUpperCase().trim();
+                    return est !== 'CANCELADO' && est !== 'RECHAZADO' && est !== 'ENTREGADO';
+                });
+
+                const nuevosIds = pedidosActivosReales.map(p => p.ID_PEDIDO);
+                const realmenteNuevos = nuevosIds.filter(id => !ultimosIds.includes(id));
+                if (realmenteNuevos.length > 0) {
+                    playSound();
+                }
+                
+                ultimosIds = nuevosIds;
+                document.getElementById('contadorPedidos').innerHTML = pedidosActivosReales.length + ' pedido' + (pedidosActivosReales.length !== 1 ? 's' : '');
+                
+                renderizarPedidos(pedidosActivosReales);
+            } catch(e) {
+                console.error("Error en conexión:", e);
+                document.getElementById('estadoConexion').innerHTML = 'Offline';
+                document.getElementById('estadoConexion').style.color = '#ef4444';
+            }
+        }
+        
+        function renderizarPedidos(pedidosFiltrados) {
+            const contenedor = document.getElementById('listaPedidos');
+            
+            if (pedidosFiltrados.length === 0) {
+                contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
+                return;
+            }
+            
+            let html = '';
+            for (let p of pedidosFiltrados) {
+                const estado = (p.ESTADO || '').toUpperCase().trim();
+                const total = parseFloat(p.TOTAL) || 0;
+                let telefono = p.telf || '';
+                let telefonoLimpio = String(telefono).replace(/\D/g, '');
+                if (telefonoLimpio.length === 9 && (telefonoLimpio.startsWith('6') || telefonoLimpio.startsWith('7'))) {
+                    telefonoLimpio = '34' + telefonoLimpio;
+                }
+                
+                let botones = '';
+                if (estado === 'LISTO' || estado === 'RECIBIDO') {
+                    botones = `<button class="btn-recoger" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
+                } else if (estado === 'EN CAMINO') {
+                    botones = `<button class="btn-llegada" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+                } else if (estado === 'LLEGÓ') {
+                    botones = `<button class="btn-entregar" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>`;
+                } else {
+                    botones = '<div style="background: rgba(6,182,212,0.1); color: #06b6d4; padding: 14px; border-radius: 14px; text-align: center; font-weight: 500;">⏳ ESTADO: ' + (estado || 'PREPARANDO') + '</div>';
+                }
+
+                let bloqueContadorCocina = '';
+                if (estado !== 'LISTO' && estado !== 'EN CAMINO' && estado !== 'LLEGÓ' && p.TIMESTAMP_FIN_ELABORACION) {
+                    bloqueContadorCocina = `<div class="badge-contador" data-target="${p.TIMESTAMP_FIN_ELABORACION}">⏳ Calculando tiempo...</div>`;
+                }
+
+                let bloqueEfectivoCambio = '';
+                let pagaCon = parseFloat(p.PAGA_CON) || 0;
+                if (pagaCon > 0 && (p.PAGO || '').toUpperCase().includes('EFECTIVO')) {
+                    let cambioNecesario = pagaCon - total;
+                    bloqueEfectivoCambio = `
+                        <div style="margin-top: 6px; padding: 6px 10px; background: rgba(34, 197, 94, 0.1); border-radius: 8px; border: 1px dashed rgba(34, 197, 94, 0.3); font-size: 12px; color: #22c55e;">
+                            💵 El cliente paga con: <strong>${pagaCon.toFixed(2)}€</strong><br>
+                            ⚠️ Llevar cambio de: <strong style="font-size: 13px;">${cambioNecesario > 0 ? cambioNecesario.toFixed(2) : '0.00'}€</strong>
+                        </div>
+                    `;
+                }
+
+                // Generación segura del enlace de Google Maps para el botón de GPS
+                let linkDireccionMaps = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '');
+                
+                html += '<div class="card">';
+                html += '<div class="flex justify-between items-center" style="margin-bottom: 10px;"><span style="font-weight: bold; color: #06b6d4;">📋 REF: ' + p.ID_PEDIDO + '</span>' + bloqueContadorCocina + '<span style="background:rgba(6,182,212,0.2);color:#06b6d4;padding:3px 10px;border-radius:20px;font-size:11px;font-weight: bold;">' + estado + '</span></div>';
+                
+                // Bloque de Dirección junto al botón de Navegación GPS recuperado
+                html += '<div style="margin-bottom: 12px;">';
+                html += '<div style="font-size: 15px; font-weight: 600; color: #f1f5f9;">📍 ' + (p.DIRECCION || 'Sin dirección registrada') + '</div>';
+                html += `<a href="${linkDireccionMaps}" target="_blank" style="display: inline-flex; align-items: center; margin-top: 6px; background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); font-size: 12px; font-weight: bold; padding: 6px 14px; border-radius: 8px; text-decoration: none;">🗺️ VER RUTA / NAVEGAR</a>`;
+                html += '</div>';
+
+                html += '<div style="background: #1e293b; padding: 10px; border-radius: 12px; margin-bottom: 12px; font-size: 13px;">';
+                html += '<div style="margin-bottom: 4px; color: #e2e8f0;">👤 <strong>' + (p.CLIENTE || 'Cliente Desconocido') + '</strong></div>';
+                html += '<div class="flex justify-between items-center">';
+                html += '<span style="color: #94a3b8;">📞 ' + (telefono || 'No disponible') + '</span>';
+                if (telefonoLimpio) {
+                    html += '<div style="display: flex; gap: 8px;">';
+                    html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:#020617;padding:6px 12px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12px;">Llamar</a>';
+                    html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:#ffffff;padding:6px 12px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12px;">WhatsApp</a>';
+                    html += '</div>';
+                }
+                html += '</div>';
+                html += '<div style="margin-top: 6px; color: #94a3b8;">💳 Método: <span style="color:#f1f5f9; font-weight:500;">' + (p.PAGO || 'Efectivo') + '</span></div>';
+                html += bloqueEfectivoCambio; 
+                html += '</div>';
+                html += '<div class="flex justify-between items-center" style="margin: 12px 0; padding-top: 4px;">';
+                html += '<span style="color:#94a3b8;">Total a recibir:</span>';
+                html += '<span style="color:#22c55e; font-size: 18px; font-weight: bold;">' + total.toFixed(2) + '€</span>';
+                html += '</div>';
+                html += botones;
+                html += '</div>';
+            }
+            contenedor.innerHTML = html;
+        }
+
+        function actualizarRelojesCocina() {
+            document.querySelectorAll('.badge-contador').forEach(el => {
+                const targetTimestamp = parseInt(el.getAttribute('data-target'));
+                if (!targetTimestamp) return;
+                
+                const ahora = Date.now();
+                const diferencia = targetTimestamp - ahora;
+                
+                if (diferencia <= 0) {
+                    el.innerHTML = "🔔 RETRASADO / LISTO";
+                    el.style.background = "rgba(239, 68, 68, 0.15)";
+                    el.style.color = "#ef4444";
+                    el.style.borderColor = "rgba(239, 68, 68, 0.3)";
+                } else {
+                    const minutos = Math.floor(diferencia / 60000);
+                    const segundos = Math.floor((diferencia % 60000) / 1000);
+                    el.innerHTML = `⏳ Cocina: ${minutos}m ${segundos}s`;
                 }
             });
         }
-    }
-
-    // INYECCIÓN DINÁMICA DE VENTANA OCULTA DE IMPRESIÓN (TÉRMICA DE BOLSA)
-    function imprimirTicketFisico(pedido) {
-        const ventanaImpresion = window.open('', '_blank', 'width=600,height=600');
         
-        let cambioTexto = '';
-        let pagaCon = parseFloat(pedido.PAGA_CON) || 0;
-        if(pagaCon > 0 && (pedido.PAGO || '').toUpperCase().includes('EFECTIVO')) {
-            let vuelto = pagaCon - (parseFloat(pedido.TOTAL) || 0);
-            cambioTexto = `
-                <p><strong>Paga Con:</strong> ${pagaCon.toFixed(2)}€</p>
-                <p><strong>Cambio a Llevar:</strong> ${vuelto > 0 ? vuelto.toFixed(2) : '0.00'}€</p>
-            `;
-        }
-
-        ventanaImpresion.document.write(`
-            <html>
-            <head>
-                <title>Ticket_Pedido_${pedido.ID_PEDIDO}</title>
-                <style>
-                    body { 
-                        font-family: 'Courier New', Courier, monospace; 
-                        color: #000; 
-                        background: #fff; 
-                        padding: 10px; 
-                        font-size: 14px; 
-                        width: 100%;
-                        max-width: 280px; /* Ancho ideal para impresoras de ticket de 58mm / 80mm */
-                        margin: 0 auto;
-                    }
-                    .text-center { text-align: center; }
-                    .separator { border-top: 1px dashed #000; margin: 10px 0; }
-                    .id-pedido { font-size: 22px; font-weight: bold; margin: 5px 0; }
-                    .detalle-productos { white-space: pre-wrap; font-size: 13px; font-weight: bold; margin: 10px 0; }
-                    .total { font-size: 16px; font-weight: bold; text-align: right; }
-                </style>
-            </head>
-            <body>
-                <div class="text-center">
-                    <h2 style="margin:0; font-size:16px;">AGUADULCE EXPRESS</h2>
-                    <p style="margin:2px 0; font-size:11px;">Control de Cocina y Embalaje</p>
-                    <div class="separator"></div>
-                    <div class="id-pedido">TICKET #${pedido.ID_PEDIDO}</div>
-                    <p style="margin:2px 0; font-size:11px;">${new Date().toLocaleString('es-ES')}</p>
-                </div>
-                <div class="separator"></div>
-                <p><strong>Cliente:</strong> ${pedido.CLIENTE}</p>
-                <p><strong>Dirección:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p>
-                <div class="separator"></div>
-                <div class="detalle-productos">${pedido.PEDIDO_DETALLE || ''}</div>
-                <div class="separator"></div>
-                <p><strong>Pago:</strong> ${pedido.PAGO || 'Efectivo'}</p>
-                ${cambioTexto}
-                <div class="total">TOTAL: ${parseFloat(pedido.TOTAL).toFixed(2)}€</div>
-                <div class="separator"></div>
-                <div class="text-center" style="font-size:11px; margin-top:15px;">
-                    ¡Buen servicio!<br>Verifica bien la bolsa antes de salir.
-                </div>
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function(){ window.close(); }, 500);
-                    };
-                <\/script>
-            </body>
-            </html>
-        `);
-        ventanaImpresion.document.close();
-    }
-    
-    function confirmarListo(id) { 
-        Swal.fire({
-            title: '¿Pedido listo?',
-            text: `Confirma que el pedido #${id} está listo para enviar`,
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#eab308',
-            confirmButtonText: 'Sí, listo',
-            showCancelButton: true
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                await ejecutarListo(id);
-            }
-        });
-    }
-    
-    async function ejecutarListo(id) { 
-        let timestampFin = Date.now();
-        try {
-            await database.ref('pedidos/'+id).update({ 
-                estado: 'listo',
-                timestamp_fin_elaboracion: timestampFin,
-                timestamp_listo: timestampFin
-            });
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
-            mostrarMensaje('✅ Pedido Listo', 'El repartidor será notificado', 'success');
-            cargar(); 
-        } catch(e) {
-            console.error(e);
-        }
-    }
-    
-    function confirmarToggleTienda() { 
-        let nuevo = !tiendaAbierta ? "Abierto" : "Cerrado"; 
-        Swal.fire({
-            title: `¿Cambiar estado a ${nuevo.toUpperCase()}?`,
-            text: tiendaAbierta ? 'Al cerrar, no se recibirán nuevos pedidos' : 'Al abrir, se recibirán pedidos normalmente',
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#06b6d4',
-            confirmButtonText: 'Confirmar',
-            showCancelButton: true
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                await ejecutarToggle(nuevo);
+        window.recogerPedido = async function(btn, id) {
+            btn.disabled = true; const textoOriginal = btn.innerHTML; btn.innerHTML = '⏳ Guardando cambio...';
+            try {
+                await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+                if(typeof Swal !== 'undefined') await Swal.fire({ title: '✅ Pedido en Camino', icon: 'success', background: '#0f172a', color: 'white', timer: 1500, showConfirmButton: false });
+                await cargarPedidos();
+            } catch(e) { console.error(e); } finally { btn.disabled = false; btn.innerHTML = textoOriginal; }
+        };
+        
+        window.marcarLlegada = async function(btn, id) {
+            btn.disabled = true; const textoOriginal = btn.innerHTML; btn.innerHTML = '⏳ Guardando ubicación...';
+            try {
+                await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+                if(typeof Swal !== 'undefined') await Swal.fire({ title: '📍 Llegaste al Destino', icon: 'success', background: '#0f172a', color: 'white', timer: 1500, showConfirmButton: false });
+                await cargarPedidos();
+            } catch(e) { console.error(e); } finally { btn.disabled = false; btn.innerHTML = textoOriginal; }
+        };
+        
+        window.confirmarEntrega = function(id, total) {
+            if(typeof Swal !== 'undefined') {
+                Swal.fire({
+                    title: '💰 Confirmar Cobro',
+                    html: `¿Confirmas que has cobrado los <strong>${total.toFixed(2)}€</strong> correspondientes al pedido?`,
+                    icon: 'question',
+                    background: '#0f172a', color: 'white',
+                    confirmButtonColor: '#22c55e', confirmButtonText: '✅ Sí, cobrar',
+                    showCancelButton: true, cancelButtonText: 'Cancelar', cancelButtonColor: '#334155'
+                }).then(async (result) => {
+                    if (result.isConfirmed) await finalizarEntrega(id, total);
+                });
             } else {
-                document.getElementById('tiendaToggle').checked = tiendaAbierta;
+                if(confirm(`¿Confirmar entrega y cobro de ${total.toFixed(2)}€?`)) finalizarEntrega(id, total);
             }
-        });
-    }
-    
-    async function ejecutarToggle(estado) { 
-        try {
-            await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&sheet=configuracion&nuevoEstado=${estado}`); 
-            setTimeout(cargar,1000); 
-        } catch(e) {
-            console.error(e);
+        };
+        
+        window.finalizarEntrega = async function(id, total) {
+            try {
+                await fetchConTimeout(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
+                if(typeof Swal !== 'undefined') await Swal.fire({ title: '🎉 ¡Pedido Entregado!', text: `+${total.toFixed(2)}€ añadidos a tu billetera`, icon: 'success', background: '#0f172a', color: 'white', timer: 2000, showConfirmButton: false });
+                await cargarPedidos();
+            } catch(e) { console.error(e); }
+        };
+        
+        async function mostrarHistorial() {
+            document.getElementById('modalHistorial').style.display = 'flex';
+            document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 20px; color:#64748b;">⏳ Cargando historial...</div>';
+            
+            const paramBusqueda = nombreActualServer || codigoActual;
+            try {
+                const res = await fetchConTimeout(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(paramBusqueda));
+                const data = await res.json();
+                const pedidos = data.historial || [];
+                let html = '';
+                
+                for (let p of pedidos.slice().reverse()) {
+                    if ((p.ESTADO || '').toUpperCase().trim() === 'ENTREGADO') {
+                        html += `<div class="historial-item"><div><strong>Pedido #${p.ID_PEDIDO}</strong><br><span style="font-size: 11px; color:#94a3b8;">👤 ${p.CLIENTE || 'Cliente'}</span></div><div class="historial-total">+${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div></div>`;
+                    }
+                }
+                document.getElementById('historialLista').innerHTML = html || '<div class="text-center" style="padding: 40px; color:#64748b;">📭 Sin entregas registradas hoy</div>';
+            } catch(e) {
+                document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 40px; color:#ef4444;">❌ Error al conectar con la base de datos</div>';
+            }
         }
-    }
-    
-    function preguntarSalir() {
-        Swal.fire({
-            title: '¿Cerrar sesión?',
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, salir',
-            showCancelButton: true
-        }).then(result => {
-            if (result.isConfirmed) {
-                localStorage.removeItem('AE_REST_ID');
+        
+        function cerrarHistorial() { document.getElementById('modalHistorial').style.display = 'none'; }
+        
+        async function cerrarSesion() {
+            if (confirm("¿Seguro que deseas cerrar sesión?")) {
+                if (intervalo) clearInterval(intervalo);
+                if (intervaloRelojes) clearInterval(intervaloRelojes);
+                localStorage.removeItem('rep_code');
                 location.reload();
             }
-        });
-    }
-    
-    function abrirHistorial() {
-        let lista = document.getElementById('listaHistorial');
-        if(historialHoy.length === 0) {
-            lista.innerHTML = '<div class="text-center opacity-50 text-xs py-10">Ninguna entrega registrada hoy</div>';
-        } else {
-            lista.innerHTML = historialHoy.map(p => `
-                <div class="historial-card cursor-pointer active:scale-95 transition-transform" onclick="cerrarHistorial(); verDetalles('${p.ID_PEDIDO}')">
-                    <div class="flex-between">
-                        <span class="text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
-                        <span class="font-bold text-emerald-400">${parseFloat(p.TOTAL).toFixed(2)}€</span>
-                    </div>
-                    <div class="text-xs mt-1 text-white/70 font-semibold">${p.CLIENTE}</div>
-                </div>
-            `).join('');
         }
-        document.getElementById('sideHistorial').classList.add('open');
-    }
-    
-    function cerrarHistorial() { document.getElementById('sideHistorial').classList.remove('open'); }
-    
-    function actualizarContadores() {
-        document.querySelectorAll('.tiempo-contador').forEach(el => {
-            const target = parseInt(el.getAttribute('data-time'));
-            if (!target) return;
-            const ahora = Date.now();
-            const diff = target - ahora;
-            if (diff <= 0) {
-                el.innerHTML = "🔔 ¡LISTO!";
-                el.style.background = "#22c55e20";
-                el.style.color = "#22c55e";
-            } else {
-                const min = Math.floor(diff / 60000);
-                const seg = Math.floor((diff % 60000) / 1000);
-                el.innerHTML = `⏳ ${min}m ${seg}s`;
+        
+        async function iniciarApp() {
+            console.log("⚙️ Ejecutando iniciarApp()...");
+            initAudio();
+            
+            document.getElementById('btnSalir').onclick = cerrarSesion;
+            document.getElementById('btnHistorial').onclick = mostrarHistorial;
+            document.getElementById('btnCerrarHistorial').onclick = cerrarHistorial;
+            
+            let codigo = null;
+            try {
+                codigo = localStorage.getItem('rep_code');
+            } catch (error) {
+                console.warn("⚠️ LocalStorage temporal.");
             }
+            
+            if (!codigo) {
+                if (typeof Swal === 'undefined') {
+                    let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor (Ej: R001):");
+                    if (promptCodigo && promptCodigo.trim()) {
+                        codigo = promptCodigo.trim().toUpperCase();
+                        localStorage.setItem('rep_code', codigo);
+                    }
+                } else {
+                    try {
+                        const result = await Swal.fire({
+                            title: '🔐 Identificación',
+                            text: 'Introduce tu código asignado para acceder al reparto:',
+                            input: 'text',
+                            inputPlaceholder: 'Ej: R001, R003',
+                            background: '#0f172a',
+                            color: 'white',
+                            confirmButtonColor: '#06b6d4',
+                            confirmButtonText: 'Ingresar',
+                            allowOutsideClick: false
+                        });
+                        
+                        if (result && result.value && result.value.trim()) {
+                            codigo = result.value.trim().toUpperCase();
+                            localStorage.setItem('rep_code', codigo);
+                        }
+                    } catch (swalError) {
+                        let promptCodigo = prompt("🔐 Introduce tu Código de Repartidor:");
+                        if (promptCodigo && promptCodigo.trim()) {
+                            codigo = promptCodigo.trim().toUpperCase();
+                            localStorage.setItem('rep_code', codigo);
+                        }
+                    }
+                }
+            }
+            
+            if (!codigo) {
+                document.getElementById('loader').innerHTML = '<h2 style="color:#ef4444; font-weight:bold; padding:20px; text-align:center;">❌ Acceso denegado. Se necesita código.</h2>';
+                return;
+            }
+
+            codigoActual = codigo;
+            document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
+            
+            try {
+                await cargarPedidos();
+            } catch (err) {
+                console.error("Reintentando conexión diferida.", err);
+            }
+            
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            console.log("✅ ¡App lista y visible en pantalla!");
+            
+            if (intervalo) clearInterval(intervalo);
+            intervalo = setInterval(cargarPedidos, 5000);
+
+            if (intervaloRelojes) clearInterval(intervaloRelojes);
+            intervaloRelojes = setInterval(actualizarRelojesCocina, 1000);
+        }
+        
+        iniciarApp().catch(err => {
+            console.error("💥 Error fatal:", err);
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
         });
-    }
-</script>
+    </script>
 </body>
 </html>

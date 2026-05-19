@@ -2,76 +2,384 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reparto Express - Diagnóstico</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Reparto Express - Aguadulce</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        body { background: #020617; color: white; font-family: system-ui; padding: 20px; }
-        .card { background: #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 15px; }
-        button { background: #06b6d4; border: none; padding: 12px; border-radius: 12px; color: black; font-weight: bold; margin-top: 10px; cursor: pointer; width: 100%; }
-        .error { color: #ef4444; background: #7f1d1d20; padding: 10px; border-radius: 8px; margin: 10px 0; }
-        .success { color: #22c55e; background: #14532d20; padding: 10px; border-radius: 8px; margin: 10px 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; color: white; font-family: system-ui, -apple-system, sans-serif; padding: 15px; padding-bottom: 30px; }
+        
+        .header { background: linear-gradient(135deg, #06b6d4, #020617); margin: -15px -15px 15px -15px; padding: 20px 15px; }
+        .flex { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .btn-salir { background: rgba(0,0,0,0.5); border: none; padding: 8px 16px; border-radius: 12px; color: white; font-weight: bold; cursor: pointer; }
+        .repartidor-nombre { font-size: 18px; font-weight: bold; }
+        .repartidor-id { font-size: 10px; opacity: 0.7; }
+        .billetera { text-align: right; }
+        .billetera-label { font-size: 9px; opacity: 0.6; }
+        .billetera-monto { font-size: 20px; font-weight: bold; color: #22c55e; }
+        
+        .stats { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .contador { background: #06b6d4; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .btn-historial { background: rgba(6,182,212,0.2); border: none; padding: 6px 12px; border-radius: 20px; color: #06b6d4; font-size: 11px; cursor: pointer; }
+        
+        .card { background: rgba(30,41,59,0.9); border-radius: 20px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05); }
+        .ref { background: rgba(6,182,212,0.2); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #06b6d4; display: inline-block; }
+        .direccion { font-size: 16px; font-weight: bold; margin: 12px 0; word-break: break-word; }
+        .cliente-box { background: #0f172a; border-radius: 14px; padding: 12px; margin: 12px 0; }
+        .cliente-nombre { color: #06b6d4; font-weight: bold; margin-bottom: 8px; }
+        .pago { font-size: 11px; opacity: 0.7; margin-top: 8px; }
+        
+        button { width: 100%; padding: 14px; border-radius: 14px; font-weight: bold; border: none; margin-top: 10px; cursor: pointer; transition: transform 0.1s, opacity 0.2s; }
+        button:active { transform: scale(0.98); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-recoger { background: white; color: black; animation: pulse-green 1s infinite; }
+        .btn-llegada { background: #eab308; color: black; }
+        .btn-entregar { background: #22c55e; color: white; }
+        .btn-cancelar { background: #ef4444; color: white; }
+        .btn-timer { background: #f97316; color: white; }
+        
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); background: #22c55e; color: white; }
+            70% { box-shadow: 0 0 0 10px rgba(34,197,94,0); background: white; color: black; }
+            100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); background: #22c55e; color: white; }
+        }
+        
+        .timer-box { background: #f97316; color: white; padding: 12px; border-radius: 14px; text-align: center; font-weight: bold; margin: 10px 0; font-size: 18px; }
+        .tiempo-cocina { background: #06b6d420; border: 1px solid #06b6d4; border-radius: 12px; padding: 8px; text-align: center; font-size: 14px; margin-top: 10px; }
+        
+        .acciones { display: flex; gap: 10px; margin: 12px 0; }
+        .accion { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; text-align: center; text-decoration: none; color: white; font-size: 12px; }
+        
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 10000; display: none; flex-direction: column; padding: 20px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .modal-header h2 { color: #06b6d4; }
+        .modal-header button { width: auto; padding: 10px 20px; background: #ef4444; margin: 0; }
+        .modal-content { flex: 1; overflow-y: auto; }
+        .historial-item { background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .historial-total { color: #22c55e; font-weight: bold; font-size: 16px; }
+        .resumen { background: #0f172a; border-radius: 12px; padding: 15px; margin-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        
+        .sin-pedidos { text-align: center; padding: 40px; opacity: 0.5; }
+        .loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020617; display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.2); border-top-color: #06b6d4; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .text-center { text-align: center; }
+        
+        .offline-banner { background: #ef4444; color: white; text-align: center; padding: 8px; font-size: 12px; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; display: none; }
+        
+        @media (max-width: 480px) {
+            .stats { flex-direction: column; align-items: stretch; }
+        }
     </style>
 </head>
 <body>
 
-<div id="status" class="card">
-    <h3>🔧 Diagnóstico del Sistema</h3>
-    <div id="log"></div>
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <p style="color:#06b6d4; margin-top: 15px;">Iniciando Reparto Express...</p>
 </div>
 
 <div id="app" style="display: none;">
-    <div class="card">
-        <h2>✅ App Iniciada Correctamente</h2>
-        <p>Repartidor: <strong id="nombreRep">-</strong></p>
-        <p>Saldo: <strong id="saldo">0€</strong></p>
-        <button onclick="cerrarSesion()">🚪 Cerrar Sesión</button>
+    <div class="header">
+        <div class="flex">
+            <button class="btn-salir" onclick="cerrarSesion()">🚪 Salir</button>
+            <div>
+                <div class="repartidor-nombre" id="nombreRep">Cargando...</div>
+                <div class="repartidor-id" id="codigoRep"></div>
+            </div>
+            <div class="billetera">
+                <div class="billetera-label">💰 Billetera</div>
+                <div class="billetera-monto" id="saldo">0.00€</div>
+            </div>
+        </div>
     </div>
-    <div id="pedidos"></div>
+
+    <div class="stats">
+        <div style="display: flex; gap: 10px;">
+            <span>📡 <span id="estadoConexion" style="color:#22c55e;">Conectado</span></span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <span class="contador" id="contadorPedidos">0 pedidos</span>
+            <button class="btn-historial" onclick="mostrarHistorial()">📋 Historial</button>
+        </div>
+    </div>
+
+    <div id="listaPedidos"></div>
+</div>
+
+<!-- Modal de historial -->
+<div id="modalHistorial" class="modal">
+    <div class="modal-header">
+        <h2>📋 Historial de Entregas</h2>
+        <button onclick="cerrarHistorial()">✕ Cerrar</button>
+    </div>
+    <div class="modal-content" id="historialLista">
+        <div class="text-center">Cargando...</div>
+    </div>
+</div>
+
+<div id="offlineBanner" class="offline-banner">
+    📡 Sin conexión - Los cambios se guardarán localmente
 </div>
 
 <script>
     const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
-    function log(mensaje, esError = false) {
-        const logDiv = document.getElementById('log');
-        const div = document.createElement('div');
-        div.innerHTML = esError ? `❌ ${mensaje}` : `✅ ${mensaje}`;
-        div.style.color = esError ? '#ef4444' : '#22c55e';
-        div.style.margin = '5px 0';
-        div.style.fontSize = '14px';
-        logDiv.appendChild(div);
-        console.log(mensaje);
+    let codigo = null;
+    let pedidosActivos = [];
+    let intervalo = null;
+    let audioNotif = null;
+    let ultimosIds = [];
+    
+    function initAudio() {
+        audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audioNotif.volume = 0.8;
     }
     
-    async function testConexion() {
-        log('Probando conexión con el servidor...');
-        try {
-            const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=R001&t=' + Date.now());
-            const data = await res.json();
-            log('Conexión exitosa. Respuesta del servidor: ' + JSON.stringify(data).substring(0, 100));
-            return true;
-        } catch(e) {
-            log('Error de conexión: ' + e.message, true);
-            return false;
+    function playSound() {
+        if (audioNotif) {
+            audioNotif.currentTime = 0;
+            audioNotif.play().catch(e => console.log('Audio no disponible'));
         }
     }
     
-    async function iniciar() {
-        log('Iniciando diagnóstico...');
+    async function fetchConTimeout(url, timeout = 10000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            throw error;
+        }
+    }
+    
+    async function cargarPedidos() {
+        if (!codigo) return;
         
-        // Probar conexión primero
-        const conectado = await testConexion();
-        if (!conectado) {
-            log('⚠️ No se pudo conectar al servidor. Verifica la URL.', true);
+        try {
+            const res = await fetchConTimeout(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now());
+            const data = await res.json();
+            
+            if (data.error) {
+                document.getElementById('estadoConexion').innerHTML = 'Error';
+                document.getElementById('estadoConexion').style.color = '#ef4444';
+                return;
+            }
+            
+            document.getElementById('estadoConexion').innerHTML = 'Conectado';
+            document.getElementById('estadoConexion').style.color = '#22c55e';
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
+            document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
+            
+            const nuevosIds = (data.pedidos || []).map(p => p.ID_PEDIDO);
+            const realmenteNuevos = nuevosIds.filter(id => !ultimosIds.includes(id));
+            if (realmenteNuevos.length > 0) {
+                playSound();
+            }
+            
+            ultimosIds = nuevosIds;
+            pedidosActivos = data.pedidos || [];
+            document.getElementById('contadorPedidos').innerHTML = pedidosActivos.length + ' pedido' + (pedidosActivos.length !== 1 ? 's' : '');
+            
+            renderizarPedidos();
+        } catch(e) {
+            console.error(e);
+            document.getElementById('estadoConexion').innerHTML = 'Offline';
+            document.getElementById('estadoConexion').style.color = '#ef4444';
+        }
+    }
+    
+    function renderizarPedidos() {
+        const contenedor = document.getElementById('listaPedidos');
+        
+        const pedidosFiltrados = pedidosActivos.filter(p => {
+            const estado = (p.ESTADO || '').toUpperCase();
+            return estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'ENTREGADO';
+        });
+        
+        if (pedidosFiltrados.length === 0) {
+            contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
             return;
         }
         
-        // Verificar localStorage
-        let codigo = localStorage.getItem('rep_code');
-        log('Código en localStorage: ' + (codigo || 'ninguno'));
+        let html = '';
+        for (let p of pedidosFiltrados) {
+            const estado = (p.ESTADO || '').toUpperCase();
+            const total = parseFloat(p.TOTAL) || 0;
+            let telefono = p.telf || '';
+            const telefonoLimpio = String(telefono).replace(/\D/g, '');
+            
+            let botones = '';
+            
+            if (estado === 'LISTO') {
+                botones = `<button class="btn-recoger" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
+            } else if (estado === 'EN CAMINO') {
+                botones = `<button class="btn-llegada" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+            } else if (estado === 'LLEGÓ') {
+                botones = `<button class="btn-entregar" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 ENTREGAR</button>`;
+            } else {
+                botones = '<div style="background: rgba(6,182,212,0.2); padding: 14px; border-radius: 14px; text-align: center;">⏳ ' + (estado || 'PREPARANDO') + '</div>';
+            }
+            
+            html += '<div class="card">';
+            html += '<div class="flex"><span class="ref">📋 ' + p.ID_PEDIDO + '</span><span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span></div>';
+            html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+            html += '<div class="cliente-box">';
+            html += '<div class="cliente-nombre">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+            html += '<div class="flex" style="justify-content: space-between; align-items: center;">';
+            html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
+            if (telefonoLimpio) {
+                html += '<div style="display: flex; gap: 5px;">';
+                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '<div class="pago">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
+            html += '</div>';
+            
+            html += '<div class="acciones">';
+            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
+            if (telefonoLimpio) {
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
+            }
+            html += '</div>';
+            
+            html += '<div class="flex" style="margin: 12px 0;">';
+            html += '<span>💰 Total:</span>';
+            html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
+            html += '</div>';
+            
+            html += botones;
+            html += '</div>';
+        }
         
-        if (!codigo) {
+        contenedor.innerHTML = html;
+    }
+    
+    window.recogerPedido = async function(btn, id) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Procesando...';
+        
+        try {
+            await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            await Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            await cargarPedidos();
+        } catch(e) {
+            await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '🛵 RECOGER PEDIDO';
+        }
+    };
+    
+    window.marcarLlegada = async function(btn, id) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Procesando...';
+        
+        try {
+            await fetchConTimeout(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+            await Swal.fire({ title: '📍 Llegaste al cliente', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            await cargarPedidos();
+        } catch(e) {
+            await Swal.fire({ title: 'Error', text: 'Error de conexión', icon: 'error', background: '#020617', color: 'white' });
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '📍 HE LLEGADO AL CLIENTE';
+        }
+    };
+    
+    window.confirmarEntrega = function(id, total) {
+        Swal.fire({
+            title: '💰 Confirmar Entrega',
+            html: `Cobrarás <strong>${total.toFixed(2)}€</strong><br>¿Confirmas que el cliente pagó?`,
+            icon: 'question',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#22c55e',
+            confirmButtonText: '✅ Sí, cobrar y entregar',
+            showCancelButton: true,
+            cancelButtonText: 'No'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                await finalizarEntrega(id, total);
+            }
+        });
+    };
+    
+    window.finalizarEntrega = async function(id, total) {
+        try {
+            await fetchConTimeout(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
+            await Swal.fire({ title: '🎉 Entrega Completada', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
+            await cargarPedidos();
+        } catch(e) {
+            await Swal.fire({ title: 'Error', text: 'Error al finalizar', icon: 'error', background: '#020617', color: 'white' });
+        }
+    };
+    
+    window.mostrarHistorial = async function() {
+        const modal = document.getElementById('modalHistorial');
+        modal.style.display = 'flex';
+        
+        try {
+            const res = await fetchConTimeout(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigo));
+            const data = await res.json();
+            const pedidos = data.historial || [];
+            
+            let html = '';
+            for (let p of pedidos.slice().reverse()) {
+                if (p.ESTADO === 'ENTREGADO') {
+                    html += '<div class="historial-item">';
+                    html += '<div><strong>' + p.ID_PEDIDO + '</strong><br><span style="font-size: 11px;">' + (p.CLIENTE || 'Cliente') + '</span></div>';
+                    html += '<div class="historial-total">' + (parseFloat(p.TOTAL) || 0).toFixed(2) + '€</div>';
+                    html += '</div>';
+                }
+            }
+            
+            if (html === '') {
+                html = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas</div>';
+            }
+            
+            document.getElementById('historialLista').innerHTML = html;
+        } catch(e) {
+            document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
+        }
+    };
+    
+    window.cerrarHistorial = function() {
+        document.getElementById('modalHistorial').style.display = 'none';
+    };
+    
+    window.cerrarSesion = function() {
+        Swal.fire({
+            title: '¿Cerrar sesión?',
+            icon: 'question',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Sí, salir',
+            showCancelButton: true,
+            cancelButtonText: 'No'
+        }).then(result => {
+            if (result.isConfirmed) {
+                if (intervalo) clearInterval(intervalo);
+                localStorage.removeItem('rep_code');
+                location.reload();
+            }
+        });
+    };
+    
+    // ============ INICIO DE LA APP ============
+    async function iniciarApp() {
+        initAudio();
+        
+        let codigoGuardado = localStorage.getItem('rep_code');
+        
+        if (!codigoGuardado) {
             const result = await Swal.fire({
                 title: '🔐 Código de Repartidor',
                 input: 'text',
@@ -83,49 +391,34 @@
             });
             
             if (result.value) {
-                codigo = result.value.trim().toUpperCase();
-                localStorage.setItem('rep_code', codigo);
-                log('Código guardado: ' + codigo);
+                codigoGuardado = result.value.trim().toUpperCase();
+                localStorage.setItem('rep_code', codigoGuardado);
             } else {
-                log('No se ingresó código', true);
+                document.getElementById('loader').innerHTML = '<p>❌ No se ingresó código</p>';
                 return;
             }
         }
         
-        // Cargar datos del repartidor
-        log('Cargando datos para repartidor: ' + codigo);
-        try {
-            const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now());
-            const data = await res.json();
-            
-            if (data.error) {
-                log('Error del servidor: ' + data.error, true);
-                return;
-            }
-            
-            log('Datos cargados correctamente');
-            log('Repartidor: ' + (data.nombre || codigo));
-            log('Saldo: ' + (data.saldo || 0) + '€');
-            log('Pedidos activos: ' + (data.pedidos ? data.pedidos.length : 0));
-            
-            // Mostrar la app
-            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
-            document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
-            document.getElementById('status').style.display = 'none';
-            document.getElementById('app').style.display = 'block';
-            
-        } catch(e) {
-            log('Error al cargar datos: ' + e.message, true);
+        codigo = codigoGuardado;
+        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
+        
+        // Cargar pedidos por primera vez
+        await cargarPedidos();
+        
+        // Ocultar loader y mostrar app
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        
+        // Iniciar intervalo de actualización
+        intervalo = setInterval(cargarPedidos, 5000);
+        
+        // Notificaciones
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
         }
     }
     
-    window.cerrarSesion = function() {
-        localStorage.removeItem('rep_code');
-        location.reload();
-    };
-    
-    // Ejecutar
-    iniciar();
+    iniciarApp();
 </script>
 </body>
 </html>

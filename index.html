@@ -1007,34 +1007,46 @@
         }
         
         function abrirCheckout() {
-            if (hayPedidoActivo()) {
-                Swal.fire({ title: '⚠️ Pedido en curso', text: 'Ya tienes un pedido activo. Espera a que termine.', icon: 'warning', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
-                return;
-            }
-            if (!obtenerCliente()) { 
-                document.getElementById('panel-revision').style.display = 'none'; 
-                document.getElementById('modal-registro').style.display = 'flex'; 
-                return; 
-            }
-            pushPantalla('checkout');
-            document.getElementById('panel-revision').style.display = 'none';
-            document.getElementById('panel-checkout').style.display = 'block';
-            actualizarClienteUI();
-            const container = document.getElementById('lista-cesta-checkout');
-            const desglose = document.getElementById('desglose-pago');
-            const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
-            const envio = 2.50;
-            const usoApp = 0.99;
-            const total = subtotal + envio + usoApp;
-            container.innerHTML = cesta.map(item => `<div class="flex justify-between items-center text-sm"><span>${item.cantidad}x ${item.nombre}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
-            desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2">
-                <div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div>
-                <div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div>
-                <div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div>
-                <div class="border-t border-white/20 my-2"></div>
-                <div class="flex justify-between text-xl font-black mt-2"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div>
-            </div>`;
-        }
+    if (hayPedidoActivo()) {
+        Swal.fire({ title: '⚠️ Pedido en curso', text: 'Ya tienes un pedido activo. Espera a que termine.', icon: 'warning', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
+        return;
+    }
+    if (!obtenerCliente()) { 
+        document.getElementById('panel-revision').style.display = 'none'; 
+        document.getElementById('modal-registro').style.display = 'flex'; 
+        return; 
+    }
+    pushPantalla('checkout');
+    document.getElementById('panel-revision').style.display = 'none';
+    document.getElementById('panel-checkout').style.display = 'block';
+    actualizarClienteUI();
+    const container = document.getElementById('lista-cesta-checkout');
+    const desglose = document.getElementById('desglose-pago');
+    const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
+    const envio = 2.50;
+    const usoApp = 0.99;
+    const total = subtotal + envio + usoApp;
+    container.innerHTML = cesta.map(item => `<div class="flex justify-between items-center text-sm"><span>${item.cantidad}x ${item.nombre}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
+    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2">
+        <div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div>
+        <div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div>
+        <div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div>
+        <div class="border-t border-white/20 my-2"></div>
+        <div class="flex justify-between text-xl font-black mt-2"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div>
+    </div>`;
+    
+    // ========== AGREGAR CAMPO DE PAGO AQUÍ ==========
+    const campoPago = document.createElement('div');
+    campoPago.style.marginTop = '15px';
+    campoPago.style.marginBottom = '15px';
+    campoPago.innerHTML = `
+        <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">💵 ¿Con cuánto pagas? (efectivo)</p>
+        <input type="number" id="monto-paga" step="0.01" placeholder="Ej: 50.00" class="w-full">
+        <p class="text-white/40 text-[9px] mt-1">Opcional - Para que el repartidor sepa si necesita cambio</p>
+    `;
+    desglose.appendChild(campoPago);
+    // ===============================================
+}
         
         function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
         function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
@@ -1181,88 +1193,109 @@
                // ==========================================
         // ENVIAR PEDIDO FINAL (CORREGIDO)
         // ==========================================
-        async function enviarPedidoFinal() {
-            const cliente = obtenerCliente();
-            if (!cliente) { alertaError("Registro requerido", "Debes registrarte primero"); return; }
-            if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
+       async function enviarPedidoFinal() {
+    const cliente = obtenerCliente();
+    if (!cliente) { alertaError("Registro requerido", "Debes registrarte primero"); return; }
+    if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
+    
+    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+    const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
+    const envio = 2.50;
+    const usoApp = 0.99;
+    const total = subtotal + envio + usoApp;
+    
+    const detalleTexto = cesta.map(item => {
+        const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
+        return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
+    }).join(" | ");
+    
+    // Obtener monto con el que paga el cliente (solo si es efectivo)
+    let montoPaga = null;
+    if (metodo === "Efectivo") {
+        const montoInput = document.getElementById('monto-paga');
+        if (montoInput && montoInput.value) {
+            montoPaga = parseFloat(montoInput.value);
+            if (isNaN(montoPaga)) montoPaga = null;
+        }
+    }
+    
+    const datosPedido = {
+        telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
+        total_info: total.toFixed(2), pago_info: metodo,
+        items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
+        fecha: new Date().toISOString()
+    };
+    
+    // Agregar monto_paga si existe
+    if (montoPaga) {
+        datosPedido.monto_paga = montoPaga;
+    }
+    
+    Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    
+    const formData = new FormData();
+    formData.append('data', JSON.stringify(datosPedido));
+    
+    try {
+        const response = await fetch(scriptURL, { method: 'POST', body: formData });
+        const result = await response.json();
+        console.log("📦 Respuesta servidor:", result);
+        
+        Swal.close();
+        
+        if (result.status === "OK") {
+            const idReal = result.idPedido;
+            console.log("✅ ID Real:", idReal);
             
-            const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
-            const subtotal = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
-            const envio = 2.50;
-            const usoApp = 0.99;
-            const total = subtotal + envio + usoApp;
+            localStorage.setItem('ae_pedido_activo', idReal);
+            localStorage.setItem('ae_tracking_id', idReal);
             
-            const detalleTexto = cesta.map(item => {
-                const opcionesTexto = item.opciones ? ` [${item.opciones}]` : "";
-                return `${item.cantidad}x ${item.nombre}${opcionesTexto}`;
-            }).join(" | ");
-            
-            const datosPedido = {
-                telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
-                restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
-                total_info: total.toFixed(2), pago_info: metodo,
-                items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
-                fecha: new Date().toISOString()
+            const pedidoFirebase = { 
+                id: idReal, 
+                cliente: cliente.nombre, 
+                telefono: cliente.telf, 
+                direccion: cliente.dir, 
+                items: datosPedido.items, 
+                subtotal: subtotal, 
+                envio: envio, 
+                usoApp: usoApp, 
+                total: total, 
+                metodo_pago: metodo, 
+                restaurante_id: restauranteActivo.id, 
+                restaurante_nombre: restauranteActivo.nombre, 
+                estado: "recibido", 
+                fecha: new Date().toISOString(), 
+                timestamp: Date.now()
             };
             
-            Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-            
-            const formData = new FormData();
-            formData.append('data', JSON.stringify(datosPedido));
-            
-            try {
-                const response = await fetch(scriptURL, { method: 'POST', body: formData });
-                const result = await response.json();
-                console.log("📦 Respuesta servidor:", result);
-                
-                Swal.close();
-                
-                if (result.status === "OK") {
-                    const idReal = result.idPedido;
-                    console.log("✅ ID Real:", idReal);
-                    
-                    localStorage.setItem('ae_pedido_activo', idReal);
-                    localStorage.setItem('ae_tracking_id', idReal);
-                    
-                    const pedidoFirebase = { 
-                        id: idReal, 
-                        cliente: cliente.nombre, 
-                        telefono: cliente.telf, 
-                        direccion: cliente.dir, 
-                        items: datosPedido.items, 
-                        subtotal: subtotal, 
-                        envio: envio, 
-                        usoApp: usoApp, 
-                        total: total, 
-                        metodo_pago: metodo, 
-                        restaurante_id: restauranteActivo.id, 
-                        restaurante_nombre: restauranteActivo.nombre, 
-                        estado: "recibido", 
-                        fecha: new Date().toISOString(), 
-                        timestamp: Date.now() 
-                    };
-                    await database.ref('pedidos/' + idReal).set(pedidoFirebase);
-                    console.log("✅ Pedido guardado en Firebase");
-                    
-                    cesta = [];
-                    actualizarCestaVisual();
-                    cerrarCheckout();
-                    
-                    Swal.fire({ title: '✅ ¡Pedido Enviado!', text: 'Tu pedido ha sido recibido', icon: 'success', confirmButtonColor: '#06b6d4' });
-                    
-                    iniciarSeguimientoPedido(idReal);
-                    abrirModalTracking();
-                    
-                } else {
-                    throw new Error(result.message || "Error al enviar");
-                }
-                
-            } catch (error) {
-                console.error("❌ Error:", error);
-                Swal.close();
-                alertaError("Error", "No se pudo enviar el pedido. Intenta de nuevo.");
+            // Agregar monto_paga a Firebase si existe
+            if (montoPaga) {
+                pedidoFirebase.monto_paga = montoPaga;
             }
+            
+            await database.ref('pedidos/' + idReal).set(pedidoFirebase);
+            console.log("✅ Pedido guardado en Firebase");
+            
+            cesta = [];
+            actualizarCestaVisual();
+            cerrarCheckout();
+            
+            Swal.fire({ title: '✅ ¡Pedido Enviado!', text: 'Tu pedido ha sido recibido', icon: 'success', confirmButtonColor: '#06b6d4' });
+            
+            iniciarSeguimientoPedido(idReal);
+            abrirModalTracking();
+            
+        } else {
+            throw new Error(result.message || "Error al enviar");
         }
+        
+    } catch (error) {
+        console.error("❌ Error:", error);
+        Swal.close();
+        alertaError("Error", "No se pudo enviar el pedido. Intenta de nuevo.");
+    }
+}
         
         async function sincronizarPedidosOffline() {
             const pedidosOffline = JSON.parse(localStorage.getItem('ae_pedidos_offline') || '[]');

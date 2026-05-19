@@ -256,10 +256,10 @@
         }
     }
     
-    function renderizarPedidos() {
+   function renderizarPedidos() {
     const contenedor = document.getElementById('listaPedidos');
     
-    // ========== FILTRO PARA OCULTAR PEDIDOS CANCELADOS/RECHAZADOS ==========
+    // Filtrar pedidos cancelados o rechazados
     const pedidosFiltrados = pedidosActivos.filter(p => {
         const estado = (p.ESTADO || '').toUpperCase();
         return estado !== 'CANCELADO' && estado !== 'RECHAZADO';
@@ -269,92 +269,92 @@
         contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
         return;
     }
+    
+    let html = '';
+    for (let p of pedidosFiltrados) {
+        const estado = (p.ESTADO || '').toUpperCase();
+        const total = parseFloat(p.TOTAL) || 0;
+        let telefono = p.telf || p.WHATSAPP || '';
+        const telefonoLimpio = String(telefono).replace(/\D/g, '');
+        const tieneTimer = timersActivos[p.ID_PEDIDO];
         
-        let html = '';
-        for (let p of pedidosActivos) {
-            const estado = (p.ESTADO || '').toUpperCase();
-            const total = parseFloat(p.TOTAL) || 0;
-            let telefono = p.telf || p.WHATSAPP || '';
-            const telefonoLimpio = String(telefono).replace(/\D/g, '');
-            const tieneTimer = timersActivos[p.ID_PEDIDO];
-            
-            // Calcular tiempo de cocina
-            let tiempoHtml = '';
-            if (p.timestampListo && p.timestampListo > 0) {
-                const tiempo = calcularTiempoRestante(p.timestampListo);
-                if (tiempo) {
-                    if (tiempo.listo) {
-                        tiempoHtml = '<div class="tiempo-cocina" style="background:#22c55e20; border-color:#22c55e; color:#22c55e;">🔔 ¡PEDIDO LISTO PARA RECOGER!</div>';
-                    } else {
-                        tiempoHtml = `<div class="tiempo-cocina">⏳ COCINA: ${tiempo.min}m ${tiempo.seg}s</div>`;
-                    }
+        // Calcular tiempo de cocina
+        let tiempoHtml = '';
+        if (p.timestampListo && p.timestampListo > 0) {
+            const tiempo = calcularTiempoRestante(p.timestampListo);
+            if (tiempo) {
+                if (tiempo.listo) {
+                    tiempoHtml = '<div class="tiempo-cocina" style="background:#22c55e20; border-color:#22c55e; color:#22c55e;">🔔 ¡PEDIDO LISTO PARA RECOGER!</div>';
+                } else {
+                    tiempoHtml = `<div class="tiempo-cocina">⏳ COCINA: ${tiempo.min}m ${tiempo.seg}s</div>`;
                 }
             }
-            
-            // Información de pago del cliente
-            let pagoHtml = '';
-            if (p.monto_paga && p.monto_paga > 0) {
-                const cambio = p.monto_paga - total;
-                pagoHtml = `<div class="pago-info">💵 Cliente paga con: ${p.monto_paga.toFixed(2)}€ | Cambio: ${cambio.toFixed(2)}€</div>`;
-            }
-            
-            let botones = '';
-            let timerHtml = '';
-            
-            if (estado === 'LISTO') {
-                botones = `<button class="btn-recoger" data-id="${p.ID_PEDIDO}" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
-            } else if (estado === 'EN CAMINO') {
-                botones = `<button class="btn-llegada" data-id="${p.ID_PEDIDO}" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
-            } else if (estado === 'LLEGÓ') {
-                if (tieneTimer) {
-                    timerHtml = '<div class="timer-box" id="timer-' + p.ID_PEDIDO + '">⏰ Esperando al cliente...</div>';
-                }
-                botones = '<div style="display: flex; gap: 10px;">' +
-                    `<button class="btn-entregar" style="flex:1;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 ENTREGAR</button>` +
-                    (!tieneTimer ? `<button class="btn-timer" style="flex:1;" onclick="iniciarTimerCancelacion('${p.ID_PEDIDO}', ${total})">⏰ CLIENTE NO RESPONDE</button>` : '') +
-                    '</div>';
-            } else {
-                botones = '<div style="background: rgba(6,182,212,0.2); padding: 14px; border-radius: 14px; text-align: center;">⏳ ' + (estado || 'PREPARANDO') + '</div>';
-            }
-            
-            html += '<div class="card" data-id="' + p.ID_PEDIDO + '">';
-            html += '<div class="flex"><span class="ref">📋 ' + p.ID_PEDIDO + '</span><span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span></div>';
-            html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
-            html += '<div class="cliente-box">';
-            html += '<div class="cliente-nombre">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
-            html += '<div class="flex">';
-            html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
-            if (telefonoLimpio) {
-                html += '<div style="display: flex; gap: 5px;">';
-                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>';
-                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>';
-                html += '</div>';
-            }
-            html += '</div>';
-            html += '<div class="pago">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
-            html += pagoHtml;
-            html += '</div>';
-            
-            html += '<div class="acciones">';
-            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
-            if (telefonoLimpio) {
-                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
-            }
-            html += '</div>';
-            
-            html += '<div class="flex" style="margin: 12px 0;">';
-            html += '<span>💰 Total:</span>';
-            html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
-            html += '</div>';
-            
-            html += tiempoHtml;
-            html += timerHtml;
-            html += botones;
-            html += '</div>';
         }
         
-        contenedor.innerHTML = html;
+        // Información de pago del cliente
+        let pagoHtml = '';
+        if (p.monto_paga && p.monto_paga > 0) {
+            const cambio = p.monto_paga - total;
+            pagoHtml = `<div class="pago-info">💵 Cliente paga con: ${p.monto_paga.toFixed(2)}€ | Cambio: ${cambio.toFixed(2)}€</div>`;
+        }
+        
+        let botones = '';
+        let timerHtml = '';
+        
+        if (estado === 'LISTO') {
+            botones = `<button class="btn-recoger" data-id="${p.ID_PEDIDO}" onclick="recogerPedido(this, '${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
+        } else if (estado === 'EN CAMINO') {
+            botones = `<button class="btn-llegada" data-id="${p.ID_PEDIDO}" onclick="marcarLlegada(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+        } else if (estado === 'LLEGÓ') {
+            if (tieneTimer) {
+                timerHtml = '<div class="timer-box" id="timer-' + p.ID_PEDIDO + '">⏰ Esperando al cliente...</div>';
+            }
+            botones = '<div style="display: flex; gap: 10px;">' +
+                `<button class="btn-entregar" style="flex:1;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 ENTREGAR</button>` +
+                (!tieneTimer ? `<button class="btn-timer" style="flex:1;" onclick="iniciarTimerCancelacion('${p.ID_PEDIDO}', ${total})">⏰ CLIENTE NO RESPONDE</button>` : '') +
+                '</div>';
+        } else {
+            botones = '<div style="background: rgba(6,182,212,0.2); padding: 14px; border-radius: 14px; text-align: center;">⏳ ' + (estado || 'PREPARANDO') + '</div>';
+        }
+        
+        html += '<div class="card" data-id="' + p.ID_PEDIDO + '">';
+        html += '<div class="flex"><span class="ref">📋 ' + p.ID_PEDIDO + '</span><span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:10px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span></div>';
+        html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+        html += '<div class="cliente-box">';
+        html += '<div class="cliente-nombre">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+        html += '<div class="flex">';
+        html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
+        if (telefonoLimpio) {
+            html += '<div style="display: flex; gap: 5px;">';
+            html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>';
+            html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>';
+            html += '</div>';
+        }
+        html += '</div>';
+        html += '<div class="pago">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
+        html += pagoHtml;
+        html += '</div>';
+        
+        html += '<div class="acciones">';
+        html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" class="accion">📍 Mapa</a>';
+        if (telefonoLimpio) {
+            html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="accion">💬 WhatsApp</a>';
+        }
+        html += '</div>';
+        
+        html += '<div class="flex" style="margin: 12px 0;">';
+        html += '<span>💰 Total:</span>';
+        html += '<span style="color:#06b6d4; font-weight: bold;">' + total.toFixed(2) + '€</span>';
+        html += '</div>';
+        
+        html += tiempoHtml;
+        html += timerHtml;
+        html += botones;
+        html += '</div>';
     }
+    
+    contenedor.innerHTML = html;
+}
     
     // Acciones con loading visual
     window.recogerPedido = async function(btn, id) {

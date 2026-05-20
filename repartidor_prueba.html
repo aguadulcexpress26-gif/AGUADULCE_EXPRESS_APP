@@ -313,44 +313,73 @@
     historialDiv.innerHTML = '<div class="text-center" style="padding: 20px; color:#64748b;">⏳ Cargando historial...</div>';
     
     try {
-        // Usar el código del repartidor (R001, R003, etc.) no el nombre
         const res = await fetch(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigoActual));
         const data = await res.json();
         
-        console.log("📦 Historial recibido:", data); // Para depurar
+        console.log("📦 Datos crudos del servidor:", JSON.stringify(data).substring(0, 500));
         
-        const pedidos = data.historial || [];
+        // Asegurar que historial sea un array
+        let pedidos = [];
+        if (data.historial && Array.isArray(data.historial)) {
+            pedidos = data.historial;
+        } else if (Array.isArray(data)) {
+            pedidos = data;
+        } else {
+            console.warn("Formato inesperado:", data);
+            pedidos = [];
+        }
         
         if (pedidos.length === 0) {
             historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas</div>';
             return;
         }
         
-        // Calcular total de todas las entregas
-        const totalGeneral = pedidos.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
+        // Filtrar solo pedidos ENTREGADOS y limpiar datos
+        const entregados = pedidos.filter(p => {
+            const estado = String(p.ESTADO || '').toUpperCase();
+            return estado === 'ENTREGADO';
+        });
+        
+        if (entregados.length === 0) {
+            historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">📭 No hay pedidos entregados aún</div>';
+            return;
+        }
+        
+        // Calcular total
+        const totalGeneral = entregados.reduce((sum, p) => {
+            const total = parseFloat(p.TOTAL);
+            return sum + (isNaN(total) ? 0 : total);
+        }, 0);
         
         let html = `<div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 16px;">
-            <div class="flex justify-between"><span>📊 Total entregado (general):</span><span style="color: #22c55e; font-weight: bold;">${totalGeneral.toFixed(2)}€</span></div>
-            <div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${pedidos.length}</span></div>
+            <div class="flex justify-between"><span>📊 Total entregado:</span><span style="color: #22c55e; font-weight: bold;">${totalGeneral.toFixed(2)}€</span></div>
+            <div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${entregados.length}</span></div>
         </div>`;
         
-        // Mostrar todos los pedidos entregados (sin filtrar por fecha)
-        for (let p of pedidos.slice().reverse()) {
-            const fecha = p.FECHA ? p.FECHA.substring(0, 10) : 'Fecha desconocida';
+        // Mostrar los pedidos (escapando caracteres especiales)
+        for (let p of entregados.slice().reverse()) {
+            const idPedido = String(p.ID_PEDIDO || '').replace(/[<>]/g, '');
+            const cliente = String(p.CLIENTE || 'Cliente').replace(/[<>]/g, '');
+            const total = parseFloat(p.TOTAL) || 0;
+            let fecha = '';
+            if (p.FECHA) {
+                fecha = String(p.FECHA).substring(0, 10);
+            }
+            
             html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b;">
                 <div>
-                    <strong>${p.ID_PEDIDO}</strong>
-                    <div style="font-size: 11px; opacity: 0.7;">${p.CLIENTE || 'Cliente'}</div>
-                    <div style="font-size: 10px; opacity: 0.5;">${fecha}</div>
+                    <strong>${idPedido}</strong>
+                    <div style="font-size: 11px; opacity: 0.7;">${cliente}</div>
+                    ${fecha ? `<div style="font-size: 10px; opacity: 0.5;">${fecha}</div>` : ''}
                 </div>
-                <div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div>
+                <div style="color: #22c55e; font-weight: bold;">${total.toFixed(2)}€</div>
             </div>`;
         }
         
         historialDiv.innerHTML = html;
     } catch(e) {
         console.error("Error cargando historial:", e);
-        historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
+        historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial. Revisa la consola.</div>';
     }
 }
         

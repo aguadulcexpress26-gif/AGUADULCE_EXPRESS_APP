@@ -25,7 +25,7 @@
 
     <div id="loader" class="loader">
         <div class="spinner"></div>
-        <h2 style="font-size: 16px; font-weight: bold; color: #06b6d4;">SCONECTANDO CON EXCEL...</h2>
+        <h2 style="font-size: 16px; font-weight: bold; color: #06b6d4;">CONECTANDO CON EXCEL...</h2>
     </div>
 
     <div id="app" style="display: none; padding: 12px; max-width: 600px; margin: 0 auto;">
@@ -79,7 +79,7 @@
                 document.getElementById('contadorPedidos').innerHTML = activos.length;
                 renderizarPedidos(activos);
             } catch(e) {
-                console.error(e);
+                console.error("🚨 Error cargando pedidos:", e);
             }
         }
         
@@ -107,14 +107,16 @@
                         const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
                         if (restantes > 0) {
                             const mins = Math.floor(restantes / 60);
-                            const segs = restantes % 60;
-                            botones = `<div class="btn-espera">⏳ ESPERANDO AL CLIENTE (${mins}:${segs < 10 ? '0':''}${segs})</div>`;
+                            const segundos = restantes % 60;
+                            botones = `<div class="btn-espera" id="reloj-${p.ID_PEDIDO}">⏳ ESPERANDO AL CLIENTE (${mins}:${segundos < 10 ? '0' : ''}${segundos})</div>`;
                         } else {
                             botones = `<button class="btn-deuda" onclick="aplicarDeudaAusencia('${p.ID_PEDIDO}', ${total})">❌ CLIENTE AUSENTE / CARGAR DEUDA</button>`;
                         }
                     } else {
+                        // CORRECCIÓN: Aquí se reemplazó 'id' por 'p.ID_PEDIDO' para evitar el ReferenceError
                         const tiempoExpiracion = Date.now() + (6 * 60 * 1000);
-                        localStorage.setItem('espera_' + id, tiempoExpiracion);
+                        localStorage.setItem('espera_' + p.ID_PEDIDO, tiempoExpiracion);
+                        botones = `<div class="btn-espera" id="reloj-${p.ID_PEDIDO}">⏳ ESPERANDO AL CLIENTE (6:00)</div>`;
                     }
                     botones += `<button class="btn-entregar" style="margin-top:8px;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>`;
                 }
@@ -251,9 +253,27 @@
                 await cargarPedidos();
                 document.getElementById('loader').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
+                
+                // Intervalo de red principal (cada 5 segundos recarga desde Google Sheets)
                 intervalo = setInterval(cargarPedidos, 5000);
+                
+                // MÓDULO CRONÓMETRO INTERNO: Corre cada 1 segundo refrescando el contador visual en local
                 setInterval(() => {
-                    if (document.querySelectorAll('.btn-espera').length > 0) cargarPedidos();
+                    document.querySelectorAll('[id^="reloj-"]').forEach(elemento => {
+                        const idPedido = elemento.id.replace('reloj-', '');
+                        const tEspera = localStorage.getItem('espera_' + idPedido);
+                        if (tEspera) {
+                            const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
+                            if (restantes > 0) {
+                                const mins = Math.floor(restantes / 60);
+                                const segs = restantes % 60;
+                                elemento.innerHTML = `⏳ ESPERANDO AL CLIENTE (${mins}:${segs < 10 ? '0' : ''}${segs})`;
+                            } else {
+                                // Cuando el tiempo llega a cero, refrescamos para mutar el div a botón de penalización
+                                cargarPedidos();
+                            }
+                        }
+                    });
                 }, 1000);
             }
         }

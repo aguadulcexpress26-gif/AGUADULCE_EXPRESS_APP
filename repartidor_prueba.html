@@ -2,27 +2,26 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repartidor - Aguadulce Express</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, sans-serif; background: #020617; color: white; padding: 16px; padding-bottom: 80px; }
         .header { background: linear-gradient(135deg, #06b6d4, #020617); margin: -16px -16px 16px -16px; padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .flex { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .flex { display: flex; justify-content: space-between; align-items: center; }
         .btn-salir, .btn-historial { background: rgba(255,255,255,0.1); border: none; padding: 8px 16px; border-radius: 12px; color: white; cursor: pointer; font-weight: bold; font-size: 13px; }
         .repartidor-nombre { font-size: 18px; font-weight: bold; }
         .repartidor-id { font-size: 11px; color: #eab308; opacity: 0.8; margin-top: 2px; }
         .billetera-monto { font-size: 20px; font-weight: bold; color: #22c55e; }
         .status-bar { background: rgba(255,255,255,0.02); border-radius: 16px; padding: 12px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05); }
         .contador { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        .card { background: rgba(15,23,42,0.6); border-radius: 20px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05); }
+        .card { background: rgba(15,23,42,0.6); border-radius: 20px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05); position: relative; }
         .ref { background: rgba(6,182,212,0.1); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; color: #06b6d4; }
         .status-badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; }
         .direccion { font-size: 15px; font-weight: bold; margin: 14px 0; line-height: 1.4; }
-        .cliente-box { background: rgba(2,6,23,0.6); border-radius: 16px; padding: 14px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.02); position: relative; }
+        .cliente-box { background: rgba(2,6,23,0.6); border-radius: 16px; padding: 14px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.02); position: relative; padding-bottom: 50px; }
         button { width: 100%; padding: 16px; border-radius: 16px; font-weight: bold; border: none; margin-top: 12px; cursor: pointer; font-size: 14px; display: flex; justify-content: center; align-items: center; gap: 8px; transition: all 0.2s; }
-        button:active { transform: scale(0.98); }
         .btn-blue { background: #06b6d4; color: black; }
         .btn-yellow { background: #eab308; color: black; }
         .btn-green { background: #22c55e; color: black; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -34,8 +33,6 @@
         .btn-accion-tel { background: #22c55e; color: black; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: bold; width: auto; margin: 0; text-decoration: none; display: inline-block; }
         .btn-accion-wa { background: #25D366; color: black; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: bold; width: auto; margin: 0; text-decoration: none; display: inline-block; }
         .cronometro-box { margin: 12px 0; padding: 12px; border-radius: 14px; text-align: center; font-weight: bold; font-size: 13px; letter-spacing: 0.5px; }
-        .text-center { text-align: center; }
-        .mt-2 { margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -49,10 +46,10 @@
     <div class="header">
         <div class="flex">
             <div style="display: flex; gap: 8px;">
-                <button class="btn-historial" id="btnHistorial">📋 Historial</button>
-                <button class="btn-salir" id="btnSalir">🚪 Salir</button>
+                <button class="btn-historial" onclick="mensaje('Historial próximamente', 'info')">📋 Historial</button>
+                <button class="btn-salir" onclick="cerrarSesion()">🚪 Salir</button>
             </div>
-            <div>
+            <div style="text-align: right;">
                 <div class="repartidor-nombre" id="nombreRep">Cargando...</div>
                 <div class="repartidor-id" id="codigoRep"></div>
             </div>
@@ -64,122 +61,70 @@
     </div>
 
     <div class="status-bar flex">
-        <span style="font-size: 13px;">🟢 <span id="estadoConexion" style="font-weight: bold; color: #22c55e;">Conectado</span></span>
-        <span class="contador" id="contadorPedidos">0 pedidos activos</span>
+        <span style="font-size: 13px;">🟢 <span id="estado" style="font-weight: bold; color: #22c55e;">Conectado</span></span>
+        <span class="contador" id="contador">0 pedidos activos</span>
     </div>
 
     <div id="listaPedidos"></div>
 </div>
 
-<!-- Modal de historial -->
-<div id="modalHistorial" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(2,6,23,0.95); z-index: 10000; padding: 20px; overflow-y: auto;">
-    <div style="max-width: 500px; margin: 0 auto; background: #0f172a; border-radius: 24px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
-        <div class="flex" style="margin-bottom: 20px;">
-            <h3 style="font-size: 18px; font-weight: bold; color: #06b6d4;">📋 Historial de Hoy</h3>
-            <button id="btnCerrarHistorial" style="background: rgba(255,255,255,0.1); border: none; padding: 8px 16px; border-radius: 12px; color: white; cursor: pointer;">Cerrar</button>
-        </div>
-        <div id="historialLista" style="max-height: 400px; overflow-y: auto;"></div>
-    </div>
-</div>
-
 <script>
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
-    let codigoActual = null;
-    let pedidosActivos = [];
-    let intervalo = null;
+    let codigo = localStorage.getItem('repartidor_codigo');
+    let pedidos = [];
+    let intervalId = null;
     let intervalosCronometro = {};
-    let audioNotif = null;
-    let ultimosIds = [];
     
-    function initAudio() {
-        audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-        audioNotif.volume = 0.8;
-    }
-    
-    function playSound() {
-        if (audioNotif) {
-            audioNotif.currentTime = 0;
-            audioNotif.play().catch(e => console.log('Audio no disponible'));
-        }
-    }
-    
-    async function fetchConTimeout(url, timeout = 15000) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-        try {
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            return response;
-        } catch (error) {
-            clearTimeout(timeoutId);
-            throw error;
-        }
+    function mensaje(texto, icono) {
+        Swal.fire({
+            text: texto, icon: icono || 'info', background: '#020617', color: 'white',
+            confirmButtonColor: '#06b6d4', timer: 2000, showConfirmButton: false
+        });
     }
     
     async function cargarPedidos() {
-        if (!codigoActual) return;
-        
+        if (!codigo) return;
         try {
-            const url = `${SCRIPT_URL}?action=getPedidosReparto&idRepartidor=${encodeURIComponent(codigoActual)}&t=${Date.now()}`;
-            const resp = await fetchConTimeout(url);
+            console.log("📡 Solicitando datos al servidor para el código:", codigo);
+            const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
+            const resp = await fetch(url);
             const data = await resp.json();
             
             if (data.error) {
-                document.getElementById('estadoConexion').innerHTML = 'Error';
-                document.getElementById('estadoConexion').style.color = '#ef4444';
+                document.getElementById('estado').innerHTML = 'Error de Permisos';
                 return;
             }
             
-            document.getElementById('estadoConexion').innerHTML = 'Conectado';
-            document.getElementById('estadoConexion').style.color = '#22c55e';
-            document.getElementById('nombreRep').innerHTML = data.nombre || codigoActual;
+            pedidos = data.pedidos || [];
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigo;
+            document.getElementById('codigoRep').innerHTML = '🔑 ' + codigo;
             document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
+            document.getElementById('contador').innerHTML = 'Tienes ' + pedidos.length + ' pedido' + (pedidos.length !== 1 ? 's' : '') + ' activos';
+            document.getElementById('estado').innerHTML = 'Conectado';
             
-            const nuevosPedidos = data.pedidos || [];
-            const nuevosIds = nuevosPedidos.map(p => p.ID_PEDIDO);
-            const realmenteNuevos = nuevosIds.filter(id => !ultimosIds.includes(id));
-            
-            if (realmenteNuevos.length > 0) {
-                playSound();
-                if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-                    new Notification('Nuevo pedido asignado', { body: `Tienes ${realmenteNuevos.length} pedido(s) nuevo(s)` });
-                }
-            }
-            
-            ultimosIds = nuevosIds;
-            pedidosActivos = nuevosPedidos.filter(p => {
-                const estado = (p.ESTADO || '').toUpperCase();
-                return estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'ENTREGADO';
-            });
-            
-            document.getElementById('contadorPedidos').innerHTML = `${pedidosActivos.length} pedido${pedidosActivos.length !== 1 ? 's' : ''} activos`;
-            
-            renderizarPedidos();
-            
+            renderizar();
         } catch(e) {
-            console.error("Error en cargarPedidos:", e);
-            document.getElementById('estadoConexion').innerHTML = 'Offline';
-            document.getElementById('estadoConexion').style.color = '#ef4444';
+            console.error("🚨 Error en cargarPedidos:", e);
+            document.getElementById('estado').innerHTML = 'Reconectando...';
         }
     }
     
     function iniciarTemporizadorReparto(id, estado) {
         if (intervalosCronometro[id]) clearInterval(intervalosCronometro[id]);
-        
-        let tiempoLimiteSegundos = (estado === 'LLEGÓ' || estado === 'LLEGO') ? 5 * 60 : 45 * 60;
-        let tiempoRestante = tiempoLimiteSegundos;
-        
+
+        let tiempoLimiteSegundos = (estado === 'LLEGÓ' || estado === 'LLEGO') ? 5 * 60 : 45 * 60; 
+
         intervalosCronometro[id] = setInterval(() => {
             const elemento = document.getElementById('cronometro-' + id);
             const contenedorBotonFalta = document.getElementById('bloque-cancelar-emergencia-' + id);
             
             if (!elemento) {
-                if (intervalosCronometro[id]) clearInterval(intervalosCronometro[id]);
+                clearInterval(intervalosCronometro[id]);
                 return;
             }
-            
-            if (tiempoRestante <= 0) {
+
+            if (tiempoLimiteSegundos <= 0) {
                 clearInterval(intervalosCronometro[id]);
                 
                 if (estado === 'LLEGÓ' || estado === 'LLEGO') {
@@ -203,12 +148,12 @@
                 }
                 return;
             }
-            
-            tiempoRestante--;
-            const minutos = Math.floor(tiempoRestante / 60);
-            const segundos = tiempoRestante % 60;
+
+            tiempoLimiteSegundos--;
+            const minutos = Math.floor(tiempoLimiteSegundos / 60);
+            const segundos = tiempoLimiteSegundos % 60;
             const textoSegundos = segundos < 10 ? "0" + segundos : segundos;
-            
+
             if (estado === 'LLEGÓ' || estado === 'LLEGO') {
                 elemento.style.background = 'rgba(234, 179, 8, 0.1)';
                 elemento.style.border = '1px solid rgba(234, 179, 8, 0.3)';
@@ -222,55 +167,67 @@
             }
         }, 1000);
     }
-    
-    function renderizarPedidos() {
+
+    function renderizar() {
         const container = document.getElementById('listaPedidos');
         
-        if (pedidosActivos.length === 0) {
-            for (let k in intervalosCronometro) {
-                clearInterval(intervalosCronometro[k]);
-            }
+        if (!pedidos.length) {
+            for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
             intervalosCronometro = {};
-            container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
+            container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
             return;
         }
         
         let html = '';
-        for (let p of pedidosActivos) {
+        let cronometrosPorActivar = [];
+
+        for (let p of pedidos) {
             const estado = (p.ESTADO || '').toUpperCase();
             const total = parseFloat(p.TOTAL) || 0;
             const metodoPago = p.PAGO || 'Efectivo';
-            const telefono = p.telf || p.WHATSAPP || '';
+            
+            const telefono = p.telf || p.WHATSAPP || p.telefono || p.TELEFONO || '';
             const telefonoLimpio = telefono.replace(/\D/g, '');
             
             let infoCambioHTML = '';
             if (metodoPago.toLowerCase() === 'efectivo') {
-                infoCambioHTML = `
-                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 11px;">
-                        <span style="opacity: 0.6;">💵 Pago en efectivo - Prepara cambio</span>
-                    </div>
-                `;
+                const pagaConStr = p.PAGA_CON || p.PAGA || p.paga_con || '';
+                const pagaCon = parseFloat(pagaConStr) || 0;
+                
+                if (pagaCon > 0 && pagaCon > total) {
+                    const cambio = pagaCon - total;
+                    infoCambioHTML = `
+                        <div style="position: absolute; bottom: 12px; right: 14px; font-size: 11px; text-align: right;">
+                            <span style="opacity: 0.6; display:block;">Paga con: <strong style="color: #eab308;">${pagaCon.toFixed(2)}€</strong></span>
+                            <span style="display:block; margin-top:2px;">Cambio: <strong style="color: #22c55e; font-weight:bold;">${cambio.toFixed(2)}€</strong></span>
+                        </div>
+                    `;
+                } else {
+                    infoCambioHTML = `
+                        <div style="position: absolute; bottom: 12px; right: 14px; font-size: 11px; opacity: 0.6;">
+                            <span style="color: #eab308; font-weight: bold;">Llevar cambio</span>
+                        </div>
+                    `;
+                }
             }
-            
+
             let cronometroHTML = '';
             if (estado === 'EN CAMINO' || estado === 'LLEGÓ' || estado === 'LLEGO') {
                 cronometroHTML = `
-                    <div id="cronometro-${p.ID_PEDIDO}" class="cronometro-box">
-                        ⏳ CALCULANDO RUTA LOGÍSTICA...
+                    <div id="cronometro-${p.ID_PEDIDO}" class="cronometro-box" style="background: rgba(6,182,212,0.05); color: #06b6d4;">
+                        ⏳ CARGANDO TIEMPO...
                     </div>
                 `;
-                setTimeout(() => iniciarTemporizadorReparto(p.ID_PEDIDO, estado), 100);
+                cronometrosPorActivar.push({ id: p.ID_PEDIDO, estado: estado });
             }
-            
+
             let botones = '';
-            if (estado === 'LISTO') {
-                botones = '<button class="btn-blue" onclick="recogerPedido(\'' + p.ID_PEDIDO + '\')">🏍️ RECOGER PEDIDO</button>';
+            if (estado === 'LISTO' || estado === 'PREPARADO' || estado === 'RECIBIDO') {
+                botones = '<button class="btn-blue" onclick="recoger(\'' + p.ID_PEDIDO + '\')">🏍️ RECOGER PEDIDO</button>';
             } else if (estado === 'EN CAMINO') {
-                botones = '<button class="btn-yellow" onclick="marcarLlegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO AL DOMICILIO</button>';
+                botones = '<button class="btn-yellow" onclick="llegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO AL DOMICILIO</button>';
             } else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
-                botones = '<button class="btn-green" onclick="confirmarEntrega(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 CONFIRMAR COBRO Y ENTREGA</button>';
-            } else {
-                botones = '<div style="background: rgba(6,182,212,0.1); padding: 14px; border-radius: 14px; text-align: center; font-size: 12px;">⏳ Estado: ' + estado + '</div>';
+                botones = '<button class="btn-green" onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 CONFIRMAR COBRO Y ENTREGA</button>';
             }
             
             html += '<div class="card">';
@@ -282,11 +239,11 @@
             
             html += '<div class="cliente-box">';
             html += '<div style="color: #a855f7; font-weight: bold; font-size: 14px;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
-            html += '<div class="flex" style="margin-top: 10px; justify-content: flex-start; gap: 10px;">';
+            html += '<div class="flex mt-2" style="margin-top: 10px; justify-content: flex-start; gap: 10px;">';
             html += '<span style="font-size: 13px; opacity: 0.8;">📞 ' + (telefono || 'No disponible') + '</span>';
             if (telefonoLimpio) {
-                html += '<a href="tel:+34' + telefonoLimpio + '" class="btn-accion-tel">Llamar</a>';
-                html += '<a href="https://wa.me/34' + telefonoLimpio + '" target="_blank" class="btn-accion-wa">WhatsApp</a>';
+                html += '<a href="tel:' + telefonoLimpio + '" class="btn-accion-tel">Llamar</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="btn-accion-wa">WhatsApp</a>';
             }
             html += '</div>';
             html += '<div style="font-size:12px; opacity:0.7; margin-top: 12px;">💳 Método: <strong>' + metodoPago + '</strong></div>';
@@ -294,7 +251,7 @@
             html += '</div>';
             
             html += cronometroHTML;
-            
+
             html += '<div class="flex" style="margin: 14px 0; border-top: 1px solid rgba(255,255,255,0.02); padding-top: 12px;">';
             html += '<div><span style="font-size:12px; opacity:0.5;">Total a recibir:</span></div>';
             html += '<div><span style="color:#22c55e; font-size:20px; font-weight:bold;">' + total.toFixed(2) + '€</span></div>';
@@ -306,223 +263,106 @@
             html += `<div id="bloque-cancelar-emergencia-${p.ID_PEDIDO}"></div>`;
             html += '</div>';
         }
+        
         container.innerHTML = html;
+
+        // Activar relojes de forma segura cuando los elementos ya existen en el DOM
+        cronometrosPorActivar.forEach(cron => {
+            iniciarTemporizadorReparto(cron.id, cron.estado);
+        });
     }
     
-    window.recogerPedido = async function(id) {
-        const btn = event?.target;
-        if (btn) btn.disabled = true;
-        
+    window.recoger = async function(id) {
         try {
-            await fetchConTimeout(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-            await Swal.fire({ title: '✅ Pedido en camino', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
-            await cargarPedidos();
-        } catch(e) {
-            console.error(e);
-            await Swal.fire({ title: 'Error', text: 'No se pudo actualizar el estado', icon: 'error', background: '#020617', color: 'white' });
-        } finally {
-            if (btn) btn.disabled = false;
-        }
+            await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            mensaje('✅ Pedido en camino', 'success');
+            cargarPedidos();
+        } catch(e) { console.error(e); }
     };
     
-    window.marcarLlegada = async function(id) {
-        const btn = event?.target;
-        if (btn) btn.disabled = true;
-        
+    window.llegada = async function(id) {
         try {
-            await fetchConTimeout(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
-            await Swal.fire({ title: '📍 Llegaste al destino', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
-            await cargarPedidos();
-        } catch(e) {
-            console.error(e);
-            await Swal.fire({ title: 'Error', text: 'No se pudo actualizar el estado', icon: 'error', background: '#020617', color: 'white' });
-        } finally {
-            if (btn) btn.disabled = false;
-        }
+            await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+            mensaje('📍 Ubicación alcanzada', 'success');
+            cargarPedidos();
+        } catch(e) { console.error(e); }
     };
     
-    window.confirmarEntrega = function(id, total) {
+    window.entregar = function(id, total) {
         Swal.fire({
             title: '💰 Cobrar ' + total.toFixed(2) + '€',
             text: '¿Confirmas la entrega física y el cobro correcto?',
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#22c55e',
-            confirmButtonText: '✅ Confirmar',
-            showCancelButton: true,
-            cancelButtonText: 'Cancelar'
+            icon: 'question', background: '#020617', color: 'white',
+            confirmButtonColor: '#22c55e', confirmButtonText: '✅ Confirmar',
+            showCancelButton: true, cancelButtonText: 'Cancelar'
         }).then(async (res) => {
             if (res.isConfirmed) {
                 try {
-                    await fetchConTimeout(SCRIPT_URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
-                    await Swal.fire({ title: '🎉 ¡Entrega finalizada!', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
-                    await cargarPedidos();
-                } catch(e) {
-                    console.error(e);
-                    await Swal.fire({ title: 'Error', text: 'No se pudo finalizar la entrega', icon: 'error', background: '#020617', color: 'white' });
-                }
+                    await fetch(SCRIPT_URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
+                    mensaje('🎉 ¡Entrega finalizada con éxito!', 'success');
+                    cargarPedidos();
+                } catch(e) { console.error(e); }
             }
         });
     };
-    
-    window.cancelarPorAusencia = async function(id) {
-        const result = await Swal.fire({
+
+    window.cancelarPorAusencia = function(id) {
+        Swal.fire({
             title: '⚠️ ¿REGISTRAR AUSENCIA?',
-            html: 'Se cancelará el pedido, se enviará notificación al cliente y <strong>se le cargará el monto total como deuda</strong> en su cuenta.',
-            icon: 'warning',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: '❌ Sí, Penalizar Cliente',
-            showCancelButton: true,
-            cancelButtonText: 'Esperar un poco más'
-        });
-        
-        if (result.isConfirmed) {
-            try {
-                await fetchConTimeout(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + encodeURIComponent(id) + '&nuevoEstado=CANCELADO&tiempo=' + encodeURIComponent('Cliente no recogió el pedido - Ausencia'));
-                await Swal.fire({ title: '❌ Ausencia registrada', text: 'Cliente penalizado correctamente', icon: 'error', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
-                await cargarPedidos();
-            } catch(e) {
-                console.error(e);
-                await Swal.fire({ title: 'Error', text: 'No se pudo registrar la ausencia', icon: 'error', background: '#020617', color: 'white' });
+            text: 'Se cancelará el pedido, se enviará la notificación al cliente y se le cargará el monto total como deuda pendiente en su cuenta de Aguadulce Express.',
+            icon: 'warning', background: '#020617', color: 'white',
+            confirmButtonColor: '#ef4444', confirmButtonText: '❌ Sí, Penalizar Cliente',
+            showCancelButton: true, cancelButtonText: 'Esperar un poco más'
+        }).then(async (res) => {
+            if (res.isConfirmed) {
+                try {
+                    const url = SCRIPT_URL + '?action=actualizarEstado&idPedido=' + encodeURIComponent(id) + '&nuevoEstado=CANCELADO&tiempo=' + encodeURIComponent('Cliente no recogió el pedido - Ausencia');
+                    await fetch(url);
+                    mensaje('❌ Ausencia registrada y cuenta penalizada.', 'error');
+                    cargarPedidos();
+                } catch(e) { console.error(e); }
             }
-        }
+        });
     };
     
-    async function mostrarHistorial() {
-        if (!codigoActual) return;
-        
-        const modal = document.getElementById('modalHistorial');
-        modal.style.display = 'flex';
-        
-        try {
-            const resp = await fetchConTimeout(SCRIPT_URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigoActual));
-            const data = await resp.json();
-            const pedidos = data.historial || [];
-            
-            const hoy = new Date().toLocaleDateString('es-ES');
-            const entregasHoy = pedidos.filter(p => {
-                const fecha = p.FECHA ? p.FECHA.substring(0, 10) : '';
-                return p.ESTADO === 'ENTREGADO' && fecha === hoy;
-            });
-            
-            const totalHoy = entregasHoy.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
-            
-            let html = '';
-            for (let p of entregasHoy.slice().reverse()) {
-                html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <div>
-                            <strong>${p.ID_PEDIDO}</strong>
-                            <div style="font-size: 11px; opacity: 0.7;">${p.CLIENTE || 'Cliente'}</div>
-                        </div>
-                        <div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div>
-                    </div>
-                `;
-            }
-            
-            if (entregasHoy.length === 0) {
-                html = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas hoy</div>';
-            }
-            
-            html += `
-                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;">
-                    <span>📊 Total entregas hoy:</span>
-                    <span style="color: #22c55e; font-weight: bold;">${totalHoy.toFixed(2)}€</span>
-                </div>
-            `;
-            
-            document.getElementById('historialLista').innerHTML = html;
-        } catch(e) {
-            document.getElementById('historialLista').innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
-        }
-    }
-    
-    function cerrarHistorial() {
-        document.getElementById('modalHistorial').style.display = 'none';
-    }
-    
-    async function cerrarSesion() {
-        const result = await Swal.fire({
-            title: '¿Cerrar sesión?',
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, salir',
-            showCancelButton: true,
-            cancelButtonText: 'No'
-        });
-        
-        if (result.isConfirmed) {
-            if (intervalo) clearInterval(intervalo);
-            for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
-            localStorage.removeItem('repartidor_codigo');
-            location.reload();
-        }
-    }
+    window.cerrarSesion = function() {
+        if (intervalId) clearInterval(intervalId);
+        for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
+        localStorage.removeItem('repartidor_codigo');
+        location.reload();
+    };
     
     async function iniciarApp() {
         console.log("⚙️ Ejecutando iniciarApp()...");
-        initAudio();
         
-        // Configurar event listeners
-        document.getElementById('btnSalir').onclick = cerrarSesion;
-        document.getElementById('btnHistorial').onclick = mostrarHistorial;
-        document.getElementById('btnCerrarHistorial').onclick = cerrarHistorial;
-        
-        let codigo = localStorage.getItem('repartidor_codigo');
-        
-        if (!codigo) {
-            const result = await Swal.fire({
+        // CORRECCIÓN CLAVE: Obligar al sistema a esperar que escribas el código
+        if (!codigo || codigo === "null") {
+            const res = await Swal.fire({
                 title: '🔐 Código de Repartidor',
-                input: 'text',
-                inputPlaceholder: 'Ej: R001, R003',
-                background: '#020617',
-                color: 'white',
-                confirmButtonColor: '#06b6d4',
-                allowOutsideClick: false
+                input: 'text', inputPlaceholder: 'Ej: R001',
+                background: '#020617', color: 'white',
+                confirmButtonColor: '#06b6d4', allowOutsideClick: false
             });
-            
-            if (result.value && result.value.trim()) {
-                codigo = result.value.trim().toUpperCase();
+            if (res.value) {
+                codigo = res.value.trim().toUpperCase();
                 localStorage.setItem('repartidor_codigo', codigo);
             } else {
-                document.getElementById('loader').innerHTML = '<p style="color:#ef4444;">❌ No se ingresó código. Recarga la página.</p>';
+                location.reload();
                 return;
             }
         }
         
-        codigoActual = codigo;
-        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
-        console.log("🔑 Código configurado:", codigoActual);
-        
-        // Cargar pedidos por primera vez
+        console.log("🔑 Código listo para usar:", codigo);
         await cargarPedidos();
         
-        // Ocultar loader y mostrar app
+        // Bucle de actualización cada 10 segundos
+        intervalId = setInterval(cargarPedidos, 10000);
+        
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-        console.log("✅ App visible en pantalla!");
-        
-        // Iniciar intervalo de actualización
-        if (intervalo) clearInterval(intervalo);
-        intervalo = setInterval(cargarPedidos, 8000);
-        
-        // Solicitar permisos de notificación
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
     }
     
-    // Iniciar la app cuando el DOM esté listo
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', iniciarApp);
-    } else {
-        iniciarApp();
-    }
+    iniciarApp();
 </script>
 </body>
 </html>

@@ -21,14 +21,12 @@
         .btn-blue { background: #06b6d4; color: black; }
         .btn-yellow { background: #eab308; color: black; }
         .btn-green { background: #22c55e; color: black; }
-        .btn-red { background: #ef4444; color: white; }
         .sin-pedidos { text-align: center; padding: 40px; opacity: 0.5; }
         .loader { position: fixed; inset: 0; background: #020617; display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 9999; }
         .spinner { width: 40px; height: 40px; border: 4px solid #1e293b; border-top-color: #06b6d4; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .hidden { display: none; }
         .text-center { text-align: center; }
-        .mt-2 { margin-top: 8px; }
         .billetera-monto { font-size: 20px; font-weight: bold; color: #22c55e; }
     </style>
 </head>
@@ -47,7 +45,7 @@
                 <button class="btn-salir" id="btnSalir">🚪 Salir</button>
             </div>
             <div>
-                <div class="repartidor-nombre" id="nombreRep" style="font-weight: bold;">Cargando...</div>
+                <div id="nombreRep" style="font-weight: bold;">Cargando...</div>
                 <div id="codigoRep" style="font-size: 11px; color: #eab308;"></div>
             </div>
             <div style="text-align: center; background: rgba(255,255,255,0.03); padding: 6px 12px; border-radius: 12px;">
@@ -66,9 +64,6 @@
 </div>
 
 <script>
-    // ==========================================
-    // CONFIGURACIÓN
-    // ==========================================
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
     let codigoActual = null;
@@ -77,9 +72,6 @@
     let ultimosIds = [];
     let audioNotif = null;
     
-    // ==========================================
-    // FUNCIONES AUXILIARES
-    // ==========================================
     function initAudio() {
         audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audioNotif.volume = 0.8;
@@ -104,9 +96,6 @@
         }
     }
     
-    // ==========================================
-    // CARGAR PEDIDOS
-    // ==========================================
     async function cargarPedidos() {
         if (!codigoActual) return;
         
@@ -127,9 +116,7 @@
             
             const nuevosIds = (data.pedidos || []).map(p => p.ID_PEDIDO);
             const realmenteNuevos = nuevosIds.filter(id => !ultimosIds.includes(id));
-            if (realmenteNuevos.length > 0) {
-                playSound();
-            }
+            if (realmenteNuevos.length > 0) playSound();
             ultimosIds = nuevosIds;
             
             pedidosActivos = (data.pedidos || []).filter(p => {
@@ -139,19 +126,14 @@
             
             document.getElementById('contadorPedidos').innerHTML = `${pedidosActivos.length} pedido${pedidosActivos.length !== 1 ? 's' : ''}`;
             renderizarPedidos();
-            
         } catch(e) {
-            console.error("Error:", e);
+            console.error(e);
             document.getElementById('estadoConexion').innerHTML = 'Offline';
         }
     }
     
-    // ==========================================
-    // RENDERIZAR PEDIDOS
-    // ==========================================
     function renderizarPedidos() {
         const container = document.getElementById('listaPedidos');
-        
         if (pedidosActivos.length === 0) {
             container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
             return;
@@ -161,63 +143,43 @@
         for (let p of pedidosActivos) {
             const estado = (p.ESTADO || '').toUpperCase();
             const total = parseFloat(p.TOTAL) || 0;
-            const telefono = p.telf || p.WHATSAPP || '';
+            const telefono = p.telf || '';
             const telefonoLimpio = telefono.replace(/\D/g, '');
             
             let botones = '';
-            if (estado === 'LISTO') {
-                botones = `<button class="btn-blue" onclick="recogerPedido('${p.ID_PEDIDO}')">🏍️ RECOGER PEDIDO</button>`;
-            } else if (estado === 'EN CAMINO') {
-                botones = `<button class="btn-yellow" onclick="marcarLlegada('${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
-            } else if (estado === 'LLEGÓ') {
-                botones = `<button class="btn-green" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR ENTREGA</button>`;
-            } else {
-                botones = `<div style="background: rgba(6,182,212,0.1); padding: 14px; border-radius: 14px; text-align: center;">⏳ ${estado || 'PREPARANDO'}</div>`;
-            }
+            if (estado === 'LISTO') botones = `<button class="btn-blue" onclick="recogerPedido('${p.ID_PEDIDO}')">🏍️ RECOGER PEDIDO</button>`;
+            else if (estado === 'EN CAMINO') botones = `<button class="btn-yellow" onclick="marcarLlegada('${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+            else if (estado === 'LLEGÓ') botones = `<button class="btn-green" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR ENTREGA</button>`;
+            else botones = `<div style="background: rgba(6,182,212,0.1); padding: 14px; border-radius: 14px; text-align: center;">⏳ ${estado}</div>`;
             
-            html += `
-                <div class="card">
-                    <div class="flex">
-                        <span class="ref">📋 ${p.ID_PEDIDO}</span>
-                        <span class="status-badge">${estado}</span>
+            html += `<div class="card">
+                <div class="flex"><span class="ref">📋 ${p.ID_PEDIDO}</span><span class="status-badge">${estado}</span></div>
+                <div class="direccion">📍 ${p.DIRECCION || 'Sin dirección'}</div>
+                <div class="cliente-box">
+                    <div style="color: #a855f7;">👤 ${p.CLIENTE || 'Cliente'}</div>
+                    <div class="flex" style="margin-top: 10px; justify-content: space-between;">
+                        <span>📞 ${telefono || 'No disponible'}</span>
+                        ${telefonoLimpio ? `<div style="display: flex; gap: 8px;">
+                            <a href="tel:+34${telefonoLimpio}" style="background: #22c55e; color: black; padding: 6px 12px; border-radius: 10px; text-decoration: none; font-size: 11px;">📞 Llamar</a>
+                            <a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background: #25D366; color: black; padding: 6px 12px; border-radius: 10px; text-decoration: none; font-size: 11px;">💬 WhatsApp</a>
+                        </div>` : ''}
                     </div>
-                    <div class="direccion">📍 ${p.DIRECCION || 'Sin dirección'}</div>
-                    <div class="cliente-box">
-                        <div style="color: #a855f7; font-weight: bold;">👤 ${p.CLIENTE || 'Cliente'}</div>
-                        <div class="flex" style="margin-top: 10px; justify-content: space-between;">
-                            <span>📞 ${telefono || 'No disponible'}</span>
-                            ${telefonoLimpio ? `
-                                <div style="display: flex; gap: 8px;">
-                                    <a href="tel:+34${telefonoLimpio}" style="background: #22c55e; color: black; padding: 6px 12px; border-radius: 10px; text-decoration: none; font-size: 11px;">📞 Llamar</a>
-                                    <a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background: #25D366; color: black; padding: 6px 12px; border-radius: 10px; text-decoration: none; font-size: 11px;">💬 WhatsApp</a>
-                                </div>
-                            ` : ''}
-                        </div>
-                        <div style="margin-top: 10px;">💳 ${p.PAGO || 'Efectivo'}</div>
-                    </div>
-                    <div class="flex" style="margin: 12px 0;">
-                        <span>💰 Total a cobrar:</span>
-                        <span style="color: #22c55e; font-weight: bold;">${total.toFixed(2)}€</span>
-                    </div>
-                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.DIRECCION || '')}" target="_blank" style="display: block; text-align: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; font-size: 12px; color: #06b6d4; text-decoration: none; margin-bottom: 4px;">🗺️ Abrir Mapa</a>
-                    ${botones}
+                    <div style="margin-top: 10px;">💳 ${p.PAGO || 'Efectivo'}</div>
                 </div>
-            `;
+                <div class="flex" style="margin: 12px 0;"><span>💰 Total a cobrar:</span><span style="color: #22c55e; font-weight: bold;">${total.toFixed(2)}€</span></div>
+                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.DIRECCION || '')}" target="_blank" style="display: block; text-align: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; font-size: 12px; color: #06b6d4; text-decoration: none;">🗺️ Abrir Mapa</a>
+                ${botones}
+            </div>`;
         }
         container.innerHTML = html;
     }
     
-    // ==========================================
-    // ACCIONES DE PEDIDOS
-    // ==========================================
     window.recogerPedido = async function(id) {
         try {
             await fetch(`${SCRIPT_URL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN CAMINO`);
             await Swal.fire({ title: '✅ Pedido en camino', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
             cargarPedidos();
-        } catch(e) {
-            Swal.fire({ title: 'Error', text: 'No se pudo actualizar', icon: 'error', background: '#020617', color: 'white' });
-        }
+        } catch(e) { Swal.fire({ title: 'Error', icon: 'error', background: '#020617', color: 'white' }); }
     };
     
     window.marcarLlegada = async function(id) {
@@ -225,120 +187,52 @@
             await fetch(`${SCRIPT_URL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LLEGÓ`);
             await Swal.fire({ title: '📍 Llegada registrada', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
             cargarPedidos();
-        } catch(e) {
-            Swal.fire({ title: 'Error', text: 'No se pudo actualizar', icon: 'error', background: '#020617', color: 'white' });
-        }
+        } catch(e) { Swal.fire({ title: 'Error', icon: 'error', background: '#020617', color: 'white' }); }
     };
     
     window.confirmarEntrega = function(id, total) {
         Swal.fire({
             title: '💰 Confirmar Entrega',
-            text: `¿Cobrar ${total.toFixed(2)}€ y finalizar el pedido?`,
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#22c55e',
-            confirmButtonText: '✅ Sí, entregar',
-            showCancelButton: true,
-            cancelButtonText: 'Cancelar'
+            text: `¿Cobrar ${total.toFixed(2)}€ y finalizar?`,
+            icon: 'question', background: '#020617', color: 'white',
+            confirmButtonColor: '#22c55e', confirmButtonText: '✅ Sí',
+            showCancelButton: true
         }).then(async (res) => {
             if (res.isConfirmed) {
                 try {
                     await fetch(`${SCRIPT_URL}?action=finalizarEntrega&idPedido=${id}&total=${total}`);
-                    await Swal.fire({ title: '🎉 ¡Pedido Entregado!', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#020617', color: 'white', timer: 2000, showConfirmButton: false });
+                    await Swal.fire({ title: '🎉 Entregado!', text: `+${total.toFixed(2)}€`, icon: 'success', background: '#020617', color: 'white', timer: 2000 });
                     cargarPedidos();
-                } catch(e) {
-                    Swal.fire({ title: 'Error', text: 'No se pudo finalizar', icon: 'error', background: '#020617', color: 'white' });
-                }
+                } catch(e) { Swal.fire({ title: 'Error', icon: 'error', background: '#020617', color: 'white' }); }
             }
         });
     };
     
-    // ==========================================
-    // HISTORIAL
-    // ==========================================
     async function mostrarHistorial() {
-        if (!codigoActual) return;
-        
         try {
             const resp = await fetch(`${SCRIPT_URL}?action=getHistorialRepartidor&nombre=${encodeURIComponent(codigoActual)}`);
             const data = await resp.json();
-            const pedidos = data.historial || [];
-            const entregas = pedidos.filter(p => p.ESTADO === 'ENTREGADO');
+            const entregas = (data.historial || []).filter(p => p.ESTADO === 'ENTREGADO');
             const total = entregas.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
-            
-            let listaHtml = '';
-            for (let p of entregas.slice().reverse()) {
-                listaHtml += `
-                    <div style="display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #1e293b;">
-                        <div>
-                            <strong>${p.ID_PEDIDO}</strong>
-                            <div style="font-size: 11px; opacity: 0.7;">${p.CLIENTE || 'Cliente'}</div>
-                        </div>
-                        <div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div>
-                    </div>
-                `;
-            }
-            
-            Swal.fire({
-                title: '📋 Historial de Entregas',
-                html: `
-                    <div style="text-align: left; max-height: 400px; overflow-y: auto;">
-                        <div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 15px;">
-                            <div style="display: flex; justify-content: space-between;">
-                                <span>📊 Total entregado:</span>
-                                <span style="color: #22c55e; font-weight: bold;">${total.toFixed(2)}€</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                                <span>📦 Pedidos entregados:</span>
-                                <span>${entregas.length}</span>
-                            </div>
-                        </div>
-                        ${listaHtml || '<div class="text-center" style="padding: 20px;">📭 Sin entregas registradas</div>'}
-                    </div>
-                `,
-                background: '#020617',
-                color: 'white',
-                confirmButtonColor: '#06b6d4',
-                width: '400px'
-            });
-        } catch(e) {
-            Swal.fire({ title: 'Error', text: 'No se pudo cargar el historial', icon: 'error', background: '#020617', color: 'white' });
-        }
+            let lista = entregas.slice().reverse().map(p => `<div style="display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #1e293b;"><span>${p.ID_PEDIDO}</span><span style="color:#22c55e;">${(parseFloat(p.TOTAL)||0).toFixed(2)}€</span></div>`).join('');
+            Swal.fire({ title: '📋 Historial', html: `<div style="text-align:left;"><div style="background:#1e293b;padding:10px;border-radius:12px;margin-bottom:10px;">💰 Total: ${total.toFixed(2)}€</div>${lista||'Sin entregas'}</div>`, background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' });
+        } catch(e) { Swal.fire({ title: 'Error', icon: 'error' }); }
     }
     
-    // ==========================================
-    // CIERRE DE SESIÓN
-    // ==========================================
     async function cerrarSesion() {
-        const result = await Swal.fire({
-            title: '¿Cerrar sesión?',
-            icon: 'question',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, salir',
-            showCancelButton: true,
-            cancelButtonText: 'No'
-        });
-        
-        if (result.isConfirmed) {
+        const res = await Swal.fire({ title: '¿Cerrar sesión?', icon: 'question', confirmButtonColor: '#ef4444', confirmButtonText: 'Sí', showCancelButton: true });
+        if (res.isConfirmed) {
             if (intervalo) clearInterval(intervalo);
             localStorage.removeItem('repartidor_codigo');
             location.reload();
         }
     }
     
-    // ==========================================
-    // INICIAR APP
-    // ==========================================
     async function iniciarApp() {
-        console.log("⚙️ Ejecutando iniciarApp()...");
-        
+        console.log("⚙️ Iniciando app...");
         initAudio();
         mostrarLoader(true);
         
-        // Configurar botones
         document.getElementById('btnHistorial').onclick = mostrarHistorial;
         document.getElementById('btnSalir').onclick = cerrarSesion;
         
@@ -347,20 +241,16 @@
         if (!codigo) {
             const result = await Swal.fire({
                 title: '🔐 Código de Repartidor',
-                input: 'text',
-                inputPlaceholder: 'Ej: R001, R003',
-                background: '#020617',
-                color: 'white',
-                confirmButtonColor: '#06b6d4',
-                allowOutsideClick: false
+                input: 'text', inputPlaceholder: 'Ej: R001, R003',
+                background: '#020617', color: 'white',
+                confirmButtonColor: '#06b6d4', allowOutsideClick: false
             });
-            
             if (result.value && result.value.trim()) {
                 codigo = result.value.trim().toUpperCase();
                 localStorage.setItem('repartidor_codigo', codigo);
             } else {
                 mostrarLoader(false);
-                document.getElementById('listaPedidos').innerHTML = '<div class="sin-pedidos">❌ No se ingresó código. Recarga la página.</div>';
+                document.getElementById('listaPedidos').innerHTML = '<div class="sin-pedidos">❌ No se ingresó código</div>';
                 return;
             }
         }
@@ -369,26 +259,16 @@
         document.getElementById('codigoRep').innerHTML = `🔑 ${codigoActual}`;
         
         await cargarPedidos();
-        
         mostrarLoader(false);
         
         if (intervalo) clearInterval(intervalo);
         intervalo = setInterval(cargarPedidos, 10000);
         
-        // Notificaciones
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
-        
-        console.log("✅ App iniciada correctamente!");
+        if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+        console.log("✅ App iniciada!");
     }
     
-    // Iniciar cuando el DOM esté listo
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', iniciarApp);
-    } else {
-        iniciarApp();
-    }
+    iniciarApp();
 </script>
 </body>
 </html>

@@ -58,7 +58,6 @@
         button:active { transform: scale(0.96); transition: transform 0.05s; }
         button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
         
-        /* Estilos para el select en SweetAlert */
         .swal2-select-custom {
             background-color: #1e293b !important;
             color: white !important;
@@ -121,7 +120,7 @@
 
 <div id="sideHistorial" class="sidebar">
     <div class="flex-between mb-6 border-b border-white/10 pb-3">
-        <h2 class="text-xl font-black italic text-cyan-400">HISTORIAL HOY</h2>
+        <h2 class="text-xl font-black italic text-cyan-400">HISTORIAL</h2>
         <button onclick="cerrarHistorial()" class="p-2 bg-white/10 rounded-xl text-xs">✕</button>
     </div>
     <div id="listaHistorial" class="space-y-3">Cargando...</div>
@@ -149,7 +148,8 @@
     let audioAceptar = null;
     let audioRechazar = null;
     let audioListo = null;
-    let intervalosSonido = {};  // Para sonido repetitivo por pedido
+    let intervalosSonido = {};
+    let sonidosActivados = false;
 
     function initSonidosCocina() {
         audioNuevoPedido = document.getElementById('audio-nuevo-pedido');
@@ -163,29 +163,43 @@
         if (audioListo) audioListo.load();
     }
 
-    // Sonido repetitivo cada 5 segundos para nuevos pedidos
+    // Activar sonidos después de la primera interacción del usuario
+    function activarSonidos() {
+        if (!sonidosActivados) {
+            sonidosActivados = true;
+            console.log("🔊 Sonidos activados por interacción del usuario");
+            // Reproducir un sonido de prueba silencioso para activar
+            if (audioAceptar) {
+                audioAceptar.volume = 0;
+                audioAceptar.play().then(() => {
+                    audioAceptar.pause();
+                    audioAceptar.currentTime = 0;
+                    audioAceptar.volume = 0.8;
+                }).catch(e => console.log("Test de audio:", e));
+            }
+        }
+    }
+
     function playSoundNuevoPedidoRepetitivo(idPedido) {
-        if (audioNuevoPedido) {
-            // Limpiar intervalo anterior si existe
+        if (audioNuevoPedido && sonidosActivados) {
             if (intervalosSonido[idPedido]) {
                 clearInterval(intervalosSonido[idPedido]);
             }
             
-            // Reproducir inmediatamente
             const clone = audioNuevoPedido.cloneNode(true);
             clone.volume = 0.8;
             clone.play().catch(e => console.log('Audio necesita interacción'));
             
-            // Configurar repetición cada 5 segundos
             intervalosSonido[idPedido] = setInterval(() => {
-                const nuevoClone = audioNuevoPedido.cloneNode(true);
-                nuevoClone.volume = 0.8;
-                nuevoClone.play().catch(e => console.log('Audio necesita interacción'));
+                if (sonidosActivados) {
+                    const nuevoClone = audioNuevoPedido.cloneNode(true);
+                    nuevoClone.volume = 0.8;
+                    nuevoClone.play().catch(e => console.log('Audio necesita interacción'));
+                }
             }, 5000);
         }
     }
 
-    // Detener sonido repetitivo de un pedido
     function detenerSonidoRepetitivo(idPedido) {
         if (intervalosSonido[idPedido]) {
             clearInterval(intervalosSonido[idPedido]);
@@ -195,7 +209,7 @@
     }
 
     function playSoundAceptar() {
-        if (audioAceptar) {
+        if (audioAceptar && sonidosActivados) {
             const clone = audioAceptar.cloneNode(true);
             clone.volume = 0.8;
             clone.play().catch(e => console.log('Audio necesita interacción'));
@@ -203,7 +217,7 @@
     }
 
     function playSoundRechazar() {
-        if (audioRechazar) {
+        if (audioRechazar && sonidosActivados) {
             const clone = audioRechazar.cloneNode(true);
             clone.volume = 0.8;
             clone.play().catch(e => console.log('Audio necesita interacción'));
@@ -211,7 +225,7 @@
     }
 
     function playSoundListo() {
-        if (audioListo) {
+        if (audioListo && sonidosActivados) {
             const clone = audioListo.cloneNode(true);
             clone.volume = 0.8;
             clone.play().catch(e => console.log('Audio necesita interacción'));
@@ -249,7 +263,7 @@
     }
     
     function playSound() {
-        if (audioNotif) {
+        if (audioNotif && sonidosActivados) {
             const clone = audioNotif.cloneNode(true);
             clone.volume = 0.8;
             clone.play().catch(e => console.log('Audio en espera de interacción:', e));
@@ -298,75 +312,79 @@
         intervaloTiempos = setInterval(actualizarContadores, 1000);
         
         document.getElementById('loader').style.display = 'none';
+        
+        // Activar sonidos en la primera interacción con cualquier botón
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', activarSonidos, { once: true });
+        });
     }
     
-   async function cargar() {
-    if (!MI_ID_REST) return;
-    try {
-        const r = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}&t=${Date.now()}`);
-        const data = await r.json();
-        
-        if(data.tienda) {
-            document.getElementById('resNombreDisplay').innerText = data.tienda.nombre || "Establecimiento";
-            tiendaAbierta = (data.tienda.estado || "").toLowerCase() === "abierto";
-            document.getElementById('tiendaToggle').checked = tiendaAbierta;
-            let txtE = document.getElementById('txtEstado');
-            txtE.innerText = tiendaAbierta ? "ABIERTO" : "CERRADO";
-            txtE.className = tiendaAbierta ? "estado-badge abierto" : "estado-badge cerrado";
-        }
-        
-        let stats = data.stats || {};
-        document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2) + "€";
-        document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2) + "€";
-        
-        // ==========================================
-        // 🔧 CORRECCIÓN: El restaurante SOLO ve pedidos en RECIBIDO o EN PROCESO
-        // ==========================================
-        const todosPedidos = data.pedidos || [];
-        const pedidosFiltrados = todosPedidos.filter(p => {
-            const estado = (p.ESTADO || '').toUpperCase();
-            return estado === 'RECIBIDO' || estado === 'EN PROCESO';
-        });
-        
-        // Detectar nuevos pedidos
-        const nuevosIds = pedidosFiltrados.map(p => p.ID_PEDIDO);
-        const realmenteNuevos = nuevosIds.filter(id => !aceptados.has(id));
-        
-        if (realmenteNuevos.length > 0 && aceptados.size > 0) {
-            playSound();
-            realmenteNuevos.forEach(id => {
-                playSoundNuevoPedidoRepetitivo(id);
-            });
-            mostrarMensaje('📦 Nuevo Pedido', 'Tienes un nuevo pedido en la lista', 'info');
-            if(navigator.vibrate) navigator.vibrate(500);
-        }
-        
-        pedidosActivos = pedidosFiltrados.sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
-        
-        // Historial: pedidos que ya salieron de la cocina (LISTO, EN CAMINO, ENTREGADO, CANCELADO, RECHAZADO)
-        const pedidosHistorial = todosPedidos.filter(p => {
-            const estado = (p.ESTADO || '').toUpperCase();
-            return estado === 'LISTO' || estado === 'ENTREGADO' || estado === 'CANCELADO' || estado === 'RECHAZADO' || estado === 'EN CAMINO';
-        });
-        
-        historialHoy = pedidosHistorial;
-        
-        ultimoConteo = pedidosActivos.filter(p=>!aceptados.has(p.ID_PEDIDO)).length;
-        document.getElementById('contadorPendientes').innerText = ultimoConteo;
-        
-        // Limpiar sonidos de pedidos que ya no están activos
-        Object.keys(intervalosSonido).forEach(id => {
-            const sigueActivo = pedidosActivos.some(p => p.ID_PEDIDO === id && !aceptados.has(id));
-            if (!sigueActivo) {
-                detenerSonidoRepetitivo(id);
+    async function cargar() {
+        if (!MI_ID_REST) return;
+        try {
+            const r = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}&t=${Date.now()}`);
+            const data = await r.json();
+            
+            if(data.tienda) {
+                document.getElementById('resNombreDisplay').innerText = data.tienda.nombre || "Establecimiento";
+                tiendaAbierta = (data.tienda.estado || "").toLowerCase() === "abierto";
+                document.getElementById('tiendaToggle').checked = tiendaAbierta;
+                let txtE = document.getElementById('txtEstado');
+                txtE.innerText = tiendaAbierta ? "ABIERTO" : "CERRADO";
+                txtE.className = tiendaAbierta ? "estado-badge abierto" : "estado-badge cerrado";
             }
-        });
-        
-        render();
-    } catch(e) { 
-        console.error("Error en consulta remota panel de cocina:", e); 
+            
+            let stats = data.stats || {};
+            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2) + "€";
+            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2) + "€";
+            
+            // El restaurante SOLO ve pedidos en RECIBIDO o EN PROCESO
+            const todosPedidos = data.pedidos || [];
+            const pedidosFiltrados = todosPedidos.filter(p => {
+                const estado = (p.ESTADO || '').toUpperCase();
+                return estado === 'RECIBIDO' || estado === 'EN PROCESO';
+            });
+            
+            const nuevosIds = pedidosFiltrados.map(p => p.ID_PEDIDO);
+            const realmenteNuevos = nuevosIds.filter(id => !aceptados.has(id));
+            
+            if (realmenteNuevos.length > 0 && aceptados.size > 0 && sonidosActivados) {
+                playSound();
+                realmenteNuevos.forEach(id => {
+                    playSoundNuevoPedidoRepetitivo(id);
+                });
+                mostrarMensaje('📦 Nuevo Pedido', 'Tienes un nuevo pedido en la lista', 'info');
+                if(navigator.vibrate) navigator.vibrate(500);
+            }
+            
+            pedidosActivos = pedidosFiltrados.sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
+            
+            // ==========================================
+            // HISTORIAL: Incluir TODOS los pedidos que ya no están en cocina
+            // ==========================================
+            const pedidosHistorial = todosPedidos.filter(p => {
+                const estado = (p.ESTADO || '').toUpperCase();
+                return estado === 'LISTO' || estado === 'ENTREGADO' || estado === 'CANCELADO' || estado === 'RECHAZADO' || estado === 'EN CAMINO' || estado === 'LLEGÓ';
+            });
+            
+            historialHoy = pedidosHistorial;
+            
+            ultimoConteo = pedidosActivos.filter(p=>!aceptados.has(p.ID_PEDIDO)).length;
+            document.getElementById('contadorPendientes').innerText = ultimoConteo;
+            
+            // Limpiar sonidos de pedidos que ya no están activos
+            Object.keys(intervalosSonido).forEach(id => {
+                const sigueActivo = pedidosActivos.some(p => p.ID_PEDIDO === id && !aceptados.has(id));
+                if (!sigueActivo) {
+                    detenerSonidoRepetitivo(id);
+                }
+            });
+            
+            render();
+        } catch(e) { 
+            console.error("Error en consulta remota panel de cocina:", e); 
+        }
     }
-}
     
     function render() {
         let cont = document.getElementById('lista');
@@ -415,7 +433,6 @@
         btn.disabled = true;
         btn.innerHTML = '⏳ PROCESANDO...';
         
-        // Detener sonido repetitivo al aceptar
         detenerSonidoRepetitivo(id);
         
         aceptados.add(id); 
@@ -484,7 +501,6 @@
         btn.disabled = true;
         btn.innerHTML = '⏳...';
         
-        // Detener sonido repetitivo al rechazar
         detenerSonidoRepetitivo(id);
         
         const { value: motivo } = await Swal.fire({
@@ -686,36 +702,36 @@
     }
 
     async function ejecutarListo(id) {
-    let timestampFin = Date.now();
-    try {
-        await database.ref('pedidos/'+id).update({ 
-            estado: 'listo',
-            timestamp_fin_elaboracion: timestampFin,
-            timestamp_listo: timestampFin
-        });
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
-        playSoundListo();
-        
-        // Eliminar el pedido de la lista activa inmediatamente
-        aceptados.delete(id);
-        pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
-        
-        Swal.fire({
-            title: '✅ Pedido Listo',
-            text: 'Repartidor notificado automáticamente',
-            icon: 'success',
-            background: '#020617',
-            color: 'white',
-            timer: 1500,
-            showConfirmButton: false
-        });
-        
-        render();
-        cargar(); // Recargar para actualizar stats
-    } catch(e) {
-        console.error(e);
+        let timestampFin = Date.now();
+        try {
+            await database.ref('pedidos/'+id).update({ 
+                estado: 'listo',
+                timestamp_fin_elaboracion: timestampFin,
+                timestamp_listo: timestampFin
+            });
+            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
+            playSoundListo();
+            
+            // Eliminar de la lista activa inmediatamente
+            aceptados.delete(id);
+            pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
+            
+            Swal.fire({
+                title: '✅ Pedido Listo',
+                text: 'Repartidor notificado automáticamente',
+                icon: 'success',
+                background: '#020617',
+                color: 'white',
+                timer: 1500,
+                showConfirmButton: false
+            });
+            
+            render();
+            cargar(); // Recargar para actualizar stats
+        } catch(e) {
+            console.error(e);
+        }
     }
-}
     
     function confirmarToggleTienda() { 
         let nuevo = !tiendaAbierta ? "Abierto" : "Cerrado"; 
@@ -764,26 +780,35 @@
     }
     
     function abrirHistorial() {
-    let lista = document.getElementById('listaHistorial');
-    
-    // Incluir pedidos entregados + pedidos en LISTO
-    const todosHistorial = [...historialHoy];
-    
-    if(todosHistorial.length === 0) {
-        lista.innerHTML = '<div class="text-center opacity-50 text-xs py-10">Ninguna entrega registrada hoy</div>';
-    } else {
-        lista.innerHTML = todosHistorial.map(p => `
-            <div class="historial-card cursor-pointer active:scale-95 transition-transform" onclick="cerrarHistorial(); verDetalles('${p.ID_PEDIDO}')">
-                <div class="flex-between">
-                    <span class="text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
-                    <span class="font-bold text-emerald-400">${parseFloat(p.TOTAL).toFixed(2)}€</span>
+        let lista = document.getElementById('listaHistorial');
+        
+        if(historialHoy.length === 0) {
+            lista.innerHTML = '<div class="text-center opacity-50 text-xs py-10">Ningún pedido registrado</div>';
+        } else {
+            lista.innerHTML = historialHoy.map(p => {
+                const estado = (p.ESTADO || '').toUpperCase();
+                let estadoTexto = '';
+                if (estado === 'LISTO') estadoTexto = '🔔 LISTO PARA REPARTIDOR';
+                else if (estado === 'EN CAMINO') estadoTexto = '🛵 EN REPARTO';
+                else if (estado === 'LLEGÓ') estadoTexto = '📍 LLEGÓ AL CLIENTE';
+                else if (estado === 'ENTREGADO') estadoTexto = '✅ ENTREGADO';
+                else if (estado === 'CANCELADO') estadoTexto = '❌ CANCELADO';
+                else if (estado === 'RECHAZADO') estadoTexto = '🚫 RECHAZADO';
+                else estadoTexto = estado;
+                
+                return `
+                <div class="historial-card cursor-pointer active:scale-95 transition-transform" onclick="cerrarHistorial(); verDetalles('${p.ID_PEDIDO}')">
+                    <div class="flex-between">
+                        <span class="text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
+                        <span class="font-bold text-emerald-400">${parseFloat(p.TOTAL).toFixed(2)}€</span>
+                    </div>
+                    <div class="text-xs mt-1 text-white/70 font-semibold">${p.CLIENTE}</div>
+                    <div class="text-[9px] mt-1 text-cyan-400/70">${estadoTexto}</div>
                 </div>
-                <div class="text-xs mt-1 text-white/70 font-semibold">${p.CLIENTE} - ${p.ESTADO === 'LISTO' ? '🔔 LISTO' : '✅ ENTREGADO'}</div>
-            </div>
-        `).join('');
+            `}).join('');
+        }
+        document.getElementById('sideHistorial').classList.add('open');
     }
-    document.getElementById('sideHistorial').classList.add('open');
-}
     
     function cerrarHistorial() { 
         document.getElementById('sideHistorial').classList.remove('open'); 

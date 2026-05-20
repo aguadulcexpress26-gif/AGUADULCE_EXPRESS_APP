@@ -20,7 +20,7 @@
         .ref { background: rgba(6,182,212,0.1); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; color: #06b6d4; }
         .status-badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; }
         .direccion { font-size: 15px; font-weight: bold; margin: 14px 0; line-height: 1.4; }
-        .cliente-box { background: rgba(2,6,23,0.6); border-radius: 16px; padding: 14px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.02); position: relative; padding-bottom: 50px; }
+        .cliente-box { background: rgba(2,6,23,0.6); border-radius: 16px; padding: 14px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.02); position: relative; }
         button { width: 100%; padding: 16px; border-radius: 16px; font-weight: bold; border: none; margin-top: 12px; cursor: pointer; font-size: 14px; display: flex; justify-content: center; align-items: center; gap: 8px; transition: all 0.2s; }
         .btn-blue { background: #06b6d4; color: black; }
         .btn-yellow { background: #eab308; color: black; }
@@ -86,7 +86,6 @@
     async function cargarPedidos() {
         if (!codigo) return;
         try {
-            console.log("📡 Solicitando datos al servidor para el código:", codigo);
             const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
             const resp = await fetch(url);
             const data = await resp.json();
@@ -197,14 +196,14 @@
                 if (pagaCon > 0 && pagaCon > total) {
                     const cambio = pagaCon - total;
                     infoCambioHTML = `
-                        <div style="position: absolute; bottom: 12px; right: 14px; font-size: 11px; text-align: right;">
+                        <div style="position: absolute; bottom: 65px; right: 14px; font-size: 11px; text-align: right;">
                             <span style="opacity: 0.6; display:block;">Paga con: <strong style="color: #eab308;">${pagaCon.toFixed(2)}€</strong></span>
                             <span style="display:block; margin-top:2px;">Cambio: <strong style="color: #22c55e; font-weight:bold;">${cambio.toFixed(2)}€</strong></span>
                         </div>
                     `;
                 } else {
                     infoCambioHTML = `
-                        <div style="position: absolute; bottom: 12px; right: 14px; font-size: 11px; opacity: 0.6;">
+                        <div style="position: absolute; bottom: 65px; right: 14px; font-size: 11px; opacity: 0.6;">
                             <span style="color: #eab308; font-weight: bold;">Llevar cambio</span>
                         </div>
                     `;
@@ -215,7 +214,7 @@
             if (estado === 'EN CAMINO' || estado === 'LLEGÓ' || estado === 'LLEGO') {
                 cronometroHTML = `
                     <div id="cronometro-${p.ID_PEDIDO}" class="cronometro-box" style="background: rgba(6,182,212,0.05); color: #06b6d4;">
-                        ⏳ CARGANDO TIEMPO...
+                        ⏳ CARGANDO RUTA LOGÍSTICA...
                     </div>
                 `;
                 cronometrosPorActivar.push({ id: p.ID_PEDIDO, estado: estado });
@@ -239,14 +238,14 @@
             
             html += '<div class="cliente-box">';
             html += '<div style="color: #a855f7; font-weight: bold; font-size: 14px;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
-            html += '<div class="flex mt-2" style="margin-top: 10px; justify-content: flex-start; gap: 10px;">';
+            html += '<div class="flex mt-2" style="margin-top: 10px; justify-content: flex-start; gap: 10px; padding-bottom: 10px;">';
             html += '<span style="font-size: 13px; opacity: 0.8;">📞 ' + (telefono || 'No disponible') + '</span>';
             if (telefonoLimpio) {
                 html += '<a href="tel:' + telefonoLimpio + '" class="btn-accion-tel">Llamar</a>';
                 html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" class="btn-accion-wa">WhatsApp</a>';
             }
             html += '</div>';
-            html += '<div style="font-size:12px; opacity:0.7; margin-top: 12px;">💳 Método: <strong>' + metodoPago + '</strong></div>';
+            html += '<div style="font-size:12px; opacity:0.7; margin-top: 4px;">💳 Método: <strong>' + metodoPago + '</strong></div>';
             html += infoCambioHTML;
             html += '</div>';
             
@@ -266,7 +265,7 @@
         
         container.innerHTML = html;
 
-        // Activar relojes de forma segura cuando los elementos ya existen en el DOM
+        // Lanzar los relojes cuando el HTML ya existe seguro en pantalla
         cronometrosPorActivar.forEach(cron => {
             iniciarTemporizadorReparto(cron.id, cron.estado);
         });
@@ -333,10 +332,8 @@
     };
     
     async function iniciarApp() {
-        console.log("⚙️ Ejecutando iniciarApp()...");
-        
-        // CORRECCIÓN CLAVE: Obligar al sistema a esperar que escribas el código
-        if (!codigo || codigo === "null") {
+        // Corrección del bucle infinito: si ya existe el código, pasa directo sin trabar la pantalla
+        if (!codigo || codigo === "null" || codigo === "undefined") {
             const res = await Swal.fire({
                 title: '🔐 Código de Repartidor',
                 input: 'text', inputPlaceholder: 'Ej: R001',
@@ -352,14 +349,12 @@
             }
         }
         
-        console.log("🔑 Código listo para usar:", codigo);
-        await cargarPedidos();
-        
-        // Bucle de actualización cada 10 segundos
-        intervalId = setInterval(cargarPedidos, 10000);
-        
+        // Quitar la pantalla de carga antes de la llamada pesada de red para evitar congelamientos
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
+        
+        await cargarPedidos();
+        intervalId = setInterval(cargarPedidos, 10000);
     }
     
     iniciarApp();

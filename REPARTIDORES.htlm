@@ -145,7 +145,7 @@
 
 <div id="loader" class="loader">
     <div class="spinner"></div>
-    <p style="color:#06b6d4; margin-top: 15px;">Iniciando...</p>
+    <p style="color:#06b6d4; margin-top: 15px;">Iniciando Panel de Reparto...</p>
 </div>
 
 <div id="app" style="display: none;">
@@ -178,8 +178,9 @@
     let codigo = localStorage.getItem('repartidor_codigo');
     let pedidos = [];
     let intervalId = null;
+    let intervalosCronometro = {};
     
-    // Mostrar mensaje
+    // Mostrar mensaje nativo de la app
     function mensaje(texto, icono) {
         Swal.fire({
             text: texto,
@@ -192,7 +193,7 @@
         });
     }
     
-    // Cargar pedidos
+    // Cargar pedidos desde el Google Sheet
     async function cargarPedidos() {
         try {
             const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
@@ -220,11 +221,60 @@
         }
     }
     
-    // Renderizar
+    // Motor del Cronómetro de Cuenta Atrás dinámico
+    function iniciarTemporizadorReparto(id, estado) {
+        if (intervalosCronometro[id]) clearInterval(intervalosCronometro[id]);
+
+        // Tiempo estándar en camino: 45 minutos
+        let tiempoLimiteSegundos = 45 * 60; 
+
+        // Si el estado ya es LLEGÓ, cuenta regresiva estricta de cortesía de 5 minutos
+        if (estado === 'LLEGÓ' || estado === 'LLEGO') {
+            tiempoLimiteSegundos = 5 * 60; 
+        }
+
+        intervalosCronometro[id] = setInterval(() => {
+            const elemento = document.getElementById('cronometro-' + id);
+            if (!elemento) {
+                clearInterval(intervalosCronometro[id]);
+                return;
+            }
+
+            if (tiempoLimiteSegundos <= 0) {
+                clearInterval(intervalosCronometro[id]);
+                elemento.style.background = '#581c1c';
+                elemento.style.borderColor = '#ef4444';
+                elemento.style.color = '#ef4444';
+                elemento.innerHTML = (estado === 'LLEGÓ' || estado === 'LLEGO') 
+                    ? '🚨 TIEMPO DE ESPERA AGOTADO (LLAMAR AL CLIENTE)' 
+                    : '🚨 PEDIDO RETRASADO';
+                return;
+            }
+
+            tiempoLimiteSegundos--;
+            const minutos = Math.floor(tiempoLimiteSegundos / 60);
+            const segundos = tiempoLimiteSegundos % 60;
+            const textoSegundos = segundos < 10 ? "0" + segundos : segundos;
+
+            if (estado === 'LLEGÓ' || estado === 'LLEGO') {
+                elemento.style.background = '#451a03';
+                elemento.style.borderColor = '#f59e0b';
+                elemento.style.color = '#f59e0b';
+                elemento.innerHTML = '⏱️ TIEMPO DE ESPERA AL CLIENTE: ' + minutos + ':' + textoSegundos;
+            } else {
+                elemento.innerHTML = '🛵 TIEMPO ESTIMADO DE ENTREGA: ' + minutos + ':' + textoSegundos;
+            }
+        }, 1000);
+    }
+
+    // Renderizar listado de tarjetas optimizado
     function renderizar() {
         const container = document.getElementById('listaPedidos');
         
         if (!pedidos.length) {
+            // Limpiar intervalos activos si no quedan entregas pendientes
+            for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
+            intervalosCronometro = {};
             container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
             return;
         }
@@ -233,78 +283,130 @@
         for (let p of pedidos) {
             const estado = (p.ESTADO || '').toUpperCase();
             const total = parseFloat(p.TOTAL) || 0;
-            const telefono = p.telf || p.WHATSAPP || p.telefono || '';
+            const metodoPago = p.PAGO || 'Efectivo';
+            
+            const telefono = p.telf || p.WHATSAPP || p.telefono || p.TELEFONO || '';
             const telefonoLimpio = telefono.replace(/\D/g, '');
             
+            // 1. Desglose del pago con billete y cálculo del cambio exacto
+            let infoCambioHTML = '';
+            if (metodoPago.toLowerCase() === 'efectivo') {
+                const pagaConStr = p.PAGA_CON || p.PAGA || p.paga_con || '';
+                const pagaCon = parseFloat(pagaConStr) || 0;
+                
+                if (pagaCon > 0 && pagaCon > total) {
+                    const cambio = pagaCon - total;
+                    infoCambioHTML = `
+                        <div class="mt-2" style="background: rgba(15,23,42,0.6); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; font-size: 11px;">
+                            <span>Paga con: <strong style="color: #eab308;">${pagaCon.toFixed(2)}€</strong></span>
+                            <span>Cambio: <strong style="color: #22c55e;">${cambio.toFixed(2)}€</strong></span>
+                        </div>
+                    `;
+                } else {
+                    infoCambioHTML = `
+                        <div class="mt-2" style="background: rgba(15,23,42,0.6); padding: 10px; border-radius: 10px; display: flex; justify-content: space-between; font-size: 11px; opacity: 0.8;">
+                            <span>Monto a cobrar en efectivo</span>
+                            <span style="color: #eab308; font-weight: bold;">Llevar cambio</span>
+                        </div>
+                    `;
+                }
+            }
+
+            // 2. Inyección visual del marcador del cronómetro
+            let cronometroHTML = '';
+            if (estado === 'EN CAMINO' || estado === 'LLEGÓ' || estado === 'LLEGO') {
+                cronometroHTML = `
+                    <div id="cronometro-${p.ID_PEDIDO}" style="margin: 12px 0; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.3); color: #06b6d4; font-weight: bold; padding: 10px; border-radius: 12px; text-align: center; font-size: 12px; tracking-wide: 0.05em;">
+                        ⏳ ASIGNANDO TIEMPO LOGÍSTICO...
+                    </div>
+                `;
+                // Arrancar el cronómetro en segundo plano de manera segura
+                setTimeout(() => iniciarTemporizadorReparto(p.ID_PEDIDO, estado), 100);
+            }
+
+            // 3. Flujo dinámico de botones según el estado
             let botones = '';
-            
-            if (estado === 'LISTO') {
-                botones = '<button class="btn-blue" onclick="recoger(\'' + p.ID_PEDIDO + '\')">🛵 RECOGER PEDIDO</button>';
+            if (estado === 'LISTO' || estado === 'PREPARADO') {
+                botones = '<button class="btn-blue" onclick="recoger(\'' + p.ID_PEDIDO + '\')">🏍️ RECOGER Y INICIAR REPARTO</button>';
             } else if (estado === 'EN CAMINO') {
-                botones = '<button class="btn-yellow" onclick="llegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO</button>';
+                botones = '<button class="btn-yellow" onclick="llegada(\'' + p.ID_PEDIDO + '\')">📍 HE LLEGADO AL DOMICILIO</button>';
             } else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
-                botones = '<button class="btn-green" onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 COBRAR Y ENTREGAR (' + total.toFixed(2) + '€)</button>';
+                botones = '<button class="btn-green" onclick="entregar(\'' + p.ID_PEDIDO + '\', ' + total + ')">💰 CONFIRMAR COBRO Y ENTREGA</button>';
             } else {
-                botones = '<div style="background: #06b6d420; padding: 12px; border-radius: 14px; text-align: center;">⏳ Preparando pedido...</div>';
+                botones = '<button disabled style="background: #1e293b; color: #64748b; cursor: not-allowed; font-size:12px;">⏳ ESPERANDO QUE COCINA TERMINE EL PEDIDO</button>';
             }
             
+            // 4. Maquetación del bloque HTML de la tarjeta
             html += '<div class="card">';
             html += '<div class="flex">';
-            html += '<span class="ref">📋 ' + p.ID_PEDIDO + '</span>';
-            html += '<span style="background:#06b6d4;color:black;padding:2px 10px;border-radius:12px;font-size:10px;">' + (estado || 'PREPARANDO') + '</span>';
+            html += '<span class="ref">📋 REF: ' + p.ID_PEDIDO + '</span>';
+            html += '<span style="background:#06b6d420;color:#06b6d4;padding:4px 12px;border-radius:12px;font-size:10px;font-weight:bold;">' + estado + '</span>';
             html += '</div>';
             html += '<div class="direccion">📍 ' + (p.DIRECCION || 'Sin dirección') + '</div>';
+            
             html += '<div class="cliente-box">';
-            html += '<div style="color:#06b6d4;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
+            html += '<div style="color:#06b6d4; font-weight: bold;">👤 ' + (p.CLIENTE || 'Cliente') + '</div>';
             html += '<div class="flex mt-2">';
             html += '<span>📞 ' + (telefono || 'No disponible') + '</span>';
             if (telefonoLimpio) {
                 html += '<div class="inline-flex">';
-                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:5px 10px;border-radius:12px;font-size:11px;">📞</a>';
-                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:12px;font-size:11px;">💬</a>';
+                html += '<a href="tel:' + telefonoLimpio + '" style="background:#22c55e;color:black;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:bold;">📞</a>';
+                html += '<a href="https://wa.me/' + telefonoLimpio + '" target="_blank" style="background:#25D366;color:black;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:bold;">💬</a>';
                 html += '</div>';
             }
             html += '</div>';
-            html += '<div class="mt-2" style="font-size:11px;opacity:0.7;">💳 Pago: ' + (p.PAGO || 'Efectivo') + '</div>';
+            html += '<div class="mt-2" style="font-size:11px;opacity:0.7;">💳 Método de Pago: <strong>' + metodoPago + '</strong></div>';
+            html += infoCambioHTML;
             html += '</div>';
-            html += '<div class="flex" style="margin:12px 0;">';
-            html += '<span style="color:#06b6d4;">💰 ' + total.toFixed(2) + '€</span>';
-            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" style="color:#06b6d4;">📍 Mapa</a>';
+            
+            html += cronometroHTML;
+
+            html += '<div class="flex" style="margin:16px 0 8px 0; align-items: flex-end;">';
+            html += '<div><span style="font-size:12px; opacity:0.6; display:block;">Total a recibir:</span><span style="color:#22c55e; font-size:24px; font-weight:black;">' + total.toFixed(2) + '€</span></div>';
+            html += '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.DIRECCION || '') + '" target="_blank" style="background:#06b6d4; color:black; padding:8px 14px; border-radius:10px; font-size:12px; font-weight:bold;">🗺️ Abrir Mapa</a>';
             html += '</div>';
+            
             html += botones;
             html += '</div>';
         }
         container.innerHTML = html;
     }
     
-    // Acciones
+    // Acciones asíncronas con el Google Sheet
     window.recoger = async function(id) {
-        await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-        mensaje('✅ Pedido recogido', 'success');
-        cargarPedidos();
+        try {
+            await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            mensaje('✅ Pedido recogido correctamente', 'success');
+            cargarPedidos();
+        } catch(e) { console.error(e); }
     };
     
     window.llegada = async function(id) {
-        await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
-        mensaje('📍 Llegaste al cliente', 'success');
-        cargarPedidos();
+        try {
+            await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+            mensaje('📍 Avisado: Llegaste al domicilio', 'success');
+            cargarPedidos();
+        } catch(e) { console.error(e); }
     };
     
     window.entregar = function(id, total) {
         Swal.fire({
             title: '💰 Cobrar ' + total.toFixed(2) + '€',
-            text: '¿Confirmas el pago?',
+            text: '¿Confirmas que has recibido el dinero y entregado el paquete?',
             icon: 'question',
             background: '#020617',
             color: 'white',
             confirmButtonColor: '#22c55e',
-            confirmButtonText: '✅ Si',
-            showCancelButton: true
+            confirmButtonText: '✅ Confirmar',
+            showCancelButton: true,
+            cancelButtonText: 'Cancelar'
         }).then(async (res) => {
             if (res.isConfirmed) {
-                await fetch(SCRIPT_URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
-                mensaje('🎉 Pedido entregado! +' + total.toFixed(2) + '€', 'success');
-                cargarPedidos();
+                try {
+                    await fetch(SCRIPT_URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total + '&idRepartidor=' + codigo);
+                    mensaje('🎉 ¡Pedido liquidado! +' + total.toFixed(2) + '€', 'success');
+                    cargarPedidos();
+                } catch(e) { console.error(e); }
             }
         });
     };
@@ -312,20 +414,23 @@
     window.cerrarSesion = async function() {
         const confirm = await Swal.fire({
             title: '¿Cerrar sesión?',
+            text: "Tendrás que volver a ingresar tu identificador único de repartidor.",
             icon: 'question',
             background: '#020617',
             color: 'white',
             confirmButtonColor: '#ef4444',
-            showCancelButton: true
+            showCancelButton: true,
+            cancelButtonText: 'Cancelar'
         });
         if (confirm.isConfirmed) {
             if (intervalId) clearInterval(intervalId);
+            for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
             localStorage.removeItem('repartidor_codigo');
             location.reload();
         }
     };
     
-    // Inicio
+    // Inicialización del sistema de asignación de terminales
     async function init() {
         if (!codigo) {
             const res = await Swal.fire({
@@ -335,6 +440,7 @@
                 background: '#020617',
                 color: 'white',
                 confirmButtonColor: '#06b6d4',
+                allowOutsideClick: false,
                 showCancelButton: false
             });
             if (res.value) {
@@ -347,6 +453,7 @@
         }
         
         await cargarPedidos();
+        // Escucha en segundo plano automática cada 10 segundos
         intervalId = setInterval(cargarPedidos, 10000);
         
         document.getElementById('loader').style.display = 'none';

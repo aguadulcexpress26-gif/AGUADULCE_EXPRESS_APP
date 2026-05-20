@@ -319,14 +319,16 @@
         document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2) + "€";
         document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2) + "€";
         
-        // Filtrar pedidos activos: EXCLUIR ENTREGADO, CANCELADO, RECHAZADO, LISTO
+        // ==========================================
+        // 🔧 CORRECCIÓN: El restaurante SOLO ve pedidos en RECIBIDO o EN PROCESO
+        // ==========================================
         const todosPedidos = data.pedidos || [];
         const pedidosFiltrados = todosPedidos.filter(p => {
             const estado = (p.ESTADO || '').toUpperCase();
-            return estado !== 'ENTREGADO' && estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'LISTO';
+            return estado === 'RECIBIDO' || estado === 'EN PROCESO';
         });
         
-        // Detectar nuevos pedidos (los que no están en aceptados)
+        // Detectar nuevos pedidos
         const nuevosIds = pedidosFiltrados.map(p => p.ID_PEDIDO);
         const realmenteNuevos = nuevosIds.filter(id => !aceptados.has(id));
         
@@ -341,15 +343,13 @@
         
         pedidosActivos = pedidosFiltrados.sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
         
-        // ACTUALIZAR HISTORIAL: Incluir pedidos ENTREGADOS y también LISTO (los que ya están listos)
-        const todosHistorial = data.historial || [];
-        const pedidosListo = todosPedidos.filter(p => {
+        // Historial: pedidos que ya salieron de la cocina (LISTO, EN CAMINO, ENTREGADO, CANCELADO, RECHAZADO)
+        const pedidosHistorial = todosPedidos.filter(p => {
             const estado = (p.ESTADO || '').toUpperCase();
-            return estado === 'LISTO';
+            return estado === 'LISTO' || estado === 'ENTREGADO' || estado === 'CANCELADO' || estado === 'RECHAZADO' || estado === 'EN CAMINO';
         });
         
-        // Combinar historial existente + pedidos en LISTO
-        historialHoy = [...todosHistorial, ...pedidosListo];
+        historialHoy = pedidosHistorial;
         
         ultimoConteo = pedidosActivos.filter(p=>!aceptados.has(p.ID_PEDIDO)).length;
         document.getElementById('contadorPendientes').innerText = ultimoConteo;

@@ -306,44 +306,53 @@
         // ==========================================
         // HISTORIAL DE ENTREGAS
         // ==========================================
-        async function mostrarHistorial() {
-            const modal = document.getElementById('modalHistorial');
-            modal.style.display = 'flex';
-            const historialDiv = document.getElementById('historialLista');
-            historialDiv.innerHTML = '<div class="text-center" style="padding: 20px; color:#64748b;">⏳ Cargando historial...</div>';
-            
-            try {
-                const res = await fetch(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigoActual));
-                const data = await res.json();
-                const pedidos = data.historial || [];
-                const hoy = new Date().toLocaleDateString('es-ES');
-                const entregasHoy = pedidos.filter(p => {
-                    const fecha = p.FECHA ? p.FECHA.substring(0, 10) : '';
-                    return p.ESTADO === 'ENTREGADO' && fecha === hoy;
-                });
-                const totalHoy = entregasHoy.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
-                
-                let html = `<div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 16px;">
-                    <div class="flex justify-between"><span>📊 Total entregas hoy:</span><span style="color: #22c55e; font-weight: bold;">${totalHoy.toFixed(2)}€</span></div>
-                    <div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${entregasHoy.length}</span></div>
-                </div>`;
-                
-                for (let p of entregasHoy.slice().reverse()) {
-                    html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b;">
-                        <div><strong>${p.ID_PEDIDO}</strong><br><span style="font-size: 11px; opacity: 0.7;">${p.CLIENTE || 'Cliente'}</span></div>
-                        <div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div>
-                    </div>`;
-                }
-                
-                if (entregasHoy.length === 0) {
-                    html += '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas hoy</div>';
-                }
-                
-                historialDiv.innerHTML = html;
-            } catch(e) {
-                historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
-            }
+       async function mostrarHistorial() {
+    const modal = document.getElementById('modalHistorial');
+    modal.style.display = 'flex';
+    const historialDiv = document.getElementById('historialLista');
+    historialDiv.innerHTML = '<div class="text-center" style="padding: 20px; color:#64748b;">⏳ Cargando historial...</div>';
+    
+    try {
+        // Usar el código del repartidor (R001, R003, etc.) no el nombre
+        const res = await fetch(URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(codigoActual));
+        const data = await res.json();
+        
+        console.log("📦 Historial recibido:", data); // Para depurar
+        
+        const pedidos = data.historial || [];
+        
+        if (pedidos.length === 0) {
+            historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas</div>';
+            return;
         }
+        
+        // Calcular total de todas las entregas
+        const totalGeneral = pedidos.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
+        
+        let html = `<div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 16px;">
+            <div class="flex justify-between"><span>📊 Total entregado (general):</span><span style="color: #22c55e; font-weight: bold;">${totalGeneral.toFixed(2)}€</span></div>
+            <div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${pedidos.length}</span></div>
+        </div>`;
+        
+        // Mostrar todos los pedidos entregados (sin filtrar por fecha)
+        for (let p of pedidos.slice().reverse()) {
+            const fecha = p.FECHA ? p.FECHA.substring(0, 10) : 'Fecha desconocida';
+            html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b;">
+                <div>
+                    <strong>${p.ID_PEDIDO}</strong>
+                    <div style="font-size: 11px; opacity: 0.7;">${p.CLIENTE || 'Cliente'}</div>
+                    <div style="font-size: 10px; opacity: 0.5;">${fecha}</div>
+                </div>
+                <div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div>
+            </div>`;
+        }
+        
+        historialDiv.innerHTML = html;
+    } catch(e) {
+        console.error("Error cargando historial:", e);
+        historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
+    }
+}
         
         function cerrarHistorial() {
             document.getElementById('modalHistorial').style.display = 'none';

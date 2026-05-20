@@ -300,7 +300,7 @@
         document.getElementById('loader').style.display = 'none';
     }
     
-    async function cargar() {
+   async function cargar() {
     if (!MI_ID_REST) return;
     try {
         const r = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}&t=${Date.now()}`);
@@ -319,7 +319,15 @@
         document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2) + "€";
         document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2) + "€";
         
-        const nuevosIds = (data.pedidos || []).map(p => p.ID_PEDIDO);
+        // Filtrar pedidos activos: EXCLUIR ENTREGADO, CANCELADO, RECHAZADO, LISTO
+        const todosPedidos = data.pedidos || [];
+        const pedidosFiltrados = todosPedidos.filter(p => {
+            const estado = (p.ESTADO || '').toUpperCase();
+            return estado !== 'ENTREGADO' && estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'LISTO';
+        });
+        
+        // Detectar nuevos pedidos (los que no están en aceptados)
+        const nuevosIds = pedidosFiltrados.map(p => p.ID_PEDIDO);
         const realmenteNuevos = nuevosIds.filter(id => !aceptados.has(id));
         
         if (realmenteNuevos.length > 0 && aceptados.size > 0) {
@@ -331,18 +339,22 @@
             if(navigator.vibrate) navigator.vibrate(500);
         }
         
-        // 🔧 CORRECCIÓN: Filtrar pedidos que NO deben mostrarse
-        // Excluir: ENTREGADO, CANCELADO, RECHAZADO, LISTO
-        pedidosActivos = (data.pedidos || []).filter(p => {
-            const estado = (p.ESTADO || '').toUpperCase();
-            return estado !== 'ENTREGADO' && estado !== 'CANCELADO' && estado !== 'RECHAZADO' && estado !== 'LISTO';
-        }).sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
+        pedidosActivos = pedidosFiltrados.sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
         
-        historialHoy = data.historial || [];
+        // ACTUALIZAR HISTORIAL: Incluir pedidos ENTREGADOS y también LISTO (los que ya están listos)
+        const todosHistorial = data.historial || [];
+        const pedidosListo = todosPedidos.filter(p => {
+            const estado = (p.ESTADO || '').toUpperCase();
+            return estado === 'LISTO';
+        });
+        
+        // Combinar historial existente + pedidos en LISTO
+        historialHoy = [...todosHistorial, ...pedidosListo];
+        
         ultimoConteo = pedidosActivos.filter(p=>!aceptados.has(p.ID_PEDIDO)).length;
         document.getElementById('contadorPendientes').innerText = ultimoConteo;
         
-        // Limpiar sonidos de pedidos que ya no están activos o ya fueron aceptados
+        // Limpiar sonidos de pedidos que ya no están activos
         Object.keys(intervalosSonido).forEach(id => {
             const sigueActivo = pedidosActivos.some(p => p.ID_PEDIDO === id && !aceptados.has(id));
             if (!sigueActivo) {
@@ -674,30 +686,36 @@
     }
 
     async function ejecutarListo(id) {
-        let timestampFin = Date.now();
-        try {
-            await database.ref('pedidos/'+id).update({ 
-                estado: 'listo',
-                timestamp_fin_elaboracion: timestampFin,
-                timestamp_listo: timestampFin
-            });
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
-            playSoundListo();
-            
-            Swal.fire({
-                title: '✅ Pedido Listo',
-                text: 'Repartidor notificado automáticamente',
-                icon: 'success',
-                background: '#020617',
-                color: 'white',
-                timer: 1500,
-                showConfirmButton: false
-            });
-            cargar(); 
-        } catch(e) {
-            console.error(e);
-        }
+    let timestampFin = Date.now();
+    try {
+        await database.ref('pedidos/'+id).update({ 
+            estado: 'listo',
+            timestamp_fin_elaboracion: timestampFin,
+            timestamp_listo: timestampFin
+        });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
+        playSoundListo();
+        
+        // Eliminar el pedido de la lista activa inmediatamente
+        aceptados.delete(id);
+        pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
+        
+        Swal.fire({
+            title: '✅ Pedido Listo',
+            text: 'Repartidor notificado automáticamente',
+            icon: 'success',
+            background: '#020617',
+            color: 'white',
+            timer: 1500,
+            showConfirmButton: false
+        });
+        
+        render();
+        cargar(); // Recargar para actualizar stats
+    } catch(e) {
+        console.error(e);
     }
+}
     
     function confirmarToggleTienda() { 
         let nuevo = !tiendaAbierta ? "Abierto" : "Cerrado"; 
@@ -746,22 +764,26 @@
     }
     
     function abrirHistorial() {
-        let lista = document.getElementById('listaHistorial');
-        if(historialHoy.length === 0) {
-            lista.innerHTML = '<div class="text-center opacity-50 text-xs py-10">Ninguna entrega registrada hoy</div>';
-        } else {
-            lista.innerHTML = historialHoy.map(p => `
-                <div class="historial-card cursor-pointer active:scale-95 transition-transform" onclick="cerrarHistorial(); verDetalles('${p.ID_PEDIDO}')">
-                    <div class="flex-between">
-                        <span class="text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
-                        <span class="font-bold text-emerald-400">${parseFloat(p.TOTAL).toFixed(2)}€</span>
-                    </div>
-                    <div class="text-xs mt-1 text-white/70 font-semibold">${p.CLIENTE}</div>
+    let lista = document.getElementById('listaHistorial');
+    
+    // Incluir pedidos entregados + pedidos en LISTO
+    const todosHistorial = [...historialHoy];
+    
+    if(todosHistorial.length === 0) {
+        lista.innerHTML = '<div class="text-center opacity-50 text-xs py-10">Ninguna entrega registrada hoy</div>';
+    } else {
+        lista.innerHTML = todosHistorial.map(p => `
+            <div class="historial-card cursor-pointer active:scale-95 transition-transform" onclick="cerrarHistorial(); verDetalles('${p.ID_PEDIDO}')">
+                <div class="flex-between">
+                    <span class="text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
+                    <span class="font-bold text-emerald-400">${parseFloat(p.TOTAL).toFixed(2)}€</span>
                 </div>
-            `).join('');
-        }
-        document.getElementById('sideHistorial').classList.add('open');
+                <div class="text-xs mt-1 text-white/70 font-semibold">${p.CLIENTE} - ${p.ESTADO === 'LISTO' ? '🔔 LISTO' : '✅ ENTREGADO'}</div>
+            </div>
+        `).join('');
     }
+    document.getElementById('sideHistorial').classList.add('open');
+}
     
     function cerrarHistorial() { 
         document.getElementById('sideHistorial').classList.remove('open'); 

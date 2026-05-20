@@ -30,8 +30,8 @@
         .loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020617; display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 9999; }
         .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: #06b6d4; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .btn-accion-tel { background: #22c55e; color: black; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: bold; width: auto; margin: 0; }
-        .btn-accion-wa { background: #25D366; color: black; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: bold; width: auto; margin: 0; }
+        .btn-accion-tel { background: #22c55e; color: black; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: bold; width: auto; margin: 0; text-decoration: none; }
+        .btn-accion-wa { background: #25D366; color: black; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: bold; width: auto; margin: 0; text-decoration: none; }
         .cronometro-box { margin: 12px 0; padding: 12px; border-radius: 14px; text-align: center; font-weight: bold; font-size: 13px; letter-spacing: 0.5px; }
     </style>
 </head>
@@ -60,7 +60,7 @@
         </div>
     </div>
 
-    <div class="status-bar class flex">
+    <div class="status-bar flex">
         <span style="font-size: 13px;">🟢 <span id="estado" style="font-weight: bold; color: #22c55e;">Conectado</span></span>
         <span class="contador" id="contador">0 pedidos activos</span>
     </div>
@@ -76,8 +76,6 @@
     let intervalId = null;
     let intervalosCronometro = {};
     
-    console.log("🚀 Script detectado e iniciando ejecución...");
-
     function mensaje(texto, icono) {
         Swal.fire({
             text: texto, icon: icono || 'info', background: '#020617', color: 'white',
@@ -88,7 +86,6 @@
     async function cargarPedidos() {
         if (!codigo) return;
         try {
-            // Eliminamos controladores de aborto conflictivos para solucionar el AbortError de tu consola
             const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
             const resp = await fetch(url);
             const data = await resp.json();
@@ -174,13 +171,15 @@
         const container = document.getElementById('listaPedidos');
         
         if (!pedidos.length) {
-            for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
+            for (let k in intervalosCronometro) clearInterval(intervalorsCronometro[k]);
             intervalosCronometro = {};
             container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
             return;
         }
         
         let html = '';
+        let cronometrosPorActivar = [];
+
         for (let p of pedidos) {
             const estado = (p.ESTADO || '').toUpperCase();
             const total = parseFloat(p.TOTAL) || 0;
@@ -214,11 +213,11 @@
             let cronometroHTML = '';
             if (estado === 'EN CAMINO' || estado === 'LLEGÓ' || estado === 'LLEGO') {
                 cronometroHTML = `
-                    <div id="cronometro-${p.ID_PEDIDO}" class="cronometro-box">
-                        ⏳ CALCULANDO RUTA LOGÍSTICA...
+                    <div id="cronometro-${p.ID_PEDIDO}" class="cronometro-box" style="background: rgba(6,182,212,0.05); color: #06b6d4;">
+                        ⏳ CARGANDO TIEMPO...
                     </div>
                 `;
-                setTimeout(() => iniciarTemporizadorReparto(p.ID_PEDIDO, estado), 100);
+                cronometrosPorActivar.push({ id: p.ID_PEDIDO, estado: estado });
             }
 
             let botones = '';
@@ -263,7 +262,13 @@
             html += `<div id="bloque-cancelar-emergencia-${p.ID_PEDIDO}"></div>`;
             html += '</div>';
         }
+        
         container.innerHTML = html;
+
+        // EJECUCIÓN SEGURA: Los cronómetros se activan CUANDO el HTML ya existe físicamente.
+        cronometrosPorActivar.forEach(cron => {
+            iniciarTemporizadorReparto(cron.id, cron.estado);
+        });
     }
     
     window.recoger = async function(id) {
@@ -327,7 +332,6 @@
     };
     
     async function iniciarApp() {
-        console.log("⚙️ Ejecutando iniciarApp()...");
         if (!codigo) {
             const res = await Swal.fire({
                 title: '🔐 Código de Repartidor',
@@ -343,13 +347,11 @@
                 return;
             }
         }
-        console.log("🔑 Código en almacenamiento:", codigo);
         await cargarPedidos();
         intervalId = setInterval(cargarPedidos, 10000);
         
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-        console.log("✅ ¡App lista y visible en pantalla!");
     }
     
     iniciarApp();

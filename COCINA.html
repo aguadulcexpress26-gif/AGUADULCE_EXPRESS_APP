@@ -54,6 +54,9 @@
         .text-center { text-align: center; }
         .mb-2 { margin-bottom: 8px; }
         .mt-2 { margin-top: 8px; }
+
+        button:active { transform: scale(0.96); transition: transform 0.05s; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -266,99 +269,141 @@
         return `Hace ${Math.floor(diff/60)}h ${diff%60}min`;
     }
     
-    async function aceptarPedido(id) { 
-        aceptados.add(id); 
-        let ahora = Date.now();
-        let timestampFin = ahora + (20 * 60 * 1000);
-        try {
-            await database.ref('pedidos/'+id).update({ 
-                estado: 'en proceso',
-                tiempo_elaboracion: 20,
-                timestamp_inicio: ahora,
-                timestamp_fin_elaboracion: timestampFin
-            });
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
-            render(); 
-            cargar();
-            mostrarMensaje('✅ Pedido Aceptado', 'El pedido está en proceso de preparación', 'success');
-        } catch(err) {
-            console.error(err);
-        }
+   async function aceptarPedido(id) { 
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ PROCESANDO...';
+    
+    aceptados.add(id); 
+    let ahora = Date.now();
+    let timestampFin = ahora + (20 * 60 * 1000);
+    try {
+        await database.ref('pedidos/'+id).update({ 
+            estado: 'en proceso',
+            tiempo_elaboracion: 20,
+            timestamp_inicio: ahora,
+            timestamp_fin_elaboracion: timestampFin
+        });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
+        render(); 
+        cargar();
+    } catch(err) {
+        console.error(err);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '✓ ACEPTADO';
+        btn.classList.add('aceptado');
     }
+}
     
     async function asignarTiempo(id, min) {
-        let ahora = Date.now();
-        let timestampFin = ahora + (min * 60 * 1000);
-        let horaStr = new Date(timestampFin).getHours().toString().padStart(2,'0') + ":" + new Date(timestampFin).getMinutes().toString().padStart(2,'0');
-        
-        try {
-            await database.ref('pedidos/'+id).update({ 
-                tiempo_elaboracion: min,
-                timestamp_inicio: ahora,
-                timestamp_fin_elaboracion: timestampFin,
-                tiempoEstimado: min, 
-                horaSalida: horaStr
-            });
-            
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${min}`);
-            mostrarMensaje('⏳ Tiempo Asignado', `Pedido #${id} listo a las ${horaStr}`, 'success');
-            cargar();
-        } catch(e) {
-            console.error(e);
-        }
-    }
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '⏳...';
     
-    async function rechazarPedido(id) {
-        const { value: motivo } = await Swal.fire({
-            title: '❌ Rechazar Pedido',
-            text: 'Selecciona el motivo del rechazo',
-            input: 'select',
-            inputOptions: {
-                'No disponible': 'Plato no disponible en este momento',
-                'Ingredientes': 'Ingredientes agotados',
-                'Capacidad': 'Restaurante a máxima capacidad',
-                'Horario': 'Fuera de horario de preparación',
-                'Otro': 'Otro motivo (especificar)'
-            },
-            inputPlaceholder: 'Selecciona un motivo...',
-            icon: 'warning',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Rechazar',
-            showCancelButton: true
+    let ahora = Date.now();
+    let timestampFin = ahora + (min * 60 * 1000);
+    let horaStr = new Date(timestampFin).getHours().toString().padStart(2,'0') + ":" + new Date(timestampFin).getMinutes().toString().padStart(2,'0');
+    
+    try {
+        await database.ref('pedidos/'+id).update({ 
+            tiempo_elaboracion: min,
+            timestamp_inicio: ahora,
+            timestamp_fin_elaboracion: timestampFin,
+            tiempoEstimado: min, 
+            horaSalida: horaStr
         });
         
-        if (!motivo) return;
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${min}`);
+        cargar();
         
-        let motivoTexto = motivo;
-        if (motivo === 'Otro') {
-            const { value: otro } = await Swal.fire({
-                title: 'Especifica el motivo',
-                input: 'text',
-                inputPlaceholder: 'Ej: Problemas con el repartidor...',
-                background: '#020617',
-                color: 'white'
-            });
-            if (otro) motivoTexto = otro;
-        }
-        
-        try {
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${encodeURIComponent(motivoTexto)}`);
-            await database.ref('pedidos/'+id).update({ 
-                estado: 'rechazado',
-                motivo_rechazo: motivoTexto,
-                timestamp_rechazo: Date.now(),
-                deuda_acumulada: 0
-            });
-            
-            mostrarMensaje('❌ Pedido Rechazado', `Motivo: ${motivoTexto}`, 'error');
-            aceptados.delete(id);
-            cargar();
-        } catch(e) {
-            console.error(e);
-        }
+        // Mostrar notificación sin bloqueo
+        Swal.fire({
+            title: '⏳ Tiempo Asignado',
+            text: `Pedido #${id} listo a las ${horaStr}`,
+            icon: 'success',
+            background: '#020617',
+            color: 'white',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    } catch(e) {
+        console.error(e);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `${min} MIN`;
     }
+}
+    
+   async function rechazarPedido(id) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '⏳...';
+    
+    const { value: motivo } = await Swal.fire({
+        title: '❌ Rechazar Pedido',
+        text: 'Motivo del rechazo:',
+        input: 'select',
+        inputOptions: {
+            'No disponible': 'Plato no disponible',
+            'Ingredientes': 'Ingredientes agotados',
+            'Capacidad': 'Máxima capacidad',
+            'Horario': 'Fuera de horario',
+            'Otro': 'Otro motivo'
+        },
+        inputPlaceholder: 'Selecciona un motivo...',
+        icon: 'warning',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Rechazar',
+        showCancelButton: true
+    });
+    
+    if (!motivo) {
+        btn.disabled = false;
+        btn.innerHTML = 'RECHAZAR';
+        return;
+    }
+    
+    let motivoTexto = motivo;
+    if (motivo === 'Otro') {
+        const { value: otro } = await Swal.fire({
+            title: 'Especifica el motivo',
+            input: 'text',
+            inputPlaceholder: 'Ej: Problemas con el pedido...',
+            background: '#020617',
+            color: 'white',
+            confirmButtonText: 'Aceptar'
+        });
+        if (otro) motivoTexto = otro;
+    }
+    
+    try {
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${encodeURIComponent(motivoTexto)}`);
+        await database.ref('pedidos/'+id).update({ 
+            estado: 'rechazado',
+            motivo_rechazo: motivoTexto,
+            timestamp_rechazo: Date.now()
+        });
+        
+        Swal.fire({
+            title: '❌ Pedido Rechazado',
+            text: `Motivo: ${motivoTexto}`,
+            icon: 'error',
+            background: '#020617',
+            color: 'white',
+            timer: 2000,
+            showConfirmButton: false
+        });
+        cargar();
+    } catch(e) {
+        console.error(e);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'RECHAZAR';
+    }
+}
     
     // MODAL DE DETALLES OPTIMIZADO CON FUNCIÓN DE IMPRESIÓN DE TICKET DE EMBALAJE
     function verDetalles(id) { 
@@ -467,22 +512,53 @@
         ventanaImpresion.document.close();
     }
     
-    function confirmarListo(id) { 
+    function confirmarListo(id) {
+    Swal.fire({
+        title: '¿Pedido listo?',
+        text: `El repartidor será notificado inmediatamente`,
+        icon: 'question',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#eab308',
+        confirmButtonText: '✅ Sí, listo',
+        showCancelButton: true,
+        cancelButtonText: 'Cancelar'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const btn = document.querySelector(`button[onclick="confirmarListo('${id}')"]`);
+            if (btn) btn.disabled = true;
+            
+            await ejecutarListo(id);
+            
+            if (btn) btn.disabled = false;
+        }
+    });
+}
+
+async function ejecutarListo(id) {
+    let timestampFin = Date.now();
+    try {
+        await database.ref('pedidos/'+id).update({ 
+            estado: 'listo',
+            timestamp_fin_elaboracion: timestampFin,
+            timestamp_listo: timestampFin
+        });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
+        
         Swal.fire({
-            title: '¿Pedido listo?',
-            text: `Confirma que el pedido #${id} está listo para enviar`,
-            icon: 'question',
+            title: '✅ Pedido Listo',
+            text: 'El repartidor ha sido notificado',
+            icon: 'success',
             background: '#020617',
             color: 'white',
-            confirmButtonColor: '#eab308',
-            confirmButtonText: 'Sí, listo',
-            showCancelButton: true
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                await ejecutarListo(id);
-            }
+            timer: 1500,
+            showConfirmButton: false
         });
+        cargar(); 
+    } catch(e) {
+        console.error(e);
     }
+}
     
     async function ejecutarListo(id) { 
         let timestampFin = Date.now();

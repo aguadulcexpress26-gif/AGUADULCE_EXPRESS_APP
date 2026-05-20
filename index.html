@@ -1200,38 +1200,43 @@ function estaRestauranteAbierto(restaurante) {
     if (!trackingModal) { console.error("❌ No se encontró el modal de tracking"); return false; }
     
     // ========== NUEVO: Escuchar cancelación / rechazo ==========
-    const cancelacionRef = database.ref('pedidos/' + idPedido);
-    cancelacionRef.on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data && (data.estado === 'cancelado' || data.estado === 'rechazado')) {
-            const motivo = data.motivo_rechazo || data.motivo_cancelacion || 'No especificado';
-            Swal.fire({
-                title: data.estado === 'cancelado' ? '❌ Pedido Cancelado' : '❌ Pedido Rechazado',
-                html: `<div style="text-align:left;">
-                    <p><strong>Lo sentimos, tu pedido ha sido ${data.estado === 'cancelado' ? 'cancelado' : 'rechazado'}.</strong></p>
-                    <br>
-                    <p>📝 <strong>Motivo:</strong> ${motivo}</p>
-                    <br>
-                    <p>🔄 No se ha realizado ningún cobro.</p>
-                    <p>Puedes realizar un nuevo pedido cuando lo desees.</p>
-                    <br>
-                    <p>📞 Disculpa las molestias.</p>
-                </div>`,
-                icon: 'error',
-                background: '#020617',
-                color: 'white',
-                confirmButtonColor: '#06b6d4',
-                confirmButtonText: 'Entendido'
-            }).then(() => {
-                limpiarSeguimientoCompleto();
-                cerrarModalTracking();
-                cesta = [];
-                actualizarCestaVisual();
-                location.reload();
-            });
-        }
-    });
-    // ============================================================
+const cancelacionRef = database.ref('pedidos/' + idPedido);
+cancelacionRef.on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data && (data.estado === 'cancelado' || data.estado === 'rechazado')) {
+        const motivo = data.motivo_rechazo || data.motivo_cancelacion || 'No especificado';
+        Swal.fire({
+            title: data.estado === 'cancelado' ? '❌ Pedido Cancelado' : '❌ Pedido Rechazado',
+            html: `<div style="text-align:left;">
+                <p><strong>Lo sentimos, tu pedido ha sido ${data.estado === 'cancelado' ? 'cancelado' : 'rechazado'}.</strong></p>
+                <br>
+                <p>📝 <strong>Motivo:</strong> ${motivo}</p>
+                <br>
+                <p>🔄 No se ha realizado ningún cobro.</p>
+                <p>Puedes realizar un nuevo pedido cuando lo desees.</p>
+                <br>
+                <p>📞 Disculpa las molestias.</p>
+            </div>`,
+            icon: 'error',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#06b6d4',
+            confirmButtonText: '✅ Volver al inicio',
+            allowOutsideClick: false
+        }).then(() => {
+            // Limpiar todo
+            limpiarSeguimientoCompleto();
+            cerrarModalTracking();
+            cesta = [];
+            actualizarCestaVisual();
+            // Volver al home sin recargar
+            volverHome();
+            // Cerrar cualquier panel abierto
+            cerrarTodosLosPaneles();
+        });
+    }
+});   
+            // ============================================================
     
     try {
         trackingListenerRef = database.ref('pedidos/' + idPedido);
@@ -1303,15 +1308,31 @@ function estaRestauranteAbierto(restaurante) {
                 alarmaInterval = setInterval(() => { if (document.visibilityState === 'visible') { audio.play().catch(() => {}); if (navigator.vibrate) navigator.vibrate(500); } }, 10000);
                 Swal.fire({ title: '🔔 ¡TU PEDIDO ESTÁ LLEGANDO!', text: 'El repartidor está cerca. Prepárate para recibir tu pedido.', icon: 'info', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', timer: 5000, showConfirmButton: false });
             }
-            if (estado === 'entregado') {
-                console.log("🎉 PEDIDO ENTREGADO - Cerrando seguimiento");
-                if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500, 200, 200]);
-                cerrarModalTracking();
-                const btnFlotante = document.getElementById('btn-reabrir-seguimiento');
-                if (btnFlotante) btnFlotante.style.display = 'none';
-                Swal.fire({ title: '🎉 ¡Pedido Entregado!', text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!', icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: '¡Genial!', timer: 3000 }).then(() => { limpiarSeguimientoCompleto(); cesta = []; actualizarCestaVisual(); });
-            }
+           if (estado === 'entregado') {
+    console.log("🎉 PEDIDO ENTREGADO - Cerrando seguimiento");
+    if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500, 200, 200]);
+    cerrarModalTracking();
+    const btnFlotante = document.getElementById('btn-reabrir-seguimiento');
+    if (btnFlotante) btnFlotante.style.display = 'none';
+    Swal.fire({ 
+        title: '🎉 ¡Pedido Entregado!', 
+        text: 'Esperamos que disfrutes tu comida. ¡Gracias por usar Aguadulce Express!', 
+        icon: 'success', 
+        background: '#020617', 
+        color: 'white', 
+        confirmButtonColor: '#06b6d4', 
+        confirmButtonText: '✅ Volver al inicio',
+        allowOutsideClick: false
+    }).then(() => { 
+        limpiarSeguimientoCompleto(); 
+        cesta = []; 
+        actualizarCestaVisual();
+        // Volver al home sin recargar
+        volverHome();
+        cerrarTodosLosPaneles();
+    });
+}
             if (estado === 'cancelado') {
                 console.log("❌ PEDIDO CANCELADO");
                 if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }

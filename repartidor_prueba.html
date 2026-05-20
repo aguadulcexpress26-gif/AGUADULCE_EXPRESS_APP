@@ -172,7 +172,6 @@
 </div>
 
 <script>
-    // Configuración
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     
     let codigo = localStorage.getItem('repartidor_codigo');
@@ -180,7 +179,6 @@
     let intervalId = null;
     let intervalosCronometro = {};
     
-    // Mostrar mensaje nativo de la app
     function mensaje(texto, icono) {
         Swal.fire({
             text: texto,
@@ -193,7 +191,6 @@
         });
     }
     
-    // Cargar pedidos desde el Google Sheet
     async function cargarPedidos() {
         try {
             const url = SCRIPT_URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigo) + '&t=' + Date.now();
@@ -221,33 +218,48 @@
         }
     }
     
-    // Motor del Cronómetro de Cuenta Atrás dinámico
     function iniciarTemporizadorReparto(id, estado) {
         if (intervalosCronometro[id]) clearInterval(intervalosCronometro[id]);
 
-        // Tiempo estándar en camino: 45 minutos
         let tiempoLimiteSegundos = 45 * 60; 
 
-        // Si el estado ya es LLEGÓ, cuenta regresiva estricta de cortesía de 5 minutos
         if (estado === 'LLEGÓ' || estado === 'LLEGO') {
             tiempoLimiteSegundos = 5 * 60; 
         }
 
         intervalosCronometro[id] = setInterval(() => {
             const elemento = document.getElementById('cronometro-' + id);
+            const contenedorBotonFalta = document.getElementById('bloque-cancelar-emergencia-' + id);
+            
             if (!elemento) {
                 clearInterval(intervalosCronometro[id]);
                 return;
             }
 
+            // EXCLUSIVO: CUANDO EL TIEMPO LLEGA A 00:00
             if (tiempoLimiteSegundos <= 0) {
                 clearInterval(intervalosCronometro[id]);
-                elemento.style.background = '#581c1c';
-                elemento.style.borderColor = '#ef4444';
-                elemento.style.color = '#ef4444';
-                elemento.innerHTML = (estado === 'LLEGÓ' || estado === 'LLEGO') 
-                    ? '🚨 TIEMPO DE ESPERA AGOTADO (LLAMAR AL CLIENTE)' 
-                    : '🚨 PEDIDO RETRASADO';
+                
+                if (estado === 'LLEGÓ' || estado === 'LLEGO') {
+                    elemento.style.background = '#581c1c';
+                    elemento.style.borderColor = '#ef4444';
+                    elemento.style.color = '#ef4444';
+                    elemento.innerHTML = '🚨 TIEMPO DE ESPERA EXPIRED (CLIENTE AUSENTE)';
+                    
+                    // Solo aquí se dibuja el botón vinculando tu backend
+                    if (contenedorBotonFalta) {
+                        contenedorBotonFalta.innerHTML = `
+                            <button class="btn-red" style="margin-top: 12px; background: #991b1b; border: 2px solid #ef4444; color: white;" onclick="cancelarPorAusencia('${id}')">
+                                ❌ REGISTRAR AUSENCIA Y PENALIZAR CLIENTE
+                            </button>
+                        `;
+                    }
+                } else {
+                    elemento.style.background = '#581c1c';
+                    elemento.style.borderColor = '#ef4444';
+                    elemento.style.color = '#ef4444';
+                    elemento.innerHTML = '🚨 PEDIDO RETRASADO';
+                }
                 return;
             }
 
@@ -267,12 +279,10 @@
         }, 1000);
     }
 
-    // Renderizar listado de tarjetas optimizado
     function renderizar() {
         const container = document.getElementById('listaPedidos');
         
         if (!pedidos.length) {
-            // Limpiar intervalos activos si no quedan entregas pendientes
             for (let k in intervalosCronometro) clearInterval(intervalosCronometro[k]);
             intervalosCronometro = {};
             container.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados</div>';
@@ -288,7 +298,6 @@
             const telefono = p.telf || p.WHATSAPP || p.telefono || p.TELEFONO || '';
             const telefonoLimpio = telefono.replace(/\D/g, '');
             
-            // 1. Desglose del pago con billete y cálculo del cambio exacto
             let infoCambioHTML = '';
             if (metodoPago.toLowerCase() === 'efectivo') {
                 const pagaConStr = p.PAGA_CON || p.PAGA || p.paga_con || '';
@@ -312,19 +321,16 @@
                 }
             }
 
-            // 2. Inyección visual del marcador del cronómetro
             let cronometroHTML = '';
             if (estado === 'EN CAMINO' || estado === 'LLEGÓ' || estado === 'LLEGO') {
                 cronometroHTML = `
-                    <div id="cronometro-${p.ID_PEDIDO}" style="margin: 12px 0; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.3); color: #06b6d4; font-weight: bold; padding: 10px; border-radius: 12px; text-align: center; font-size: 12px; tracking-wide: 0.05em;">
+                    <div id="cronometro-${p.ID_PEDIDO}" style="margin: 12px 0; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.3); color: #06b6d4; font-weight: bold; padding: 10px; border-radius: 12px; text-align: center; font-size: 12px;">
                         ⏳ ASIGNANDO TIEMPO LOGÍSTICO...
                     </div>
                 `;
-                // Arrancar el cronómetro en segundo plano de manera segura
                 setTimeout(() => iniciarTemporizadorReparto(p.ID_PEDIDO, estado), 100);
             }
 
-            // 3. Flujo dinámico de botones según el estado
             let botones = '';
             if (estado === 'LISTO' || estado === 'PREPARADO') {
                 botones = '<button class="btn-blue" onclick="recoger(\'' + p.ID_PEDIDO + '\')">🏍️ RECOGER Y INICIAR REPARTO</button>';
@@ -336,7 +342,6 @@
                 botones = '<button disabled style="background: #1e293b; color: #64748b; cursor: not-allowed; font-size:12px;">⏳ ESPERANDO QUE COCINA TERMINE EL PEDIDO</button>';
             }
             
-            // 4. Maquetación del bloque HTML de la tarjeta
             html += '<div class="card">';
             html += '<div class="flex">';
             html += '<span class="ref">📋 REF: ' + p.ID_PEDIDO + '</span>';
@@ -367,12 +372,14 @@
             html += '</div>';
             
             html += botones;
+            
+            html += `<div id="bloque-cancelar-emergencia-${p.ID_PEDIDO}"></div>`;
+            
             html += '</div>';
         }
         container.innerHTML = html;
     }
     
-    // Acciones asíncronas con el Google Sheet
     window.recoger = async function(id) {
         try {
             await fetch(SCRIPT_URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
@@ -410,6 +417,32 @@
             }
         });
     };
+
+    // 🚨 SINCRONIZACIÓN PERFECTA CON TU GOOGLE APPS SCRIPT LÍNEA 300
+    window.cancelarPorAusencia = function(id) {
+        Swal.fire({
+            title: '⚠️ ¿REGISTRAR AUSENCIA?',
+            text: 'Se cancelará el pedido, se enviará la notificación al cliente y se le cargará el monto total como deuda pendiente en su cuenta.',
+            icon: 'warning',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: '❌ Sí, Penalizar Cliente',
+            showCancelButton: true,
+            cancelButtonText: 'Esperar un poco más'
+        }).then(async (res) => {
+            if (res.isConfirmed) {
+                try {
+                    // LLAMADA EXACTA: pasa action=actualizarEstado, nuevoEstado=CANCELADO 
+                    // y el parámetro tiempo="Cliente ausente" para detonar acumularDeudaCliente()
+                    const url = SCRIPT_URL + '?action=actualizarEstado&idPedido=' + encodeURIComponent(id) + '&nuevoEstado=CANCELADO&tiempo=' + encodeURIComponent('Cliente no recogió el pedido - Ausencia');
+                    await fetch(url);
+                    mensaje('❌ Ausencia registrada. Deuda cargada al cliente.', 'error');
+                    cargarPedidos();
+                } catch(e) { console.error(e); }
+            }
+        });
+    };
     
     window.cerrarSesion = async function() {
         const confirm = await Swal.fire({
@@ -430,7 +463,6 @@
         }
     };
     
-    // Inicialización del sistema de asignación de terminales
     async function init() {
         if (!codigo) {
             const res = await Swal.fire({
@@ -453,7 +485,6 @@
         }
         
         await cargarPedidos();
-        // Escucha en segundo plano automática cada 10 segundos
         intervalId = setInterval(cargarPedidos, 10000);
         
         document.getElementById('loader').style.display = 'none';

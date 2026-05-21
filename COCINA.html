@@ -155,33 +155,46 @@
     document.getElementById('btnToggleEstado')?.addEventListener('click', toggleEstadoTienda);
 
     async function cargarPedidos() {
-        let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
-        let data = await res.json();
-        let pedidosHojas = data.pedidos || [];
-        let stats = data.stats || {};
-        
-        document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
-        document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
+        try {
+            // 1. Llamamos al servidor con un timestamp para evitar caché
+            let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
+            let data = await res.json();
+            
+            // 2. Separamos lo que viene del servidor
+            let pedidosActivos = data.pedidos || [];
+            let pedidosHistorial = data.historial || [];
+            let stats = data.stats || {};
+            
+            // Actualizamos los textos de estadísticas superiores
+            if(document.getElementById('statHoy')) document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
+            if(document.getElementById('statSemana')) document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
 
-        // Traemos los tiempos guardados en Firebase para que no se borren de la pantalla al recargar
-        const snapshot = await database.ref('pedidos').once('value');
-        const fbData = snapshot.val() || {};
+            // 3. Traemos los tiempos o configuraciones de Firebase si usas
+            const snapshot = await database.ref('pedidos').once('value');
+            const fbData = snapshot.val() || {};
 
-        // Cruzamos la información del Excel con la de Firebase
-        pedidos = pedidosHojas.map(p => {
-            if (fbData[p.ID_PEDIDO]) {
-                p.tiempo_seleccionado = fbData[p.ID_PEDIDO].tiempo_seleccionado || 0;
+            // 4. JUNTAMOS AMBOS ARRAYS en la variable global "pedidos"
+            // Combinamos activos e historial en una sola lista para que renderizarTodo() los filtre localmente
+            let listaCombinada = [...pedivosActivos, ...pedidosHistorial];
+            
+            pedidos = listaCombinada.map(p => {
+                if (fbData[p.ID_PEDIDO]) {
+                    p.tiempo_seleccionado = fbData[p.ID_PEDIDO].tiempo_seleccionado || 0;
+                }
+                return p;
+            });
+
+            // 5. Pintamos en los cajones de la pantalla
+            renderizarTodo();
+
+            // Control de sonido para nuevos entrantes
+            if (typeof sonidosActivados !== 'undefined' && sonidosActivados && pedidos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
+                audioNotif.play().catch(e => console.log);
             }
-            return p;
-        });
-
-        renderizarTodo();
-
-        if (sonidosActivados && pedidos.filter(p => p.ESTADO === 'RECIBIDO').length > 0) {
-            audioNotif.play().catch(e => console.log);
+        } catch (error) {
+            console.error("Error cargando pedidos en el HTML:", error);
         }
     }
-
    function renderizarTodo() {
         // CAJÓN 1: ENTRANTES - Solo pedidos nuevos del cliente
         let entrantes = pedidos.filter(p => {

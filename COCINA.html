@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express - Cocina</title>
+    <title>Aguadulce Express - Cocina Profesional</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
@@ -15,10 +15,12 @@
         .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
         .btn-accion { transition: transform 0.1s; cursor: pointer; }
         .btn-accion:active { transform: scale(0.96); }
-        .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+        .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: bold; display: inline-block; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+        .toggle-btn { transition: all 0.2s; cursor: pointer; }
+        .toggle-btn:active { transform: scale(0.96); }
     </style>
 </head>
 <body>
@@ -33,36 +35,36 @@
 
 <!-- APP PRINCIPAL -->
 <div id="appContent" class="hidden min-h-screen">
-    <!-- HEADER CON IMAGEN DEL RESTAURANTE -->
+    <!-- HEADER CON IMAGEN DEL RESTAURANTE (opacity 25%) -->
     <div class="relative h-48 overflow-hidden">
-        <img id="restauranteFoto" class="absolute w-full h-full object-cover opacity-30" src="">
-        <div class="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent"></div>
+        <img id="restauranteFoto" class="absolute w-full h-full object-cover opacity-25" src="">
+        <div class="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
         <div class="absolute bottom-0 left-0 right-0 p-5 flex justify-between items-end">
             <div>
                 <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider">📍 COCINA</span>
                 <h1 id="restauranteNombre" class="text-2xl font-black text-white">CARGANDO...</h1>
             </div>
-            <div class="flex gap-3 items-center">
-                <span id="ledEstado" class="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span id="txtEstado" class="text-emerald-400 font-bold text-sm uppercase">ABIERTO</span>
-                <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl">🚪</button>
-            </div>
+            <button id="btnToggleEstado" class="bg-white/10 backdrop-blur-sm px-5 py-2 rounded-xl font-bold text-sm toggle-btn flex items-center gap-2">
+                <span id="ledEstado" class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span id="txtEstado">ABIERTO</span>
+            </button>
+            <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl toggle-btn">🚪</button>
         </div>
     </div>
 
-    <!-- BARRA DE CONTROLES -->
-    <div class="p-4 flex justify-between items-center border-b border-white/10">
+    <!-- BARRA DE CONTROLES + DINERO -->
+    <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
         <div class="flex gap-3">
             <div class="badge">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
             <div class="badge">🍳 EN COCINA: <span id="totalCocina">0</span></div>
             <div class="badge">✅ HISTORIAL: <span id="totalHistorial">0</span></div>
         </div>
-        <div class="flex gap-2">
-            <label class="flex items-center gap-2 text-xs text-white/70">
-                🔌 ABIERTO
-                <input type="checkbox" id="toggleTienda" onchange="cambiarEstadoTienda()" class="toggle">
-            </label>
-            <button onclick="forzarRefresco()" class="bg-white/5 text-xs px-3 py-1 rounded-full">🔄</button>
+        <div class="flex gap-4 items-center">
+            <div class="text-right">
+                <div class="text-[9px] text-white/40 uppercase">HOY / SEMANA</div>
+                <div class="text-sm font-bold"><span id="statHoy">0.00</span>€ / <span id="statSemana">0.00</span>€</div>
+            </div>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full toggle-btn">🔊 ACTIVAR SONIDO</button>
         </div>
     </div>
 
@@ -104,8 +106,19 @@
 
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
     let pedidos = [];
-    let aceptados = new Set(); // pedidos en cocina
-    let intervalActualizacion;
+    let aceptados = new Set();
+    let sonidosActivados = false;
+    let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audioNotif.volume = 0.8;
+
+    function activarSonidoGlobal() {
+        if (!sonidosActivados) {
+            sonidosActivados = true;
+            audioNotif.play().then(() => audioNotif.pause()).catch(e => console.log("audio necesita interacción"));
+            Swal.fire({ title: '🔊 Sonido activado', text: 'Recibirás alertas sonoras', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
+        }
+    }
+    document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
 
     function verificarPIN() {
         let pin = document.getElementById('pinInput').value.trim().toUpperCase();
@@ -125,18 +138,37 @@
         if (restaurante) {
             document.getElementById('restauranteNombre').innerText = restaurante.NOMBRE_RESTAURANTE || "RESTAURANTE";
             document.getElementById('restauranteFoto').src = restaurante.FOTO || "https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg";
-            let estado = restaurante.ESTADO?.toLowerCase() === 'abierto';
-            document.getElementById('toggleTienda').checked = estado;
-            document.getElementById('txtEstado').innerText = estado ? "ABIERTO" : "CERRADO";
-            document.getElementById('ledEstado').className = estado ? "w-3 h-3 bg-emerald-500 rounded-full animate-pulse" : "w-3 h-3 bg-red-500 rounded-full";
+            let estadoActual = restaurante.ESTADO?.toLowerCase() === 'abierto';
+            actualizarBotonEstado(estadoActual);
         }
     }
+
+    function actualizarBotonEstado(abierto) {
+        document.getElementById('txtEstado').innerText = abierto ? "ABIERTO" : "CERRADO";
+        document.getElementById('ledEstado').className = abierto ? "w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" : "w-2.5 h-2.5 bg-red-500 rounded-full";
+        document.getElementById('btnToggleEstado').style.background = abierto ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)";
+    }
+
+    async function toggleEstadoTienda() {
+        let nuevoEstado = document.getElementById('txtEstado').innerText === "ABIERTO" ? "Cerrado" : "Abierto";
+        await fetch(`${scriptURL}?action=toggleTienda&idRest=${miRestauranteId}&sheet=configuracion&nuevoEstado=${nuevoEstado}`);
+        await cargarRestauranteInfo();
+        if (sonidosActivados && nuevoEstado === "Abierto") audioNotif.play().catch(e=>console.log);
+    }
+    document.getElementById('btnToggleEstado')?.addEventListener('click', toggleEstadoTienda);
 
     async function cargarPedidos() {
         let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
         let data = await res.json();
         pedidos = data.pedidos || [];
+        let stats = data.stats || {};
+        document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
+        document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
         renderizarTodo();
+
+        if (sonidosActivados && pedidos.filter(p => !aceptados.has(p.ID_PEDIDO)).length > 0) {
+            audioNotif.play().catch(e=>console.log);
+        }
     }
 
     function renderizarTodo() {
@@ -154,54 +186,19 @@
     }
 
     function renderCardEntrante(p) {
-        return `
-            <div class="card-pedido">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                        <p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p>
-                        <p class="text-white/60 text-xs mt-1">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p>
-                    </div>
-                    <span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span>
-                </div>
-                <div class="flex gap-2 mt-3">
-                    <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs btn-accion flex-1">✅ ACEPTAR</button>
-                    <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs btn-accion flex-1">❌ RECHAZAR</button>
-                </div>
-            </div>
-        `;
+        return `<div class="card-pedido">
+            <div class="flex justify-between items-start"><div><span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span><p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p><p class="text-white/60 text-xs mt-1">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p></div><span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span></div>
+            <div class="flex gap-2 mt-3"><button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs btn-accion flex-1">✅ ACEPTAR</button><button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs btn-accion flex-1">❌ RECHAZAR</button></div>
+        </div>`;
     }
 
     function renderCardCocina(p) {
         let tiempoRestante = p.timestamp_fin_elaboracion ? Math.max(0, Math.floor((p.timestamp_fin_elaboracion - Date.now()) / 60000)) : 0;
-        return `
-            <div class="card-pedido">
-                <div class="flex justify-between">
-                    <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                    <span class="text-white/40 text-xs">⏱️ ${tiempoRestante} min restante</span>
-                </div>
-                <p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p>
-                <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
-                <div class="flex gap-2 mt-3">
-                    <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
-                    <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button>
-                    <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">30'</button>
-                    <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs">✅ LISTO</button>
-                </div>
-            </div>
-        `;
+        return `<div class="card-pedido"><div class="flex justify-between"><span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span><span class="text-white/40 text-xs">⏱️ ${tiempoRestante} min</span></div><p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p><p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p><div class="flex gap-2 mt-3"><button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button><button onclick="asignarTiempo('${p.ID_PEDIDO}', 15)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button><button onclick="asignarTiempo('${p.ID_PEDIDO}', 30)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">30'</button><button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs">✅ LISTO</button></div></div>`;
     }
 
     function renderCardHistorial(p) {
-        return `
-            <div class="card-pedido opacity-80">
-                <div class="flex justify-between items-center">
-                    <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                    <span class="text-white font-bold">${parseFloat(p.TOTAL).toFixed(2)}€</span>
-                </div>
-                <p class="text-white/50 text-xs mt-1">${p.CLIENTE}</p>
-            </div>
-        `;
+        return `<div class="card-pedido opacity-80"><div class="flex justify-between items-center"><span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span><span class="text-white font-bold">${parseFloat(p.TOTAL).toFixed(2)}€</span></div><p class="text-white/50 text-xs mt-1">${p.CLIENTE}</p></div>`;
     }
 
     function calcularTiempo(fechaStr) {
@@ -212,60 +209,13 @@
         return `Hace ${Math.floor(diff/60)}h`;
     }
 
-    async function aceptarPedido(id) {
-        aceptados.add(id);
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
-        await cargarPedidos();
-        Swal.fire({ title: '✅ Pedido aceptado', icon: 'success', timer: 1000, showConfirmButton: false, background: '#020617', color: 'white' });
-    }
-
-    async function rechazarPedido(id) {
-        let { value: motivo } = await Swal.fire({ title: 'Motivo', input: 'text', inputPlaceholder: 'Ej: Sin ingredientes', background: '#020617', color: 'white' });
-        if (motivo) {
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${motivo}`);
-            await cargarPedidos();
-        }
-    }
-
-    async function asignarTiempo(id, minutos) {
-        let timestampFin = Date.now() + (minutos * 60 * 1000);
-        await database.ref('pedidos/'+id).update({ timestamp_fin_elaboracion: timestampFin });
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
-        await cargarPedidos();
-        Swal.fire({ title: `⏳ ${minutos} minutos asignados`, icon: 'success', timer: 1000, showConfirmButton: false, background: '#020617', color: 'white' });
-    }
-
-    async function marcarListo(id) {
-        await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() });
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
-        await cargarPedidos();
-        Swal.fire({ title: '✅ Pedido listo para reparto', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
-    }
-
-    function verDetallePedido(id) {
-        let p = pedidos.find(x => x.ID_PEDIDO == id);
-        if (p) {
-            Swal.fire({
-                title: `Pedido #${p.ID_PEDIDO}`,
-                html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.CLIENTE}</p>
-                        <p><strong>📍 Dirección:</strong> ${p.DIRECCION}</p>
-                        <p><strong>📦 Detalle:</strong> ${p.PEDIDO_DETALLE}</p>
-                        <p><strong>💳 Pago:</strong> ${p.PAGO}</p>
-                        <p><strong>💰 Total:</strong> ${parseFloat(p.TOTAL).toFixed(2)}€</p></div>`,
-                background: '#020617', color: 'white', confirmButtonColor: '#06b6d4'
-            });
-        }
-    }
-
-    async function cambiarEstadoTienda() {
-        let nuevoEstado = document.getElementById('toggleTienda').checked ? "Abierto" : "Cerrado";
-        await fetch(`${scriptURL}?action=toggleTienda&idRest=${miRestauranteId}&sheet=configuracion&nuevoEstado=${nuevoEstado}`);
-        await cargarRestauranteInfo();
-    }
-
+    async function aceptarPedido(id) { aceptados.add(id); await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`); await cargarPedidos(); Swal.fire({ title: '✅ Pedido aceptado', icon: 'success', timer: 1000, showConfirmButton: false, background: '#020617', color: 'white' }); }
+    async function rechazarPedido(id) { let { value: motivo } = await Swal.fire({ title: 'Motivo', input: 'text', inputPlaceholder: 'Ej: Sin ingredientes', background: '#020617', color: 'white' }); if (motivo) await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${motivo}`); await cargarPedidos(); }
+    async function asignarTiempo(id, minutos) { await database.ref('pedidos/'+id).update({ timestamp_fin_elaboracion: Date.now() + (minutos * 60 * 1000) }); await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`); await cargarPedidos(); Swal.fire({ title: `⏳ ${minutos} min`, icon: 'success', timer: 1000, showConfirmButton: false, background: '#020617', color: 'white' }); }
+    async function marcarListo(id) { await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() }); await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`); await cargarPedidos(); Swal.fire({ title: '✅ Pedido listo', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' }); }
+    function verDetallePedido(id) { let p = pedidos.find(x => x.ID_PEDIDO == id); if (p) Swal.fire({ title: `Pedido #${p.ID_PEDIDO}`, html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.CLIENTE}</p><p><strong>📍 Dirección:</strong> ${p.DIRECCION}</p><p><strong>📦 Detalle:</strong> ${p.PEDIDO_DETALLE}</p><p><strong>💳 Pago:</strong> ${p.PAGO}</p><p><strong>💰 Total:</strong> ${parseFloat(p.TOTAL).toFixed(2)}€</p></div>`, background: '#020617', color: 'white' }); }
     function forzarRefresco() { cargarPedidos(); }
     function preguntarSalir() { localStorage.removeItem('AE_REST_ID'); location.reload(); }
-    function abrirHistorial() { Swal.fire({ title: '📋 Historial', text: 'Función en desarrollo', icon: 'info' }); }
 
     async function iniciarApp() {
         document.getElementById('loginScreen').style.display = 'none';
@@ -273,9 +223,6 @@
         await cargarRestauranteInfo();
         await cargarPedidos();
         setInterval(cargarPedidos, 8000);
-        setInterval(() => {
-            document.querySelectorAll('#listaCocina .card-pedido').forEach(el => { /* actualiza tiempos visuales */ });
-        }, 1000);
     }
 
     window.onload = () => { if (miRestauranteId) iniciarApp(); };

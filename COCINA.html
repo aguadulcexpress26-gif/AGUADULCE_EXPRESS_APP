@@ -183,30 +183,28 @@
     }
 
     function renderizarTodo() {
-        // CAJÓN 1: ENTRANTES - Solo pedidos nuevos esperando decisión
+        // CAJÓN 1: ENTRANTES - Solo pedidos nuevos del cliente
         let entrantes = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
             return est === 'RECIBIDO' || est === 'NUEVO' || est === '';
         });
 
-        // CAJÓN 2: EN COCINA - Se queda aquí aunque esté LISTO, EN CAMINO o LLEGÓ
+        // CAJÓN 2: EN COCINA - Se queda aquí en preparación y se apaga al estar LISTO
         let cocina = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'EN PROCESO' || est === 'LISTO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'LLEGÓ CONTROLLER';
+            return est === 'EN PROCESO' || est === 'LISTO';
         });
 
-        // CAJÓN 3: HISTORIAL - Solo cuando el repartidor marca ENTREGADO o FINALIZADO
+        // CAJÓN 3: HISTORIAL - Entra aquí desde que el repartidor lo recoge hasta que lo entrega
         let historial = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'ENTREGADO' || est === 'FINALIZADO';
+            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO';
         });
 
-        // Actualizar los números de los badges superiores
         document.getElementById('totalPendientes').innerText = entrantes.length;
         document.getElementById('totalCocina').innerText = cocina.length;
         document.getElementById('totalHistorial').innerText = historial.length;
 
-        // Renderizar las listas en el HTML
         document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
         document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
         document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
@@ -219,16 +217,15 @@
         </div>`;
     }
 
-  function renderCardCocina(p) {
+ function renderCardCocina(p) {
         const est = (p.ESTADO || '').toUpperCase().trim();
-        // La tarjeta se atenúa (se apaga) si ya se cocinó, pero NO desaparece del cajón
-        let estaListo = est === 'LISTO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'LLEGÓ CONTROLLER';
+        let estaListo = est === 'LISTO';
         let tiempoActivo = p.tiempo_seleccionado || 0; 
 
         return `<div class="card-pedido ${estaListo ? 'opacity-40 border-dashed border-white/20' : ''}">
             <div class="flex justify-between">
                 <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                <span class="text-white/40 text-xs">${estaListo ? `🟢 ${est} - EN REPARTO` : '🍳 EN COCINA'}</span>
+                <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO - ESPERANDO REPARTIDOR' : '🍳 EN COCINA'}</span>
             </div>
             <p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p>
             <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
@@ -269,14 +266,13 @@
     }
 
    async function rechazarPedido(id) {
-        // Buscamos el botón directamente en el evento para deshabilitarlo al instante
         if (window.event && window.event.target) {
             let btn = window.event.target;
             btn.disabled = true;
             btn.style.opacity = '0.5';
         }
-        // Registramos la cancelación directa en Google Sheets de forma silenciosa
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=CANCELADO`);
+        // Enviamos un estado diferente para que el servidor diferencie una cancelación de tienda
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=CANCELADO_RESTAURANTE`);
         await cargarPedidos();
     }
 

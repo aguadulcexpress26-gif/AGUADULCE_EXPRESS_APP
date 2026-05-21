@@ -134,6 +134,9 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button onclick="forzarRefresco()" class="btn-touch-active text-xs bg-slate-800 hover:bg-slate-700 font-bold text-slate-300 px-3 py-2 rounded-lg transition border border-slate-700 cursor-pointer">
+                        🔄 Sincronizar
+                    </button>
                     <button onclick="abrirHistorial()" class="btn-touch-active text-xs bg-slate-800 hover:bg-slate-700 font-bold text-slate-300 px-3 py-2 rounded-lg transition border border-slate-700 cursor-pointer">
                         📋 Ver Historial
                     </button>
@@ -180,34 +183,45 @@
     </div>
 
     <script>
-        const scriptURL = 'AQUÍ_TU_URL_DE_GOOGLE_APPS_SCRIPT'; 
-        let MI_ID_REST = "";
+        // CONFIGURACIÓN OFICIAL DE TU PROYECTO FIREBASE
+        const firebaseConfig = {
+            databaseURL: "https://aguadulceexpress26-gif-default-rtdb.firebaseio.com/"
+        };
         
+        // Inicializar si no se ha hecho previamente
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = firebase.database();
+        
+        // Atributos de Comunicación de Google Sheets WebApp
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbz_pY4vXw-8B7x_r7E1qUofm9B3Xf9wYv6gGZfTqX8b7XW8v4/exec'; 
+        
+        // Variables de Memoria de Estado
+        let MI_ID_REST = "";
         let pedidosActivos = [];
         let historialHoy = [];
         let aceptados = new Set();
         let tiendaAbierta = false;
-        let dbRefPedidos = null; // Guardar referencia para desvincular al salir
+        let dbRefPedidos = null; 
+        let sonidosPendientes = {};
 
-        // --- GESTOR DE SESIÓN AL CARGAR LA PÁGINA ---
+        // --- ENRUTADOR PRINCIPAL DE SESIONES ---
         function inicializarSistema() {
             MI_ID_REST = localStorage.getItem('AE_REST_ID');
             
             if (!MI_ID_REST) {
-                // No hay sesión: reajustar layout para centrar el login, mostrarlo y ocultar la cocina
-                document.body.className = "min-h-screen flex flex-col justify-center items-center bg-slate-020617 text-slate-100";
+                document.body.className = "min-h-screen flex flex-col justify-center items-center bg-slate-950 text-slate-100";
                 document.getElementById('vistaLogin').classList.remove('hidden');
                 document.getElementById('vistaPanelCocina').classList.add('hidden');
             } else {
-                // Hay sesión activa: expandir layout a pantalla completa, mostrar cocina y ocultar login
-                document.body.className = "min-h-screen flex flex-col bg-slate-020617 text-slate-100";
+                document.body.className = "min-h-screen flex flex-col bg-slate-950 text-slate-100";
                 document.getElementById('vistaLogin').classList.add('hidden');
                 document.getElementById('vistaPanelCocina').classList.remove('hidden');
                 
-                // Setear nombre visual en la cabecera
                 document.getElementById('nombreRestaurante').innerText = MI_ID_REST;
                 
-                // Ejecutar tu conexión a Firebase y carga de base de datos
+                // DISPARAR ESCUCHADORES EN TIEMPO REAL ORIGINALES
                 arrancarEscuchaCocina();
             }
         }
@@ -215,16 +229,15 @@
         function ejecutarLogin(event) {
             event.preventDefault();
             const idIntroducido = document.getElementById('inputIdRestaurante').value.trim().toUpperCase();
-            
             if (idIntroducido) {
                 localStorage.setItem('AE_REST_ID', idIntroducido);
                 Swal.fire({
                     title: '🔓 Terminal Vinculada',
-                    text: `Accediendo a la cocina de ${idIntroducido}`,
+                    text: `Conectando con la cocina de ${idIntroducido}`,
                     icon: 'success',
                     background: '#020617',
                     color: 'white',
-                    timer: 1500,
+                    timer: 1200,
                     showConfirmButton: false
                 });
                 inicializarSistema();
@@ -245,54 +258,118 @@
                 cancelButtonText: 'Cancelar'
             }).then(result => {
                 if (result.isConfirmed) {
-                    // 1. Apagar escuchas activas de Firebase para que no gaste memoria ni choque
+                    // Limpieza total de procesos asíncronos en caliente
                     if (dbRefPedidos) dbRefPedidos.off();
+                    Object.keys(sonidosPendientes).forEach(id => detenerSonidoRepetitivo(id));
                     
-                    // 2. Limpiar estados y memoria
                     localStorage.removeItem('AE_REST_ID');
                     pedidosActivos = [];
                     historialHoy = [];
                     aceptados.clear();
                     
-                    // 3. Reajustar interfaz
                     document.getElementById('inputIdRestaurante').value = "";
                     inicializarSistema();
                 }
             });
         }
 
-        // --- ARRANQUE DE TUS ENLACES FIREBASE ---
+        // ==========================================
+        // TU LÓGICA LOGÍSTICA ORIGINAL (INTEGRADA)  
+        // ==========================================
         function arrancarEscuchaCocina() {
-            console.log("🔥 Conectando canales de Firebase para: ", MI_ID_REST);
+            // Verificar Estado Inicial de la Tienda (Abierto/Cerrado) desde Google Sheets
+            fetch(`${scriptURL}?action=obtenerEstadoTienda&idRest=${MI_ID_REST}&sheet=configuracion`)
+                .then(res => res.json())
+                .then(data => {
+                    tiendaAbierta = (data.estado === "Abierto");
+                    actualizarInterfazTienda();
+                })
+                .catch(e => console.error("Error validando estado de tienda:", e));
+
+            // Enlazar Escucha Dinámica de Firebase filtrando por tu restaurante asignado
+            if(dbRefPedidos) dbRefPedidos.off();
             
-            // Aquí va tu código de inicialización existente o invocación de `cargar()`.
-            // Ejemplo de enganche de seguridad para renderizar limpio:
-            actualizarInterfazTienda();
-            render();
+            dbRefPedidos = database.ref('pedidos');
+            dbRefPedidos.on('value', snapshot => {
+                const datos = snapshot.val();
+                pedidosActivos = [];
+                historialHoy = [];
+                
+                if (datos) {
+                    Object.keys(datos).forEach(key => {
+                        let p = datos[key];
+                        p.ID_PEDIDO = key; // Forzar mapeo de clave primaria
+                        
+                        // Validar si pertenece a este restaurante logueado
+                        const restPedido = (p.RESTAURANTE || p.restaurante || '').toUpperCase();
+                        if (restPedido === MI_ID_REST) {
+                            const est = (p.estado || p.ESTADO || '').toLowerCase();
+                            
+                            if (est === 'pendiente' || est === 'en proceso' || est === 'listo') {
+                                pedidosActivos.push(p);
+                                
+                                // Lanzar alerta sonora cíclica para pedidos totalmente nuevos desatendidos
+                                if (est === 'pendiente' && !aceptados.has(key)) {
+                                    reproducirSonidoRepetitivo(key);
+                                }
+                            } else if (est === 'entregado' || est === 'rechazado' || est === 'en camino') {
+                                historialHoy.push(p);
+                            }
+                        }
+                    });
+                }
+                
+                // Forzar orden cronológico descendente (los más nuevos primero en cola)
+                pedidosActivos.sort((a,b) => new Date(b.FECHA) - new Date(a.FECHA));
+                historialHoy.sort((a,b) => new Date(b.FECHA) - new Date(a.FECHA));
+                
+                render();
+            });
+        }
+
+        function forzarRefresco() {
+            Swal.fire({ title: 'Sincronizando Base de Datos...', timer: 600, showConfirmButton: false, background: '#020617', color:'white' });
+            arrancarEscuchaCocina();
+        }
+
+        // --- SISTEMA INTERNO DE ALERTAS DE SONIDO ---
+        function reproducirSonidoRepetitivo(idPedido) {
+            if (sonidosPendientes[idPedido]) return; 
             
-            if (typeof cargar === "function") {
-                cargar();
+            let audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.loop = true;
+            
+            audio.play().then(() => {
+                sonidosPendientes[idPedido] = audio;
+            }).catch(e => console.log("Permiso de audio retenido hasta interacción táctil del operador."));
+        }
+
+        function detenerSonidoRepetitivo(idPedido) {
+            if (sonidosPendientes[idPedido]) {
+                sonidosPendientes[idPedido].pause();
+                delete sonidosPendientes[idPedido];
             }
         }
 
-        // --- RELOJ ---
-        function actualizarReloj() {
-            const ahora = new Date();
-            const el = document.getElementById('relojDigital');
-            if(el) el.innerText = ahora.toLocaleTimeString('es-ES');
+        function playSoundAceptar() {
+            let a = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
+            a.volume = 0.6;
+            a.play().catch(e => {});
         }
-        setInterval(actualizarReloj, 1000);
-        actualizarReloj();
 
-        setInterval(actualizarContadores, 1000);
+        function playSoundListo() {
+            let a = new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3');
+            a.volume = 0.7;
+            a.play().catch(e => {});
+        }
 
-        // --- INYECTOR DE VISTA (RENDER) ---
+        // --- INYECTOR DE VISTA (RENDER) COMPLETAMENTE DINÁMICO ---
         function render() {
             const contNuevos = document.getElementById('listaNuevos');
             const contProceso = document.getElementById('listaProceso');
             const contListos = document.getElementById('listaListos');
 
-            if (!contNuevos) return; // Salvaguarda si renderiza rápido
+            if (!contNuevos) return; 
 
             if (pedidosActivos.length === 0) { 
                 const sinPedidosHTML = '<div class="text-center py-14 opacity-25 font-bold tracking-widest text-xs">SIN PEDIDOS ACTIVOS</div>';
@@ -324,7 +401,7 @@
                             <span class="text-sm font-black text-emerald-400 bg-emerald-500/5 px-2 py-1 rounded-md border border-emerald-500/10">${parseFloat(p.TOTAL).toFixed(2)}€</span>
                         </div>
                         <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 mt-2.5">
-                            <div class="text-xs font-semibold font-mono text-cyan-400/90 whitespace-pre-wrap leading-relaxed">${p.PEDIDO_DETALLE || 'Sin detalle'}</div>
+                            <div class="text-xs font-semibold font-mono text-cyan-400/90 whitespace-pre-wrap leading-relaxed">${p.PEDIDO_DETALLE || 'Sin detalle de productos'}</div>
                             ${p.NOTA ? `<div class="text-[11px] text-amber-400 mt-2 italic font-medium bg-amber-500/5 p-1.5 rounded border border-amber-500/10">💡 ${p.NOTA}</div>` : ''}
                         </div>
                     </div>
@@ -394,6 +471,7 @@
             document.getElementById('cantProceso').innerText = proceso;
         }
 
+        // --- MANIPULADORES CRONOLÓGICOS ---
         function calcularTiempo(fechaStr) {
             if(!fechaStr) return "---";
             let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
@@ -421,15 +499,15 @@
             });
         }
 
-        // --- PROCESOS ASÍNCRONOS (ACEPTAR, LISTO, RECHAZAR, TIEMPOS) ---
+        // --- OPERACIONES TÁCTILES DEL OPERADOR DE COCINA ---
         async function aceptarPedido(id, event) { 
             const btn = event.target;
             btn.disabled = true;
             btn.innerHTML = '⏳ PROCESANDO...';
             
-            if (typeof detenerSonidoRepetitivo === "function") detenerSonidoRepetitivo(id);
-            
+            detenerSonidoRepetitivo(id);
             aceptados.add(id); 
+            
             let ahora = Date.now();
             let timestampFin = ahora + (20 * 60 * 1000); 
             try {
@@ -440,8 +518,8 @@
                     timestamp_fin_elaboracion: timestampFin
                 });
                 await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
+                playSoundAceptar();
                 render(); 
-                if (typeof cargar === "function") cargar();
             } catch(err) {
                 console.error(err);
                 aceptados.delete(id);
@@ -466,12 +544,25 @@
                     horaSalida: horaStr
                 });
                 await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${min}`);
-                if (typeof cargar === "function") cargar();
+                
+                Swal.fire({
+                    title: '⏳ Fuego Ajustado',
+                    text: `Pedido #${id} estimado a las ${horaStr}`,
+                    icon: 'success',
+                    background: '#020617',
+                    color: 'white',
+                    timer: 1200,
+                    showConfirmButton: false
+                });
             } catch(e) { console.error(e); } 
             finally { btn.disabled = false; }
         }
         
         async function rechazarPedido(id, event) {
+            const btn = event.target;
+            btn.disabled = true;
+            detenerSonidoRepetitivo(id);
+
             const { value: motivo } = await Swal.fire({
                 title: '❌ Rechazar Pedido',
                 input: 'select',
@@ -491,15 +582,16 @@
             if (motivo) {
                 try {
                     await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${encodeURIComponent(motivo)}`);
-                    await database.ref('pedidos/'+id).update({ estado: 'rechazado' });
-                    if (typeof cargar === "function") cargar();
+                    await database.ref('pedidos/'+id).update({ estado: 'rechazado', motivo_rechazo: motivo });
                 } catch(e) { console.error(e); }
             }
+            btn.disabled = false;
         }
 
         function confirmarListo(id) {
             Swal.fire({
-                title: '¿Pedido listo?',
+                title: '¿Pedido terminado?',
+                text: 'Se enviará aviso inmediato al repartidor',
                 icon: 'question',
                 background: '#020617',
                 color: 'white',
@@ -522,10 +614,10 @@
                     timestamp_listo: timestampFin
                 });
                 await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
+                playSoundListo();
                 aceptados.delete(id);
                 pedidosActivos = pedidosActivos.filter(p => p.ID_PEDIDO !== id);
                 render();
-                if (typeof cargar === "function") cargar(); 
             } catch(e) { console.error(e); }
         }
 
@@ -534,10 +626,11 @@
             if(p) {
                 Swal.fire({
                     title: `Pedido #${p.ID_PEDIDO}`,
-                    html: `<div style="text-align:left; font-size: 14px;">
+                    html: `<div style="text-align:left; font-size: 14px; line-height: 1.6;">
                         <strong>👤 Cliente:</strong> ${p.CLIENTE}<br>
-                        <strong>📍 Dirección:</strong> ${p.DIRECCION || 'Para Recoger'}<br><br>
-                        <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px; font-family:monospace; color:#06b6d4;">${p.PEDIDO_DETALLE || ''}</div>
+                        <strong>📍 Dirección:</strong> ${p.DIRECCION || 'Para Recoger'}<br>
+                        <strong>💳 Pago:</strong> ${p.PAGO || 'Efectivo'}<br><br>
+                        <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px; font-family:monospace; color:#06b6d4; white-space:pre-wrap;">${p.PEDIDO_DETALLE || ''}</div>
                     </div>`,
                     background: '#020617',
                     color: 'white',
@@ -546,7 +639,7 @@
             }
         }
 
-        // --- CONFIGURACIÓN TIENDA (ABRIR / CERRAR) ---
+        // --- APERTURA / CIERRE DE TIENDA DESDE EL COCKPIT ---
         function confirmarToggleTienda() { 
             let nuevo = !tiendaAbierta ? "Abierto" : "Cerrado"; 
             Swal.fire({
@@ -557,7 +650,7 @@
             }).then(async (result) => {
                 if (result.isConfirmed) {
                     try {
-                        await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&sheet=configuracion&nuevoEstado=${estado}`); 
+                        await fetch(`${scriptURL}?action=toggleTienda&idRest=${MI_ID_REST}&sheet=configuracion&nuevoEstado=${nuevo}`); 
                         tiendaAbierta = !tiendaAbierta;
                         actualizarInterfazTienda();
                     } catch(e) { console.error(e); }
@@ -581,14 +674,39 @@
             }
         }
 
+        // --- GESTIÓN DEL HISTORIAL ---
         function abrirHistorial() {
+            let lista = document.getElementById('listaHistorial');
+            if(historialHoy.length === 0) {
+                lista.innerHTML = '<div class="text-center opacity-50 text-xs py-10">Ningún despacho hoy</div>';
+            } else {
+                lista.innerHTML = historialHoy.map(p => `
+                    <div class="bg-slate-900 border border-slate-800 p-3 rounded-lg cursor-pointer active:scale-95 transition-transform" onclick="cerrarHistorial(); verDetalles('${p.ID_PEDIDO}')">
+                        <div class="flex justify-between items-center">
+                            <span class="text-cyan-400 font-bold font-mono text-xs">#${p.ID_PEDIDO}</span>
+                            <span class="font-bold text-emerald-400 text-xs">${parseFloat(p.TOTAL).toFixed(2)}€</span>
+                        </div>
+                        <div class="text-xs mt-1 text-white/70 font-semibold">${p.CLIENTE}</div>
+                        <div class="text-[9px] mt-1 text-cyan-400/70 uppercase tracking-wider font-bold">${p.estado || p.ESTADO || 'PROCESADO'}</div>
+                    </div>`).join('');
+            }
             document.getElementById('sideHistorial').classList.add('open');
         }
         function cerrarHistorial() { 
+            document.getElementById('sideHistorial').classList.remove('remove'); 
             document.getElementById('sideHistorial').classList.remove('open'); 
         }
 
-        // DISPARAR CONTROL DE ARRANQUE COMPLETO
+        // --- RELOJ ---
+        function actualizarReloj() {
+            const ahora = new Date();
+            const el = document.getElementById('relojDigital');
+            if(el) el.innerText = ahora.toLocaleTimeString('es-ES');
+        }
+        setInterval(actualizarReloj, 1000);
+        actualizarReloj();
+        setInterval(actualizarContadores, 1000);
+
         window.onload = inicializarSistema;
     </script>
 </body>

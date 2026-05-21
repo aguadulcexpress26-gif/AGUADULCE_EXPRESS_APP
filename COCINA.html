@@ -239,44 +239,31 @@
         cargar();
     }
 }
-       function iniciarSesionTerminal(event) {
+       // --- NUEVO INICIO DE SESIÓN ADAPTADO A TU GOOGLE SHEETS ---
+function iniciarSesionTerminal(event) {
     event.preventDefault();
+    // Captura el código tal cual (Ej: CHUN20)
     const codigoInput = document.getElementById('inputIdRestaurante').value.trim().toUpperCase();
     
-    // Diccionario mapeado con los ID_REST reales de tu Sheets (Columna D de "USUARIOS")
-    const diccionarioRestaurantes = {
-        "DELI10": "6G4L1V",
-        "CHUN20": "RT33M5",
-        "HARO30": "8N3Z7K",
-        "SUCU40": "TR92X5",
-        "PERU50": "9V1L8K",
-        "LIMA60": "FL44K8",
-        "PECA70": "CV11Q9"
-    };
-
-    // Diccionario secundario solo para pintar el nombre comercial bonito en el banner superior
+    // Nombres comerciales únicamente para el banner visual
     const nombresComerciales = {
-        "6G4L1V": "DELICIOUS FOOD",
-        "RT33M5": "CHUHAN PIZZERIA KEBAB",
-        "8N3Z7K": "HARO RESTAURANTE",
-        "TR92X5": "LA SUCURSAL",
-        "9V1L8K": "RINCONCITO PERUANO",
-        "FL44K8": "LIMAÑA BAR Y TAPAS",
-        "CV11Q9": "PECADOS"
+        "DELI10": "DELICIOUS FOOD",
+        "CHUN20": "CHUHAN PIZZERIA KEBAB",
+        "HARO30": "HARO RESTAURANTE",
+        "SUCU40": "LA SUCURSAL",
+        "PERU50": "RINCONCITO PERUANO",
+        "LIMA60": "LIMAÑA BAR Y TAPAS",
+        "PECA70": "PECADOS"
     };
 
-    if (diccionarioRestaurantes[codigoInput]) {
-        const idRealFirebase = diccionarioRestaurantes[codigoInput];
-        const nombreVisible = nombresComerciales[idRealFirebase];
-        
-        // Guardamos el ID real de la base de datos (RT33M5) para que el filtro funcione
-        localStorage.setItem('AE_REST_ID', idRealFirebase);
-        // Guardamos el nombre comercial en otra clave para usarlo en la cabecera
-        localStorage.setItem('AE_REST_NOMBRE', nombreVisible);
+    if (nombresComerciales[codigoInput]) {
+        // Guardamos el código original (CHUN20) porque tu script de Sheets lo usa en la URL
+        localStorage.setItem('AE_REST_ID', codigoInput);
+        localStorage.setItem('AE_REST_NOMBRE', nombresComerciales[codigoInput]);
         
         Swal.fire({
             title: '🔓 Conectando Terminal',
-            text: `Abriendo cocina de: ${nombreVisible}`,
+            text: `Abriendo cocina de: ${nombresComerciales[codigoInput]}`,
             icon: 'success',
             background: '#020617',
             color: 'white',
@@ -295,6 +282,110 @@
     }
 }
 
+function verificarSesionCocina() {
+    MI_ID_REST = localStorage.getItem('AE_REST_ID');
+    const nombreComercial = localStorage.getItem('AE_REST_NOMBRE');
+    
+    const vistaLogin = document.getElementById('vistaLogin');
+    const vistaPanelCocina = document.getElementById('vistaPanelCocina');
+    const txtNombreRestaurante = document.getElementById('nombreRestaurante');
+
+    if (!MI_ID_REST) {
+        document.body.className = "min-h-screen flex flex-col justify-center items-center bg-slate-950 text-slate-100";
+        if(vistaLogin) vistaLogin.classList.remove('hidden');
+        if(vistaPanelCocina) vistaPanelCocina.classList.add('hidden');
+    } else {
+        document.body.className = "min-h-screen flex flex-col bg-slate-950 text-slate-100";
+        if(vistaLogin) vistaLogin.classList.add('hidden');
+        if(vistaPanelCocina) vistaPanelCocina.classList.remove('hidden');
+        
+        if(txtNombreRestaurante) txtNombreRestaurante.innerText = nombreComercial || MI_ID_REST;
+        
+        // Ejecuta tu carga remota por Google Sheets
+        cargar();
+    }
+}
+
+// --- TU FUNCIÓN CARGAR() ORIGINAL CON LOS CORRECCIONES DE ELEMENTOS DE LA NUEVA INTERFAZ ---
+async function cargar() {
+    if (!MI_ID_REST) return;
+    try {
+        // Hace la petición exacta a tu Google Script pasando el código (ej: CHUN20)
+        const r = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${MI_ID_REST}&t=${Date.now()}`);
+        const data = await r.json();
+        
+        // 1. Sincronizar el estado del interruptor (Abierto / Cerrado)
+        if(data.tienda) {
+            tiendaAbierta = (data.tienda.estado || "").toLowerCase() === "abierto";
+            const toggle = document.getElementById('tiendaToggle');
+            const txtE = document.getElementById('txtEstadoTienda');
+            
+            if(toggle) toggle.checked = tiendaAbierta;
+            if(txtE) {
+                txtE.innerText = tiendaAbierta ? "ABIERTO" : "CERRADO";
+                txtE.className = tiendaAbierta ? "text-xs font-bold text-emerald-400 uppercase tracking-wider" : "text-xs font-bold text-slate-400 uppercase tracking-wider";
+            }
+        }
+        
+        // 2. Sincronizar las estadísticas de dinero del día y de la semana
+        let stats = data.stats || {};
+        const txtDiario = document.getElementById('txtDineroDiario');
+        const txtSemanal = document.getElementById('txtDineroSemanal');
+        if(txtDiario) txtDiario.innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2) + "€";
+        if(txtSemanal) txtSemanal.innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2) + "€";
+        
+        // 3. Filtrar pedidos activos: tu cocina SOLO ve RECIBIDO o EN PROCESO
+        const todosPedidos = data.pedidos || [];
+        const pedidosFiltrados = todosPedidos.filter(p => {
+            const estado = (p.ESTADO || '').toUpperCase();
+            return estado === 'RECIBIDO' || estado === 'EN PROCESO';
+        });
+        
+        // 4. Gestión y control de alertas sonoras para pedidos nuevos
+        const nuevosIds = pedidosFiltrados.map(p => p.ID_PEDIDO);
+        const realmenteNuevos = nuevosIds.filter(id => !aceptados.has(id));
+        const sonidosActivados = (typeof sonidosActivos !== 'undefined') ? sonidosActivos : true;
+        
+        if (realmenteNuevos.length > 0 && aceptados.size > 0 && sonidosActivados) {
+            if (typeof playSound === "function") playSound();
+            realmenteNuevos.forEach(id => {
+                if (typeof playSoundNuevoPedidoRepetitivo === "function") playSoundNuevoPedidoRepetitivo(id);
+                else if (typeof reproducirSonidoRepetitivo === "function") reproducirSonidoRepetitivo(id);
+            });
+            if (typeof mostrarMensaje === "function") mostrarMensaje('📦 Nuevo Pedido', 'Tienes un nuevo pedido en la lista', 'info');
+            if (navigator.vibrate) navigator.vibrate(500);
+        }
+        
+        // Ordenar los pedidos cronológicamente por fecha
+        pedidosActivos = pedidosFiltrados.sort((a,b)=>new Date(a.FECHA)-new Date(b.FECHA));
+        
+        // 5. Historial: Filtrar los pedidos que ya terminaron su ciclo en cocina
+        const pedidosHistorial = todosPedidos.filter(p => {
+            const estado = (p.ESTADO || '').toUpperCase();
+            return estado === 'LISTO' || estado === 'ENTREGADO' || estado === 'CANCELADO' || estado === 'RECHAZADO' || estado === 'EN CAMINO' || estado === 'LLEGÓ';
+        });
+        historialHoy = pedidosHistorial;
+        
+        // 6. Actualizar el contador numérico de pendientes en la cabecera
+        ultimoConteo = pedidosActivos.filter(p=>!aceptados.has(p.ID_PEDIDO)).length;
+        const cantPendientes = document.getElementById('cantPendientes');
+        if(cantPendientes) cantPendientes.innerText = ultimoConteo;
+        
+        // 7. Limpiar intervalos de sonido de pedidos que ya se procesaron
+        const listaIntervalos = (typeof intervalosSonido !== 'undefined') ? intervalosSonido : (typeof sonidosPendientes !== 'undefined' ? sonidosPendientes : {});
+        Object.keys(listaIntervalos).forEach(id => {
+            const sigueActivo = pedidosActivos.some(p => p.ID_PEDIDO === id && !aceptados.has(id));
+            if (!sigueActivo) {
+                if (typeof detenerSonidoRepetitivo === "function") detenerSonidoRepetitivo(id);
+            }
+        });
+        
+        // Dibujar las tarjetas en las nuevas columnas
+        render();
+    } catch(e) { 
+        console.error("Error en consulta remota panel de cocina:", e); 
+    }
+}
         function cerrarSesionTerminal() {
             Swal.fire({
                 title: '¿Cerrar sesión en esta terminal?',
@@ -504,84 +595,111 @@
 
         // --- RENDER DE COLUMNAS TÁCTILES ---
         function render() {
-            const contNuevos = document.getElementById('listaNuevos');
-            const contProceso = document.getElementById('listaProceso');
-            const contListos = document.getElementById('listaListos');
-            if (!contNuevos) return;
-
-            if (pedidosActivos.length === 0) {
-                const sin = '<div class="text-center py-14 opacity-25 font-bold tracking-widest text-xs">SIN PEDIDOS ACTIVOS</div>';
-                contNuevos.innerHTML = sin; contProceso.innerHTML = sin; contListos.innerHTML = sin;
-                actualizarBadges(0, 0, 0); return;
-            }
-
-            let htmlNuevos = '', htmlProceso = '', htmlListos = '';
-            let cPend = 0, cProc = 0, cList = 0;
-
-            pedidosActivos.forEach(p => {
-                const estado = (p.estado || p.ESTADO || '').toLowerCase();
-                const esNuevo = !aceptados.has(p.ID_PEDIDO) && estado !== 'en proceso' && estado !== 'listo';
-
-                let tarjetaHTML = `
-                <div class="bg-slate-950 border ${esNuevo ? 'pedido-nuevo-anim border-cyan-500/30' : 'border-slate-800/80'} rounded-xl p-4 shadow-lg space-y-3 flex flex-col justify-between">
-                    <div>
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <span class="text-[11px] text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
-                                <h4 class="font-bold text-sm text-white/90 mt-0.5">${p.CLIENTE}</h4>
-                                <span class="text-[11px] font-medium text-slate-500 block mt-0.5">⏱️ ${calcularTiempo(p.FECHA)}</span>
-                            </div>
-                            <span class="text-sm font-black text-emerald-400 bg-emerald-500/5 px-2 py-1 rounded-md border border-emerald-500/10">${parseFloat(p.TOTAL).toFixed(2)}€</span>
-                        </div>
-                        <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 mt-2.5">
-                            <div class="text-xs font-semibold font-mono text-cyan-400/90 whitespace-pre-wrap leading-relaxed">${p.PEDIDO_DETALLE || 'Sin detalle'}</div>
-                            ${p.NOTA ? `<div class="text-[11px] text-amber-400 mt-2 italic font-medium bg-amber-500/5 p-1.5 rounded border border-amber-500/10">💡 ${p.NOTA}</div>` : ''}
-                        </div>
-                    </div>`;
-
-                if (estado === 'en proceso' || aceptados.has(p.ID_PEDIDO)) {
-                    cProc++;
-                    tarjetaHTML += `
-                        <div class="space-y-2.5 pt-1">
-                            <div class="tiempo-contador text-center font-mono font-bold text-xs py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20" data-time="${p.timestamp_fin_elaboracion || ''}">⏳ Calculando...</div>
-                            <div class="grid grid-cols-3 gap-1.5 text-[10px] font-bold">
-                                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, event)" class="btn-touch-active bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded border border-slate-800 cursor-pointer">15 MIN</button>
-                                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, event)" class="btn-touch-active bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded border border-slate-800 cursor-pointer">30 MIN</button>
-                                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, event)" class="btn-touch-active bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded border border-slate-800 cursor-pointer">45 MIN</button>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2 pt-1">
-                                <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-bold bg-slate-800 text-slate-300 py-2 rounded-lg cursor-pointer">DETALLES</button>
-                                <button onclick="ejecutarListo('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-black bg-emerald-500 text-slate-950 py-2 rounded-lg cursor-pointer">🧑‍🍳 ¡LISTO!</button>
-                            </div>
-                        </div></div>`;
-                    htmlProceso += tarjetaHTML;
-                } else if (estado === 'listo') {
-                    cList++;
-                    tarjetaHTML += `
-                        <div class="pt-2">
-                            <div class="text-center text-[10px] font-bold tracking-wider text-emerald-400 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20 uppercase">🔔 Listo (Esperando Reparto)</div>
-                            <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-touch-active w-full text-[11px] font-bold bg-slate-800 text-slate-300 py-2 rounded-lg mt-2 cursor-pointer">VER TICKET</button>
-                        </div></div>`;
-                    htmlListos += tarjetaHTML;
-                } else {
-                    cPend++;
-                    tarjetaHTML += `
-                        <div class="flex flex-col gap-2 pt-2">
-                            <button onclick="aceptarPedido('${p.ID_PEDIDO}', event)" class="btn-touch-active w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black tracking-wider text-xs p-3 rounded-xl uppercase cursor-pointer">ACEPTAR PEDIDO</button>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-bold bg-slate-900 border border-slate-800 text-slate-400 py-2 rounded-lg cursor-pointer">DETALLES</button>
-                                <button onclick="rechazarPedido('${p.ID_PEDIDO}', event)" class="btn-touch-active text-[11px] font-bold bg-red-950/20 border border-red-900/30 text-red-400 py-2 rounded-lg cursor-pointer">RECHAZAR</button>
-                            </div>
-                        </div></div>`;
-                    htmlNuevos += tarjetaHTML;
-                }
-            });
-
-            contNuevos.innerHTML = htmlNuevos || '<div class="text-center py-10 opacity-25 text-xs font-semibold">Cola limpia</div>';
-            contProceso.innerHTML = htmlProceso || '<div class="text-center py-10 opacity-25 text-xs font-semibold">Fuegos vacíos</div>';
-            contListos.innerHTML = htmlListos || '<div class="text-center py-10 opacity-25 text-xs font-semibold">Nada esperando despachar</div>';
-            actualizarBadges(cPend, cProc, cList);
+    const contNuevos = document.getElementById('listaNuevos');
+    const contProceso = document.getElementById('listaProceso');
+    const contListos = document.getElementById('listaListos');
+    
+    // Si no hay contenedores nuevos, intentamos buscar el contenedor viejo como respaldo
+    if (!contNuevos) {
+        let contViejo = document.getElementById('lista');
+        if (contViejo && pedidosActivos.length === 0) {
+            contViejo.innerHTML = '<div class="text-center py-20 opacity-20 font-bold tracking-widest text-sm">SIN PEDIDOS ACTIVOS</div>';
         }
+        return;
+    }
+
+    if (pedidosActivos.length === 0) {
+        const sinPedidosHTML = '<div class="text-center py-14 opacity-25 font-bold tracking-widest text-xs">SIN PEDIDOS ACTIVOS</div>';
+        contNuevos.innerHTML = sinPedidosHTML;
+        contProceso.innerHTML = sinPedidosHTML;
+        contListos.innerHTML = sinPedidosHTML;
+        actualizarBadges(0, 0, 0);
+        return;
+    }
+
+    let htmlNuevos = '', htmlProceso = '', htmlListos = '';
+    let cPend = 0, cProc = 0, cList = 0;
+
+    pedidosActivos.forEach(p => {
+        const estado = (p.ESTADO || '').toUpperCase();
+        const esAceptadoInterno = aceptados.has(p.ID_PEDIDO);
+        const esNuevo = !esAceptadoInterno && estado !== 'EN PROCESO';
+
+        // Estructura de la tarjeta con tus clases Tailwind oscuras y datos nativos de tu Sheets
+        let tarjetaHTML = `
+        <div class="bg-slate-950 border ${esNuevo ? 'pedido-nuevo-anim border-cyan-500/30' : 'border-slate-800/80'} rounded-xl p-4 shadow-lg space-y-3 flex flex-col justify-between" data-id="${p.ID_PEDIDO}">
+            <div>
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-[11px] text-cyan-400 font-bold font-mono">#${p.ID_PEDIDO}</span>
+                        <h4 class="font-bold text-sm text-white/90 mt-0.5">${p.CLIENTE}</h4>
+                        <span class="text-[11px] font-medium text-slate-500 block mt-0.5">⏱️ ${calcularTiempo(p.FECHA)}</span>
+                    </div>
+                    <span class="text-sm font-black text-emerald-400 bg-emerald-500/5 px-2 py-1 rounded-md border border-emerald-500/10">${parseFloat(p.TOTAL).toFixed(2)}€</span>
+                </div>
+                
+                <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 mt-2.5">
+                    <div class="text-xs font-semibold font-mono text-cyan-400/90 whitespace-pre-wrap leading-relaxed">${p.PEDIDO_DETALLE || 'Sin detalle'}</div>
+                    ${p.NOTA ? `<div class="text-[11px] text-amber-400 mt-2 italic font-medium bg-amber-500/5 p-1.5 rounded border border-amber-500/10">💡 ${p.NOTA}</div>` : ''}
+                </div>
+            </div>`;
+
+        // CLASIFICACIÓN EN LAS COLUMNAS UTILIZANDO TU LÓGICA ORIGINAL
+        if (estado === 'EN PROCESO' || esAceptadoInterno) {
+            cProc++;
+            tarjetaHTML += `
+                <div class="space-y-2.5 pt-1">
+                    <div class="grid grid-cols-3 gap-1.5 text-[10px] font-bold">
+                        <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15)" class="btn-touch-active bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded border border-slate-800 cursor-pointer">15 MIN</button>
+                        <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30)" class="btn-touch-active bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded border border-slate-800 cursor-pointer">30 MIN</button>
+                        <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45)" class="btn-touch-active bg-slate-900 hover:bg-slate-800 text-slate-300 py-1.5 rounded border border-slate-800 cursor-pointer">45 MIN</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-bold bg-slate-800 text-slate-300 py-2 rounded-lg cursor-pointer">DETALLES</button>
+                        <button onclick="confirmarListo('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-black bg-emerald-500 text-slate-950 py-2 rounded-lg cursor-pointer">🧑‍🍳 ¡LISTO!</button>
+                    </div>
+                </div></div>`;
+            htmlProceso += tarjetaHTML;
+        } else if (estado === 'LISTO') {
+            cList++;
+            tarjetaHTML += `
+                <div class="pt-2">
+                    <div class="text-center text-[10px] font-bold tracking-wider text-emerald-400 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20 uppercase">🔔 Listo (Esperando Reparto)</div>
+                    <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-touch-active w-full text-[11px] font-bold bg-slate-800 text-slate-300 py-2 rounded-lg mt-2 cursor-pointer">VER TICKET</button>
+                </div></div>`;
+            htmlListos += tarjetaHTML;
+        } else {
+            cPend++;
+            tarjetaHTML += `
+                <div class="flex flex-col gap-2 pt-2">
+                    <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-touch-active w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black tracking-wider text-xs p-3 rounded-xl uppercase cursor-pointer">
+                        ${esAceptadoInterno ? '✓ ACEPTADO' : 'ACEPTAR PEDIDO'}
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="verDetalles('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-bold bg-slate-900 border border-slate-800 text-slate-400 py-2 rounded-lg cursor-pointer">DETALLES</button>
+                        <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-touch-active text-[11px] font-bold bg-red-950/20 border border-red-900/30 text-red-400 py-2 rounded-lg cursor-pointer">RECHAZAR</button>
+                    </div>
+                </div></div>`;
+            htmlNuevos += tarjetaHTML;
+        }
+    });
+
+    // Inyectar en los listados del diseño táctil
+    contNuevos.innerHTML = htmlNuevos || '<div class="text-center py-10 opacity-25 text-xs font-semibold">Cola limpia</div>';
+    contProceso.innerHTML = htmlProceso || '<div class="text-center py-10 opacity-25 text-xs font-semibold">Fuegos vacíos</div>';
+    contListos.innerHTML = htmlListos || '<div class="text-center py-10 opacity-25 text-xs font-semibold">Nada para retirar</div>';
+    
+    actualizarBadges(cPend, cProc, cList);
+}
+
+// Función auxiliar indispensable para refrescar los contadores numéricos superiores
+function actualizarBadges(nuevos, proceso, listos) {
+    if(document.getElementById('badgeNuevos')) document.getElementById('badgeNuevos').innerText = nuevos;
+    if(document.getElementById('badgeProceso')) document.getElementById('badgeProceso').innerText = proceso;
+    if(document.getElementById('badgeListos')) document.getElementById('badgeListos').innerText = listos;
+    if(document.getElementById('cantPendientes')) document.getElementById('cantPendientes').innerText = nuevos;
+    if(document.getElementById('cantProceso')) document.getElementById('cantProceso').innerText = proceso;
+}
 
         function actualizarBadges(nuevos, proceso, listos) {
             document.getElementById('badgeNuevos').innerText = nuevos;

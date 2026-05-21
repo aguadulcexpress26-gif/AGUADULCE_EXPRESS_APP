@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express - Cocina Profesional</title>
+    <title>Aguadulce Express - Cocina</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
@@ -15,15 +15,14 @@
         .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
         .btn-accion { transition: transform 0.1s; cursor: pointer; }
         .btn-accion:active { transform: scale(0.96); }
-        .btn-accion:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: bold; display: inline-block; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-        .toggle-btn { transition: all 0.2s; cursor: pointer; }
-        .toggle-btn:active { transform: scale(0.96); }
-        .estado-listo { border-left: 4px solid #22c55e; }
-        .estado-espera { border-left: 4px solid #eab308; }
+        .tiempo-btn.verde { background-color: #22c55e !important; color: white !important; }
+        .opacity-50 { opacity: 0.5; }
+        .historial-item { cursor: pointer; transition: all 0.2s; }
+        .historial-item:hover { background: #1e293b; transform: scale(0.98); }
     </style>
 </head>
 <body>
@@ -38,24 +37,24 @@
 
 <!-- APP PRINCIPAL -->
 <div id="appContent" class="hidden min-h-screen">
-    <!-- HEADER CON IMAGEN DEL RESTAURANTE (BRILLANTE) -->
+    <!-- HEADER CON IMAGEN -->
     <div class="relative h-48 overflow-hidden">
-        <img id="restauranteFoto" class="absolute w-full h-full object-cover opacity-100" src="">
+        <img id="restauranteFoto" class="absolute w-full h-full object-cover opacity-40" src="">
         <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
         <div class="absolute bottom-0 left-0 right-0 p-5 flex justify-between items-end">
             <div>
                 <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider">📍 COCINA</span>
                 <h1 id="restauranteNombre" class="text-2xl font-black text-white">CARGANDO...</h1>
             </div>
-            <button id="btnToggleEstado" class="bg-white/10 backdrop-blur-sm px-5 py-2 rounded-xl font-bold text-sm toggle-btn flex items-center gap-2">
+            <button id="btnToggleEstado" class="bg-white/10 backdrop-blur-sm px-5 py-2 rounded-xl font-bold text-sm flex items-center gap-2">
                 <span id="ledEstado" class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
                 <span id="txtEstado">ABIERTO</span>
             </button>
-            <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl toggle-btn">🚪</button>
+            <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl">🚪</button>
         </div>
     </div>
 
-    <!-- BARRA DE CONTROLES + DINERO -->
+    <!-- BARRA DE CONTROLES -->
     <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
         <div class="flex gap-3">
             <div class="badge">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
@@ -67,7 +66,7 @@
                 <div class="text-[9px] text-white/40 uppercase">HOY / SEMANA</div>
                 <div class="text-sm font-bold text-white"><span id="statHoy" class="text-white">0.00</span>€ / <span id="statSemana" class="text-white">0.00</span>€</div>
             </div>
-            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full toggle-btn">🔊 ACTIVAR SONIDO</button>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full">🔊 ACTIVAR SONIDO</button>
         </div>
     </div>
 
@@ -99,21 +98,12 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    // PINs actualizados con todos los restaurantes
-    const ACCESS_DB = { 
-        "DELI10":"6G4L1V", 
-        "CHUN20":"RT33M5", 
-        "HARO30":"8N3Z7K", 
-        "SUCU40":"TR92X5",
-        "PERU50":"9V1L8K",      // Rinconcito Peruano
-        "LIMA60":"FL44K8",      // Limeña Bar y Tapas
-        "PECA70":"CV11Q9"       // Pecados
-    };
+    const ACCESS_DB = { "DELI10":"6G4L1V", "CHUN20":"RT33M5", "HARO30":"8N3Z7K", "SUCU40":"TR92X5", "PERU50":"9V1L8K", "LIMA60":"FL44K8", "PECA70":"CV11Q9" };
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
 
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
     let pedidos = [];
-    let enCocina = new Set(); // pedidos aceptados y en proceso
+    let enCocina = new Set();
     let procesando = false;
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
@@ -122,8 +112,8 @@
     function activarSonidoGlobal() {
         if (!sonidosActivados) {
             sonidosActivados = true;
-            audioNotif.play().then(() => audioNotif.pause()).catch(e => console.log("audio necesita interacción"));
-            Swal.fire({ title: '🔊 Sonido activado', text: 'Recibirás alertas sonoras', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
+            audioNotif.play().then(() => audioNotif.pause()).catch(e => console.log);
+            Swal.fire({ title: '🔊 Sonido activado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
         }
     }
     document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
@@ -144,8 +134,8 @@
         let data = await res.json();
         let restaurante = (data.RESTAURANTES || []).find(r => r.ID_RESTAURANTE == miRestauranteId);
         if (restaurante) {
-            document.getElementById('restauranteNombre').innerText = restaurante.NOMBRE_RESTAURANTE || "RESTAURANTE";
-            document.getElementById('restauranteFoto').src = restaurante.FOTO || "https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg";
+            document.getElementById('restauranteNombre').innerText = restaurante.NOMBRE_RESTAURANTE;
+            document.getElementById('restauranteFoto').src = restaurante.FOTO;
             let estadoActual = restaurante.ESTADO?.toLowerCase() === 'abierto';
             actualizarBotonEstado(estadoActual);
         }
@@ -154,16 +144,12 @@
     function actualizarBotonEstado(abierto) {
         document.getElementById('txtEstado').innerText = abierto ? "ABIERTO" : "CERRADO";
         document.getElementById('ledEstado').className = abierto ? "w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" : "w-2.5 h-2.5 bg-red-500 rounded-full";
-        document.getElementById('btnToggleEstado').style.background = abierto ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)";
     }
 
     async function toggleEstadoTienda() {
-        let btn = document.getElementById('btnToggleEstado');
-        btn.disabled = true;
         let nuevoEstado = document.getElementById('txtEstado').innerText === "ABIERTO" ? "Cerrado" : "Abierto";
         await fetch(`${scriptURL}?action=toggleTienda&idRest=${miRestauranteId}&sheet=configuracion&nuevoEstado=${nuevoEstado}`);
         await cargarRestauranteInfo();
-        btn.disabled = false;
         if (sonidosActivados && nuevoEstado === "Abierto") audioNotif.play().catch(e=>console.log);
     }
     document.getElementById('btnToggleEstado')?.addEventListener('click', toggleEstadoTienda);
@@ -176,18 +162,14 @@
         document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
         document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
         renderizarTodo();
-
-        if (sonidosActivados && pedidos.filter(p => !enCocina.has(p.ID_PEDIDO) && p.ESTADO !== 'LISTO' && p.ESTADO !== 'ENTREGADO').length > 0) {
+        if (sonidosActivados && pedidos.filter(p => !enCocina.has(p.ID_PEDIDO) && p.ESTADO !== 'ENTREGADO').length > 0) {
             audioNotif.play().catch(e=>console.log);
         }
     }
 
     function renderizarTodo() {
-        // Entrantes: no aceptados, no listos, no entregados
-        let entrantes = pedidos.filter(p => !enCocina.has(p.ID_PEDIDO) && p.ESTADO !== 'LISTO' && p.ESTADO !== 'ENTREGADO');
-        // Cocina: aceptados y NO entregados (incluye LISTO)
+        let entrantes = pedidos.filter(p => !enCocina.has(p.ID_PEDIDO) && p.ESTADO !== 'ENTREGADO');
         let cocina = pedidos.filter(p => enCocina.has(p.ID_PEDIDO) && p.ESTADO !== 'ENTREGADO');
-        // Historial: solo ENTREGADOS
         let historial = pedidos.filter(p => p.ESTADO === 'ENTREGADO');
 
         document.getElementById('totalPendientes').innerText = entrantes.length;
@@ -200,65 +182,35 @@
     }
 
     function renderCardEntrante(p) {
-        return `<div class="card-pedido" data-id="${p.ID_PEDIDO}">
-            <div class="flex justify-between items-start"><div><span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span><p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p><p class="text-white/60 text-xs mt-1">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p></div><span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span></div>
-            <div class="flex gap-2 mt-3"><button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-aceptar bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs btn-accion flex-1">✅ ACEPTAR</button><button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-rechazar bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs btn-accion flex-1">❌ RECHAZAR</button></div>
+        return `<div class="card-pedido">
+            <div class="flex justify-between items-start"><div><span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span><p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p><p class="text-white/60 text-xs mt-1">${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p></div><span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span></div>
+            <div class="flex gap-2 mt-3"><button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-aceptar bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button><button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-rechazar bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button></div>
         </div>`;
     }
 
     function renderCardCocina(p) {
-        let tiempoRestante = p.timestamp_fin_elaboracion ? Math.max(0, Math.floor((p.timestamp_fin_elaboracion - Date.now()) / 60000)) : 0;
-        let estadoClase = p.ESTADO === 'LISTO' ? 'estado-listo' : 'estado-espera';
-        let estadoTexto = p.ESTADO === 'LISTO' ? '🟢 LISTO - ESPERANDO REPARTIDOR' : `⏱️ ${tiempoRestante} min restante`;
-        return `<div class="card-pedido ${estadoClase}" data-id="${p.ID_PEDIDO}">
-            <div class="flex justify-between"><span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span><span class="text-white/40 text-xs">${estadoTexto}</span></div>
+        let estaListo = p.ESTADO === 'LISTO';
+        let tiempoSeleccionado = p.tiempo_seleccionado || 0;
+        return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
+            <div class="flex justify-between"><span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span><span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO - ESPERANDO REPARTIDOR' : '🍳 EN COCINA'}</span></div>
             <p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p>
             <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
+            <div class="flex justify-between items-center mt-2"><span class="text-white font-bold">${parseFloat(p.TOTAL).toFixed(2)}€</span></div>
             <div class="flex gap-2 mt-3">
-                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
-                ${p.ESTADO !== 'LISTO' ? `<button onclick="asignarTiempo('${p.ID_PEDIDO}', 15)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">30'</button>
-                <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs btn-listo">✅ LISTO</button>` : '<span class="text-emerald-400 text-xs">🟢 Esperando repartidor</span>'}
+                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>📋 DETALLE</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>15'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>30'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>45'</button>
+                <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>✅ LISTO</button>
             </div>
         </div>`;
     }
 
     function renderCardHistorial(p) {
-        return `<div class="card-pedido opacity-80"><div class="flex justify-between items-center"><span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span><span class="text-white font-bold">${parseFloat(p.TOTAL).toFixed(2)}€</span></div><p class="text-white/50 text-xs mt-1">${p.CLIENTE}</p></div>`;
-    }
-
-    function imprimirTicket(pedido) {
-        const ventana = window.open('', '_blank', 'width=600,height=600');
-        ventana.document.write(`
-            <html><head><title>Ticket #${pedido.ID_PEDIDO}</title>
-            <style>body{font-family:'Courier New';padding:20px;font-size:14px;}.separator{border-top:1px dashed #000;margin:10px 0;}</style>
-            </head><body>
-            <div class="text-center"><h2>AGUADULCE EXPRESS</h2><p>${new Date().toLocaleString()}</p><div class="separator"></div>
-            <p><strong>Pedido #${pedido.ID_PEDIDO}</strong></p><p><strong>Cliente:</strong> ${pedido.CLIENTE}</p>
-            <p><strong>Dirección:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p><div class="separator"></div>
-            <p><strong>Detalle:</strong><br>${(pedido.PEDIDO_DETALLE || '').replace(/\n/g,'<br>')}</p><div class="separator"></div>
-            <p><strong>Total:</strong> ${parseFloat(pedido.TOTAL).toFixed(2)}€</p><div class="separator"></div>
-            <p>¡Gracias por confiar en Aguadulce Express!</p></div>
-            <script>window.onload=function(){window.print();setTimeout(()=>window.close(),1000);};<\/script>
-            </body></html>
-        `);
-        ventana.document.close();
-    }
-
-    function verDetallePedido(id) {
-        let p = pedidos.find(x => x.ID_PEDIDO == id);
-        if (p) {
-            Swal.fire({
-                title: `Pedido #${p.ID_PEDIDO}`,
-                html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.CLIENTE}</p>
-                        <p><strong>📍 Dirección:</strong> ${p.DIRECCION}</p>
-                        <p><strong>📦 Detalle:</strong> ${p.PEDIDO_DETALLE}</p>
-                        <p><strong>💳 Pago:</strong> ${p.PAGO}</p>
-                        <p><strong>💰 Total:</strong> ${parseFloat(p.TOTAL).toFixed(2)}€</p></div>`,
-                background: '#020617', color: 'white', confirmButtonColor: '#06b6d4',
-                showCancelButton: true, confirmButtonText: '🖨️ Imprimir', cancelButtonText: 'Cerrar'
-            }).then(result => { if (result.isConfirmed) imprimirTicket(p); });
-        }
+        return `<div class="card-pedido historial-item" onclick="verDetallePedido('${p.ID_PEDIDO}')">
+            <div class="flex justify-between items-center"><span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span><span class="text-white font-bold">${parseFloat(p.TOTAL).toFixed(2)}€</span></div>
+            <p class="text-white/50 text-xs mt-1">${p.CLIENTE}</p>
+        </div>`;
     }
 
     function calcularTiempo(fechaStr) {
@@ -270,54 +222,64 @@
     }
 
     async function aceptarPedido(id) {
-        if (procesando) return;
         let btn = event.target;
-        procesando = true;
         btn.disabled = true;
+        btn.style.opacity = '0.5';
         enCocina.add(id);
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
         await cargarPedidos();
-        Swal.fire({ title: '✅ Pedido aceptado', icon: 'success', timer: 1000, showConfirmButton: false, background: '#020617', color: 'white' });
-        procesando = false;
     }
 
     async function rechazarPedido(id) {
-        if (procesando) return;
         let btn = event.target;
-        procesando = true;
         btn.disabled = true;
-        const { value: motivo } = await Swal.fire({
-            title: 'Motivo del rechazo',
-            input: 'select',
-            inputOptions: { 'No disponible': '📦 Plato no disponible', 'Ingredientes': '🥬 Sin ingredientes', 'Capacidad': '🏭 Máxima capacidad', 'Horario': '⏰ Fuera de horario', 'Otro': '📝 Otro' },
-            background: '#020617', color: 'white'
-        });
-        if (motivo) {
-            await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=${motivo}`);
-            await database.ref('pedidos/'+id).update({ motivo_rechazo: motivo });
-        }
+        btn.style.opacity = '0.5';
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO`);
         await cargarPedidos();
-        procesando = false;
     }
 
-    async function asignarTiempo(id, minutos) {
-        if (procesando) return;
-        procesando = true;
-        await database.ref('pedidos/'+id).update({ timestamp_fin_elaboracion: Date.now() + (minutos * 60 * 1000) });
+    async function asignarTiempo(id, minutos, btn) {
+        btn.disabled = true;
+        btn.classList.remove('bg-cyan-500/20', 'text-cyan-400');
+        btn.classList.add('bg-green-600', 'text-white');
+        await database.ref('pedidos/'+id).update({ tiempo_seleccionado: minutos });
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
-        await cargarPedidos();
-        Swal.fire({ title: `⏳ ${minutos} min`, icon: 'success', timer: 1000, showConfirmButton: false, background: '#020617', color: 'white' });
-        procesando = false;
     }
 
     async function marcarListo(id) {
-        if (procesando) return;
-        procesando = true;
+        let card = document.querySelector(`.card-pedido:has(button[onclick="marcarListo('${id}')"])`);
+        if (card) card.classList.add('opacity-50');
+        let botones = card.querySelectorAll('button');
+        botones.forEach(btn => btn.disabled = true);
         await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() });
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
         await cargarPedidos();
-        Swal.fire({ title: '✅ Pedido listo para reparto', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
-        procesando = false;
+    }
+
+    function imprimirTicket(pedido) {
+        const ventana = window.open('', '_blank', 'width=800,height=600');
+        ventana.document.write(`
+            <html><head><title>Pedido #${pedido.ID_PEDIDO}</title>
+            <style>body{font-family:Arial;padding:20px;max-width:210mm;margin:0 auto;}.separator{border-top:1px solid #000;margin:15px 0;}@media print{body{margin:0;padding:15px;}}</style>
+            </head><body><div style="text-align:center;"><h2>AGUADULCE EXPRESS</h2><p>${new Date().toLocaleString()}</p><div class="separator"></div>
+            <p><strong>Pedido #${pedido.ID_PEDIDO}</strong></p><p><strong>Cliente:</strong> ${pedido.CLIENTE}</p><p><strong>Dirección:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p><div class="separator"></div>
+            <p><strong>Detalle:</strong><br>${(pedido.PEDIDO_DETALLE || '').replace(/\n/g,'<br>')}</p><div class="separator"></div>
+            <p><strong>Total:</strong> ${parseFloat(pedido.TOTAL).toFixed(2)}€</p><div class="separator"></div><p>¡Gracias por confiar en Aguadulce Express!</p></div>
+            <script>window.onload=function(){window.print();setTimeout(()=>window.close(),1000);};<\/script></body></html>
+        `);
+        ventana.document.close();
+    }
+
+    function verDetallePedido(id) {
+        let p = pedidos.find(x => x.ID_PEDIDO == id);
+        if (p) {
+            Swal.fire({
+                title: `Pedido #${p.ID_PEDIDO}`,
+                html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.CLIENTE}</p><p><strong>📍 Dirección:</strong> ${p.DIRECCION}</p><p><strong>📦 Detalle:</strong> ${p.PEDIDO_DETALLE}</p><p><strong>💳 Pago:</strong> ${p.PAGO}</p><p><strong>💰 Total:</strong> ${parseFloat(p.TOTAL).toFixed(2)}€</p></div>`,
+                background: '#020617', color: 'white', confirmButtonColor: '#06b6d4',
+                showCancelButton: true, confirmButtonText: '🖨️ Imprimir', cancelButtonText: 'Cerrar'
+            }).then(result => { if (result.isConfirmed) imprimirTicket(p); });
+        }
     }
 
     function forzarRefresco() { cargarPedidos(); }

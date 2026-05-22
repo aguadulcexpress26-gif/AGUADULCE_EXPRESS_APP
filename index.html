@@ -781,77 +781,122 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
             return estaAbierto;
         }
         
-        // ==========================================
-        // ✅ FUNCIÓN PARA VERIFICAR HORARIO DE CADA RESTAURANTE (PONLA AQUÍ)
+                // ==========================================
+        // FUNCIÓN REAL - VERIFICA HORARIO CON TUS DATOS
         // ==========================================
         function estaRestauranteAbierto(restaurant) {
-            // Si el restaurante tiene estado directo "CERRADO" desde Excel
-            if (restaurant.ESTADO === "CERRADO") {
-                return false;
+            const idRest = restaurant.ID_RESTAURANTE;
+            const horariosRest = db.horariosPorDia?.[idRest];
+            
+            // Si no hay horarios definidos para este restaurante
+            if (!horariosRest) {
+                console.log(`❌ ${restaurant.NOMBRE_RESTAURANTE} - Sin horarios`);
+                return { abierto: false, horario: "Horario no disponible" };
             }
             
-            // Si tiene campo ABIERTO directo
-            if (restaurant.ABIERTO === false || restaurant.ABIERTO === "FALSE") {
-                return false;
+            const ahora = new Date();
+            const diaActual = ahora.getDay(); // 0=Domingo, 1=Lunes...
+            const horaActual = ahora.getHours();
+            const minutosActual = ahora.getMinutes();
+            const horaCompleta = horaActual + (minutosActual / 60);
+            
+            const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
+            const diaNombre = diasSemana[diaActual];
+            
+            const horarioHoy = horariosRest[diaNombre];
+            
+            if (!horarioHoy) {
+                console.log(`❌ ${restaurant.NOMBRE_RESTAURANTE} - Sin horario para ${diaNombre}`);
+                return { abierto: false, horario: "Cerrado hoy" };
             }
             
-            // Si tiene horario definido en HORARIOS_RESTAURANTES
-            if (restaurant.HORARIO_APERTURA && restaurant.HORARIO_CIERRE) {
-                const ahora = new Date();
-                const horaActual = ahora.getHours();
-                const apertura = parseInt(restaurant.HORARIO_APERTURA);
-                const cierre = parseInt(restaurant.HORARIO_CIERRE);
-                return horaActual >= apertura && horaActual < cierre;
+            function convertirHora(horaStr) {
+                if (!horaStr || horaStr === "") return null;
+                const [h, m] = horaStr.split(":");
+                return parseInt(h) + (parseInt(m) / 60);
             }
             
-            // Si tiene la estructura HORARIOS (día por día)
-            if (restaurant.HORARIOS && typeof restaurant.HORARIOS === 'object') {
-                const ahora = new Date();
-                const diaActual = ahora.getDay(); // 0 = Domingo
-                const horaActual = ahora.getHours();
-                const minutosActual = ahora.getMinutes();
-                const horaCompleta = horaActual + (minutosActual / 60);
-                
-                const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
-                const diaNombre = diasSemana[diaActual];
-                
-                let horarioDia = restaurant.HORARIOS[diaNombre] || restaurant.HORARIOS[diaActual] || restaurant.HORARIOS["DEFAULT"];
-                
-                if (horarioDia) {
-                    let [aperturaStr, cierreStr] = horarioDia.split("-");
-                    const apertura = parseFloat(aperturaStr);
-                    const cierre = parseFloat(cierreStr);
-                    return horaCompleta >= apertura && horaCompleta < cierre;
+            const apertura1 = convertirHora(horarioHoy.apertura1);
+            const cierre1 = convertirHora(horarioHoy.cierre1);
+            const apertura2 = convertirHora(horarioHoy.apertura2);
+            const cierre2 = convertirHora(horarioHoy.cierre2);
+            
+            let abierto = false;
+            let horarioTexto = "";
+            
+            // Verificar primer tramo (ej: 13:00 - 16:00)
+            if (apertura1 !== null && cierre1 !== null) {
+                if (horaCompleta >= apertura1 && horaCompleta < cierre1) {
+                    abierto = true;
                 }
+                horarioTexto = `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
             }
             
-            // Por defecto, si no hay info de cierre, asumir abierto
-            return true;
+            // Verificar segundo tramo (ej: 20:00 - 23:45)
+            if (apertura2 !== null && cierre2 !== null) {
+                if (!abierto && horaCompleta >= apertura2 && horaCompleta < cierre2) {
+                    abierto = true;
+                }
+                horarioTexto += ` / ${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
+            }
+            
+            console.log(`${restaurant.NOMBRE_RESTAURANTE} - ${abierto ? '🟢 ABIERTO' : '🔴 CERRADO'} (${horaCompleta}h / ${horarioTexto})`);
+            
+            return { abierto: abierto, horario: horarioTexto || "Consultar horario" };
         }
                 // ==========================================
         // FUNCIÓN PARA CARGAR BASE DE DATOS (AÑADE ESTO)
         // ==========================================
+               // ==========================================
+        // CARGA DE DATOS (CORREGIDA - FUNCIONA CON TUS COLUMNAS)
+        // ==========================================
         async function cargarBaseDatos() {
-            try {
-                console.log("📡 Cargando base de datos...");
-                const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
-                const data = await response.json();
+            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+            if (!response.ok) throw new Error("No se pudo conectar");
+            const data = await response.json();
+            
+            // ========== CARGAR HORARIOS CORRECTAMENTE ==========
+            const horariosData = data.HORARIOS_RESTAURANTES || [];
+            db.horariosPorDia = {};
+            
+            console.log("📊 Horarios recibidos:", horariosData.length, "registros");
+            
+            horariosData.forEach(row => {
+                const idRest = row.ID_RESTAURANTE;
+                let dia = String(row.DIA_SEMANA || "").trim().toUpperCase();
                 
-                db = {
-                    menu: data.MENU_GENERAL || [],
-                    restaurantes: data.RESTAURANTES || [],
-                    anuncios: data.ANUNCIOS || [],
-                    legal: data.LEGAL?.[0]?.TEXTO || "",
-                    config: data.CONFIGURACION?.[0] || {},
-                    horarios: data.HORARIOS_RESTAURANTES?.[0] || {}
+                if (!idRest || !dia) return;
+                
+                if (!db.horariosPorDia[idRest]) {
+                    db.horariosPorDia[idRest] = {};
+                }
+                
+                // Tus columnas exactas
+                db.horariosPorDia[idRest][dia] = {
+                    apertura1: row.HORA_APERTURA_1 || null,
+                    cierre1: row.HORA_CIERRE_1 || null,
+                    apertura2: row.HORA_APERTURA_2 || null,
+                    cierre2: row.HORA_CIERRE_2 || null
                 };
-                
-                console.log("✅ Base de datos cargada:", db.restaurantes.length, "restaurantes");
-                return true;
-            } catch (error) {
-                console.error("❌ Error cargando datos:", error);
-                return false;
-            }
+            });
+            
+            console.log("✅ Horarios procesados:", db.horariosPorDia);
+            
+            // ========== RESTO DE DATOS ==========
+            db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+            db.menu = data.MENU_GENERAL || [];
+            db.anuncios = data.ANUNCIOS || [];
+            db.config = data.CONFIGURACION?.[0] || data.CONFIG?.[0] || {};
+            db.legal = data.LEGAL?.[0]?.TEXTO || "";
+            
+            const logo = document.getElementById("app-logo");
+            const bg = document.getElementById("header-bg");
+            const txt = document.getElementById("texto-anuncio");
+            if (db.config.LOGO_URL && logo) logo.src = db.config.LOGO_URL;
+            if (db.config.FONDO_URL && bg) bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
+            if (db.anuncios.length && txt) txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+            
+            console.log("✅ Base de datos cargada:", db.restaurantes.length, "restaurantes");
         }
                 // ==========================================
         // RENDER HOME - MUESTRA LOS RESTAURANTES

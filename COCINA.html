@@ -23,6 +23,14 @@
         .opacity-50 { opacity: 0.5; }
         .historial-item { cursor: pointer; transition: all 0.2s; }
         .historial-item:hover { background: #1e293b; transform: scale(0.98); }
+        /* Estilo para la imagen del banner brillante y clara */
+        .banner-img {
+            filter: brightness(1.05) contrast(1.05) saturate(1.1);
+            transition: all 0.3s ease;
+        }
+        .overlay-gradient {
+            background: linear-gradient(to top, #020617 0%, transparent 40%, transparent 100%);
+        }
     </style>
 </head>
 <body>
@@ -35,18 +43,18 @@
 </div>
 
 <div id="appContent" class="hidden min-h-screen">
-    <div class="relative h-48 overflow-hidden">
-        <img id="restauranteFoto" class="absolute w-full h-full object-cover" src="">
-        <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+    <div class="relative h-56 overflow-hidden shadow-lg">
+        <img id="restauranteFoto" class="absolute w-full h-full object-cover banner-img" src="">
+        <div class="absolute inset-0 overlay-gradient"></div>
         <div class="absolute bottom-0 left-0 right-0 p-5 flex justify-between items-end">
             <div>
-                <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider">📍 COCINA</span>
-                <h1 id="restauranteNombre" class="text-2xl font-black text-white">CARGANDO...</h1>
+                <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider backdrop-blur-sm bg-black/30 px-2 py-1 rounded-lg">📍 COCINA</span>
+                <h1 id="restauranteNombre" class="text-2xl font-black text-white drop-shadow-lg">CARGANDO...</h1>
             </div>
             
             <div class="flex items-center gap-3">
                 <div id="contenedorBotonTienda"></div>
-                <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-all">🚪 SALIR</button>
+                <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-all backdrop-blur-sm">🚪 SALIR</button>
             </div>
         </div>
     </div>
@@ -167,29 +175,31 @@
 
     async function cargarPedidos() {
         try {
-            // 1. Llamamos al servidor
             let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
             let data = await res.json();
             
-            // Renderizamos la info básica del restaurante directamente desde el panel sin hacer peticiones de más
+            // Actualizar nombre y foto del restaurante con brillo
             if (data.tienda) {
                 document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
-                // Buscamos la foto localmente si hace falta o la dejamos estática si ya se cargó una vez
-                if(!document.getElementById('restauranteFoto').src && data.tienda.foto){
-                    document.getElementById('restauranteFoto').src = data.tienda.foto;
+                const fotoElement = document.getElementById('restauranteFoto');
+                // Si hay foto nueva o no se ha cargado antes, la actualizamos
+                if (data.tienda.foto && (!fotoElement.src || fotoElement.src !== data.tienda.foto)) {
+                    fotoElement.src = data.tienda.foto;
+                    // Aseguramos que se vea nítida y brillante añadiendo clase extra
+                    fotoElement.classList.add('banner-img');
+                } else if (!data.tienda.foto && !fotoElement.src) {
+                    // Imagen de respaldo elegante si no hay foto
+                    fotoElement.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
                 }
             }
 
-            // 2. Separamos la respuesta
             let pedidosActivos = data.pedidos || [];
             let pedidosHistorial = data.historial || [];
             let stats = data.stats || {};
             
-            // Actualizamos estadísticas superiores
             if(document.getElementById('statHoy')) document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
             if(document.getElementById('statSemana')) document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
 
-            // Renderizado del botón de Control de Estado de la Tienda
             let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
             let btnClase = tiendaEst === "ABIERTO" 
                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/40" 
@@ -203,11 +213,9 @@
                 `;
             }
 
-            // 3. Traemos configuraciones de Firebase
             const snapshot = await database.ref('pedidos').once('value');
             const fbData = snapshot.val() || {};
 
-            // 4. Juntamos ambos arrays en la variable global "pedidos"
             let listaCombinada = [...pedidosActivos, ...pedidosHistorial];
             
             pedidos = listaCombinada.map(p => {
@@ -217,15 +225,13 @@
                 return p;
             });
 
-            // 5. Pintamos en las columnas
             renderizarTodo();
 
-            // Control de sonido para nuevos entrantes
             if (sonidosActivados && pedidos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
                 audioNotif.play().catch(e => console.log);
             }
         } catch (error) {
-            console.error("Error cargando pedidos en el HTML:", error);
+            console.error("Error cargando pedidos:", error);
         }
     }
 
@@ -435,18 +441,54 @@
         }
     }
 
-    function preguntartSalir() { localStorage.removeItem('AE_REST_ID'); location.reload(); }
+    // Función de salir corregida (cambia la sesión completamente)
+    function preguntarSalir() {
+        Swal.fire({
+            title: '¿Cerrar sesión?',
+            text: 'Volverás a la pantalla de inicio para cambiar de restaurante.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Sí, salir',
+            cancelButtonText: 'Cancelar',
+            background: '#1e293b',
+            color: 'white'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                localStorage.removeItem('AE_REST_ID');
+                miRestauranteId = "";
+                document.getElementById('loginScreen').style.display = 'flex';
+                document.getElementById('appContent').style.display = 'none';
+                document.getElementById('pinInput').value = '';
+                Swal.fire({
+                    title: 'Sesión cerrada',
+                    text: 'Puedes ingresar con otro PIN',
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false,
+                    background: '#020617',
+                    color: 'white'
+                });
+            }
+        });
+    }
 
     async function iniciarApp() {
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').style.display = 'block';
-        
-        // Ya no cargamos restauranteInfo por separado, cargarPedidos se encarga de todo con una sola petición
         await cargarPedidos();
         setInterval(cargarPedidos, 8000);
     }
 
-    window.onload = () => { if (miRestauranteId) iniciarApp(); };
+    window.onload = () => { 
+        if (miRestauranteId) {
+            iniciarApp();
+        } else {
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('appContent').style.display = 'none';
+        }
+    };
 </script>
 </body>
 </html>

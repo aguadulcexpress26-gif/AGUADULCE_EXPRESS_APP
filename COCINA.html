@@ -27,7 +27,6 @@
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
     <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
     <p class="text-white/50 text-xs mb-4 text-center">🔐 PIN DEL RESTAURANTE</p>
@@ -35,26 +34,23 @@
     <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
 </div>
 
-<!-- APP PRINCIPAL -->
 <div id="appContent" class="hidden min-h-screen">
-    <!-- HEADER CON IMAGEN -->
     <div class="relative h-48 overflow-hidden">
-        <img id="restauranteFoto" class="absolute w-full h-full object-cover opacity-40" src="">
+        <img id="restauranteFoto" class="absolute w-full h-full object-cover" src="">
         <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
         <div class="absolute bottom-0 left-0 right-0 p-5 flex justify-between items-end">
             <div>
                 <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider">📍 COCINA</span>
                 <h1 id="restauranteNombre" class="text-2xl font-black text-white">CARGANDO...</h1>
             </div>
-            <button id="btnToggleEstado" class="bg-white/10 backdrop-blur-sm px-5 py-2 rounded-xl font-bold text-sm flex items-center gap-2">
-                <span id="ledEstado" class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span id="txtEstado">ABIERTO</span>
-            </button>
-            <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl">🚪</button>
+            
+            <div class="flex items-center gap-3">
+                <div id="contenedorBotonTienda"></div>
+                <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-all">🚪 SALIR</button>
+            </div>
         </div>
     </div>
 
-    <!-- BARRA DE CONTROLES -->
     <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
         <div class="flex gap-3">
             <div class="badge">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
@@ -66,11 +62,10 @@
                 <div class="text-[9px] text-white/40 uppercase">HOY / SEMANA</div>
                 <div class="text-sm font-bold text-white"><span id="statHoy" class="text-white">0.00</span>€ / <span id="statSemana" class="text-white">0.00</span>€</div>
             </div>
-            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full">🔊 ACTIVAR SONIDO</button>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
         </div>
     </div>
 
-    <!-- 3 COLUMNAS -->
     <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-5">
         <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
             <h3 class="text-cyan-400 font-bold text-sm uppercase mb-3">📥 PEDIDOS ENTRANTES</h3>
@@ -103,8 +98,6 @@
 
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
     let pedidos = [];
-    let enCocina = new Set();
-    let procesando = false;
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
@@ -129,52 +122,92 @@
         }
     }
 
-    async function cargarRestauranteInfo() {
-        let res = await fetch(scriptURL + '?action=cargarTodo&t=' + Date.now());
-        let data = await res.json();
-        let restaurante = (data.RESTAURANTES || []).find(r => r.ID_RESTAURANTE == miRestauranteId);
-        if (restaurante) {
-            document.getElementById('restauranteNombre').innerText = restaurante.NOMBRE_RESTAURANTE;
-            document.getElementById('restauranteFoto').src = restaurante.FOTO;
-            let estadoActual = restaurante.ESTADO?.toLowerCase() === 'abierto';
-            actualizarBotonEstado(estadoActual);
+    async function alternarEstadoTienda(estadoActual) {
+        const nuevoEstado = estadoActual === "ABIERTO" ? "CERRADO" : "ABIERTO";
+        const textoAlerta = nuevoEstado === "ABIERTO" 
+            ? "¿Quieres ABRIR el restaurante al público para recibir pedidos?" 
+            : "¿Quieres CERRAR el restaurante? Los clientes verán el local cerrado en la App.";
+        
+        const confirmar = await Swal.fire({
+            title: `${nuevoEstado === "ABIERTO" ? "🟢" : "🔴"} ¿Cambiar estado?`,
+            text: textoAlerta,
+            showCancelButton: true,
+            confirmButtonColor: nuevoEstado === "ABIERTO" ? "#10B981" : "#EF4444",
+            cancelButtonColor: "#334155",
+            confirmButtonText: nuevoEstado === "ABIERTO" ? "Sí, Abrir" : "Sí, Cerrar",
+            cancelButtonText: "Cancelar",
+            background: "#1e293b",
+            color: "#fff"
+        });
+
+        if (!confirmar.isConfirmed) return;
+
+        try {
+            Swal.showLoading();
+            let res = await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
+            let rData = await res.json();
+            
+            if (rData.status === "OK") {
+                Swal.fire({
+                    icon: 'success',
+                    title: `Tienda configurada como: ${nuevoEstado}`,
+                    timer: 1500,
+                    showConfirmButton: false,
+                    background: "#1e293b",
+                    color: "#fff"
+                });
+                cargarPedidos(); 
+            } else {
+                throw new Error(rData.error || "Error al actualizar");
+            }
+        } catch (err) {
+            Swal.fire({ icon: 'error', title: 'Error en el servidor', text: err.message, background: "#1e293b", color: "#fff" });
         }
     }
 
-    function actualizarBotonEstado(abierto) {
-        document.getElementById('txtEstado').innerText = abierto ? "ABIERTO" : "CERRADO";
-        document.getElementById('ledEstado').className = abierto ? "w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" : "w-2.5 h-2.5 bg-red-500 rounded-full";
-    }
-
-    async function toggleEstadoTienda() {
-        let nuevoEstado = document.getElementById('txtEstado').innerText === "ABIERTO" ? "Cerrado" : "Abierto";
-        await fetch(`${scriptURL}?action=toggleTienda&idRest=${miRestauranteId}&sheet=configuracion&nuevoEstado=${nuevoEstado}`);
-        await cargarRestauranteInfo();
-        if (sonidosActivados && nuevoEstado === "Abierto") audioNotif.play().catch(e=>console.log);
-    }
-    document.getElementById('btnToggleEstado')?.addEventListener('click', toggleEstadoTienda);
-
     async function cargarPedidos() {
         try {
-            // 1. Llamamos al servidor con un timestamp para evitar caché
+            // 1. Llamamos al servidor
             let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
             let data = await res.json();
             
-            // 2. Separamos lo que viene del servidor
+            // Renderizamos la info básica del restaurante directamente desde el panel sin hacer peticiones de más
+            if (data.tienda) {
+                document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
+                // Buscamos la foto localmente si hace falta o la dejamos estática si ya se cargó una vez
+                if(!document.getElementById('restauranteFoto').src && data.tienda.foto){
+                    document.getElementById('restauranteFoto').src = data.tienda.foto;
+                }
+            }
+
+            // 2. Separamos la respuesta
             let pedidosActivos = data.pedidos || [];
             let pedidosHistorial = data.historial || [];
             let stats = data.stats || {};
             
-            // Actualizamos los textos de estadísticas superiores
+            // Actualizamos estadísticas superiores
             if(document.getElementById('statHoy')) document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
             if(document.getElementById('statSemana')) document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
 
-            // 3. Traemos los tiempos o configuraciones de Firebase si usas
+            // Renderizado del botón de Control de Estado de la Tienda
+            let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
+            let btnClase = tiendaEst === "ABIERTO" 
+                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/40" 
+                : "bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/40";
+
+            if(document.getElementById('contenedorBotonTienda')) {
+                document.getElementById('contenedorBotonTienda').innerHTML = `
+                    <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 ${btnClase}">
+                        ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO (PULSA PARA CERRAR)" : "🔴 CERRADO (PULSA PARA ABRIR)"}
+                    </button>
+                `;
+            }
+
+            // 3. Traemos configuraciones de Firebase
             const snapshot = await database.ref('pedidos').once('value');
             const fbData = snapshot.val() || {};
 
-            // 4. JUNTAMOS AMBOS ARRAYS en la variable global "pedidos"
-            // Combinamos activos e historial en una sola lista para que renderizarTodo() los filtre localmente
+            // 4. Juntamos ambos arrays en la variable global "pedidos"
             let listaCombinada = [...pedidosActivos, ...pedidosHistorial];
             
             pedidos = listaCombinada.map(p => {
@@ -184,42 +217,38 @@
                 return p;
             });
 
-            // 5. Pintamos en los cajones de la pantalla
+            // 5. Pintamos en las columnas
             renderizarTodo();
 
             // Control de sonido para nuevos entrantes
-            if (typeof sonidosActivados !== 'undefined' && sonidosActivados && pedidos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
+            if (sonidosActivados && pedidos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
                 audioNotif.play().catch(e => console.log);
             }
         } catch (error) {
             console.error("Error cargando pedidos en el HTML:", error);
         }
     }
-   function renderizarTodo() {
-        // CAJÓN 1: ENTRANTES - Solo pedidos nuevos del cliente
+
+    function renderizarTodo() {
         let entrantes = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
             return est === 'RECIBIDO' || est === 'NUEVO' || est === '';
         });
 
-        // CAJÓN 2: EN COCINA - Se quedan aquí fijos en preparación hasta que el repartidor se los lleva
         let cocina = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
             return est === 'EN PROCESO' || est === 'LISTO';
         });
 
-        // CAJÓN 3: HISTORIAL - Los pedidos se mudan aquí en cuanto el repartidor los recoge y se quedan TODO el día
         let historial = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
             return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO';
         });
 
-        // Actualizar contadores de los badges superiores
         document.getElementById('totalPendientes').innerText = entrantes.length;
         document.getElementById('totalCocina').innerText = cocina.length;
         document.getElementById('totalHistorial').innerText = historial.length;
 
-        // Pintar las tarjetas en sus respectivas columnas
         document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
         document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
         document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
@@ -232,7 +261,7 @@
         </div>`;
     }
 
- function renderCardCocina(p) {
+    function renderCardCocina(p) {
         const est = (p.ESTADO || '').toUpperCase().trim();
         let estaListo = est === 'LISTO';
         let tiempoActivo = p.tiempo_seleccionado || 0; 
@@ -256,10 +285,9 @@
             </div>
         </div>`;
     }
-   function renderCardHistorial(p) {
+
+    function renderCardHistorial(p) {
         const est = (p.ESTADO || '').toUpperCase().trim();
-        
-        // Asignamos una etiqueta visual y color según el estado en la calle
         let tagEstado = '🛵 EN REPARTO';
         let colorTag = 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
         
@@ -300,26 +328,22 @@
         return `Hace ${Math.floor(diff/60)}h`;
     }
 
-   async function aceptarPedido(id) {
-        // Deshabilitamos el botón inmediatamente para evitar doble clic
+    async function aceptarPedido(id) {
         if (window.event && window.event.target) {
             let btn = window.event.target;
             btn.disabled = true;
             btn.style.opacity = '0.5';
         }
-        
-        // Enviamos la orden directa a Google Sheets para pasar el pedido a producción
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
         await cargarPedidos();
     }
 
-   async function rechazarPedido(id) {
+    async function rechazarPedido(id) {
         if (window.event && window.event.target) {
             let btn = window.event.target;
             btn.disabled = true;
             btn.style.opacity = '0.5';
         }
-        // Enviamos un estado diferente para que el servidor diferencie una cancelación de tienda
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=CANCELADO_RESTAURANTE`);
         await cargarPedidos();
     }
@@ -350,15 +374,7 @@
                 <title>Pedido #${pedido.ID_PEDIDO}</title>
                 <style>
                     @page { size: 80mm auto; margin: 0; }
-                    body { 
-                        font-family: 'Courier New', Courier, monospace; 
-                        width: 76mm; 
-                        margin: 0; 
-                        padding: 10px; 
-                        font-size: 14px; 
-                        color: #000;
-                        background: #fff;
-                    }
+                    body { font-family: 'Courier New', Courier, monospace; width: 76mm; margin: 0; padding: 10px; font-size: 14px; color: #000; background: #fff; }
                     .text-center { text-align: center; }
                     .bold { font-weight: bold; }
                     .separator { border-top: 1px dashed #000; margin: 10px 0; }
@@ -379,24 +395,19 @@
                 <p class="bold">DETALLE DEL PEDIDO:</p>
                 <p style="white-space: pre-wrap; margin: 5px 0;">${pedido.PEDIDO_DETALLE || ''}</p>
                 <div class="separator"></div>
-                <div class="text-center total">
-                    TOTAL: ${parseFloat(pedido.TOTAL).toFixed(2)}€
-                </div>
+                <div class="text-center total">TOTAL: ${parseFloat(pedido.TOTAL).toFixed(2)}€</div>
                 <div class="separator"></div>
                 <p class="text-center" style="font-size: 11px; margin-top: 15px;">¡Buen provecho!</p>
                 <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(() => window.close(), 500);
-                    };
+                    window.onload = function() { window.print(); setTimeout(() => window.close(), 500); };
                 <\/script>
             </body>
             </html>
         `);
         ventana.document.close();
     }
+
     function verDetallePedido(id) {
-        // Buscamos el pedido en la lista global
         let p = pedidos.find(x => x.ID_PEDIDO == id);
         if (p) {
             Swal.fire({
@@ -419,20 +430,18 @@
                 confirmButtonText: '🖨️ Imprimir Recibo', 
                 cancelButtonText: 'Cerrar'
             }).then(result => { 
-                if (result.isConfirmed) {
-                    imprimirTicket(p); 
-                }
+                if (result.isConfirmed) { imprimirTicket(p); }
             });
         }
     }
 
-    function forzarRefresco() { cargarPedidos(); }
-    function preguntarSalir() { localStorage.removeItem('AE_REST_ID'); location.reload(); }
+    function preguntartSalir() { localStorage.removeItem('AE_REST_ID'); location.reload(); }
 
     async function iniciarApp() {
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').style.display = 'block';
-        await cargarRestauranteInfo();
+        
+        // Ya no cargamos restauranteInfo por separado, cargarPedidos se encarga de todo con una sola petición
         await cargarPedidos();
         setInterval(cargarPedidos, 8000);
     }

@@ -199,96 +199,167 @@
     }
     
     function renderizarPedidos(pedidos) {
-        const contenedor = document.getElementById('listaPedidos');
-        if (pedidos.length === 0) {
-            contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
-            return;
+    const contenedor = document.getElementById('listaPedidos');
+    if (pedidos.length === 0) {
+        contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
+        return;
+    }
+    
+    let html = '';
+    for (let p of pedidos) {
+        const estado = (p.ESTADO || '').toUpperCase().trim();
+        const total = parseFloat(p.TOTAL) || 0;
+        let telefono = p.telf || p.WHATSAPP || '';
+        const telefonoLimpio = String(telefono).replace(/\D/g, '');
+        const direccionString = p.DIRECCION || 'Sin dirección';
+        
+        // Generador dinámico de URL para Google Maps optimizado para iOS/Android
+        const linkMaps = navigator.userAgent.match(/(iPhone|iPod|iPad)/)
+            ? `maps://maps.apple.com/?q=${encodeURIComponent(direccionString)}`
+            : `geo:0,0?q=${encodeURIComponent(direccionString)}`;
+
+        // ==========================================
+        // 🌟 NUEVO: CONFIGURACIÓN DINÁMICA DEL BANNER DE ESTADO
+        // ==========================================
+        let bannerEstadoHtml = '';
+        let botones = '';
+        let mostrarBotonMapa = false;
+
+        // Definición de estilos y textos de los banners según el estado
+        if (estado === 'LISTO') {
+            bannerEstadoHtml = `
+                <div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">
+                    🛵 PEDIDO LISTO - PASA A RECOGERLO POR EL RESTAURANTE
+                </div>`;
+            botones = `<button class="btn-recoger" onclick="recogerPedido('${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
+        } 
+        else if (estado === 'EN CAMINO') {
+            mostrarBotonMapa = true;
+            bannerEstadoHtml = `
+                <div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(79, 70, 229, 0.15); color: #818cf8; border: 1px solid rgba(79, 70, 229, 0.3);">
+                    🚀 EN RUTA - LLEVANDO EL PEDIDO AL CLIENTE
+                </div>`;
+            botones = `<button class="btn-llegada" onclick="validarLlegadaGPS(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+        } 
+        else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
+            mostrarBotonMapa = true;
+            bannerEstadoHtml = `
+                <div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">
+                    📍 UBICADO EN EL DOMICILIO - ESPERANDO RESPUESTA
+                </div>`;
+            
+            const tEspera = localStorage.getItem('espera_' + p.ID_PEDIDO);
+            if (tEspera && parseInt(tEspera) > Date.now()) {
+                const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
+                const mins = Math.floor(restantes / 60);
+                const segs = restantes % 60;
+                botones = `<div class="btn-espera" id="reloj-${p.ID_PEDIDO}">⏳ ESPERANDO AL CLIENTE (${mins}:${segs < 10 ? '0' : ''}${segs})</div>`;
+            } else {
+                botones = `<button class="btn-deuda" onclick="aplicarDeudaAusencia('${p.ID_PEDIDO}', ${total})">❌ CLIENTE AUSENTE / CARGAR DEUDA</button>`;
+            }
+            botones += `<button class="btn-entregar" style="margin-top:8px;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>`;
+        } 
+        else if (estado === 'RECIBIDO' || estado === 'EN PROCESO') {
+            const tiempoCocina = calcularTiempoRestante(p.timestamp_fin_elaboracion);
+            if (tiempoCocina) {
+                const estilosRetraso = tiempoCocina.retrasado 
+                    ? 'border: 1px solid #ef4444; background: rgba(239, 68, 68, 0.1); color: #ef4444;' 
+                    : 'border: 1px solid rgba(234, 179, 8, 0.3); background: rgba(234, 179, 8, 0.15); color: #eab308;';
+                
+                botones = `
+                    <div class="rounded-xl p-3 text-center" style="${estilosRetraso}">
+                        <div style="font-size: 11px; font-weight: bold; letter-spacing: 0.05em; margin-bottom: 2px;">🍳 TIEMPO DE PREPARACIÓN</div>
+                        <div style="font-size: 18px; font-weight: 800;" id="timer-cocina-${p.ID_PEDIDO}" data-timestamp="${p.timestamp_fin_elaboracion}">
+                            ${tiempoCocina.texto}
+                        </div>
+                        <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">El restaurante está preparando el pedido</div>
+                    </div>`;
+            } else {
+                botones = `<div class="btn-espera" style="background:#475569; cursor:default;">⏳ PEDIDO EN PREPARACIÓN - ESPERANDO AL RESTAURANTE</div>`;
+            }
+        } 
+        else if (estado.includes('CANCELADO')) {
+            bannerEstadoHtml = `
+                <div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">
+                    🛑 PEDIDO ANULADO POR EL RESTAURANTE / CLIENTE
+                </div>`;
+            botones = `<div class="btn-espera" style="background:#ef4444; color:white; cursor:default;">⚠️ ESTADO: ${estado}</div>`;
+        } 
+        else {
+            botones = `<div class="btn-espera" style="background:#475569; cursor:default;">⏳ ESTADO: ${estado}</div>`;
         }
         
-        let html = '';
-        for (let p of pedidos) {
-            const estado = (p.ESTADO || '').toUpperCase().trim();
-            const total = parseFloat(p.TOTAL) || 0;
-            let telefono = p.telf || p.WHATSAPP || '';
-            const telefonoLimpio = String(telefono).replace(/\D/g, '');
-            const direccionString = p.DIRECCION || 'Sin dirección';
-            
-            // Generador dinámico de URL para Google Maps optimizado para iOS/Android
-            const linkMaps = navigator.userAgent.match(/(iPhone|iPod|iPad)/)
-                ? `maps://maps.apple.com/?q=${encodeURIComponent(direccionString)}`
-                : `geo:0,0?q=${encodeURIComponent(direccionString)}`;
+        // INFORMACIÓN DE PAGO EN EFECTIVO
+        let bloqueEfectivo = '';
+        let pagaCon = parseFloat(p.paga_con) || parseFloat(p.PAGA_CON) || 0;
+        let esEfectivo = (p.PAGO || '').toUpperCase().includes('EFECTIVO');
 
-            // ==========================================
-            // CONTROL DE ESTADOS Y CONFIGURACIÓN DE BOTONES
-            // ==========================================
-            let botones = '';
-            let mostrarBotonMapa = false;
-            
-            if (estado === 'LISTO') {
-                botones = `<button class="btn-recoger" onclick="recogerPedido('${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
-            } else if (estado === 'EN CAMINO') {
-                mostrarBotonMapa = true;
-                botones = `<button class="btn-llegada" onclick="validarLlegadaGPS(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
-            } else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
-                mostrarBotonMapa = true;
-                const tEspera = localStorage.getItem('espera_' + p.ID_PEDIDO);
-                if (tEspera && parseInt(tEspera) > Date.now()) {
-                    const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
-                    const mins = Math.floor(restantes / 60);
-                    const segs = restantes % 60;
-                    botones = `<div class="btn-espera" id="reloj-${p.ID_PEDIDO}">⏳ ESPERANDO AL CLIENTE (${mins}:${segs < 10 ? '0' : ''}${segs})</div>`;
-                } else {
-                    botones = `<button class="btn-deuda" onclick="aplicarDeudaAusencia('${p.ID_PEDIDO}', ${total})">❌ CLIENTE AUSENTE / CARGAR DEUDA</button>`;
-                }
-                botones += `<button class="btn-entregar" style="margin-top:8px;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>`;
-            } else if (estado === 'RECIBIDO' || estado === 'EN PROCESO') {
-                const tiempoCocina = calcularTiempoRestante(p.timestamp_fin_elaboracion);
-                if (tiempoCocina) {
-                    const estilosRetraso = tiempoCocina.retrasado 
-                        ? 'border: 1px solid #ef4444; background: rgba(239, 68, 68, 0.1); color: #ef4444;' 
-                        : 'border: 1px solid rgba(234, 179, 8, 0.3); background: rgba(234, 179, 8, 0.15); color: #eab308;';
-                    
-                    botones = `
-                        <div class="rounded-xl p-3 text-center" style="${estilosRetraso}">
-                            <div style="font-size: 11px; font-weight: bold; letter-spacing: 0.05em; margin-bottom: 2px;">🍳 TIEMPO DE PREPARACIÓN</div>
-                            <div style="font-size: 18px; font-weight: 800;" id="timer-cocina-${p.ID_PEDIDO}" data-timestamp="${p.timestamp_fin_elaboracion}">
-                                ${tiempoCocina.texto}
-                            </div>
-                            <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">El restaurante está preparando el pedido</div>
+        if (esEfectivo) {
+            if (pagaCon > total) {
+                bloqueEfectivo = `
+                    <div style="margin-top: 10px; padding: 12px; background: rgba(34, 197, 94, 0.05); border-radius: 12px; border: 1px dashed rgba(34, 197, 94, 0.3); font-size: 13px;">
+                        <div class="flex justify-between" style="color: #94a3b8; margin-bottom: 4px;">
+                            <span>💰 El cliente paga con:</span>
+                            <span style="color: #fff; font-weight: bold;">${pagaCon.toFixed(2)}€</span>
                         </div>
-                    `;
-                } else {
-                    botones = `<div class="btn-espera" style="background:#475569; cursor:default;">⏳ PEDIDO EN PREPARACIÓN - ESPERANDO AL RESTAURANTE</div>`;
-                }
+                        <div class="flex justify-between" style="border-top: 1px dashed rgba(34, 197, 94, 0.2); padding-top: 4px; margin-top: 4px; color: #22c55e; font-weight: bold;">
+                            <span>💵 Llevar cambio de:</span>
+                            <span style="font-size: 14px;">${(pagaCon - total).toFixed(2)}€</span>
+                        </div>
+                    </div>`;
             } else {
-                botones = `<div class="btn-espera" style="background:#475569; cursor:default;">⏳ ESTADO: ${estado}</div>`;
+                bloqueEfectivo = `
+                    <div style="margin-top: 10px; padding: 10px; background: rgba(56, 189, 248, 0.08); border-radius: 12px; border: 1px dashed rgba(56, 189, 248, 0.3); font-size: 12px; color: #38bdf8; text-align: center; font-weight: 500;">
+                        🪙 Cobro en Efectivo (Cobrar importe exacto: ${total.toFixed(2)}€)
+                    </div>`;
             }
-            
-            // INFORMACIÓN DE PAGO EN EFECTIVO
-            let bloqueEfectivo = '';
-            let pagaCon = parseFloat(p.paga_con) || parseFloat(p.PAGA_CON) || 0;
-            let esEfectivo = (p.PAGO || '').toUpperCase().includes('EFECTIVO');
+        }
 
-            if (esEfectivo) {
-                if (pagaCon > total) {
-                    bloqueEfectivo = `
-                        <div style="margin-top: 10px; padding: 12px; background: rgba(34, 197, 94, 0.1); border-radius: 12px; border: 1px dashed #22c55e; font-size: 13px;">
-                            <div class="flex justify-between" style="color: #94a3b8; margin-bottom: 4px;">
-                                <span>💰 El cliente paga con:</span>
-                                <span style="color: #fff; font-weight: bold;">${pagaCon.toFixed(2)}€</span>
+        let mapaHtml = mostrarBotonMapa ? `<a class="btn-mapa" href="${linkMaps}">🗺️ VER RUTA EN MAPA</a>` : '';
+
+        // ==========================================
+        // 🛠️ DISEÑO INYECTADO CON MÁXIMA SEPARACIÓN VISUAL
+        // ==========================================
+        html += `
+            <div style="background: #0f172a; border: 2px solid #1e293b; border-radius: 20px; padding: 18px; margin-bottom: 28px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);">
+                
+                ${bannerEstadoHtml}
+
+                <div class="flex justify-between" style="margin-bottom: 10px;">
+                    <span class="ref" style="font-size: 16px; font-weight: bold; color: #38bdf8;">📋 ${p.ID_PEDIDO}</span>
+                    <span class="status-badge" style="background: #1e293b; color: #cbd5e1; font-size: 11px; padding: 4px 10px; border-radius: 12px; font-weight: bold;">${estado}</span>
+                </div>
+                
+                <div class="direccion" style="font-size: 16px; font-weight: 600; color: #ffffff; margin: 12px 0; line-height: 1.4;">📍 ${direccionString}</div>
+                
+                ${mapaHtml}
+
+                <div class="cliente-box" style="background: rgba(30, 41, 59, 0.6); padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.02); margin-top: 12px; margin-bottom: 12px;">
+                    <div class="cliente-nombre" style="font-weight: bold; color: #ffffff; margin-bottom: 6px; font-size: 15px;">👤 ${p.CLIENTE || 'Cliente'}</div>
+                    <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 13px; color: #94a3b8;">📞 ${telefono || 'No disponible'}</span>
+                        ${telefonoLimpio ? `
+                            <div style="display: flex; gap: 8px;">
+                                <a href="tel:+34${telefonoLimpio}" style="background:#22c55e; color:#020617; padding: 6px 12px; border-radius: 8px; text-decoration:none; font-size:12px; font-weight:bold; shadow: sm;">📞 Llamar</a>
+                                <a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background:#25D366; color:white; padding: 6px 12px; border-radius: 8px; text-decoration:none; font-size:12px; font-weight:bold; shadow: sm;">💬 WhatsApp</a>
                             </div>
-                            <div class="flex justify-between" style="border-top: 1px dashed rgba(34, 197, 94, 0.2); padding-top: 4px; margin-top: 4px; color: #22c55e; font-weight: bold;">
-                                <span>💵 Llevar cambio de:</span>
-                                <span style="font-size: 14px;">${(pagaCon - total).toFixed(2)}€</span>
-                            </div>
-                        </div>`;
-                } else {
-                    bloqueEfectivo = `
-                        <div style="margin-top: 10px; padding: 10px; background: rgba(56, 189, 248, 0.1); border-radius: 12px; border: 1px dashed rgba(56, 189, 248, 0.3); font-size: 12px; color: #38bdf8; text-align: center; font-weight: 500;">
-                            🪙 Cobro en Efectivo (Cobrar importe exacto: ${total.toFixed(2)}€)
-                        </div>`;
-                }
-            }
+                        ` : ''}
+                    </div>
+                    <div class="pago" style="font-size: 13px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px; margin-top: 6px;">💳 Método: <strong style="color: #f1f5f9;">${p.PAGO || 'Efectivo'}</strong></div>
+                    ${bloqueEfectivo}
+                </div>
+                
+                <div class="flex justify-between items-center" style="margin: 14px 0; padding: 0 4px;">
+                    <span style="color:#94a3b8; font-size:14px;">Total a cobrar:</span>
+                    <span style="color:#22c55e; font-size: 24px; font-weight: 800;">${total.toFixed(2)}€</span>
+                </div>
+                
+                ${botones}
+            </div>
+        `;
+    }
+    contenedor.innerHTML = html;
+}
 
             // AGREGAR BOTÓN DE MAPAS SI CORRESPONDE
             let mapaHtml = mostrarBotonMapa ? `<a class="btn-mapa" href="${linkMaps}">🗺️ VER RUTA EN MAPA</a>` : '';

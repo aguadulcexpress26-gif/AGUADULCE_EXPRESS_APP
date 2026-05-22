@@ -23,18 +23,60 @@
         .opacity-50 { opacity: 0.5; }
         .historial-item { cursor: pointer; transition: all 0.2s; }
         .historial-item:hover { background: #1e293b; transform: scale(0.98); }
-        /* Estilo para la imagen del banner brillante y clara */
-        .banner-img {
-            filter: brightness(1.05) contrast(1.05) saturate(1.1);
-            transition: all 0.3s ease;
+        
+        /* ESTILOS PARA LA IMAGEN DEL BANNER: BRILLANTE, CLARA Y SIN OPACIDAD */
+        .restaurant-banner {
+            position: relative;
+            height: 210px;
+            overflow: hidden;
+            background: #000000; /* Fondo negro por si la imagen tarda en cargar */
         }
-        .overlay-gradient {
-            background: linear-gradient(to top, #020617 0%, transparent 40%, transparent 100%);
+        .restaurant-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            /* Mejoras de nitidez, brillo y contraste - SIN opacidad */
+            filter: brightness(1.05) contrast(1.08) saturate(1.1);
+            transition: filter 0.2s ease;
+            display: block;
+        }
+        /* Gradiente suave solo en la parte inferior para legibilidad del texto, pero SIN afectar la imagen */
+        .banner-gradient {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(to top, #020617 0%, rgba(2,6,23,0.7) 50%, transparent 100%);
+            pointer-events: none;
+        }
+        /* Texto sobre el banner siempre legible */
+        .banner-text {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px 20px 20px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            z-index: 2;
+        }
+        .pin-badge {
+            backdrop-filter: blur(8px);
+            background: rgba(0,0,0,0.5);
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: bold;
+            display: inline-block;
         }
     </style>
 </head>
 <body>
 
+<!-- Pantalla de Login -->
 <div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
     <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
     <p class="text-white/50 text-xs mb-4 text-center">🔐 PIN DEL RESTAURANTE</p>
@@ -42,23 +84,25 @@
     <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
 </div>
 
+<!-- Panel Principal de Cocina -->
 <div id="appContent" class="hidden min-h-screen">
-    <div class="relative h-56 overflow-hidden shadow-lg">
-        <img id="restauranteFoto" class="absolute w-full h-full object-cover banner-img" src="">
-        <div class="absolute inset-0 overlay-gradient"></div>
-        <div class="absolute bottom-0 left-0 right-0 p-5 flex justify-between items-end">
+    <!-- Banner con imagen del restaurante (mejorado visualmente) -->
+    <div class="restaurant-banner">
+        <img id="restauranteFoto" class="restaurant-img" src="" alt="Imagen del restaurante">
+        <div class="banner-gradient"></div>
+        <div class="banner-text">
             <div>
-                <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider backdrop-blur-sm bg-black/30 px-2 py-1 rounded-lg">📍 COCINA</span>
-                <h1 id="restauranteNombre" class="text-2xl font-black text-white drop-shadow-lg">CARGANDO...</h1>
+                <span class="pin-badge text-cyan-400">📍 COCINA</span>
+                <h1 id="restauranteNombre" class="text-2xl font-black text-white drop-shadow-lg mt-1">CARGANDO...</h1>
             </div>
-            
             <div class="flex items-center gap-3">
                 <div id="contenedorBotonTienda"></div>
-                <button onclick="preguntarSalir()" class="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-all backdrop-blur-sm">🚪 SALIR</button>
+                <button onclick="preguntarSalir()" class="bg-white/10 backdrop-blur-sm p-2 rounded-xl hover:bg-white/20 transition-all font-semibold text-white">🚪 SALIR</button>
             </div>
         </div>
     </div>
 
+    <!-- Barra de estadísticas -->
     <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
         <div class="flex gap-3">
             <div class="badge">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
@@ -74,6 +118,7 @@
         </div>
     </div>
 
+    <!-- Columnas de pedidos -->
     <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-5">
         <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
             <h3 class="text-cyan-400 font-bold text-sm uppercase mb-3">📥 PEDIDOS ENTRANTES</h3>
@@ -178,19 +223,33 @@
             let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
             let data = await res.json();
             
-            // Actualizar nombre y foto del restaurante con brillo
+            // ACTUALIZAR NOMBRE E IMAGEN DEL RESTAURANTE (SIN OPACIDAD Y BRILLANTE)
             if (data.tienda) {
-                document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
+                // Actualizar nombre del restaurante
+                const nombreElement = document.getElementById('restauranteNombre');
+                if (nombreElement) nombreElement.innerText = data.tienda.nombre || "Restaurante";
+                
+                // Obtener la URL de la imagen desde la hoja de cálculo (columna 'foto' o 'logo_url')
+                let imagenUrl = data.tienda.foto || data.tienda.imagen || data.tienda.logo_url || null;
                 const fotoElement = document.getElementById('restauranteFoto');
-                // Si hay foto nueva o no se ha cargado antes, la actualizamos
-                if (data.tienda.foto && (!fotoElement.src || fotoElement.src !== data.tienda.foto)) {
-                    fotoElement.src = data.tienda.foto;
-                    // Aseguramos que se vea nítida y brillante añadiendo clase extra
-                    fotoElement.classList.add('banner-img');
-                } else if (!data.tienda.foto && !fotoElement.src) {
-                    // Imagen de respaldo elegante si no hay foto
+                
+                if (imagenUrl && imagenUrl.trim() !== "") {
+                    // Forzar refresco y eliminar caché para asegurar imagen nítida
+                    const urlConCache = `${imagenUrl}?t=${Date.now()}`;
+                    if (fotoElement.src !== urlConCache) {
+                        fotoElement.src = urlConCache;
+                    }
+                    // Asegurar que la imagen se muestre correctamente, si falla usar respaldo
+                    fotoElement.onerror = function() {
+                        this.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
+                        this.style.filter = "brightness(1.05) contrast(1.08) saturate(1.1)";
+                    };
+                } else {
+                    // Imagen por defecto si no hay URL en la hoja de cálculo (imagen de restaurante genérica)
                     fotoElement.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
                 }
+                // Aseguramos que la imagen tenga la clase y estilos brillantes (aplicados por CSS)
+                fotoElement.classList.add('restaurant-img');
             }
 
             let pedidosActivos = data.pedidos || [];
@@ -441,7 +500,7 @@
         }
     }
 
-    // Función de salir corregida (cambia la sesión completamente)
+    // Función SALIR que cierra sesión completamente y vuelve a la pantalla de login
     function preguntarSalir() {
         Swal.fire({
             title: '¿Cerrar sesión?',
@@ -456,10 +515,13 @@
             color: 'white'
         }).then((result) => {
             if (result.isConfirmed) {
+                // Limpiar localStorage y variables
                 localStorage.removeItem('AE_REST_ID');
                 miRestauranteId = "";
+                // Ocultar app y mostrar login
+                document.getElementById('appContent').classList.add('hidden');
                 document.getElementById('loginScreen').style.display = 'flex';
-                document.getElementById('appContent').style.display = 'none';
+                // Limpiar campo PIN
                 document.getElementById('pinInput').value = '';
                 Swal.fire({
                     title: 'Sesión cerrada',
@@ -476,7 +538,7 @@
 
     async function iniciarApp() {
         document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('appContent').style.display = 'block';
+        document.getElementById('appContent').classList.remove('hidden');
         await cargarPedidos();
         setInterval(cargarPedidos, 8000);
     }
@@ -486,7 +548,7 @@
             iniciarApp();
         } else {
             document.getElementById('loginScreen').style.display = 'flex';
-            document.getElementById('appContent').style.display = 'none';
+            document.getElementById('appContent').classList.add('hidden');
         }
     };
 </script>

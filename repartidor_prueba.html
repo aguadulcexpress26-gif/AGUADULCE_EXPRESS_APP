@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aguadulce Express - Panel de Reparto v7.0</title>
+    <title>Aguadulce Express - Panel de Reparto v7.5</title>
     <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/manifest.json">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg">
     <meta name="theme-color" content="#06b6d4">
@@ -14,16 +14,23 @@
         .loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020617; display: flex; align-items: center; justify-content: center; z-index: 500; flex-direction: column; gap: 15px; }
         .spinner { width: 50px; height: 50px; border: 5px solid #1e293b; border-top: 5px solid #06b6d4; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 16px; margin-bottom: 16px; position: relative; }
-        .btn-recoger { background: #06b6d4; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
-        .btn-recoger.disabled { background: #475569; color: #94a3b8; cursor: not-allowed; opacity: 0.6; }
+        
+        /* Tarjetas de pedidos estilizadas de forma nativa */
+        .pedido-card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 16px; margin-bottom: 16px; position: relative; }
+        .ref { font-size: 15px; font-weight: bold; color: #38bdf8; }
+        .status-badge { background: #1e293b; color: #94a3b8; font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: bold; letter-spacing: 0.05em; }
+        .direccion { font-size: 16px; font-weight: 600; color: #fff; margin: 8px 0; }
+        .cliente-box { background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 10px; }
+        
+        /* Botones de acción rápidos */
+        .btn-recoger { background: #06b6d4; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; transition: transform 0.1s ease; }
         .btn-llegada { background: #f59e0b; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
         .btn-espera { background: #334155; color: #cbd5e1; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 8px; }
         .btn-deuda { background: #ef4444; color: #ffffff; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
         .btn-entregar { background: #22c55e; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-mapa { background: #4f46e5; color: #ffffff; font-weight: bold; width: 100%; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 8px; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 14px; text-decoration: none; }
+        
         .sin-pedidos { text-align: center; padding: 40px; color: #64748b; font-size: 16px; }
-        .badge-contador { background: rgba(6, 182, 212, 0.15); color: #06b6d4; padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: bold; border: 1px solid rgba(6, 182, 212, 0.3); display: inline-block; }
-        .badge-tiempo-cocina { background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: bold; border: 1px solid rgba(234, 179, 8, 0.3); }
         .btn-historial { background: #334155; color: #f8fafc; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
         .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(2,6,23,0.95); z-index: 1000; display: none; align-items: center; justify-content: center; }
         .modal-content { background: #0f172a; border-radius: 20px; padding: 20px; max-width: 400px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid #1e293b; }
@@ -67,7 +74,6 @@
         <div id="listaPedidos"></div>
     </div>
 
-    <!-- Modal de historial -->
     <div id="modalHistorial" class="modal">
         <div class="modal-content">
             <div class="flex justify-between items-center" style="margin-bottom: 16px;">
@@ -78,13 +84,17 @@
         </div>
     </div>
 
-   <script>
+<script>
     const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
     let codigoActual = null;
     let intervalo = null;
     let pedidosActuales = [];
     let audioNotif = null;
     
+    // Configuración para control de inactividad
+    let ultimoAccesoActividad = Date.now();
+    const TIEMPO_MAX_INACTIVIDAD = 25 * 60 * 1000; // 25 Minutos en milisegundos
+
     function initAudio() {
         audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audioNotif.volume = 0.8;
@@ -95,6 +105,47 @@
             audioNotif.currentTime = 0;
             audioNotif.play().catch(e => console.log('Audio necesita interacción'));
         }
+    }
+
+    // Registrar actividad del usuario (clics, toques, scroll)
+    function registrarActividadUsuario() {
+        ultimoAccesoActividad = Date.now();
+    }
+    window.onload = registrarActividadUsuario;
+    document.onmousemove = registrarActividadUsuario;
+    document.onkeypress = registrarActividadUsuario;
+    document.ontouchstart = registrarActividadUsuario;
+
+    // Monitor de Inactividad (Ejecuta cada 10 segundos en segundo plano)
+    setInterval(() => {
+        if (!codigoActual) return;
+        if (Date.now() - ultimoAccesoActividad > TIEMPO_MAX_INACTIVIDAD) {
+            ejecutarCierrePorInactividad();
+        }
+    }, 10000);
+
+    function ejecutarCierrePorInactividad() {
+        if (intervalo) clearInterval(intervalo);
+        Swal.fire({
+            title: '⏰ ¿Sigues ahí?',
+            text: 'Tu sesión se cerrará por inactividad para liberar el reparto.',
+            icon: 'warning',
+            background: '#0f172a', color: 'white',
+            timer: 60000,
+            timerProgressBar: true,
+            confirmButtonColor: '#06b6d4',
+            confirmButtonText: '¡SÍ, SEGUIR TRABAJANDO!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                registrarActividadUsuario();
+                intervalo = setInterval(cargarPedidos, 5000);
+            } else {
+                // Forzar salida limpia
+                localStorage.removeItem('rep_code');
+                localStorage.removeItem('espera_');
+                location.reload();
+            }
+        });
     }
     
     async function cargarPedidos() {
@@ -114,7 +165,6 @@
             document.getElementById('nombreRep').innerHTML = data.nombre || codigoActual;
             document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
             
-            // Filtro inteligente para ocultar todo tipo de entregados o cancelaciones
             pedidosActuales = (data.pedidos || []).filter(p => {
                 const estado = (p.ESTADO || '').toUpperCase().trim();
                 return !estado.includes('CANCELADO') && 
@@ -131,7 +181,6 @@
         }
     }
     
-    // ⚡ CORREGIDO: Ahora devuelve el objeto estructurado que tu renderizador necesita
     function calcularTiempoRestante(timestampFin) {
         if (!timestampFin || timestampFin === 0) return null;
         const ahora = Date.now();
@@ -149,7 +198,7 @@
         };
     }
     
-        function renderizarPedidos(pedidos) {
+    function renderizarPedidos(pedidos) {
         const contenedor = document.getElementById('listaPedidos');
         if (pedidos.length === 0) {
             contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
@@ -162,17 +211,26 @@
             const total = parseFloat(p.TOTAL) || 0;
             let telefono = p.telf || p.WHATSAPP || '';
             const telefonoLimpio = String(telefono).replace(/\D/g, '');
+            const direccionString = p.DIRECCION || 'Sin dirección';
             
+            // Generador dinámico de URL para Google Maps optimizado para iOS/Android
+            const linkMaps = navigator.userAgent.match(/(iPhone|iPod|iPad)/)
+                ? `maps://maps.apple.com/?q=${encodeURIComponent(direccionString)}`
+                : `geo:0,0?q=${encodeURIComponent(direccionString)}`;
+
             // ==========================================
-            // CONTROL DE ESTADOS
+            // CONTROL DE ESTADOS Y CONFIGURACIÓN DE BOTONES
             // ==========================================
             let botones = '';
+            let mostrarBotonMapa = false;
             
             if (estado === 'LISTO') {
                 botones = `<button class="btn-recoger" onclick="recogerPedido('${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
             } else if (estado === 'EN CAMINO') {
+                mostrarBotonMapa = true;
                 botones = `<button class="btn-llegada" onclick="validarLlegadaGPS(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
             } else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
+                mostrarBotonMapa = true;
                 const tEspera = localStorage.getItem('espera_' + p.ID_PEDIDO);
                 if (tEspera && parseInt(tEspera) > Date.now()) {
                     const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
@@ -227,36 +285,42 @@
                 } else {
                     bloqueEfectivo = `
                         <div style="margin-top: 10px; padding: 10px; background: rgba(56, 189, 248, 0.1); border-radius: 12px; border: 1px dashed rgba(56, 189, 248, 0.3); font-size: 12px; color: #38bdf8; text-align: center; font-weight: 500;">
-                            🪙 Cobro en Efectivo (Llevar cambio general o cobrar importe exacto)
+                            🪙 Cobro en Efectivo (Cobrar importe exacto: ${total.toFixed(2)}€)
                         </div>`;
                 }
             }
 
-            // TARJETA COMPLETA
+            // AGREGAR BOTÓN DE MAPAS SI CORRESPONDE
+            let mapaHtml = mostrarBotonMapa ? `<a class="btn-mapa" href="${linkMaps}">🗺️ VER RUTA EN MAPA</a>` : '';
+
+            // TARJETA COMPLETA INYECTADA
             html += `
                 <div class="pedido-card">
                     <div class="flex justify-between" style="margin-bottom: 10px;">
                         <span class="ref">📋 ${p.ID_PEDIDO}</span>
                         <span class="status-badge">${estado}</span>
                     </div>
-                    <div class="direccion">📍 ${p.DIRECCION || 'Sin dirección'}</div>
-                    <div class="cliente-box">
-                        <div class="cliente-nombre">👤 ${p.CLIENTE || 'Cliente'}</div>
+                    <div class="direccion">📍 ${direccionString}</div>
+                    
+                    ${mapaHtml}
+
+                    <div class="cliente-box" style="margin-top: 10px;">
+                        <div class="cliente-nombre" style="font-weight: bold; color: #fff; margin-bottom: 4px;">👤 ${p.CLIENTE || 'Cliente'}</div>
                         <div class="flex" style="justify-content: space-between; align-items: center;">
-                            <span>📞 ${telefono || 'No disponible'}</span>
+                            <span style="font-size: 13px; color: #cbd5e1;">📞 ${telefono || 'No disponible'}</span>
                             ${telefonoLimpio ? `
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="tel:+34${telefonoLimpio}" style="background:#22c55e;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">📞</a>
-                                    <a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background:#25D366;color:black;padding:5px 10px;border-radius:10px;text-decoration:none;font-size:11px;">💬</a>
+                                <div style="display: flex; gap: 6px;">
+                                    <a href="tel:+34${telefonoLimpio}" style="background:#22c55e;color:black;padding:6px 12px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:bold;">📞 Llamar</a>
+                                    <a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background:#25D366;color:black;padding:6px 12px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:bold;">💬 WhatsApp</a>
                                 </div>
                             ` : ''}
                         </div>
-                        <div class="pago">💳 Pago: ${p.PAGO || 'Efectivo'}</div>
+                        <div class="pago" style="font-size: 13px; color: #94a3b8; margin-top: 6px;">💳 Método de Pago: <strong>${p.PAGO || 'Efectivo'}</strong></div>
                         ${bloqueEfectivo}
                     </div>
-                    <div class="flex justify-between items-center" style="margin: 10px 0;">
-                        <span style="color:#94a3b8; font-size:13px;">Total a cobrar:</span>
-                        <span style="color:#22c55e; font-size: 20px; font-weight: bold;">${total.toFixed(2)}€</span>
+                    <div class="flex justify-between items-center" style="margin: 10px 0; padding: 0 4px;">
+                        <span style="color:#94a3b8; font-size:14px;">Total a cobrar:</span>
+                        <span style="color:#22c55e; font-size: 22px; font-weight: bold;">${total.toFixed(2)}€</span>
                     </div>
                     ${botones}
                 </div>
@@ -278,15 +342,17 @@
             ejecutarLlegada(id);
         }, { enableHighAccuracy: true, timeout: 5000 });
     };
+
     async function ejecutarLlegada(id) {
         localStorage.setItem('espera_' + id, Date.now() + (6 * 60 * 1000));
         await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
         await cargarPedidos();
     }
+
     window.recogerPedido = async function(id) {
         try {
             await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
-            await Swal.fire({ title: '✅ Pedido recogido', icon: 'success', background: '#0f172a', color: 'white', timer: 1500, showConfirmButton: false });
+            await Swal.fire({ title: '✅ Pedido en camino', icon: 'success', background: '#0f172a', color: 'white', timer: 1500, showConfirmButton: false });
             await cargarPedidos();
         } catch(e) {
             Swal.fire({ title: 'Error', text: 'No se pudo actualizar', icon: 'error', background: '#0f172a', color: 'white' });
@@ -397,7 +463,6 @@
         }, 1000);
     }
     
-    // ⚡ OPTIMIZADO: Cambia dinámicamente el contenedor del DOM a color de advertencia si se pasa del tiempo
     function iniciarActualizacionTimersCocina() {
         setInterval(() => {
             document.querySelectorAll('[id^="timer-cocina-"]').forEach(el => {
@@ -493,3 +558,5 @@
         });
     }
 </script>
+</body>
+</html>

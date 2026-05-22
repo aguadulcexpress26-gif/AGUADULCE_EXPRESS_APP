@@ -853,6 +853,125 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
                 return false;
             }
         }
+                // ==========================================
+        // RENDER HOME - MUESTRA LOS RESTAURANTES
+        // ==========================================
+        function renderHome() {
+            const container = document.getElementById('app-container');
+            if (!container) {
+                console.error("❌ No se encontró 'app-container'");
+                return;
+            }
+            
+            if (!db.restaurantes || db.restaurantes.length === 0) {
+                container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes disponibles</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="mb-6">
+                    <h2 class="text-2xl font-black italic uppercase text-left">Restaurantes</h2>
+                    <p class="text-cyan-400 text-[10px] font-bold uppercase tracking-wider text-left">Elige tu favorito</p>
+                </div>
+                <div class="restaurantes-grid" style="display: flex; flex-direction: column; gap: 15px;">
+            `;
+            
+            db.restaurantes.forEach(restaurant => {
+                const abierto = estaRestauranteAbierto(restaurant);
+                const estadoClass = abierto ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30';
+                const estadoText = abierto ? '🟢 ABIERTO' : '🔴 CERRADO';
+                
+                html += `
+                    <div class="restaurante-card bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-4 cursor-pointer transition-all hover:bg-white/10" onclick="seleccionarRestaurante('${restaurant.ID_RESTAURANTE}')">
+                        <img class="w-16 h-16 rounded-xl object-cover" src="${restaurant.FOTO || 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg'}" alt="${restaurant.NOMBRE_RESTAURANTE}">
+                        <div class="flex-1 text-left">
+                            <h3 class="font-black text-white text-lg">${restaurant.NOMBRE_RESTAURANTE}</h3>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${estadoClass}">${estadoText}</span>
+                                <span class="text-[10px] text-white/50">${restaurant.CATEGORIA || 'Comida'}</span>
+                            </div>
+                        </div>
+                        <div class="text-cyan-400 text-xl">→</div>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+        
+        // ==========================================
+        // SELECCIONAR RESTAURANTE
+        // ==========================================
+        function seleccionarRestaurante(idRest) {
+            const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE == idRest);
+            if (!restaurante) return;
+            
+            restauranteActivo = {
+                id: restaurante.ID_RESTAURANTE,
+                nombre: restaurante.NOMBRE_RESTAURANTE,
+                foto: restaurante.FOTO || ""
+            };
+            
+            guardarLocal("ae_restaurante", restauranteActivo);
+            renderMenu();
+        }
+        
+        // ==========================================
+        // RENDER MENÚ DEL RESTAURANTE
+        // ==========================================
+        function renderMenu() {
+            const container = document.getElementById('app-container');
+            if (!container) return;
+            
+            // Filtrar platos del restaurante
+            const platos = db.menu.filter(p => p.ID_RESTAURANTE == restauranteActivo.id);
+            
+            // Agrupar por categoría
+            const categorias = [...new Set(platos.map(p => p.CATEGORIA || 'General'))];
+            
+            let html = `
+                <div class="mb-4 flex items-center gap-3">
+                    <button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
+                    <div>
+                        <h2 class="text-xl font-black italic uppercase text-left">${restauranteActivo.nombre}</h2>
+                        <p class="text-cyan-400 text-[9px] font-bold uppercase tracking-wider text-left">Menú</p>
+                    </div>
+                </div>
+                <div class="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
+                    <button class="cat-chip active" onclick="filtrarCategoria('TODOS', this)">TODOS</button>
+                    ${categorias.map(cat => `<button class="cat-chip" onclick="filtrarCategoria('${cat}', this)">${cat}</button>`).join('')}
+                </div>
+                <div id="platos-container" class="space-y-3">
+            `;
+            
+            platos.forEach(plato => {
+                html += `
+                    <div class="plato-card" data-cat="${plato.CATEGORIA || 'General'}" onclick="abrirDetalle(${JSON.stringify(plato).replace(/"/g, '&quot;')})">
+                        <img src="${plato.FOTO_PLATO || 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg'}" class="w-16 h-16 rounded-xl object-cover">
+                        <div class="flex-1 text-left">
+                            <h3 class="font-black text-white">${plato.PLATO}</h3>
+                            <p class="text-white/40 text-[10px]">${plato.DESCRIPCION?.substring(0, 50) || ''}</p>
+                        </div>
+                        <div class="text-cyan-400 font-black">${euros(plato.PRECIO)}</div>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+            container.innerHTML = html;
+            pushPantalla('restaurante');
+        }
+        
+        // ==========================================
+        // VOLVER A HOME
+        // ==========================================
+        function volverHome() {
+            while (pantallaStack.length > 1) {
+                pantallaStack.pop();
+            }
+            renderHome();
+        }
         // ==========================================
         // FILTRAR CATEGORÍA
         // ==========================================

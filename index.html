@@ -850,54 +850,80 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
                // ==========================================
         // CARGA DE DATOS (CORREGIDA - FUNCIONA CON TUS COLUMNAS)
         // ==========================================
-        async function cargarBaseDatos() {
-            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
-            if (!response.ok) throw new Error("No se pudo conectar");
-            const data = await response.json();
-            
-            // ========== CARGAR HORARIOS CORRECTAMENTE ==========
-            const horariosData = data.HORARIOS_RESTAURANTES || [];
-            db.horariosPorDia = {};
-            
-            console.log("📊 Horarios recibidos:", horariosData.length, "registros");
-            
-            horariosData.forEach(row => {
-                const idRest = row.ID_RESTAURANTE;
-                let dia = String(row.DIA_SEMANA || "").trim().toUpperCase();
-                
-                if (!idRest || !dia) return;
-                
-                if (!db.horariosPorDia[idRest]) {
-                    db.horariosPorDia[idRest] = {};
-                }
-                
-                // Tus columnas exactas
-                db.horariosPorDia[idRest][dia] = {
-                    apertura1: row.HORA_APERTURA_1 || null,
-                    cierre1: row.HORA_CIERRE_1 || null,
-                    apertura2: row.HORA_APERTURA_2 || null,
-                    cierre2: row.HORA_CIERRE_2 || null
-                };
-            });
-            
-            console.log("✅ Horarios procesados:", db.horariosPorDia);
-            
-            // ========== RESTO DE DATOS ==========
-            db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
-            db.menu = data.MENU_GENERAL || [];
-            db.anuncios = data.ANUNCIOS || [];
-            db.config = data.CONFIGURACION?.[0] || data.CONFIG?.[0] || {};
-            db.legal = data.LEGAL?.[0]?.TEXTO || "";
-            
-            const logo = document.getElementById("app-logo");
-            const bg = document.getElementById("header-bg");
-            const txt = document.getElementById("texto-anuncio");
-            if (db.config.LOGO_URL && logo) logo.src = db.config.LOGO_URL;
-            if (db.config.FONDO_URL && bg) bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
-            if (db.anuncios.length && txt) txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
-            
-            console.log("✅ Base de datos cargada:", db.restaurantes.length, "restaurantes");
-        }
+       async function cargarBaseDatos() {
+    const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+    if (!response.ok) throw new Error("No se pudo conectar");
+    const data = await response.json();
+    
+    // ========== CARGAR HORARIOS ==========
+    const horariosData = data.HORARIOS_RESTAURANTES || [];
+    db.horariosPorDia = {};
+    
+    horariosData.forEach(row => {
+        const idRest = row.ID_RESTAURANTE;
+        let dia = String(row.DIA_SEMANA || "").trim().toUpperCase();
+        if (!idRest || !dia) return;
+        if (!db.horariosPorDia[idRest]) db.horariosPorDia[idRest] = {};
+        db.horariosPorDia[idRest][dia] = {
+            apertura1: row.HORA_APERTURA_1 || null,
+            cierre1: row.HORA_CIERRE_1 || null,
+            apertura2: row.HORA_APERTURA_2 || null,
+            cierre2: row.HORA_CIERRE_2 || null
+        };
+    });
+    
+    // ========== CARGAR CONFIGURACIÓN (CORREGIDO) ==========
+    // Buscar la fila donde NOMBRE_RESTAURANTE = "ADMIN" o tomar la primera que tenga LOGO_URL
+    const configData = data.CONFIGURACION || data.CONFIG || [];
+    let configFila = {};
+    
+    if (configData.length > 0) {
+        // Buscar fila con LOGO_URL o FONDO_URL no vacíos
+        configFila = configData.find(row => (row.LOGO_URL || row.FONDO_URL)) || configData[0];
+    }
+    
+    db.config = {
+        LOGO_URL: configFila.LOGO_URL || "",
+        FONDO_URL: configFila.FONDO_URL || ""
+    };
+    
+    // Si no hay configuración, usar valores por defecto
+    if (!db.config.LOGO_URL) {
+        db.config.LOGO_URL = "https://i.postimg.cc/DZJyv1Sy/Copilot-20260407-120738.png";
+    }
+    if (!db.config.FONDO_URL) {
+        db.config.FONDO_URL = "https://i.postimg.cc/DZJyv1Sy/Copilot-20260407-120738.png";
+    }
+    
+    console.log("✅ Configuración cargada:", db.config);
+    
+    // ========== RESTO DE DATOS ==========
+    db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
+    db.menu = data.MENU_GENERAL || [];
+    db.anuncios = data.ANUNCIOS || [];
+    db.legal = data.LEGAL?.[0]?.TEXTO || "";
+    
+    // Aplicar imágenes
+    const logo = document.getElementById("app-logo");
+    const bg = document.getElementById("header-bg");
+    const txt = document.getElementById("texto-anuncio");
+    
+    if (logo && db.config.LOGO_URL) {
+        logo.src = db.config.LOGO_URL;
+        logo.style.opacity = "1";
+    }
+    if (bg && db.config.FONDO_URL) {
+        bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
+        bg.style.opacity = "1";
+        bg.style.backgroundSize = "cover";
+        bg.style.backgroundPosition = "center";
+    }
+    if (db.anuncios.length && txt) {
+        txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+    }
+    
+    console.log("✅ Base de datos cargada:", db.restaurantes.length, "restaurantes");
+}
                 // ==========================================
         // RENDER HOME - MUESTRA LOS RESTAURANTES
         // ==========================================

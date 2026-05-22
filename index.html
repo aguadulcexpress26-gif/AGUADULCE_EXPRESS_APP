@@ -750,7 +750,7 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
         }
     });
 }
-        // ==========================================
+                // ==========================================
         // FUNCIÓN PARA VERIFICAR HORARIO GLOBAL
         // ==========================================
         function estaAppAbierta() {
@@ -780,128 +780,63 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
             if (horarios.ESTADO_GLOBAL === "CERRADO") estaAbierto = false;
             return estaAbierto;
         }
-          
-        // ==========================================
-        // CARGA DE DATOS
-        // ==========================================
-        async function cargarBaseDatos() {
-            const response = await fetch(scriptURL);
-            if (!response.ok) throw new Error("No se pudo conectar");
-            const data = await response.json();
-            
-            const horariosData = data.HORARIOS_RESTAURANTES || [];
-            db.horariosPorDia = {};
-            horariosData.forEach(row => {
-                const idRest = row.ID_RESTAURANTE;
-                const dia = String(row.DIA_SEMANA).toUpperCase();
-                if (!db.horariosPorDia[idRest]) db.horariosPorDia[idRest] = {};
-                db.horariosPorDia[idRest][dia] = {
-                    apertura1: row.HORA_APERTURA_1,
-                    cierre1: row.HORA_CIERRE_1,
-                    apertura2: row.HORA_APERTURA_2,
-                    cierre2: row.HORA_CIERRE_2
-                };
-            });
-            
-            db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
-            db.menu = data.MENU_GENERAL || [];
-            db.anuncios = data.ANUNCIOS || [];
-            db.config = data.CONFIG?.[0] || {};
-            db.legal = data.LEGAL?.[0]?.TEXTO || "";
-            
-            const logo = document.getElementById("app-logo");
-            const bg = document.getElementById("header-bg");
-            const txt = document.getElementById("texto-anuncio");
-            if (db.config.LOGO_URL && logo) logo.src = db.config.LOGO_URL;
-            if (db.config.FONDO_URL && bg) bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
-            if (db.anuncios.length && txt) txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
-        }
         
         // ==========================================
-        // RENDER PRINCIPAL
+        // ✅ FUNCIÓN PARA VERIFICAR HORARIO DE CADA RESTAURANTE (PONLA AQUÍ)
         // ==========================================
-        function renderHome() {
-            const app = document.getElementById("app-container");
-            if (!app) return;
-            let html = `<p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
-            db.restaurantes.forEach(rest => {
-                const { abierto, horario } = estaRestauranteAbierto(rest);
-                const cerrado = !abierto;
-                const estadoTexto = cerrado ? 'CERRADO' : 'ABIERTO';
-                html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${cerrado ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" 
-                                ${!cerrado ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}', '${rest.NOMBRE_RESTAURANTE}', '${rest.FOTO}', '${rest.ESTADO}')"` : ''}>
-                            <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-70">
-                            <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
-                            <div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${rest.NOMBRE_RESTAURANTE}</h2></div>
-                            <div class="absolute bottom-6 right-6 bg-black/80 px-3 py-1 rounded-xl">
-                                <p class="text-[10px] font-black uppercase italic ${cerrado ? 'text-red-400' : 'text-cyan-400'}">${estadoTexto}</p>
-                            </div>
-                            ${!cerrado && horario ? `<div class="absolute bottom-20 right-6 bg-black/60 px-2 py-0.5 rounded-lg"><p class="text-[8px] text-white/60">${horario}</p></div>` : ''}
-                        </div>`;
-            });
-            app.innerHTML = html;
-        }
-        
-        function abrirRestaurante(id, nombre, foto, estado) {
-            if (!estaAppAbierta()) { 
-                alertaInfo("SERVICIO CERRADO", "El servicio está cerrado en este horario"); 
-                return; 
+        function estaRestauranteAbierto(restaurant) {
+            // Si el restaurante tiene estado directo "CERRADO" desde Excel
+            if (restaurant.ESTADO === "CERRADO") {
+                return false;
             }
-            const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === id);
-            if (restaurante) {
-                const { abierto } = estaRestauranteAbierto(restaurante);
-                if (!abierto) { 
-                    alertaInfo("RESTAURANTE CERRADO", "Este restaurante no acepta pedidos en este horario"); 
-                    return; 
+            
+            // Si tiene campo ABIERTO directo
+            if (restaurant.ABIERTO === false || restaurant.ABIERTO === "FALSE") {
+                return false;
+            }
+            
+            // Si tiene horario definido en HORARIOS_RESTAURANTES
+            if (restaurant.HORARIO_APERTURA && restaurant.HORARIO_CIERRE) {
+                const ahora = new Date();
+                const horaActual = ahora.getHours();
+                const apertura = parseInt(restaurant.HORARIO_APERTURA);
+                const cierre = parseInt(restaurant.HORARIO_CIERRE);
+                return horaActual >= apertura && horaActual < cierre;
+            }
+            
+            // Si tiene la estructura HORARIOS (día por día)
+            if (restaurant.HORARIOS && typeof restaurant.HORARIOS === 'object') {
+                const ahora = new Date();
+                const diaActual = ahora.getDay(); // 0 = Domingo
+                const horaActual = ahora.getHours();
+                const minutosActual = ahora.getMinutes();
+                const horaCompleta = horaActual + (minutosActual / 60);
+                
+                const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
+                const diaNombre = diasSemana[diaActual];
+                
+                let horarioDia = restaurant.HORARIOS[diaNombre] || restaurant.HORARIOS[diaActual] || restaurant.HORARIOS["DEFAULT"];
+                
+                if (horarioDia) {
+                    let [aperturaStr, cierreStr] = horarioDia.split("-");
+                    const apertura = parseFloat(aperturaStr);
+                    const cierre = parseFloat(cierreStr);
+                    return horaCompleta >= apertura && horaCompleta < cierre;
                 }
             }
-            if (cesta.length > 0 && restauranteActivo.id && restauranteActivo.id !== id) { 
-                alertaInfo("PEDIDO ACTIVO", "Ya tienes productos de otro restaurante"); 
-                return; 
-            }
-            restauranteActivo = { id, nombre, foto };
-            guardarCesta();
-            const bg = document.getElementById("header-bg");
-            if (bg) bg.style.backgroundImage = `url('${foto}')`;
-            renderMenu();
-            pushPantalla('restaurante');
+            
+            // Por defecto, si no hay info de cierre, asumir abierto
+            return true;
         }
         
-        function renderMenu() {
-            const app = document.getElementById("app-container");
-            if (!app) return;
-            const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(restauranteActivo.id));
-            const categorias = [...new Set(platos.map(p => p.CATEGORIA || "General"))];
-            let html = `<div class="flex items-center gap-4 mb-6"><button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-black/40 border border-white/10 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate">${restauranteActivo.nombre}</h2></div>
-                        <div class="flex overflow-x-auto gap-2 mb-6 no-scrollbar"><div class="cat-chip active" onclick="filtrarCategoria('TODOS', this)">TODOS</div>`;
-            categorias.forEach(cat => { html += `<div class="cat-chip" onclick="filtrarCategoria('${cat}', this)">${cat}</div>`; });
-            html += `</div><div id="lista-platos" class="space-y-3">`;
-            platos.forEach(plato => {
-                html += `<div class="plato-card" data-cat="${plato.CATEGORIA || 'General'}" onclick='abrirDetalle(${JSON.stringify(plato).replace(/'/g, "&apos;")})'>
-                            <div class="flex-1 text-left"><h4 class="font-black text-sm uppercase leading-none mb-1">${plato.PLATO}</h4><p class="text-cyan-400 font-black text-xs">${euros(plato.PRECIO)}</p></div>
-                            <img src="${plato.FOTO_PLATO}" class="w-16 h-16 rounded-xl object-cover">
-                        </div>`;
-            });
-            html += `</div>`;
-            app.innerHTML = html;
-        }
-        
-        function volverHome() {
-            restauranteActivo = { id: null, nombre: "", foto: "" };
-            guardarCesta();
-            if (db.config.FONDO_URL) document.getElementById("header-bg").style.backgroundImage = `url('${db.config.FONDO_URL}')`;
-            while (pantallaStack.length > 1 && pantallaStack[pantallaStack.length - 1] !== 'home') {
-                pantallaStack.pop();
-            }
-            renderHome();
-        }
-        
+        // ==========================================
+        // FILTRAR CATEGORÍA
+        // ==========================================
         function filtrarCategoria(cat, el) {
             document.querySelectorAll(".cat-chip").forEach(c => c.classList.remove("active"));
             el.classList.add("active");
             document.querySelectorAll(".plato-card").forEach(card => { card.style.display = (cat === "TODOS" || card.dataset.cat === cat) ? "flex" : "none"; });
-        }
-        
+        }        
         // ==========================================
         // SISTEMA DE OPCIONES DEL PLATO
         // ==========================================

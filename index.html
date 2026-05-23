@@ -1291,7 +1291,7 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
             return audioElement;
         }
         
-        function iniciarSeguimientoPedido(idPedido) {
+       function iniciarSeguimientoPedido(idPedido) {
     if (!idPedido) { console.error("❌ No se proporcionó ID de pedido"); return false; }
     console.log("🔥 Iniciando seguimiento para:", idPedido);
     localStorage.setItem('ae_pedido_activo', idPedido);
@@ -1306,7 +1306,7 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
     const trackingModal = document.getElementById('tracking-modal');
     if (!trackingModal) { console.error("❌ No se encontró el modal de tracking"); return false; }
     
-    // ========== ESCUCHAR CANCELACIÓN / RECHAZO (CORREGIDO) ==========
+    // ========== ESCUCHAR CANCELACIÓN / RECHAZO (DISTINGUE COBRO) ==========
     const cancelacionRef = database.ref('pedidos/' + idPedido);
     cancelacionRef.on('value', (snapshot) => {
         const data = snapshot.val();
@@ -1316,29 +1316,68 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
         const esCancelado = estado === 'cancelado' || estado === 'cancelado_restaurante' || estado === 'rechazado';
         
         if (esCancelado) {
-            const motivo = data.motivo_rechazo || data.motivo_cancelacion || 'El restaurante no pudo preparar tu pedido';
-            const esRechazado = estado === 'rechazado' || estado === 'cancelado_restaurante';
+            const motivo = data.motivo_rechazo || data.motivo_cancelacion || 'No especificado';
+            const tieneDeuda = data.deuda_acumulada && parseFloat(data.deuda_acumulada) > 0;
+            const esRechazadoRestaurante = estado === 'rechazado' || estado === 'cancelado_restaurante';
             
-            // Detener alarmas y limpiar listener
+            // Detener alarmas
             if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
             if (trackingListenerRef) {
                 try { trackingListenerRef.off(); } catch(e) { console.warn(e); }
                 trackingListenerRef = null;
             }
             
-            Swal.fire({
-                title: esRechazado ? '❌ Pedido Rechazado' : '❌ Pedido Cancelado',
-                html: `<div style="text-align:left;">
-                    <p><strong>${esRechazado ? 'El restaurante ha rechazado tu pedido' : 'Tu pedido ha sido cancelado'}.</strong></p>
+            let titulo = '';
+            let mensaje = '';
+            
+            if (esRechazadoRestaurante && !tieneDeuda) {
+                // CASO 1: Rechazado por restaurante - SIN COBRO
+                titulo = '❌ Pedido Rechazado';
+                mensaje = `
+                    <p><strong>El restaurante ha rechazado tu pedido.</strong></p>
                     <br>
                     <p>📝 <strong>Motivo:</strong> ${motivo}</p>
                     <br>
-                    <p>🔄 No se ha realizado ningún cobro.</p>
+                    <p>✅ <strong>No se ha realizado ningún cobro.</strong></p>
                     <p>Puedes realizar un nuevo pedido cuando lo desees.</p>
                     <br>
                     <p>📞 Disculpa las molestias.</p>
-                </div>`,
-                icon: 'error',
+                `;
+            } else if (tieneDeuda) {
+                // CASO 2: Cancelado por ausencia / tiempo de espera - CON COBRO
+                titulo = '⚠️ Pedido Cancelado con Deuda';
+                mensaje = `
+                    <p><strong>Tu pedido ha sido cancelado por ausencia.</strong></p>
+                    <br>
+                    <p>📝 <strong>Motivo:</strong> ${motivo}</p>
+                    <br>
+                    <p>💰 <strong>Deuda generada: ${data.deuda_acumulada}€</strong></p>
+                    <p>El repartidor esperó en tu domicilio pero no te presentaste.</p>
+                    <br>
+                    <p>⚠️ Esta deuda quedará registrada en tu cuenta.</p>
+                    <p>Para realizar nuevos pedidos, deberás regularizar esta situación.</p>
+                    <br>
+                    <p>📞 Contacta con soporte para más información.</p>
+                `;
+            } else {
+                // CASO 3: Cancelado genérico (cliente canceló, etc.) - SIN COBRO
+                titulo = '❌ Pedido Cancelado';
+                mensaje = `
+                    <p><strong>Tu pedido ha sido cancelado.</strong></p>
+                    <br>
+                    <p>📝 <strong>Motivo:</strong> ${motivo}</p>
+                    <br>
+                    <p>✅ <strong>No se ha realizado ningún cobro.</strong></p>
+                    <p>Puedes realizar un nuevo pedido cuando lo desees.</p>
+                    <br>
+                    <p>📞 Disculpa las molestias.</p>
+                `;
+            }
+            
+            Swal.fire({
+                title: titulo,
+                html: `<div style="text-align:left;">${mensaje}</div>`,
+                icon: tieneDeuda ? 'warning' : 'error',
                 background: '#020617',
                 color: 'white',
                 confirmButtonColor: '#06b6d4',
@@ -1350,12 +1389,8 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
                 cerrarModalTracking();
                 cesta = [];
                 actualizarCestaVisual();
-                
-                // Forzar limpieza de localStorage
                 localStorage.removeItem('ae_pedido_activo');
                 localStorage.removeItem('ae_tracking_id');
-                
-                // Volver al home y cerrar paneles
                 volverHome();
                 cerrarTodosLosPaneles();
                 location.reload();
@@ -1385,7 +1420,7 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
         console.error("❌ Error crítico al iniciar seguimiento:", error); 
         return false; 
     }
-}        
+} 
         function actualizarInterfazSeguimiento(data) {
             if (!data) { console.warn("⚠️ actualizarInterfazSeguimiento llamada sin datos"); return; }
             const estado = (data.estado || 'recibido').toLowerCase();

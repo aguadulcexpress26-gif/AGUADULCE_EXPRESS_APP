@@ -872,54 +872,71 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
         };
     });
     
-    // ========== CARGAR CONFIGURACIÓN (CORREGIDO) ==========
-    // Buscar la fila donde NOMBRE_RESTAURANTE = "ADMIN" o tomar la primera que tenga LOGO_URL
-    const configData = data.CONFIGURACION || data.CONFIG || [];
-    let configFila = {};
-    
-    if (configData.length > 0) {
-        // Buscar fila con LOGO_URL o FONDO_URL no vacíos
-        configFila = configData.find(row => (row.LOGO_URL || row.FONDO_URL)) || configData[0];
-    }
-    
-    db.config = {
-        LOGO_URL: configFila.LOGO_URL || "",
-        FONDO_URL: configFila.FONDO_URL || ""
-    };
-    
-    // Si no hay configuración, usar valores por defecto
-    if (!db.config.LOGO_URL) {
-        db.config.LOGO_URL = "https://i.postimg.cc/DZJyv1Sy/Copilot-20260407-120738.png";
-    }
-    if (!db.config.FONDO_URL) {
-        db.config.FONDO_URL = "https://i.postimg.cc/DZJyv1Sy/Copilot-20260407-120738.png";
-    }
-    
-    console.log("✅ Configuración cargada:", db.config);
-    
-    // ========== RESTO DE DATOS ==========
-    db.restaurantes = (data.RESTAURANTES || []).filter(r => r.NOMBRE_RESTAURANTE && r.NOMBRE_RESTAURANTE !== "ADMIN");
-    db.menu = data.MENU_GENERAL || [];
-    db.anuncios = data.ANUNCIOS || [];
-    db.legal = data.LEGAL?.[0]?.TEXTO || "";
-    
-    // Aplicar imágenes
-    const logo = document.getElementById("app-logo");
-    const bg = document.getElementById("header-bg");
-    const txt = document.getElementById("texto-anuncio");
-    
-    if (logo && db.config.LOGO_URL) {
-        logo.src = db.config.LOGO_URL;
-        logo.style.opacity = "1";
-    }
-    if (bg && db.config.FONDO_URL) {
-        bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
-        bg.style.opacity = "1";
-        bg.style.backgroundSize = "cover";
-        bg.style.backgroundPosition = "center";
-    }
-    if (db.anuncios.length && txt) {
-        txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+            // ========== CARGAR CONFIGURACIÓN (CORREGIDO - USA HOJA "CONFIG") ==========
+        // La hoja "CONFIG" es la que tiene LOGO_URL y FONDO_URL
+        const configData = data.CONFIG || [];
+        let configFila = {};
+        
+        if (configData.length > 0) {
+            // Tomar la primera fila de la hoja CONFIG
+            configFila = configData[0];
+        }
+        
+        db.config = {
+            LOGO_URL: configFila.LOGO_URL || "",
+            FONDO_URL: configFila.FONDO_URL || ""
+        };
+        
+        // Solo usar valores por defecto si ambas URLs están vacías
+        if (!db.config.LOGO_URL && !db.config.FONDO_URL) {
+            db.config.LOGO_URL = "";
+            db.config.FONDO_URL = "";
+        }
+        
+        console.log("✅ Configuración cargada desde hoja CONFIG:", db.config);
+        
+        // ========== RESTO DE DATOS ==========
+        // Los restaurantes están en CONFIGURACION (no en RESTAURANTES)
+        db.restaurantes = (data.CONFIGURACION || []).filter(r => 
+            r.NOMBRE_RESTAURANTE && 
+            r.NOMBRE_RESTAURANTE !== "ADMIN" &&
+            r.ID_RESTAURANTE !== "V00001"
+        );
+        db.menu = data.MENU_GENERAL || [];
+        db.anuncios = data.ANUNCIOS || [];
+        db.legal = data.LEGAL?.[0]?.TEXTO || "";
+        
+        // Aplicar imágenes (solo si hay URLs)
+        const logo = document.getElementById("app-logo");
+        const bg = document.getElementById("header-bg");
+        const txt = document.getElementById("texto-anuncio");
+        
+        if (logo) {
+            if (db.config.LOGO_URL && db.config.LOGO_URL.trim() !== "") {
+                logo.src = db.config.LOGO_URL;
+                logo.style.display = "block";
+            } else {
+                logo.style.display = "none";
+            }
+        }
+        
+        if (bg) {
+            if (db.config.FONDO_URL && db.config.FONDO_URL.trim() !== "") {
+                bg.style.backgroundImage = `url('${db.config.FONDO_URL}')`;
+                bg.style.backgroundSize = "cover";
+                bg.style.backgroundPosition = "center";
+                bg.style.opacity = "1";
+            } else {
+                bg.style.backgroundImage = "none";
+                bg.style.backgroundColor = "#020617";
+            }
+        }
+        
+        if (db.anuncios.length && txt) {
+            txt.innerText = db.anuncios.map(a => a.TEXTO).join(" • ");
+        }
+        
+        console.log("✅ Base de datos cargada:", db.restaurantes.length, "restaurantes");
     }
     
     console.log("✅ Base de datos cargada:", db.restaurantes.length, "restaurantes");

@@ -989,37 +989,44 @@ Al marcar la casilla de aceptación, el cliente declara haber leído, entendido 
     }
     
     // ==========================================
-    // LIGHTBOX (FOTO COMPLETA)
-    // ==========================================
-    function abrirLightbox(imgSrc) {
-        let lightbox = document.getElementById('lightbox');
-        if (!lightbox) {
-            lightbox = document.createElement('div');
-            lightbox.id = 'lightbox';
-            lightbox.style.position = 'fixed';
-            lightbox.style.top = '0';
-            lightbox.style.left = '0';
-            lightbox.style.width = '100%';
-            lightbox.style.height = '100%';
-            lightbox.style.backgroundColor = 'rgba(0,0,0,0.95)';
-            lightbox.style.zIndex = '20000';
-            lightbox.style.display = 'flex';
-            lightbox.style.alignItems = 'center';
-            lightbox.style.justifyContent = 'center';
-            lightbox.style.cursor = 'pointer';
-            lightbox.onclick = function() { document.body.removeChild(lightbox); };
-            document.body.appendChild(lightbox);
-        }
-        lightbox.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = imgSrc;
-        img.style.maxWidth = '90%';
-        img.style.maxHeight = '90%';
-        img.style.objectFit = 'contain';
-        img.style.borderRadius = '20px';
-        img.style.boxShadow = '0 0 30px rgba(0,0,0,0.5)';
-        lightbox.appendChild(img);
+// LIGHTBOX CON CARRUSEL INTEGRADO (FOTO COMPLETA)
+// ==========================================
+function abrirLightbox(urlFotosString) {
+    let lightbox = document.getElementById('lightbox');
+    if (!lightbox) {
+        lightbox = document.createElement('div');
+        lightbox.id = 'lightbox';
+        lightbox.style.position = 'fixed';
+        lightbox.style.top = '0';
+        lightbox.style.left = '0';
+        lightbox.style.width = '100%';
+        lightbox.style.height = '100%';
+        lightbox.style.backgroundColor = 'rgba(0,0,0,0.95)';
+        lightbox.style.zIndex = '20000';
+        lightbox.style.display = 'flex';
+        lightbox.style.alignItems = 'center';
+        lightbox.style.justifyContent = 'center';
+        
+        // Cierra el lightbox si hacen clic en el fondo negro exterior
+        lightbox.onclick = function(e) { 
+            if(e.target === lightbox) {
+                document.body.removeChild(lightbox); 
+            }
+        };
+        document.body.appendChild(lightbox);
     }
+    
+    // Generamos el carrusel táctil usando la función que agregamos antes
+    // Le damos un ancho máximo del 90% para que se adapte perfectamente a la pantalla
+    lightbox.innerHTML = `
+        <div class="w-[90%] max-w-md relative">
+            ${generarContenedorFotos(urlFotosString)}
+            
+            <button onclick="document.body.removeChild(document.getElementById('lightbox'))" 
+                class="absolute -top-12 right-2 bg-white/10 text-white w-8 h-8 rounded-full font-black flex items-center justify-center border border-white/20 active:scale-95">✕</button>
+        </div>
+    `;
+}
     
     // ==========================================
     // SISTEMA DE OPCIONES DEL PLATO
@@ -1556,10 +1563,50 @@ function generarContenedorFotos(urlFotosString) {
                 ${puntosHTML}
             </div>
             
-            <button onclick="cambiarSlide('${idCarrusel}', -1)" class="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">❮</button>
-            <button onclick="cambiarSlide('${idCarrusel}', 1)" class="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">❯</button>
+            <button onclick="cambiarSlide('${idCarrusel}', -1)" class="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg border border-white/10 shadow-lg active:scale-95 transition-transform">❮</button>
+            <button onclick="cambiarSlide('${idCarrusel}', 1)" class="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg border border-white/10 shadow-lg active:scale-95 transition-transform">❯</button>
         </div>
     `;
+}
+    // --- FUNCIONES PARA MOVER LAS FOTOS DEL CARRUSEL ---
+
+function moverCarrusel(idCarrusel, indexDestino) {
+    const carrusel = document.getElementById(idCarrusel);
+    if (!carrusel) return;
+    
+    const contenedor = carrusel.querySelector('.carousel-container');
+    const puntos = carrusel.querySelectorAll('.carousel-dot');
+    
+    // Movemos el contenedor hacia la izquierda según el índice de la foto (0 = 0%, 1 = -100%, 2 = -200%)
+    contenedor.style.transform = `translateX(-${indexDestino * 100}%)`;
+    contenedor.setAttribute('data-index', indexDestino);
+    
+    // Actualizamos los puntitos para que el cliente sepa en qué foto está
+    puntos.forEach((punto, idx) => {
+        if(idx === indexDestino) {
+            punto.classList.add('!bg-cyan-400', 'w-4'); // Puntito activo brillante y más ancho
+        } else {
+            punto.classList.remove('!bg-cyan-400', 'w-4'); // Puntitos apagados
+        }
+    });
+}
+
+function cambiarSlide(idCarrusel, direccion) {
+    const carrusel = document.getElementById(idCarrusel);
+    if (!carrusel) return;
+    
+    const contenedor = carrusel.querySelector('.carousel-container');
+    const totalSlides = contenedor.children.length;
+    
+    // Miramos en qué foto está actualmente (si no hay ninguna guardada, empezamos en la 0)
+    let currentIndex = parseInt(contenedor.getAttribute('data-index') || "0");
+    let nuevoIndex = currentIndex + direccion;
+    
+    // Si se pasa del final, vuelve a la primera foto. Si va hacia atrás desde la primera, va a la última.
+    if (nuevoIndex >= totalSlides) nuevoIndex = 0;
+    if (nuevoIndex < 0) nuevoIndex = totalSlides - 1;
+    
+    moverCarrusel(idCarrusel, nuevoIndex);
 }
     
     document.addEventListener('DOMContentLoaded', initApp);

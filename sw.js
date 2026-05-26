@@ -1,8 +1,8 @@
 // sw.js - Service Worker sin cacheo de CDNs externos
-const CACHE_NAME = 'aguadulce-v1';
+const CACHE_NAME = 'aguadulce-v3';  // Cambia el número cada vez que actualices
 const urlsToCache = [
   './',
-  './index.html',
+  './nueva_propuesta.html',  // ← Asegura que es este
   './manifest.json'
   // NO incluyas CDNs externos (tailwind, firebase, etc.)
 ];

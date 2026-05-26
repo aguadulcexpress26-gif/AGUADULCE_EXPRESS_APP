@@ -81,12 +81,12 @@
             margin-top: 10px;
         }
         #app-container {
-    min-height: 100vh;
-    padding-bottom: 100px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
+            min-height: 100vh;
+            padding-bottom: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
     </style>
 </head>
 <body>
@@ -114,6 +114,7 @@
 
     <main id="app-container" class="px-5 py-6"></main>
 
+    <!-- CESTA FLOTANTE -->
     <div id="cesta-flotante" class="fixed bottom-6 left-4 right-4 bg-white text-black p-0 rounded-[2rem] hidden flex-col z-[100] shadow-2xl overflow-hidden border-2 border-cyan-400">
         <div class="p-5 flex items-center gap-4" onclick="abrirRevision()">
             <div class="bg-cyan-400 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl">🛒</div>
@@ -127,7 +128,7 @@
         </div>
     </div>
 
-    <!-- MODALES (igual que antes) -->
+    <!-- MODALES -->
     <div id="modal-plato" style="display:none; position:fixed; inset:0; background:#020617; z-index:2000; overflow-y:auto;">
         <button onclick="cerrarModalPlato()" class="absolute top-5 left-5 z-[1001] bg-black/60 w-10 h-10 rounded-full text-white">✕</button>
         <img id="modal-img" src="" class="w-full h-[220px] object-cover" style="cursor:zoom-in">
@@ -228,11 +229,6 @@
                     <option value="Efectivo">Efectivo (Pagar al recibir)</option>
                     <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
                 </select>
-            </div>
-            <div id="monto-paga-container" class="hidden">
-                <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">💵 ¿Con cuánto pagas? (efectivo)</p>
-                <input type="number" id="monto-paga" step="0.01" placeholder="Ej: 50.00" class="w-full">
-                <p class="text-white/40 text-[9px] mt-1">Opcional - Para que el repartidor sepa si necesita cambio</p>
             </div>
             <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] mt-8 text-lg">Procesar Orden</button>
         </div>
@@ -343,7 +339,7 @@ let procesandoPedidoActivo = false;
 
 // Zonas permitidas (códigos postales de Aguadulce)
 const ZONAS_PERMITIDAS = ['04720']; // Ampliar a 04728, 04740 más adelante
-    
+
 // Horario para venta de alcohol (solo hasta las 22:00)
 const HORARIO_ALCOHOL = {
     activo: true,
@@ -374,7 +370,7 @@ function validarZona(direccion) {
     
     const cp = match[1];
     if (!ZONAS_PERMITIDAS.includes(cp)) {
-        alertaError("Fuera de zona de reparto", `Lo sentimos, solo realizamos entregas en Aguadulce y alrededores (CP: ${ZONAS_PERMITIDAS.join(', ')}). Tu CP: ${cp}`);
+        alertaError("Fuera de zona de reparto", `Lo sentimos, solo realizamos entregas en Aguadulce (CP: 04720). Tu CP: ${cp}`);
         return false;
     }
     return true;
@@ -384,11 +380,9 @@ function validarZona(direccion) {
 function clienteEsMayorDeEdad() {
     const cliente = obtenerCliente();
     if (!cliente) return false;
-    // Verificar en localStorage si ya verificó edad
     const edadVerificada = localStorage.getItem('ae_edad_verificada_' + cliente.telf);
     if (edadVerificada === 'true') return true;
     
-    // Si no, preguntar ahora
     return Swal.fire({
         title: '🍺 Verificación de edad',
         html: 'Para poder comprar productos que contienen alcohol, debes confirmar que eres <strong>mayor de 18 años</strong>.',
@@ -410,22 +404,18 @@ function clienteEsMayorDeEdad() {
 
 // Verificar si un restaurante está abierto (considerando día libre)
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
-    // Si tiene día libre forzado
     if (restaurant.DIA_LIBRE === 'SI' || restaurant.ESTADO === 'LIBRE') {
         return { abierto: false, horario: "📅 Día libre - Cerrado hoy" };
     }
     
-    // Usar la función original de horarios
     const horariosRest = db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
     if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
     
     const ahora = new Date();
     const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
     const horarioHoy = horariosRest[diasSemana[ahora.getDay()]];
-    
     if (!horarioHoy) return { abierto: false, horario: "Cerrado hoy" };
     
-    // Si tiene horario especial "CERRADO"
     if (horarioHoy.apertura1 === 'CERRADO' || horarioHoy.cierre1 === 'CERRADO') {
         return { abierto: false, horario: "📅 Día libre - Cerrado hoy" };
     }
@@ -473,13 +463,13 @@ const textosLegales = {
 Al registrar sus datos y realizar un pedido a través de Aguadulce Express, el cliente acepta expresamente todas las condiciones aquí establecidas.
 
 2. PROCESO DE PEDIDO
-... (texto completo) ...`,
+...`,
 
     privacidad: `🔒 POLÍTICA DE PRIVACIDAD
-... (texto completo) ...`,
+...`,
 
     aviso: `⚖️ AVISO LEGAL
-... (texto completo) ...`
+...`
 };
 
 async function verTerminos(tipo = 'terminos') {
@@ -499,27 +489,18 @@ async function verTerminos(tipo = 'terminos') {
 }
 
 // ==========================================
-// FOOTER LEGAL (asegurar que aparece en app instalada)
+// FOOTER LEGAL
 // ==========================================
 function agregarFooterLegal() {
     const main = document.getElementById('app-container');
-    if (!main) {
-        console.log("❌ No se encontró app-container");
-        return;
-    }
+    if (!main) return;
     
-    // Eliminar footer existente si hay
     const footerExistente = document.getElementById('legal-footer-container');
     if (footerExistente) footerExistente.remove();
     
-    // Crear footer
     const footer = document.createElement('div');
     footer.id = 'legal-footer-container';
     footer.className = 'legal-footer';
-    footer.style.marginTop = 'auto';
-    footer.style.padding = '20px 0 30px';
-    footer.style.textAlign = 'center';
-    footer.style.borderTop = '1px solid rgba(255,255,255,0.05)';
     footer.innerHTML = `
         <div>
             <a href="#" onclick="verTerminos('terminos'); return false;">📋 Términos de Servicio</a>
@@ -529,7 +510,6 @@ function agregarFooterLegal() {
         <p>© 2026 Aguadulce Express | Comida a domicilio</p>
     `;
     main.appendChild(footer);
-    console.log("✅ Footer añadido correctamente");
 }
 
 // ==========================================
@@ -601,11 +581,8 @@ function guardarRegistro() {
     
     if (!nombre || !telf || !dir) { alertaError("Campos requeridos", "Completa todos los datos"); return; }
     if (!legal) { alertaError("Acepta términos", "Debes aceptar los términos y la política de privacidad"); return; }
-    
-    // Validar zona por código postal
     if (!validarZona(dir)) return;
     
-    // Si el cliente marca que es mayor de edad, guardar preferencia
     if (edad) {
         localStorage.setItem('ae_edad_verificada_' + telf, 'true');
     }
@@ -632,10 +609,7 @@ async function cargarBaseDatos() {
         let idRest = row.ID_RESTAURANTE, dia = String(row.DIA_SEMANA || "").trim().toUpperCase();
         if(!idRest || !dia) return;
         if(!db.horariosPorDia[idRest]) db.horariosPorDia[idRest] = {};
-        db.horariosPorDia[idRest][dia] = { 
-            apertura1: row.HORA_APERTURA_1, cierre1: row.HORA_CIERRE_1, 
-            apertura2: row.HORA_APERTURA_2, cierre2: row.HORA_CIERRE_2 
-        };
+        db.horariosPorDia[idRest][dia] = { apertura1: row.HORA_APERTURA_1, cierre1: row.HORA_CIERRE_1, apertura2: row.HORA_APERTURA_2, cierre2: row.HORA_CIERRE_2 };
     });
     
     const configData = data.CONFIG || [];
@@ -654,7 +628,7 @@ async function cargarBaseDatos() {
 }
 
 // ==========================================
-// RENDER HOME (con día libre)
+// RENDER HOME
 // ==========================================
 function renderHome() {
     const app = document.getElementById("app-container");
@@ -694,7 +668,7 @@ function abrirRestaurante(id, nombre, foto, estado) {
 }
 
 // ==========================================
-// RENDER MENÚ CON BLOQUEO DE ALCOHOL Y CATEGORÍAS GRISES
+// RENDER MENÚ CON BLOQUEO DE ALCOHOL
 // ==========================================
 function renderMenu() {
     const app = document.getElementById("app-container");
@@ -706,7 +680,6 @@ function renderMenu() {
     
     let html = `<div class="flex items-center gap-4 mb-6"><button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-black/40 border border-white/10 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate">${escapeHTML(restauranteActivo.nombre)}</h2></div>`;
     
-    // Aviso si alcohol bloqueado
     if (!alcoholActivo) {
         html += `<div class="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-center text-xs text-red-400">${mensajeAlcohol}</div>`;
     }
@@ -743,9 +716,7 @@ function volverHome() { while(pantallaStack.length>1) pantallaStack.pop(); rende
 function filtrarCategoria(cat, el) {
     document.querySelectorAll(".cat-chip").forEach(c => c.classList.remove("active"));
     el.classList.add("active");
-    document.querySelectorAll(".plato-card").forEach(card => { 
-        card.style.display = (cat === "TODOS" || card.dataset.cat === cat) ? "flex" : "none"; 
-    });
+    document.querySelectorAll(".plato-card").forEach(card => { card.style.display = (cat === "TODOS" || card.dataset.cat === cat) ? "flex" : "none"; });
 }
 
 // ==========================================
@@ -756,7 +727,6 @@ function verificarAlcoholEnCesta() {
         const categoria = item.categoria || '';
         return CATEGORIAS_ALCOHOL.some(cat => categoria.includes(cat) || item.nombre.toLowerCase().includes('cerveza') || item.nombre.toLowerCase().includes('vino') || item.nombre.toLowerCase().includes('licor'));
     });
-    
     if (!tieneAlcohol) return true;
     if (!alcoholDisponible()) {
         alertaError("Horario de venta de alcohol", HORARIO_ALCOHOL.mensaje);
@@ -766,77 +736,180 @@ function verificarAlcoholEnCesta() {
 }
 
 // ==========================================
-// MODIFICAR enviarPedidoFinal para incluir validaciones
+// LIGHTBOX Y CARRUSEL
 // ==========================================
-const enviarPedidoFinalOriginal = enviarPedidoFinal;
-async function enviarPedidoFinal() {
-    // Verificar zona (por si acaso)
-    const cliente = obtenerCliente();
-    if (cliente && !validarZona(cliente.dir)) return;
-    
-    // Verificar alcohol
-    if (!verificarAlcoholEnCesta()) return;
-    
-    // Verificar edad si hay alcohol
-    const tieneAlcohol = cesta.some(item => {
-        return CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)) ||
-               item.nombre.toLowerCase().includes('cerveza') ||
-               item.nombre.toLowerCase().includes('vino') ||
-               item.nombre.toLowerCase().includes('licor');
-    });
-    
-    if (tieneAlcohol) {
-        const esMayor = await clienteEsMayorDeEdad();
-        if (!esMayor) {
-            alertaError("Verificación de edad", "Debes ser mayor de 18 años para comprar productos con alcohol.");
-            return;
+function generarContenedorFotos(urlFotosString) {
+    if (!urlFotosString) return `<img src="https://via.placeholder.com/300x200?text=Sin+Imagen" class="w-full max-h-[70vh] object-contain rounded-2xl">`;
+    const fotos = urlFotosString.split(',').map(u=>u.trim()).filter(u=>u);
+    if (fotos.length === 1) return `<img src="${fotos[0]}" class="w-full max-h-[70vh] object-contain rounded-2xl">`;
+    const idCarrusel = "carousel-"+Math.random().toString(36).substr(2,9);
+    let slides = fotos.map((f,i)=>`<div class="carousel-slide min-w-full max-h-[70vh] flex-shrink-0 flex items-center justify-center"><img src="${f}" class="w-full max-h-[70vh] object-contain rounded-2xl" alt="Foto ${i+1}"></div>`).join('');
+    let dots = fotos.map((_,i)=>`<span onclick="moverCarrusel('${idCarrusel}', ${i})" class="carousel-dot w-2 h-2 rounded-full bg-white/40 cursor-pointer ${i===0?'!bg-cyan-400 w-4':''} transition-all"></span>`).join('');
+    return `<div class="relative w-full overflow-hidden rounded-2xl group flex flex-col justify-center" id="${idCarrusel}"><div class="carousel-container flex transition-transform duration-300 ease-out items-center" style="transform:translateX(0%)">${slides}</div><div class="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5 z-10">${dots}</div><button onclick="cambiarSlide('${idCarrusel}', -1)" class="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 text-white w-9 h-9 rounded-full flex items-center justify-center font-bold text-xl border border-white/10 shadow-lg active:scale-95">❮</button><button onclick="cambiarSlide('${idCarrusel}', 1)" class="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 text-white w-9 h-9 rounded-full flex items-center justify-center font-bold text-xl border border-white/10 shadow-lg active:scale-95">❯</button></div>`;
+}
+function moverCarrusel(id, idx) {
+    const cont = document.getElementById(id)?.querySelector('.carousel-container');
+    if(!cont) return;
+    cont.style.transform = `translateX(-${idx*100}%)`;
+    cont.setAttribute('data-index', idx);
+    const dots = document.getElementById(id).querySelectorAll('.carousel-dot');
+    dots.forEach((d,i)=>{ if(i===idx) d.classList.add('!bg-cyan-400','w-4'); else d.classList.remove('!bg-cyan-400','w-4'); });
+}
+function cambiarSlide(id, dir) {
+    const cont = document.getElementById(id)?.querySelector('.carousel-container');
+    if(!cont) return;
+    let current = parseInt(cont.getAttribute('data-index')||"0");
+    let total = cont.children.length;
+    let nuevo = (current+dir+total)%total;
+    moverCarrusel(id, nuevo);
+}
+function abrirLightbox(urlFotosString) {
+    let lb = document.getElementById('lightbox');
+    if(!lb){
+        lb = document.createElement('div');
+        lb.id='lightbox';
+        lb.style.cssText='position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:20000; display:flex; align-items:center; justify-content:center;';
+        lb.onclick = (e)=> { if(e.target===lb) { document.body.removeChild(lb); } };
+        document.body.appendChild(lb);
+    }
+    lb.innerHTML = `<div class="w-[90%] max-w-md relative">${generarContenedorFotos(urlFotosString)}<button onclick="document.body.removeChild(document.getElementById('lightbox'))" class="absolute -top-12 right-2 bg-white/10 text-white w-8 h-8 rounded-full font-black flex items-center justify-center border border-white/20 active:scale-95">✕</button></div>`;
+}
+
+// ==========================================
+// OPCIONES DE PLATOS
+// ==========================================
+function abrirDetalle(p) {
+    pushPantalla('plato');
+    itemActual = {
+        id: p.ID_PLATO || Date.now(), data: p, cantidad: 1, precioBase: parseFloat(p.PRECIO)||0,
+        precioOpciones: 0, opcionesSeleccionadas: {}, obligatorioOk: !p.SELECCION_OBLIGATORIA
+    };
+    document.getElementById('modal-titulo').innerText = p.PLATO;
+    document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
+    document.getElementById('modal-precio-base').innerText = euros(itemActual.precioBase);
+    const modalImg = document.getElementById('modal-img');
+    modalImg.src = p.FOTO_PLATO;
+    modalImg.onclick = () => abrirLightbox(p.FOTO_PLATO);
+    renderizarOpciones(p);
+    document.getElementById('cant-plato-modal').innerText = "1";
+    actualizarTotalModal();
+    document.getElementById('modal-plato').style.display = 'block';
+}
+function renderizarOpciones(p) {
+    const cont = document.getElementById('contenedor-pasos');
+    let html = '';
+    if(p.EXTRAS_PARSEADOS && Array.isArray(p.EXTRAS_PARSEADOS) && p.EXTRAS_PARSEADOS.length){
+        p.EXTRAS_PARSEADOS.forEach((grupo, idx)=>{
+            const requerido = grupo.required ? '<span class="opcion-obligatorio">(Obligatorio)</span>' : '<span class="opcion-opcional">(Opcional)</span>';
+            const tipo = grupo.tipo || (grupo.max===1?'radio':'checkbox');
+            html += `<div class="grupo-opciones" data-grupo="${idx}" data-tipo="${tipo}" data-max="${grupo.max||(tipo==='radio'?1:99)}"><div class="grupo-titulo">${escapeHTML(grupo.nombre || 'Elige')} ${requerido}</div><div class="opciones-lista">`;
+            grupo.opciones?.forEach(op => {
+                const precioText = op.precio>0 ? `+${euros(op.precio)}` : 'Incluido';
+                html += `<label class="opcion-item" data-precio="${op.precio||0}"><input type="${tipo}" name="grupo_${idx}" value="${escapeHTML(op.nombre)}" data-precio="${op.precio||0}" onchange="cambiarOpcion(this, ${idx}, '${escapeHTML(op.nombre)}', ${op.precio||0})"><span class="opcion-nombre">${escapeHTML(op.nombre)}</span><span class="opcion-precio">${precioText}</span></label>`;
+            });
+            html += `</div></div>`;
+        });
+    } else html = '<div class="sin-opciones">Sin opciones adicionales</div>';
+    cont.innerHTML = html;
+    itemActual.opcionesSeleccionadas = {};
+    itemActual.precioOpciones = 0;
+    actualizarTotalModal();
+}
+function cambiarOpcion(input, grupoId, opcionNombre, precio) {
+    const grupo = document.querySelector(`.grupo-opciones[data-grupo="${grupoId}"]`);
+    const tipo = grupo?.dataset.tipo;
+    const max = parseInt(grupo?.dataset.max)||1;
+    if(!itemActual.opcionesSeleccionadas[grupoId]) itemActual.opcionesSeleccionadas[grupoId]=[];
+    if(tipo==='radio') itemActual.opcionesSeleccionadas[grupoId]=[opcionNombre];
+    else {
+        if(input.checked){
+            if(itemActual.opcionesSeleccionadas[grupoId].length < max) itemActual.opcionesSeleccionadas[grupoId].push(opcionNombre);
+            else { input.checked=false; mostrarToast(`Máximo ${max} opciones`, "⚠️"); return; }
+        } else itemActual.opcionesSeleccionadas[grupoId] = itemActual.opcionesSeleccionadas[grupoId].filter(n=>n!==opcionNombre);
+    }
+    recalcularPrecioOpciones();
+    actualizarTotalModal();
+    validarObligatorios();
+}
+function recalcularPrecioOpciones() {
+    let total=0;
+    for(const [gid, selec] of Object.entries(itemActual.opcionesSeleccionadas)){
+        const grupo = document.querySelector(`.grupo-opciones[data-grupo="${gid}"]`);
+        if(grupo && selec.length){
+            grupo.querySelectorAll('.opcion-item input').forEach(inp=>{ if(selec.includes(inp.value)) total+=parseFloat(inp.dataset.precio)||0; });
         }
     }
-    
-    // Llamar a la función original
-    return enviarPedidoFinalOriginal();
+    itemActual.precioOpciones = total;
 }
-
-// NOTA: La función enviarPedidoFinalOriginal debe estar definida antes en tu código original
-// Por ahora mantenemos la que ya tenías, solo añadimos las validaciones arriba
-
-// ==========================================
-// RESTO DE FUNCIONES (tracking, checkout, etc.)
-// ==========================================
-// ... (mantén aquí todas las funciones que ya tenías: abrirRevision, abrirCheckout, 
-// iniciarSeguimientoPedido, actualizarInterfazSeguimiento, etc.)
-
-// ==========================================
-// INICIALIZACIÓN
-// ==========================================
-async function initApp() {
-    document.getElementById('loader').style.display = 'flex';
-    try {
-        cargarCesta();
-        actualizarClienteUI();
-        await cargarBaseDatos();
-        renderHome();
-        restaurarPedidoActivo();
-        initAudio();
-        
-        // Forzar footer después de cargar y observar cambios
-        setTimeout(() => agregarFooterLegal(), 500);
-        
-        // Observador para detectar cambios en app-container
-        const observer = new MutationObserver(() => {
-            if (!document.getElementById('legal-footer-container')) {
-                agregarFooterLegal();
-            }
-        });
-        const appContainer = document.getElementById('app-container');
-        if (appContainer) {
-            observer.observe(appContainer, { childList: true, subtree: true });
-        }
-        
-    } catch(e) { console.error(e); alertaError("ERROR", "No se pudo conectar"); }
-    finally { document.getElementById('loader').style.display = 'none'; }
+function actualizarTotalModal() { const total = (itemActual.precioBase+itemActual.precioOpciones)*itemActual.cantidad; document.getElementById('total-modal-btn').innerText = euros(total); }
+function cambiarCantidadPlato(inc) { let nc = itemActual.cantidad+inc; if(nc>=1){ itemActual.cantidad=nc; document.getElementById('cant-plato-modal').innerText=nc; actualizarTotalModal(); } }
+function validarObligatorios() {
+    let ok=true;
+    document.querySelectorAll('.grupo-opciones').forEach((grupo,idx)=>{
+        const oblig = grupo.querySelector('.opcion-obligatorio')!==null;
+        const selec = itemActual.opcionesSeleccionadas[idx]||[];
+        if(oblig && selec.length===0){ ok=false; grupo.classList.add('incompleto'); }
+        else grupo.classList.remove('incompleto');
+    });
+    itemActual.obligatorioOk = ok;
+    document.getElementById('btn-anadir-modal').disabled = !ok;
+    document.getElementById('btn-anadir-modal').style.opacity = ok?'1':'0.5';
+    return ok;
 }
+function añadirAlCarritoConOpciones() {
+    if(!validarObligatorios()){ mostrarToast("⚠️ Completa las opciones obligatorias","⚠️"); return; }
+    const totalUnitario = itemActual.precioBase+itemActual.precioOpciones;
+    const totalProducto = totalUnitario*itemActual.cantidad;
+    let opcionesTexto = '';
+    for(const selec of Object.values(itemActual.opcionesSeleccionadas)) if(selec.length) opcionesTexto += `${selec.join(', ')} | `;
+    opcionesTexto = opcionesTexto.slice(0,-3);
+    cesta.push({
+        id: Date.now(), nombre: itemActual.data.PLATO, foto: itemActual.data.FOTO_PLATO,
+        cantidad: itemActual.cantidad, precio_unitario: itemActual.precioBase,
+        opciones: opcionesTexto, extras_precio: itemActual.precioOpciones, total: totalProducto,
+        restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre
+    });
+    cerrarModalPlato(); actualizarCestaVisual(); mostrarToast(`${itemActual.data.PLATO} x${itemActual.cantidad} añadido`,"🍽️");
+}
+function cerrarModalPlato() { document.getElementById('modal-plato').style.display = 'none'; }
 
+// ==========================================
+// REVISIÓN Y CHECKOUT
+// ==========================================
+function abrirRevision() {
+    pushPantalla('revision');
+    const container = document.getElementById('items-revision');
+    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${escapeHTML(item.opciones)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
+    if(cesta.length===0) container.innerHTML = '<p class="text-center text-white/50">Carrito vacío</p>';
+    document.getElementById('panel-revision').style.display = 'block';
+    agregarFooterLegal();
+}
+function abrirCheckout() {
+    if (localStorage.getItem('ae_pedido_activo')) { alertaInfo("Pedido en curso", "Ya tienes un pedido activo"); return; }
+    if (!obtenerCliente()) { document.getElementById('panel-revision').style.display = 'none'; document.getElementById('modal-registro').style.display = 'flex'; return; }
+    pushPantalla('checkout');
+    document.getElementById('panel-revision').style.display = 'none';
+    document.getElementById('panel-checkout').style.display = 'block';
+    actualizarClienteUI();
+    const container = document.getElementById('lista-cesta-checkout');
+    const desglose = document.getElementById('desglose-pago');
+    const subtotal = cesta.reduce((a,i)=>a+i.total,0);
+    const envio = 2.50, usoApp = 0.99, total = subtotal+envio+usoApp;
+    container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
+    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2"><div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div><div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div><div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div><div class="border-t border-white/20 my-2"></div><div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div></div>`;
+    const montoDiv = document.getElementById('monto-paga-container');
+    const metodoSelect = document.getElementById('metodo-pago');
+    const toggleMonto = () => { montoDiv.classList.toggle('hidden', metodoSelect.value !== 'Efectivo'); };
+    metodoSelect.onchange = toggleMonto;
+    toggleMonto();
+    agregarFooterLegal();
+}
+function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
+function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
+
+// ==========================================
+// TRACKING
+// ==========================================
 function initAudio() { audioElement = document.getElementById('audio-llegada') || new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); return audioElement; }
 function limpiarSeguimientoCompleto() {
     if(trackingListenerRef) { try{ trackingListenerRef.off(); }catch(e){} trackingListenerRef=null; }
@@ -894,52 +967,133 @@ function restaurarPedidoActivo() {
     if(id) database.ref('pedidos/'+id).once('value').then(snap=>{ if(snap.val()) iniciarSeguimientoPedido(id); else limpiarSeguimientoCompleto(); });
 }
 
-function abrirRevision() {
-    pushPantalla('revision');
-    const container = document.getElementById('items-revision');
-    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${escapeHTML(item.opciones)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
-    if(cesta.length===0) container.innerHTML = '<p class="text-center text-white/50">Carrito vacío</p>';
-    document.getElementById('panel-revision').style.display = 'block';
-    agregarFooterLegal();
+// ==========================================
+// ENVÍO DE PEDIDO (con validaciones)
+// ==========================================
+async function enviarPedidoFinal() {
+    if(procesandoPedidoActivo) return;
+    const cliente = obtenerCliente();
+    if(!cliente){ alertaError("Registro","Debes registrarte"); return; }
+    if(cesta.length===0){ alertaError("Carrito vacío","No hay productos"); return; }
+    
+    // Verificar zona
+    if(!validarZona(cliente.dir)) return;
+    
+    // Verificar alcohol
+    if(!verificarAlcoholEnCesta()) return;
+    
+    // Verificar edad si hay alcohol
+    const tieneAlcohol = cesta.some(item => {
+        return CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)) ||
+               item.nombre.toLowerCase().includes('cerveza') ||
+               item.nombre.toLowerCase().includes('vino') ||
+               item.nombre.toLowerCase().includes('licor');
+    });
+    if(tieneAlcohol) {
+        const esMayor = await clienteEsMayorDeEdad();
+        if(!esMayor) {
+            alertaError("Verificación de edad", "Debes ser mayor de 18 años para comprar productos con alcohol.");
+            return;
+        }
+    }
+    
+    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+    const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
+    const envio = 2.50, usoApp = 0.99, total = subtotal + envio + usoApp;
+    
+    const detalleTexto = cesta.map(item => `${item.cantidad}x ${item.nombre}${item.opciones ? ` [${item.opciones}]` : ''}`).join(" | ");
+    
+    let montoPaga = null;
+    if (metodo === "Efectivo") {
+        const montoInput = document.getElementById('monto-paga');
+        if (montoInput && montoInput.value) {
+            montoPaga = parseFloat(montoInput.value);
+            if (isNaN(montoPaga)) montoPaga = null;
+        }
+    }
+    
+    const datosPedido = {
+        telf_info: cliente.telf, cliente_info: cliente.nombre, id_res_info: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre, dir_info: cliente.dir, pedido_info: detalleTexto,
+        total_info: total.toFixed(2), pago_info: metodo, huella: huellaDigitalTerminal,
+        items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio||0, total: item.total })),
+        fecha: new Date().toISOString()
+    };
+    if(montoPaga) datosPedido.monto_paga = montoPaga;
+    
+    procesandoPedidoActivo = true;
+    const btnProcesar = document.getElementById('btn-procesar-orden');
+    btnProcesar.disabled = true; btnProcesar.innerText = "PROCESANDO..."; btnProcesar.style.opacity = "0.5";
+    
+    Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    
+    const formData = new FormData();
+    formData.append('data', JSON.stringify(datosPedido));
+    
+    try {
+        const response = await fetch(scriptURL, { method: 'POST', body: formData });
+        const result = await response.json();
+        Swal.close();
+        if(result.status === "ERROR") throw new Error(result.message || "Pedido rechazado");
+        if(result.status === "OK") {
+            const idReal = result.idPedido;
+            const pedidoFirebase = { 
+                id: idReal, cliente: cliente.nombre, telefono: cliente.telf, direccion: cliente.dir,
+                items: datosPedido.items, subtotal, envio, usoApp, total, metodo_pago: metodo,
+                restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre,
+                estado: "recibido", huella: huellaDigitalTerminal, fecha: new Date().toISOString(), timestamp: Date.now()
+            };
+            if(montoPaga) pedidoFirebase.monto_paga = montoPaga;
+            await database.ref('pedidos/' + idReal).set(pedidoFirebase);
+            cesta = []; actualizarCestaVisual(); cerrarCheckout();
+            iniciarSeguimientoPedido(idReal);
+            abrirModalTracking();
+        } else throw new Error("Respuesta inesperada");
+    } catch(error) {
+        Swal.close();
+        alertaError("Error", error.message || "No se pudo enviar el pedido");
+    } finally {
+        procesandoPedidoActivo = false;
+        btnProcesar.disabled = false; btnProcesar.innerText = "Procesar Orden"; btnProcesar.style.opacity = "1";
+    }
 }
-function abrirCheckout() {
-    if (localStorage.getItem('ae_pedido_activo')) { alertaInfo("Pedido en curso", "Ya tienes un pedido activo"); return; }
-    if (!obtenerCliente()) { document.getElementById('panel-revision').style.display = 'none'; document.getElementById('modal-registro').style.display = 'flex'; return; }
-    pushPantalla('checkout');
-    document.getElementById('panel-revision').style.display = 'none';
-    document.getElementById('panel-checkout').style.display = 'block';
-    actualizarClienteUI();
-    const container = document.getElementById('lista-cesta-checkout');
-    const desglose = document.getElementById('desglose-pago');
-    const subtotal = cesta.reduce((a,i)=>a+i.total,0);
-    const envio = 2.50, usoApp = 0.99, total = subtotal+envio+usoApp;
-    container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
-    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2"><div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div><div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div><div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div><div class="border-t border-white/20 my-2"></div><div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div></div>`;
-    const montoDiv = document.getElementById('monto-paga-container');
-    const metodoSelect = document.getElementById('metodo-pago');
-    const toggleMonto = () => { montoDiv.classList.toggle('hidden', metodoSelect.value !== 'Efectivo'); };
-    metodoSelect.onchange = toggleMonto;
-    toggleMonto();
-    agregarFooterLegal();
-}
-function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
-function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
 
 // ==========================================
-// CARGAR FUNCIONES ORIGINALES RESTANTES (abrirDetalle, opciones, etc.)
+// SERVICE WORKER
 // ==========================================
-// Por brevedad, aquí deberías incluir todas las funciones de opciones de platos,
-// lightbox, carrusel, etc. que ya tenías en tu código original.
-// Como son extensas, las omito pero las mantienes de tu versión anterior.
-
-// Service Worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
         .then(reg => console.log('✅ Service Worker registrado', reg))
         .catch(err => console.error('❌ Error al registrar SW', err));
 }
 
-// Iniciar app
+// ==========================================
+// INICIALIZACIÓN
+// ==========================================
+async function initApp() {
+    document.getElementById('loader').style.display = 'flex';
+    try {
+        cargarCesta();
+        actualizarClienteUI();
+        await cargarBaseDatos();
+        renderHome();
+        restaurarPedidoActivo();
+        initAudio();
+        
+        setTimeout(() => agregarFooterLegal(), 500);
+        const observer = new MutationObserver(() => {
+            if (!document.getElementById('legal-footer-container')) {
+                agregarFooterLegal();
+            }
+        });
+        const appContainer = document.getElementById('app-container');
+        if (appContainer) {
+            observer.observe(appContainer, { childList: true, subtree: true });
+        }
+    } catch(e) { console.error(e); alertaError("ERROR", "No se pudo conectar"); }
+    finally { document.getElementById('loader').style.display = 'none'; }
+}
+
 document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>

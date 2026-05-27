@@ -1106,26 +1106,62 @@ function abrirRevision() {
 }
 
 function abrirCheckout() {
-    if (localStorage.getItem('ae_pedido_activo')) { alertaInfo("Pedido en curso", "Ya tienes un pedido activo"); return; }
-    if (!obtenerCliente()) { document.getElementById('panel-revision').style.display = 'none'; document.getElementById('modal-registro').style.display = 'flex'; return; }
+    if (localStorage.getItem('ae_pedido_activo')) { 
+        alertaInfo("Pedido en curso", "Ya tienes un pedido activo"); 
+        return; 
+    }
+    if (!obtenerCliente()) { 
+        document.getElementById('panel-revision').style.display = 'none'; 
+        document.getElementById('modal-registro').style.display = 'flex'; 
+        return; 
+    }
     pushPantalla('checkout');
     document.getElementById('panel-revision').style.display = 'none';
     document.getElementById('panel-checkout').style.display = 'block';
     actualizarClienteUI();
+    
     const container = document.getElementById('lista-cesta-checkout');
     const desglose = document.getElementById('desglose-pago');
-    const subtotal = cesta.reduce((a,i)=>a+i.total,0);
-    const envio = 2.50, usoApp = 0.99, total = subtotal+envio+usoApp;
+    const subtotal = cesta.reduce((a,i) => a + (i.total || 0), 0);
+    const envio = 2.50;
+    const usoApp = 0.99;
+    const total = subtotal + envio + usoApp;
+    
     container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
-    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2"><div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div><div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div><div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div><div class="border-t border-white/20 my-2"></div><div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div></div>`;
-    const montoDiv = document.getElementById('monto-paga-container');
+    
+    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2">
+        <div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div>
+        <div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div>
+        <div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div>
+        <div class="border-t border-white/20 my-2"></div>
+        <div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div>
+    </div>`;
+    
+    // 🔥 CORREGIDO: Crear el contenedor de monto si no existe
+    let montoDiv = document.getElementById('monto-paga-container');
+    if (!montoDiv) {
+        montoDiv = document.createElement('div');
+        montoDiv.id = 'monto-paga-container';
+        montoDiv.className = 'hidden';
+        montoDiv.innerHTML = `
+            <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">💵 ¿Con cuánto pagas? (efectivo)</p>
+            <input type="number" id="monto-paga" step="0.01" placeholder="Ej: 50.00" class="w-full">
+            <p class="text-white/40 text-[9px] mt-1">Opcional - Para que el repartidor sepa si necesita cambio</p>
+        `;
+        desglose.appendChild(montoDiv);
+    }
+    
     const metodoSelect = document.getElementById('metodo-pago');
-    const toggleMonto = () => { montoDiv.classList.toggle('hidden', metodoSelect.value !== 'Efectivo'); };
+    const toggleMonto = () => {
+        if (montoDiv) {
+            montoDiv.classList.toggle('hidden', metodoSelect.value !== 'Efectivo');
+        }
+    };
     metodoSelect.onchange = toggleMonto;
     toggleMonto();
+    
     agregarFooterLegal();
 }
-
 function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
 function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
 

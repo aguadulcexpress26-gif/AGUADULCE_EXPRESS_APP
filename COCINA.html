@@ -17,23 +17,21 @@
         .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: bold; display: inline-block; }
         .badge-warning { background: rgba(245,158,11,0.2); color: #f59e0b; }
         .badge-success { background: rgba(34,197,94,0.2); color: #22c55e; }
-        .tiempo-btn.verde { background-color: #22c55e !important; color: white !important; }
-        .opacity-50 { opacity: 0.5; }
-        .stats-card { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 20px; padding: 12px 16px; }
-        .stats-number { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
-        .comision-detalle { background: #1e293b; border-radius: 12px; padding: 12px; margin: 8px 0; }
+        .badge-danger { background: rgba(239,68,68,0.2); color: #ef4444; }
         .banner-img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
         .banner-container { position: relative; height: 220px; overflow: hidden; }
         .overlay-gradient { background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%); }
         @media (min-width: 768px) { .banner-container { height: 260px; } }
+        .stats-card { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 20px; padding: 12px 16px; }
+        .stats-number { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
     </style>
 </head>
 <body>
 
 <div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
     <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
-    <p class="text-white/50 text-xs mb-4 text-center">🔐 CLAVE DEL RESTAURANTE</p>
-    <input type="text" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white uppercase" placeholder="Ej: DELI10">
+    <p class="text-white/50 text-xs mb-4 text-center">🔐 PIN DEL RESTAURANTE</p>
+    <input type="text" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white uppercase" placeholder="Ej: CHUN20">
     <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
 </div>
 
@@ -63,12 +61,12 @@
             <div class="text-right stats-card">
                 <div class="text-[9px] text-white/40 uppercase tracking-wider">📊 RESUMEN DE HOY</div>
                 <div class="stats-number text-white"><span id="statHoy">0.00</span>€</div>
-                <div class="text-[10px] text-white/40 mt-1">💰 Subtotal de productos</div>
+                <div class="text-[10px] text-white/40 mt-1">💰 Total productos</div>
             </div>
             <div class="text-right stats-card">
                 <div class="text-[9px] text-white/40 uppercase tracking-wider">📅 TOTAL ACUMULADO</div>
                 <div class="stats-number text-white"><span id="statSemana">0.00</span>€</div>
-                <div class="text-[10px] text-white/40 mt-1">💰 Subtotal de productos</div>
+                <div class="text-[10px] text-white/40 mt-1">💰 Total productos</div>
             </div>
             <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
         </div>
@@ -103,13 +101,24 @@
 
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
 
+    // ==========================================
+    // PINES DE ACCESO POR RESTAURANTE
+    // ==========================================
+    const PINES_RESTAURANTES = {
+        "6G4L1V": "DELI10",
+        "RT33M5": "CHUN20",
+        "8N3Z7K": "HARO30",
+        "TR92X5": "SUCU40",
+        "9V1L8K": "PERU50",
+        "FL44K8": "LIMA60",
+        "CV11Q9": "PECA70"
+    };
+
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
-    let miRestauranteComision = parseFloat(localStorage.getItem('AE_REST_COMISION')) || 0.18;
     let pedidos = [];
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
-    let restaurantesData = [];
 
     function activarSonidoGlobal() {
         if (!sonidosActivados) {
@@ -120,170 +129,103 @@
     }
     document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
 
-    function calcularSubtotal(totalConEnvio) {
-        let subtotal = parseFloat(totalConEnvio) - 2.50 - 0.99;
-        return subtotal > 0 ? subtotal : parseFloat(totalConEnvio);
-    }
-
-    function calcularMontoACobrar(subtotal, comision) {
-        return subtotal * (1 - comision);
-    }
-
-    async function cargarRestaurantes() {
-        try {
-            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
-            const data = await response.json();
-            restaurantesData = data.RESTAURANTES || [];
-            console.log("✅ Restaurantes cargados:", restaurantesData.length);
-            console.log("🔑 Claves:", restaurantesData.map(r => r.CLAVE_ACCE));
-            return true;
-        } catch (error) {
-            console.error("Error cargando restaurantes:", error);
-            return false;
-        }
-    }
-
-    async function verificarPIN() {
+    function verificarPIN() {
         let pin = document.getElementById('pinInput').value.trim().toUpperCase();
-        
-        Swal.fire({
-            title: 'Verificando acceso...',
-            text: 'Cargando datos del restaurante',
-            allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading(); }
-        });
-        
-        try {
-            // Cargar restaurantes SIEMPRE antes de verificar
-            await cargarRestaurantes();
-            
-            let restauranteEncontrado = null;
-            for (let i = 0; i < restaurantesData.length; i++) {
-                let clave = String(restaurantesData[i].CLAVE_ACCE || "").trim().toUpperCase();
-                if (clave === pin) {
-                    restauranteEncontrado = restaurantesData[i];
-                    break;
-                }
+        let encontrado = null;
+        for (let [id, clave] of Object.entries(PINES_RESTAURANTES)) {
+            if (clave === pin) {
+                encontrado = id;
+                break;
             }
-            
-            if (restauranteEncontrado) {
-                miRestauranteId = restauranteEncontrado.ID_RESTAURANTE;
-                let comisionRaw = String(restauranteEncontrado.COMISION_PORCENTAJE || "0.18").replace(',', '.');
-                miRestauranteComision = parseFloat(comisionRaw);
-                
-                localStorage.setItem('AE_REST_ID', miRestauranteId);
-                localStorage.setItem('AE_REST_COMISION', miRestauranteComision);
-                
-                Swal.close();
-                iniciarApp();
-            } else {
-                Swal.close();
-                Swal.fire({ 
-                    title: 'CLAVE INCORRECTA', 
-                    text: `"${pin}" no es válida.\n\nClaves disponibles:\n${restaurantesData.map(r => r.CLAVE_ACCE).join(', ')}`, 
-                    icon: 'error', 
-                    background: '#020617', 
-                    color: 'white'
-                });
-            }
-        } catch (error) {
-            Swal.close();
-            console.error("Error:", error);
-            Swal.fire({ title: 'ERROR', text: 'No se pudo conectar con el servidor', icon: 'error', background: '#020617', color: 'white' });
+        }
+        if (encontrado) {
+            miRestauranteId = encontrado;
+            localStorage.setItem('AE_REST_ID', miRestauranteId);
+            iniciarApp();
+        } else {
+            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
         }
     }
 
     async function alternarEstadoTienda(estadoActual) {
         const nuevoEstado = estadoActual === "ABIERTO" ? "CERRADO" : "ABIERTO";
-        const textoAlerta = nuevoEstado === "ABIERTO" 
-            ? "¿Quieres ABRIR el restaurante al público para recibir pedidos?" 
-            : "¿Quieres CERRAR el restaurante? Los clientes verán el local cerrado en la App.";
-        
         const confirmar = await Swal.fire({
             title: `${nuevoEstado === "ABIERTO" ? "🟢" : "🔴"} ¿Cambiar estado?`,
-            text: textoAlerta,
+            text: nuevoEstado === "ABIERTO" ? "¿Quieres ABRIR el restaurante?" : "¿Quieres CERRAR el restaurante?",
             showCancelButton: true,
             confirmButtonColor: nuevoEstado === "ABIERTO" ? "#10B981" : "#EF4444",
-            cancelButtonColor: "#334155",
             confirmButtonText: nuevoEstado === "ABIERTO" ? "Sí, Abrir" : "Sí, Cerrar",
-            cancelButtonText: "Cancelar",
-            background: "#1e293b",
-            color: "#fff"
+            background: "#1e293b", color: "#fff"
         });
-
         if (!confirmar.isConfirmed) return;
-
         try {
-            Swal.showLoading();
-            let res = await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
-            let rData = await res.json();
-            
-            if (rData.status === "OK") {
-                Swal.fire({ icon: 'success', title: `Tienda: ${nuevoEstado}`, timer: 1500, showConfirmButton: false, background: "#1e293b", color: "#fff" });
-                cargarPedidos(); 
-            } else {
-                throw new Error(rData.error || "Error al actualizar");
-            }
+            await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
+            cargarPedidos();
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: "#1e293b", color: "#fff" });
         }
     }
 
     async function cargarPedidos() {
-    if (!miRestauranteId) return;
-    try {
-        let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
-        let data = await res.json();
-        
-        console.log("📦 Datos recibidos:", data);
-        
-        if (data.tienda) {
-            // 1. Asignar el nombre del restaurante
-            document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
+        if (!miRestauranteId) return;
+        try {
+            let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
+            let data = await res.json();
             
-            // 2. Gestionar la imagen del banner de forma más robusta
-            const fotoElement = document.getElementById('restauranteFoto');
-            let fotoUrl = data.tienda.foto || "";
+            console.log("📦 Datos recibidos:", data);
             
-            console.log(`🖼️ URL original (de la hoja): "${fotoUrl}"`);
-            
-            // Limpieza: eliminar parámetros adicionales de postimage
-            fotoUrl = fotoUrl.split('?')[0];
-            
-            if (fotoUrl && fotoUrl.trim() !== "") {
-                console.log(`🖼️ Intentando cargar imagen desde: "${fotoUrl}"`);
-                fotoElement.src = fotoUrl;
-                fotoElement.onload = () => console.log("✅ Imagen cargada correctamente");
-                fotoElement.onerror = () => {
-                    console.error(`❌ Error cargando imagen: ${fotoUrl}`);
-                    fotoElement.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
-                };
-            } else {
-                console.warn("⚠️ No se encontró URL de foto. Usando imagen por defecto.");
-                fotoElement.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
+            if (data.tienda) {
+                document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
+                const fotoElement = document.getElementById('restauranteFoto');
+                if (data.tienda.foto && fotoElement.src !== data.tienda.foto) {
+                    fotoElement.src = data.tienda.foto;
+                }
             }
+
+            let pedidosActivos = data.pedidos || [];
+            let pedidosHistorial = data.historial || [];
+            let stats = data.stats || {};
             
-            // ... (el resto de tu código para manejar el estado y los pedidos sigue igual)
+            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
+            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
+
+            let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
+            let btnClase = tiendaEst === "ABIERTO" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400";
+            document.getElementById('contenedorBotonTienda').innerHTML = `
+                <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 ${btnClase}">
+                    ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO" : "🔴 CERRADO"}
+                </button>
+            `;
+
+            // Combinar todos los pedidos para el historial y gestión
+            pedidos = [...pedidosActivos, ...pedidosHistorial];
+            renderizarTodo();
+
+            if (sonidosActivados && pedidosActivos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
+                audioNotif.play().catch(e => console.log);
+            }
+        } catch (error) {
+            console.error("Error cargando pedidos:", error);
         }
-        // ... resto del código (pedidos, estadísticas, etc.) no se modifica
-    } catch (error) {
-        console.error("Error cargando pedidos:", error);
     }
-}
+
     function renderizarTodo() {
+        // PENDIENTES: RECIBIDO, NUEVO, o vacío
         let entrantes = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
             return est === 'RECIBIDO' || est === 'NUEVO' || est === '';
         });
 
+        // EN COCINA: EN PROCESO o LISTO
         let cocina = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
             return est === 'EN PROCESO' || est === 'LISTO';
         });
 
+        // HISTORIAL: el resto (entregados, en camino, cancelados, rechazados)
         let historial = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO';
+            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO' || est === 'CANCELADO' || est === 'RECHAZADO';
         });
 
         document.getElementById('totalPendientes').innerText = entrantes.length;
@@ -296,7 +238,6 @@
     }
 
     function renderCardEntrante(p) {
-        const subtotal = calcularSubtotal(p.TOTAL);
         return `<div class="card-pedido">
             <div class="flex justify-between items-start">
                 <div>
@@ -306,7 +247,7 @@
                 </div>
                 <div class="text-right">
                     <span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span>
-                    <p class="text-emerald-400 font-bold text-sm mt-1">${subtotal.toFixed(2)}€</p>
+                    <p class="text-emerald-400 font-bold text-sm mt-1">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
                 </div>
             </div>
             <div class="flex gap-2 mt-3">
@@ -317,14 +258,7 @@
     }
 
     function renderCardCocina(p) {
-        const est = (p.ESTADO || '').toUpperCase().trim();
-        let estaListo = est === 'LISTO';
-        let tiempoActivo = p.tiempo_seleccionado || 0;
-        const subtotal = calcularSubtotal(p.TOTAL);
-        const montoACobrar = calcularMontoACobrar(subtotal, miRestauranteComision);
-        const comisionMonto = subtotal - montoACobrar;
-        const comisionPorcentaje = (miRestauranteComision * 100).toFixed(0);
-
+        const estaListo = (p.ESTADO || '').toUpperCase() === 'LISTO';
         return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
             <div class="flex justify-between">
                 <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
@@ -332,27 +266,11 @@
             </div>
             <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
             <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
-            
-            <div class="comision-detalle mt-3">
-                <div class="flex justify-between text-xs">
-                    <span>💰 Subtotal:</span>
-                    <span class="text-white font-bold">${subtotal.toFixed(2)}€</span>
-                </div>
-                <div class="flex justify-between text-xs mt-1">
-                    <span>📊 Comisión (${comisionPorcentaje}%):</span>
-                    <span class="text-amber-400">-${comisionMonto.toFixed(2)}€</span>
-                </div>
-                <div class="flex justify-between text-sm font-bold mt-2 pt-2 border-t border-white/10">
-                    <span class="text-emerald-400">🟢 TOTAL A COBRAR:</span>
-                    <span class="text-emerald-400">${montoACobrar.toFixed(2)}€</span>
-                </div>
-            </div>
-            
             <div class="flex gap-2 mt-3 flex-wrap">
                 <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn ${tiempoActivo === 15 ? 'verde' : 'bg-cyan-500/20 text-cyan-400'} px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>15'</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="tiempo-btn ${tiempoActivo === 30 ? 'verde' : 'bg-cyan-500/20 text-cyan-400'} px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>30'</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, this)" class="tiempo-btn ${tiempoActivo === 45 ? 'verde' : 'bg-cyan-500/20 text-cyan-400'} px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>45'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">30'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, this)" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">45'</button>
                 <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>✅ LISTO</button>
             </div>
         </div>`;
@@ -360,6 +278,30 @@
 
     function renderCardHistorial(p) {
         const total = parseFloat(p.TOTAL) || 0;
+        const estado = (p.ESTADO || '').toUpperCase();
+        let estadoTexto = '';
+        let colorClass = '';
+        
+        if (estado === 'ENTREGADO' || estado === 'FINALIZADO') {
+            estadoTexto = '🏁 ENTREGADO';
+            colorClass = 'badge-success';
+        } else if (estado === 'EN CAMINO') {
+            estadoTexto = '🛵 EN REPARTO';
+            colorClass = 'badge';
+        } else if (estado === 'LLEGÓ') {
+            estadoTexto = '📍 EN EL CLIENTE';
+            colorClass = 'badge-warning';
+        } else if (estado === 'RECHAZADO') {
+            estadoTexto = '❌ RECHAZADO';
+            colorClass = 'badge-danger';
+        } else if (estado === 'CANCELADO') {
+            estadoTexto = '⚠️ CANCELADO';
+            colorClass = 'badge-danger';
+        } else {
+            estadoTexto = estado;
+            colorClass = 'badge';
+        }
+        
         return `<div class="card-pedido historial-item">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
@@ -367,7 +309,7 @@
             </div>
             <div class="flex justify-between items-start gap-2">
                 <p class="text-white/70 text-xs">${p.CLIENTE || 'Cliente'}</p>
-                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-500/20 text-cyan-400">${p.ESTADO || 'ENTREGADO'}</span>
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${colorClass}">${estadoTexto}</span>
             </div>
             <p class="text-white/40 text-[11px] mt-1">🛵 ${p.REPARTIDOR || 'Sin repartidor'}</p>
             <div class="mt-3 pt-2 border-t border-white/5">
@@ -451,10 +393,7 @@
                 .total { font-size: 18px; font-weight: bold; }
             </style>
             </head><body>
-            <div class="text-center">
-                <h3>AGUADULCE EXPRESS</h3>
-                <p>${new Date().toLocaleString()}</p>
-            </div>
+            <div class="text-center"><h3>AGUADULCE EXPRESS</h3><p>${new Date().toLocaleString()}</p></div>
             <div class="separator"></div>
             <p><strong>Pedido:</strong> #${pedido.ID_PEDIDO}</p>
             <p><strong>Cliente:</strong> ${pedido.CLIENTE || 'Cliente'}</p>
@@ -466,7 +405,7 @@
             <div class="text-center total">TOTAL: ${total.toFixed(2)}€</div>
             <div class="separator"></div>
             <p class="text-center">¡Gracias!</p>
-            <script>window.onload = function() { window.print(); setTimeout(() => window.close(), 500); };<\/script>
+            <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500);};<\/script>
             </body></html>
         `);
         ventana.document.close();
@@ -475,21 +414,16 @@
     function preguntarSalir() {
         Swal.fire({
             title: '¿Cerrar sesión?',
-            text: 'Volverás a la pantalla de inicio',
             icon: 'question',
             showCancelButton: true,
             confirmButtonColor: '#d33',
             confirmButtonText: 'Sí, salir',
             background: '#1e293b',
             color: 'white'
-        }).then((result) => {
+        }).then(result => {
             if (result.isConfirmed) {
                 localStorage.removeItem('AE_REST_ID');
-                localStorage.removeItem('AE_REST_COMISION');
-                miRestauranteId = "";
-                document.getElementById('loginScreen').style.display = 'flex';
-                document.getElementById('appContent').classList.add('hidden');
-                document.getElementById('pinInput').value = '';
+                location.reload();
             }
         });
     }
@@ -498,10 +432,10 @@
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
         await cargarPedidos();
-        setInterval(cargarPedidos, 10000);
+        setInterval(cargarPedidos, 8000);
     }
 
-    window.onload = () => { 
+    window.onload = () => {
         if (miRestauranteId) {
             iniciarApp();
         } else {

@@ -14,42 +14,18 @@
         body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; }
         .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
         .card-pedido:hover { transform: translateY(-2px); border-color: #06b6d440; }
-        .btn-accion { transition: transform 0.1s; cursor: pointer; }
-        .btn-accion:active { transform: scale(0.96); }
         .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: bold; display: inline-block; }
         .badge-warning { background: rgba(245,158,11,0.2); color: #f59e0b; }
         .badge-success { background: rgba(34,197,94,0.2); color: #22c55e; }
-        .badge-danger { background: rgba(239,68,68,0.2); color: #ef4444; }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
         .tiempo-btn.verde { background-color: #22c55e !important; color: white !important; }
         .opacity-50 { opacity: 0.5; }
-        .historial-item { cursor: pointer; transition: all 0.2s; }
-        .historial-item:hover { background: #1e293b; transform: scale(0.98); }
         .stats-card { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 20px; padding: 12px 16px; }
         .stats-number { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
         .comision-detalle { background: #1e293b; border-radius: 12px; padding: 12px; margin: 8px 0; }
-        
-        .banner-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: center;
-            filter: brightness(1.12) contrast(1.1) saturate(1.15);
-            opacity: 1 !important;
-        }
-        .overlay-gradient {
-            background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%);
-        }
-        .banner-container {
-            position: relative;
-            height: 220px;
-            overflow: hidden;
-        }
-        @media (min-width: 768px) {
-            .banner-container { height: 260px; }
-        }
+        .banner-img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+        .banner-container { position: relative; height: 220px; overflow: hidden; }
+        .overlay-gradient { background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%); }
+        @media (min-width: 768px) { .banner-container { height: 260px; } }
     </style>
 </head>
 <body>
@@ -57,7 +33,7 @@
 <div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
     <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
     <p class="text-white/50 text-xs mb-4 text-center">🔐 CLAVE DEL RESTAURANTE</p>
-    <input type="password" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white">
+    <input type="text" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white uppercase" placeholder="Ej: DELI10">
     <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
 </div>
 
@@ -133,8 +109,6 @@
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
-    
-    // Datos de restaurantes cargados desde la hoja
     let restaurantesData = [];
 
     function activarSonidoGlobal() {
@@ -155,62 +129,70 @@
         return subtotal * (1 - comision);
     }
 
-   async function cargarRestaurantes() {
-    try {
-        const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
-        const data = await response.json();
-        restaurantesData = data.RESTAURANTES || [];
-        console.log("✅ Restaurantes cargados:", restaurantesData.length);
-        console.log("🔑 Ejemplo de clave:", restaurantesData[0]?.CLAVE_ACCE);
-    } catch (error) {
-        console.error("Error cargando restaurantes:", error);
+    async function cargarRestaurantes() {
+        try {
+            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            restaurantesData = data.RESTAURANTES || [];
+            console.log("✅ Restaurantes cargados:", restaurantesData.length);
+            console.log("🔑 Claves:", restaurantesData.map(r => r.CLAVE_ACCE));
+            return true;
+        } catch (error) {
+            console.error("Error cargando restaurantes:", error);
+            return false;
+        }
     }
-}
 
-   async function verificarPIN() {
-    let pin = document.getElementById('pinInput').value.trim().toUpperCase();
-    
-    // 🔥 Mostrar loading mientras se cargan los restaurantes
-    Swal.fire({
-        title: 'Verificando...',
-        text: 'Por favor espera',
-        allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); }
-    });
-    
-    // Cargar restaurantes desde el servidor
-    try {
-        const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
-        const data = await response.json();
-        restaurantesData = data.RESTAURANTES || [];
-        console.log("✅ Restaurantes cargados:", restaurantesData.length);
-        console.log("🔑 Claves disponibles:", restaurantesData.map(r => r.CLAVE_ACCE));
+    async function verificarPIN() {
+        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
         
-        // Buscar el restaurante por CLAVE_ACCE
-        let restauranteEncontrado = restaurantesData.find(r => {
-            let clave = String(r.CLAVE_ACCE || "").trim().toUpperCase();
-            return clave === pin;
+        Swal.fire({
+            title: 'Verificando acceso...',
+            text: 'Cargando datos del restaurante',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
         });
         
-        Swal.close();
-        
-        if (restauranteEncontrado) {
-            miRestauranteId = restauranteEncontrado.ID_RESTAURANTE;
-            let comisionRaw = String(restauranteEncontrado.COMISION_PORCENTAJE || "0.18").replace(',', '.');
-            miRestauranteComision = parseFloat(comisionRaw);
+        try {
+            // Cargar restaurantes SIEMPRE antes de verificar
+            await cargarRestaurantes();
             
-            localStorage.setItem('AE_REST_ID', miRestauranteId);
-            localStorage.setItem('AE_REST_COMISION', miRestauranteComision);
-            iniciarApp();
-        } else {
-            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
+            let restauranteEncontrado = null;
+            for (let i = 0; i < restaurantesData.length; i++) {
+                let clave = String(restaurantesData[i].CLAVE_ACCE || "").trim().toUpperCase();
+                if (clave === pin) {
+                    restauranteEncontrado = restaurantesData[i];
+                    break;
+                }
+            }
+            
+            if (restauranteEncontrado) {
+                miRestauranteId = restauranteEncontrado.ID_RESTAURANTE;
+                let comisionRaw = String(restauranteEncontrado.COMISION_PORCENTAJE || "0.18").replace(',', '.');
+                miRestauranteComision = parseFloat(comisionRaw);
+                
+                localStorage.setItem('AE_REST_ID', miRestauranteId);
+                localStorage.setItem('AE_REST_COMISION', miRestauranteComision);
+                
+                Swal.close();
+                iniciarApp();
+            } else {
+                Swal.close();
+                Swal.fire({ 
+                    title: 'CLAVE INCORRECTA', 
+                    text: `"${pin}" no es válida.\n\nClaves disponibles:\n${restaurantesData.map(r => r.CLAVE_ACCE).join(', ')}`, 
+                    icon: 'error', 
+                    background: '#020617', 
+                    color: 'white'
+                });
+            }
+        } catch (error) {
+            Swal.close();
+            console.error("Error:", error);
+            Swal.fire({ title: 'ERROR', text: 'No se pudo conectar con el servidor', icon: 'error', background: '#020617', color: 'white' });
         }
-    } catch (error) {
-        Swal.close();
-        console.error("Error:", error);
-        Swal.fire({ title: 'ERROR', text: 'No se pudo conectar con el servidor', icon: 'error', background: '#020617', color: 'white' });
     }
-}
+
     async function alternarEstadoTienda(estadoActual) {
         const nuevoEstado = estadoActual === "ABIERTO" ? "CERRADO" : "ABIERTO";
         const textoAlerta = nuevoEstado === "ABIERTO" 
@@ -237,24 +219,18 @@
             let rData = await res.json();
             
             if (rData.status === "OK") {
-                Swal.fire({
-                    icon: 'success',
-                    title: `Tienda configurada como: ${nuevoEstado}`,
-                    timer: 1500,
-                    showConfirmButton: false,
-                    background: "#1e293b",
-                    color: "#fff"
-                });
+                Swal.fire({ icon: 'success', title: `Tienda: ${nuevoEstado}`, timer: 1500, showConfirmButton: false, background: "#1e293b", color: "#fff" });
                 cargarPedidos(); 
             } else {
                 throw new Error(rData.error || "Error al actualizar");
             }
         } catch (err) {
-            Swal.fire({ icon: 'error', title: 'Error en el servidor', text: err.message, background: "#1e293b", color: "#fff" });
+            Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: "#1e293b", color: "#fff" });
         }
     }
 
     async function cargarPedidos() {
+        if (!miRestauranteId) return;
         try {
             let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
             let data = await res.json();
@@ -264,8 +240,6 @@
                 const fotoElement = document.getElementById('restauranteFoto');
                 if (data.tienda.foto && fotoElement.src !== data.tienda.foto) {
                     fotoElement.src = data.tienda.foto;
-                } else if (!data.tienda.foto && !fotoElement.src) {
-                    fotoElement.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
                 }
             }
 
@@ -273,21 +247,19 @@
             let pedidosHistorial = data.historial || [];
             let stats = data.stats || {};
             
-            if(document.getElementById('statHoy')) document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
-            if(document.getElementById('statSemana')) document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
+            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
+            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
 
             let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
             let btnClase = tiendaEst === "ABIERTO" 
-                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/40" 
-                : "bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/40";
+                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" 
+                : "bg-rose-500/20 text-rose-400 border border-rose-500/30";
 
-            if(document.getElementById('contenedorBotonTienda')) {
-                document.getElementById('contenedorBotonTienda').innerHTML = `
-                    <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 ${btnClase}">
-                        ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO (PULSA PARA CERRAR)" : "🔴 CERRADO (PULSA PARA ABRIR)"}
-                    </button>
-                `;
-            }
+            document.getElementById('contenedorBotonTienda').innerHTML = `
+                <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 ${btnClase}">
+                    ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO (PULSA PARA CERRAR)" : "🔴 CERRADO (PULSA PARA ABRIR)"}
+                </button>
+            `;
 
             const snapshot = await database.ref('pedidos').once('value');
             const fbData = snapshot.val() || {};
@@ -324,7 +296,7 @@
 
         let historial = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO' || est === 'CANCELADO';
+            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO';
         });
 
         document.getElementById('totalPendientes').innerText = entrantes.length;
@@ -351,8 +323,8 @@
                 </div>
             </div>
             <div class="flex gap-2 mt-3">
-                <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-aceptar bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
-                <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-rechazar bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
+                <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
+                <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
             </div>
         </div>`;
     }
@@ -366,21 +338,21 @@
         const comisionMonto = subtotal - montoACobrar;
         const comisionPorcentaje = (miRestauranteComision * 100).toFixed(0);
 
-        return `<div class="card-pedido ${estaListo ? 'opacity-40 border-dashed border-white/20' : ''}">
+        return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
             <div class="flex justify-between">
                 <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO - ESPERANDO REPARTIDOR' : '🍳 EN COCINA'}</span>
+                <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO' : '🍳 EN COCINA'}</span>
             </div>
             <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
             <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
             
             <div class="comision-detalle mt-3">
                 <div class="flex justify-between text-xs">
-                    <span class="text-white/60">💰 Subtotal productos:</span>
+                    <span>💰 Subtotal:</span>
                     <span class="text-white font-bold">${subtotal.toFixed(2)}€</span>
                 </div>
                 <div class="flex justify-between text-xs mt-1">
-                    <span class="text-white/60">📊 Comisión (${comisionPorcentaje}%):</span>
+                    <span>📊 Comisión (${comisionPorcentaje}%):</span>
                     <span class="text-amber-400">-${comisionMonto.toFixed(2)}€</span>
                 </div>
                 <div class="flex justify-between text-sm font-bold mt-2 pt-2 border-t border-white/10">
@@ -400,47 +372,19 @@
     }
 
     function renderCardHistorial(p) {
-        const est = (p.ESTADO || '').toUpperCase().trim();
-        const subtotal = calcularSubtotal(p.TOTAL);
-        const montoACobrar = calcularMontoACobrar(subtotal, miRestauranteComision);
-        
-        let tagEstado = '';
-        let colorTag = '';
-        
-        if (est === 'ENTREGADO' || est === 'FINALIZADO') {
-            tagEstado = '🏁 ENTREGADO';
-            colorTag = 'badge-success';
-        } else if (est === 'LLEGÓ' || est === 'LLEGÓ CONTROLLER') {
-            tagEstado = '📍 EN EL CLIENTE';
-            colorTag = 'badge-warning';
-        } else if (est === 'CANCELADO') {
-            tagEstado = '❌ CANCELADO';
-            colorTag = 'badge-danger';
-        } else {
-            tagEstado = '🛵 EN REPARTO';
-            colorTag = 'badge';
-        }
-
+        const total = parseFloat(p.TOTAL) || 0;
         return `<div class="card-pedido historial-item">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                <div class="text-right">
-                    <span class="text-white font-bold text-sm">${subtotal.toFixed(2)}€</span>
-                    <div class="text-[10px] text-emerald-400">(+comisión: ${montoACobrar.toFixed(2)}€)</div>
-                </div>
+                <span class="text-white font-bold text-sm">${total.toFixed(2)}€</span>
             </div>
             <div class="flex justify-between items-start gap-2">
-                <p class="text-white/70 text-xs font-medium truncate max-w-[140px]">${p.CLIENTE || 'Cliente'}</p>
-                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase ${colorTag}">
-                    ${tagEstado}
-                </span>
+                <p class="text-white/70 text-xs">${p.CLIENTE || 'Cliente'}</p>
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-500/20 text-cyan-400">${p.ESTADO || 'ENTREGADO'}</span>
             </div>
-            <p class="text-white/40 text-[11px] mt-1 truncate">🛵 Repartidor: ${p.REPARTIDOR || 'Sin asignar'}</p>
-            
+            <p class="text-white/40 text-[11px] mt-1">🛵 ${p.REPARTIDOR || 'Sin repartidor'}</p>
             <div class="mt-3 pt-2 border-t border-white/5">
-                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="w-full bg-white/5 hover:bg-cyan-500/20 text-white hover:text-cyan-400 py-1.5 rounded-lg text-[11px] font-medium tracking-wide transition-all duration-200">
-                    📋 VER DETALLE / REPRINTER
-                </button>
+                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="w-full bg-white/5 hover:bg-cyan-500/20 text-white py-1.5 rounded-lg text-[11px]">📋 VER DETALLE</button>
             </div>
         </div>`;
     }
@@ -454,11 +398,6 @@
     }
 
     async function aceptarPedido(id) {
-        if (window.event && window.event.target) {
-            let btn = window.event.target;
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-        }
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
         await cargarPedidos();
     }
@@ -471,25 +410,16 @@
             showCancelButton: true,
             confirmButtonColor: '#ef4444',
             confirmButtonText: 'Sí, rechazar',
-            cancelButtonText: 'Cancelar',
             background: '#1e293b',
             color: 'white'
         });
-        
         if (!confirmar.isConfirmed) return;
-        
-        if (window.event && window.event.target) {
-            let btn = window.event.target;
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-        }
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=Rechazado por el restaurante`);
         await cargarPedidos();
     }
 
     async function asignarTiempo(id, minutos, btn) {
         btn.disabled = true;
-        btn.classList.remove('bg-cyan-500/20', 'text-cyan-400');
         btn.classList.add('bg-green-600', 'text-white');
         await database.ref('pedidos/'+id).update({ tiempo_seleccionado: minutos });
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
@@ -497,97 +427,72 @@
     }
 
     async function marcarListo(id) {
-        let card = document.querySelector(`.card-pedido:has(button[onclick="marcarListo('${id}')"])`);
-        if (card) card.classList.add('opacity-50');
-        let botones = card.querySelectorAll('button');
-        botones.forEach(btn => btn.disabled = true);
         await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() });
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
         await cargarPedidos();
     }
 
+    function verDetallePedido(id) {
+        let p = pedidos.find(x => x.ID_PEDIDO == id);
+        if (p) {
+            Swal.fire({
+                title: `Pedido #${p.ID_PEDIDO}`,
+                html: `<div class="text-left">
+                    <p><strong>👤 Cliente:</strong> ${p.CLIENTE || 'Sin nombre'}</p>
+                    <p><strong>📍 Dirección:</strong> ${p.DIRECCION || 'No especificada'}</p>
+                    <p><strong>💳 Pago:</strong> ${p.PAGO || 'No especificado'}</p>
+                    <p><strong>💰 Total:</strong> ${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
+                    <hr class="my-2 border-white/10">
+                    <p><strong>📦 Detalle:</strong></p>
+                    <p style="white-space: pre-wrap;">${p.PEDIDO_DETALLE || ''}</p>
+                </div>`,
+                background: '#020617', color: 'white', confirmButtonColor: '#06b6d4',
+                showCancelButton: true, confirmButtonText: '🖨️ Imprimir', cancelButtonText: 'Cerrar'
+            }).then(result => { if (result.isConfirmed) imprimirTicket(p); });
+        }
+    }
+
     function imprimirTicket(pedido) {
-    const total = parseFloat(pedido.TOTAL) || 0;
-    
-    const ventana = window.open('', '_blank', 'width=400,height=600');
-    ventana.document.write(`
-        <html>
-        <head>
-            <title>Pedido #${pedido.ID_PEDIDO}</title>
+        const total = parseFloat(pedido.TOTAL) || 0;
+        const ventana = window.open('', '_blank', 'width=400,height=600');
+        ventana.document.write(`
+            <html><head><title>Pedido #${pedido.ID_PEDIDO}</title>
             <style>
-                @page { size: 80mm auto; margin: 0; }
-                body { font-family: 'Courier New', Courier, monospace; width: 76mm; margin: 0; padding: 10px; font-size: 14px; color: #000; background: #fff; }
+                body { font-family: monospace; width: 80mm; margin: 0; padding: 10px; }
                 .text-center { text-align: center; }
-                .bold { font-weight: bold; }
                 .separator { border-top: 1px dashed #000; margin: 10px 0; }
                 .total { font-size: 18px; font-weight: bold; }
             </style>
-        </head>
-        <body>
+            </head><body>
             <div class="text-center">
-                <h3 style="margin: 0; font-size: 18px;">AGUADULCE EXPRESS</h3>
-                <p style="margin: 4px 0; font-size: 11px;">${new Date().toLocaleString()}</p>
+                <h3>AGUADULCE EXPRESS</h3>
+                <p>${new Date().toLocaleString()}</p>
             </div>
             <div class="separator"></div>
-            <p class="bold">TICKET PEDIDO: #${pedido.ID_PEDIDO}</p>
-            <p><span class="bold">Cliente:</span> ${pedido.CLIENTE || 'Cliente'}</p>
-            <p><span class="bold">Entrega:</span> ${pedido.DIRECCION || 'Para Recoger'}</p>
-            <p><span class="bold">Pago:</span> ${pedido.PAGO || 'No especificado'}</p>
+            <p><strong>Pedido:</strong> #${pedido.ID_PEDIDO}</p>
+            <p><strong>Cliente:</strong> ${pedido.CLIENTE || 'Cliente'}</p>
+            <p><strong>Entrega:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p>
             <div class="separator"></div>
-            <p class="bold">DETALLE DEL PEDIDO:</p>
-            <p style="white-space: pre-wrap; margin: 5px 0;">${pedido.PEDIDO_DETALLE || ''}</p>
+            <p><strong>Detalle:</strong></p>
+            <p>${pedido.PEDIDO_DETALLE || ''}</p>
             <div class="separator"></div>
             <div class="text-center total">TOTAL: ${total.toFixed(2)}€</div>
             <div class="separator"></div>
-            <p class="text-center" style="font-size: 11px; margin-top: 15px;">¡Buen provecho!</p>
-            <script>
-                window.onload = function() { window.print(); setTimeout(() => window.close(), 500); };
-            <\/script>
-        </body>
-        </html>
-    `);
-    ventana.document.close();
-}
-
-    function verDetallePedido(id) {
-    let p = pedidos.find(x => x.ID_PEDIDO == id);
-    if (p) {
-        const total = parseFloat(p.TOTAL) || 0;
-        
-        Swal.fire({
-            title: `Pedido #${p.ID_PEDIDO}`,
-            html: `
-                <div class="text-left" style="font-size: 14px; line-height: 1.5;">
-                    <p><strong>👤 Cliente:</strong> ${p.CLIENTE || 'Sin nombre'}</p>
-                    <p><strong>📍 Dirección:</strong> ${p.DIRECCION || 'Para Recoger'}</p>
-                    <p><strong>💳 Pago:</strong> ${p.PAGO || 'No especificado'}</p>
-                    <p><strong>💰 Total:</strong> <span style="color:#22c55e; font-weight:bold;">${total.toFixed(2)}€</span></p>
-                    <div style="border-top: 1px dashed rgba(255,255,255,0.1); margin-top: 10px; padding-top: 10px;">
-                        <p><strong>📦 Detalle del pedido:</strong></p>
-                        <p style="color:#94a3b8; white-space: pre-wrap;">${p.PEDIDO_DETALLE || ''}</p>
-                    </div>
-                </div>`,
-            background: '#020617', 
-            color: 'white', 
-            confirmButtonColor: '#06b6d4',
-            showCancelButton: true, 
-            confirmButtonText: '🖨️ Imprimir Recibo', 
-            cancelButtonText: 'Cerrar'
-        }).then(result => { 
-            if (result.isConfirmed) { imprimirTicket(p); }
-        });
+            <p class="text-center">¡Gracias!</p>
+            <script>window.onload = function() { window.print(); setTimeout(() => window.close(), 500); };<\/script>
+            </body></html>
+        `);
+        ventana.document.close();
     }
-}
+
     function preguntarSalir() {
         Swal.fire({
             title: '¿Cerrar sesión?',
-            text: 'Volverás a la pantalla de inicio para cambiar de restaurante.',
+            text: 'Volverás a la pantalla de inicio',
             icon: 'question',
             showCancelButton: true,
             confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
             confirmButtonText: 'Sí, salir',
-            cancelButtonText: 'Cancelar',
             background: '#1e293b',
             color: 'white'
         }).then((result) => {
@@ -595,29 +500,18 @@
                 localStorage.removeItem('AE_REST_ID');
                 localStorage.removeItem('AE_REST_COMISION');
                 miRestauranteId = "";
-                miRestauranteComision = 0.18;
                 document.getElementById('loginScreen').style.display = 'flex';
                 document.getElementById('appContent').classList.add('hidden');
                 document.getElementById('pinInput').value = '';
-                Swal.fire({
-                    title: 'Sesión cerrada',
-                    text: 'Puedes ingresar con otro restaurante',
-                    icon: 'success',
-                    timer: 1500,
-                    showConfirmButton: false,
-                    background: '#020617',
-                    color: 'white'
-                });
             }
         });
     }
 
     async function iniciarApp() {
-        await cargarRestaurantes();
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
         await cargarPedidos();
-        setInterval(cargarPedidos, 8000);
+        setInterval(cargarPedidos, 10000);
     }
 
     window.onload = () => { 

@@ -1,1 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aguadulce Express - Cocina</title>
+    
+    <!-- PWA manifest específico para cocina -->
+    <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json">
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
+    <meta name="theme-color" content="#f59e0b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Cocina AE">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
+        .card-pedido:hover { transform: translateY(-2px); border-color: #f59e0b40; }
+        .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: bold; display: inline-block; }
+        .badge-warning { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .badge-success { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .badge-danger { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .banner-img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+        .banner-container { position: relative; height: 220px; overflow: hidden; }
+        .overlay-gradient { background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%); }
+        @media (min-width: 768px) { .banner-container { height: 260px; } }
+        .stats-card { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 20px; padding: 12px 16px; }
+        .stats-number { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+        .tiempo-btn { transition: all 0.1s; cursor: pointer; }
+        .tiempo-btn:active { transform: scale(0.95); }
+        .tiempo-btn.verde { background-color: #22c55e !important; color: white !important; }
+        .opacity-50 { opacity: 0.5; }
+        .historial-item { cursor: pointer; transition: all 0.2s; }
+        .historial-item:hover { background: #1e293b; transform: scale(0.98); }
+    </style>
+</head>
+<body>
 
+<div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
+    <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
+    <p class="text-white/50 text-xs mb-4 text-center">🔐 PIN DEL RESTAURANTE</p>
+    <input type="password" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white">
+    <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
+</div>
+
+<div id="appContent" class="hidden min-h-screen">
+    <div class="banner-container">
+        <img id="restauranteFoto" class="banner-img" src="">
+        <div class="absolute inset-0 overlay-gradient"></div>
+        <div class="absolute bottom-0 left-0 right-0 p-5 flex justify-between items-end">
+            <div>
+                <span class="text-cyan-400 text-xs font-bold uppercase tracking-wider backdrop-blur-sm bg-black/30 px-2 py-1 rounded-lg">📍 COCINA</span>
+                <h1 id="restauranteNombre" class="text-2xl font-black text-white drop-shadow-lg mt-1">CARGANDO...</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <div id="contenedorBotonTienda"></div>
+                <button onclick="preguntarSalir()" class="bg-white/10 backdrop-blur-sm p-2 rounded-xl hover:bg-white/20 transition-all">🚪 SALIR</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
+        <div class="flex gap-3 flex-wrap">
+            <div class="badge">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
+            <div class="badge badge-warning">🍳 EN COCINA: <span id="totalCocina">0</span></div>
+            <div class="badge badge-success">✅ HISTORIAL: <span id="totalHistorial">0</span></div>
+        </div>
+        <div class="flex gap-4 items-center">
+            <div class="text-right stats-card">
+                <div class="text-[9px] text-white/40 uppercase tracking-wider">📊 RESUMEN DE HOY</div>
+                <div class="stats-number text-white"><span id="statHoy">0.00</span>€</div>
+                <div class="text-[10px] text-white/40 mt-1">💰 Total productos</div>
+            </div>
+            <div class="text-right stats-card">
+                <div class="text-[9px] text-white/40 uppercase tracking-wider">📅 TOTAL ACUMULADO</div>
+                <div class="stats-number text-white"><span id="statSemana">0.00</span>€</div>
+                <div class="text-[10px] text-white/40 mt-1">💰 Total productos</div>
+            </div>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
+        </div>
+    </div>
+
+    <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
+            <h3 class="text-cyan-400 font-bold text-sm uppercase mb-3">📥 PEDIDOS ENTRANTES</h3>
+            <div id="listaEntrantes" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+        </div>
+        <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
+            <h3 class="text-amber-400 font-bold text-sm uppercase mb-3">🍳 EN COCINA</h3>
+            <div id="listaCocina" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+        </div>
+        <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
+            <h3 class="text-emerald-400 font-bold text-sm uppercase mb-3">✅ HISTORIAL</h3>
+            <div id="listaHistorial" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
+        authDomain: "aguadulce-notificaciones.firebaseapp.com",
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
+        projectId: "aguadulce-notificaciones",
+        storageBucket: "aguadulce-notificaciones.firebasestorage.app",
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
+
+    const PINES_RESTAURANTES = {
+        "6G4L1V": "DELI10",
+        "RT33M5": "CHUN20",
+        "8N3Z7K": "HARO30",
+        "TR92X5": "SUCU40",
+        "9V1L8K": "PERU50",
+        "FL44K8": "LIMA60",
+        "CV11Q9": "PECA70"
+    };
+
+    let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
+    let pedidos = [];
+    let sonidosActivados = false;
+    let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audioNotif.volume = 0.8;
+
+    function activarSonidoGlobal() {
+        if (!sonidosActivados) {
+            sonidosActivados = true;
+            audioNotif.play().then(() => audioNotif.pause()).catch(e => console.log);
+            Swal.fire({ title: '🔊 Sonido activado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
+        }
+    }
+    document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
+
+    function verificarPIN() {
+        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
+        let encontrado = null;
+        for (let [id, clave] of Object.entries(PINES_RESTAURANTES)) {
+            if (clave === pin) {
+                encontrado = id;
+                break;
+            }
+        }
+        if (encontrado) {
+            miRestauranteId = encontrado;
+            localStorage.setItem('AE_REST_ID', miRestauranteId);
+            iniciarApp();
+        } else {
+            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
+        }
+    }
+
+    async function alternarEstadoTienda(estadoActual) {
+        const nuevoEstado = estadoActual === "ABIERTO" ? "CERRADO" : "ABIERTO";
+        const confirmar = await Swal.fire({
+            title: `${nuevoEstado === "ABIERTO" ? "🟢" : "🔴"} ¿Cambiar estado?`,
+            text: nuevoEstado === "ABIERTO" ? "¿Quieres ABRIR el restaurante?" : "¿Quieres CERRAR el restaurante?",
+            showCancelButton: true,
+            confirmButtonColor: nuevoEstado === "ABIERTO" ? "#10B981" : "#EF4444",
+            confirmButtonText: nuevoEstado === "ABIERTO" ? "Sí, Abrir" : "Sí, Cerrar",
+            background: "#1e293b", color: "#fff"
+        });
+        if (!confirmar.isConfirmed) return;
+        try {
+            await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
+            cargarPedidos();
+        } catch (err) {
+            Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: "#1e293b", color: "#fff" });
+        }
+    }
+
+    async function cargarPedidos() {
+        if (!miRestauranteId) return;
+        try {
+            let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
+            let data = await res.json();
+            
+            if (data.tienda) {
+                document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
+                const fotoElement = document.getElementById('restauranteFoto');
+                if (data.tienda.foto && fotoElement.src !== data.tienda.foto) {
+                    fotoElement.src = data.tienda.foto;
+                } else if (!data.tienda.foto && !fotoElement.src) {
+                    fotoElement.src = 'https://images.pexels.com/photos/260922/pexels-photo-260922.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1';
+                }
+            }
+
+            let pedidosActivos = data.pedidos || [];
+            let pedidosHistorial = data.historial || [];
+            let stats = data.stats || {};
+            
+            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
+            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
+
+            let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
+            let btnClase = tiendaEst === "ABIERTO" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400";
+            document.getElementById('contenedorBotonTienda').innerHTML = `
+                <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 ${btnClase}">
+                    ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO" : "🔴 CERRADO"}
+                </button>
+            `;
+
+            pedidos = [...pedidosActivos, ...pedidosHistorial];
+            renderizarTodo();
+
+            if (sonidosActivados && pedidosActivos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
+                audioNotif.play().catch(e => console.log);
+            }
+        } catch (error) {
+            console.error("Error cargando pedidos:", error);
+        }
+    }
+
+    function renderizarTodo() {
+        let entrantes = pedidos.filter(p => {
+            const est = (p.ESTADO || '').toUpperCase().trim();
+            return est === 'RECIBIDO' || est === 'NUEVO' || est === '';
+        });
+
+        let cocina = pedidos.filter(p => {
+            const est = (p.ESTADO || '').toUpperCase().trim();
+            return est === 'EN PROCESO' || est === 'LISTO';
+        });
+
+        let historial = pedidos.filter(p => {
+            const est = (p.ESTADO || '').toUpperCase().trim();
+            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO' || est === 'CANCELADO' || est === 'RECHAZADO';
+        });
+
+        document.getElementById('totalPendientes').innerText = entrantes.length;
+        document.getElementById('totalCocina').innerText = cocina.length;
+        document.getElementById('totalHistorial').innerText = historial.length;
+
+        document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
+        document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
+        document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
+    }
+
+    function renderCardEntrante(p) {
+        return `<div class="card-pedido">
+            <div class="flex justify-between items-start">
+                <div>
+                    <span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                    <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
+                    <p class="text-white/60 text-xs mt-1">${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span>
+                    <p class="text-emerald-400 font-bold text-sm mt-1">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-3">
+                <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
+                <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
+            </div>
+        </div>`;
+    }
+
+    function renderCardCocina(p) {
+        const estaListo = (p.ESTADO || '').toUpperCase() === 'LISTO';
+        return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
+            <div class="flex justify-between">
+                <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO' : '🍳 EN COCINA'}</span>
+            </div>
+            <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
+            <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
+            <div class="flex gap-2 mt-3 flex-wrap">
+                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">30'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">45'</button>
+                <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>✅ LISTO</button>
+            </div>
+        </div>`;
+    }
+
+    function renderCardHistorial(p) {
+        const total = parseFloat(p.TOTAL) || 0;
+        const estado = (p.ESTADO || '').toUpperCase();
+        let estadoTexto = '';
+        let colorClass = '';
+        
+        if (estado === 'ENTREGADO' || estado === 'FINALIZADO') {
+            estadoTexto = '🏁 ENTREGADO';
+            colorClass = 'badge-success';
+        } else if (estado === 'EN CAMINO') {
+            estadoTexto = '🛵 EN REPARTO';
+            colorClass = 'badge';
+        } else if (estado === 'LLEGÓ') {
+            estadoTexto = '📍 EN EL CLIENTE';
+            colorClass = 'badge-warning';
+        } else if (estado === 'RECHAZADO') {
+            estadoTexto = '❌ RECHAZADO';
+            colorClass = 'badge-danger';
+        } else if (estado === 'CANCELADO') {
+            estadoTexto = '⚠️ CANCELADO';
+            colorClass = 'badge-danger';
+        } else {
+            estadoTexto = estado;
+            colorClass = 'badge';
+        }
+        
+        return `<div class="card-pedido historial-item">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                <span class="text-white font-bold text-sm">${total.toFixed(2)}€</span>
+            </div>
+            <div class="flex justify-between items-start gap-2">
+                <p class="text-white/70 text-xs">${p.CLIENTE || 'Cliente'}</p>
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${colorClass}">${estadoTexto}</span>
+            </div>
+            <p class="text-white/40 text-[11px] mt-1">🛵 ${p.REPARTIDOR || 'Sin repartidor'}</p>
+            <div class="mt-3 pt-2 border-t border-white/5">
+                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="w-full bg-white/5 hover:bg-cyan-500/20 text-white py-1.5 rounded-lg text-[11px]">📋 VER DETALLE</button>
+            </div>
+        </div>`;
+    }
+
+    function calcularTiempo(fechaStr) {
+        if (!fechaStr) return "---";
+        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
+        if (diff < 1) return "Ahora";
+        if (diff < 60) return `Hace ${diff} min`;
+        return `Hace ${Math.floor(diff/60)}h`;
+    }
+
+    async function aceptarPedido(id) {
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
+        await cargarPedidos();
+    }
+
+    async function rechazarPedido(id) {
+        const confirmar = await Swal.fire({
+            title: '¿Rechazar pedido?',
+            text: 'El cliente NO pagará por este pedido.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Sí, rechazar',
+            background: '#1e293b',
+            color: 'white'
+        });
+        if (!confirmar.isConfirmed) return;
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=Rechazado por el restaurante`);
+        await cargarPedidos();
+    }
+
+    async function asignarTiempo(id, minutos, btn) {
+        btn.disabled = true;
+        btn.classList.add('bg-green-600', 'text-white');
+        await database.ref('pedidos/'+id).update({ tiempo_seleccionado: minutos });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
+        await cargarPedidos();
+    }
+
+    async function marcarListo(id) {
+        await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
+        await cargarPedidos();
+    }
+
+    function verDetallePedido(id) {
+        let p = pedidos.find(x => x.ID_PEDIDO == id);
+        if (p) {
+            Swal.fire({
+                title: `Pedido #${p.ID_PEDIDO}`,
+                html: `<div class="text-left">
+                    <p><strong>👤 Cliente:</strong> ${p.CLIENTE || 'Sin nombre'}</p>
+                    <p><strong>📍 Dirección:</strong> ${p.DIRECCION || 'No especificada'}</p>
+                    <p><strong>💳 Pago:</strong> ${p.PAGO || 'No especificado'}</p>
+                    <p><strong>💰 Total:</strong> ${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
+                    <hr class="my-2 border-white/10">
+                    <p><strong>📦 Detalle:</strong></p>
+                    <p style="white-space: pre-wrap;">${p.PEDIDO_DETALLE || ''}</p>
+                </div>`,
+                background: '#020617', color: 'white', confirmButtonColor: '#f59e0b',
+                showCancelButton: true, confirmButtonText: '🖨️ Imprimir', cancelButtonText: 'Cerrar'
+            }).then(result => { if (result.isConfirmed) imprimirTicket(p); });
+        }
+    }
+
+    function imprimirTicket(pedido) {
+        const total = parseFloat(pedido.TOTAL) || 0;
+        const ventana = window.open('', '_blank', 'width=400,height=600');
+        ventana.document.write(`
+            <html><head><title>Pedido #${pedido.ID_PEDIDO}</title>
+            <style>
+                body { font-family: monospace; width: 80mm; margin: 0; padding: 10px; }
+                .text-center { text-align: center; }
+                .separator { border-top: 1px dashed #000; margin: 10px 0; }
+                .total { font-size: 18px; font-weight: bold; }
+            </style>
+            </head><body>
+            <div class="text-center"><h3>AGUADULCE EXPRESS</h3><p>${new Date().toLocaleString()}</p></div>
+            <div class="separator"></div>
+            <p><strong>Pedido:</strong> #${pedido.ID_PEDIDO}</p>
+            <p><strong>Cliente:</strong> ${pedido.CLIENTE || 'Cliente'}</p>
+            <p><strong>Entrega:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p>
+            <div class="separator"></div>
+            <p><strong>Detalle:</strong></p>
+            <p>${pedido.PEDIDO_DETALLE || ''}</p>
+            <div class="separator"></div>
+            <div class="text-center total">TOTAL: ${total.toFixed(2)}€</div>
+            <div class="separator"></div>
+            <p class="text-center">¡Gracias!</p>
+            <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500);};<\/script>
+            </body></html>
+        `);
+        ventana.document.close();
+    }
+
+    function preguntarSalir() {
+        Swal.fire({
+            title: '¿Cerrar sesión?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Sí, salir',
+            background: '#1e293b',
+            color: 'white'
+        }).then(result => {
+            if (result.isConfirmed) {
+                localStorage.removeItem('AE_REST_ID');
+                location.reload();
+            }
+        });
+    }
+
+    async function iniciarApp() {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appContent').classList.remove('hidden');
+        await cargarPedidos();
+        setInterval(cargarPedidos, 8000);
+    }
+
+    window.onload = () => {
+        if (miRestauranteId) {
+            iniciarApp();
+        } else {
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('appContent').classList.add('hidden');
+        }
+    };
+    
+    // Service Worker para Cocina
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/cocina/sw-cocina.js')
+            .then(reg => console.log('✅ Service Worker Cocina registrado', reg))
+            .catch(err => console.error('❌ Error al registrar SW Cocina:', err));
+    }
+</script>
+</body>
+</html>

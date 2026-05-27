@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aguadulce-v6';
+const CACHE_NAME = 'aguadulce-v8';
 const urlsToCache = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', event => {

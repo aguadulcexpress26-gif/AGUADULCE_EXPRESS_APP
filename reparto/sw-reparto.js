@@ -2,8 +2,8 @@
 const CACHE_NAME = 'aguadulce-reparto-v1';
 
 const urlsToCache = [
-  '/AGUADULCE_EXPRESS_APP/reparto.html',
-  '/AGUADULCE_EXPRESS_APP/manifest-reparto.json'
+  '/AGUADULCE_EXPRESS_APP/reparto/reparto.html',
+  '/AGUADULCE_EXPRESS_APP/reparto/manifest-reparto.json'
 ];
 
 self.addEventListener('install', event => {

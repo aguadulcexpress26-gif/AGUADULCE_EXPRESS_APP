@@ -1,35 +1,502 @@
-// Iniciar la app manualmente
-async function iniciarApp() {
-    let codigo = localStorage.getItem('codigo_reparto');
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aguadulce Express - Panel de Reparto</title>
     
-    if (!codigo) {
-        const res = await Swal.fire({
-            title: '🔐 Código de Repartidor',
-            input: 'text',
-            inputPlaceholder: 'Ej: R001',
-            background: '#020617',
-            color: 'white',
-            confirmButtonColor: '#06b6d4'
+    <!-- PWA manifest específico para repartidor -->
+    <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/manifest-reparto.json">
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp">
+    <meta name="theme-color" content="#22c55e">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Reparto AE">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background-color: #020617; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+        .loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #020617; display: flex; align-items: center; justify-content: center; z-index: 500; flex-direction: column; gap: 15px; }
+        .spinner { width: 50px; height: 50px; border: 5px solid #1e293b; border-top: 5px solid #22c55e; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .pedido-card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+        .ref { font-size: 15px; font-weight: bold; color: #22c55e; }
+        .status-badge { background: #1e293b; color: #94a3b8; font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: bold; }
+        .direccion { font-size: 16px; font-weight: 600; color: #fff; margin: 8px 0; }
+        .btn-recoger { background: #22c55e; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-llegada { background: #f59e0b; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-espera { background: #334155; color: #cbd5e1; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; margin-top: 10px; }
+        .btn-deuda { background: #ef4444; color: #ffffff; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-entregar { background: #22c55e; color: #020617; font-weight: bold; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+        .btn-mapa { background: #4f46e5; color: #ffffff; font-weight: bold; width: 100%; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 8px; display: flex; justify-content: center; align-items: center; gap: 6px; text-decoration: none; }
+        .sin-pedidos { text-align: center; padding: 40px; color: #64748b; }
+        .btn-historial { background: #334155; color: #f8fafc; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(2,6,23,0.95); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-content { background: #0f172a; border-radius: 20px; padding: 20px; max-width: 400px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid #1e293b; }
+        .btn-historial { background: #334155; color: #f8fafc; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <h2 style="font-size: 16px; font-weight: bold; color: #22c55e;">CONECTANDO CON AGUADULCE EXPRESS...</h2>
+</div>
+
+<div id="app" style="display: none; padding: 12px; max-width: 600px; margin: 0 auto;">
+    <div class="flex justify-between items-center" style="margin-bottom: 20px; background: #0f172a; padding: 12px; border-radius: 14px; border: 1px solid #1e293b;">
+        <div>
+            <h1 id="nombreRep" style="font-size: 18px; font-weight: bold; color: #fff;">-</h1>
+            <span id="codigoRep" style="font-size: 12px; color: #64748b; font-weight: 500;">🔑 ---</span>
+        </div>
+        <div style="text-align: right;">
+            <span style="font-size: 11px; color: #64748b; display: block;">💰 Billetera</span>
+            <span id="saldo" style="font-size: 18px; font-weight: bold; color: #22c55e;">0.00€</span>
+        </div>
+    </div>
+
+    <div class="flex justify-between items-center" style="margin-bottom: 16px;">
+        <div class="flex items-center" style="gap: 8px;">
+            <span style="display: inline-block; width: 10px; height: 10px; background: #22c55e; border-radius: 50%;"></span>
+            <span id="estadoConexion" style="font-size: 14px; color: #22c55e; font-weight: 500;">Conectado</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button id="btnHistorial" class="btn-historial">📋 Historial</button>
+            <button id="btnSalir" class="btn-historial" style="background: #ef4444;">🚪 Salir</button>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 14px; font-size: 14px; color: #94a3b8;">
+        Pedidos activos: <span id="contadorPedidos" style="color: #22c55e; font-weight: bold;">0</span>
+    </div>
+
+    <div id="listaPedidos"></div>
+</div>
+
+<div id="modalHistorial" class="modal">
+    <div class="modal-content">
+        <div class="flex justify-between items-center" style="margin-bottom: 16px;">
+            <h3 style="font-size: 18px; font-weight: bold; color: #22c55e;">📋 Historial de Hoy</h3>
+            <button id="btnCerrarHistorial" style="background: #1e293b; border: none; padding: 6px 12px; border-radius: 8px; color: white; cursor: pointer;">✕ Cerrar</button>
+        </div>
+        <div id="historialLista" style="max-height: 400px; overflow-y: auto;"></div>
+    </div>
+</div>
+
+<script>
+    const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+    let codigoActual = null;
+    let intervalo = null;
+    let pedidosActuales = [];
+    let audioNotif = null;
+    let ultimoAccesoActividad = Date.now();
+    const TIEMPO_MAX_INACTIVIDAD = 25 * 60 * 1000;
+
+    function initAudio() {
+        audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audioNotif.volume = 0.8;
+    }
+    
+    function playSound() {
+        if (audioNotif) {
+            audioNotif.currentTime = 0;
+            audioNotif.play().catch(e => console.log('Audio necesita interacción'));
+        }
+    }
+
+    function registrarActividadUsuario() {
+        ultimoAccesoActividad = Date.now();
+    }
+    window.onload = registrarActividadUsuario;
+    document.onmousemove = registrarActividadUsuario;
+    document.onkeypress = registrarActividadUsuario;
+    document.ontouchstart = registrarActividadUsuario;
+
+    setInterval(() => {
+        if (!codigoActual) return;
+        if (Date.now() - ultimoAccesoActividad > TIEMPO_MAX_INACTIVIDAD) {
+            ejecutarCierrePorInactividad();
+        }
+    }, 10000);
+
+    function ejecutarCierrePorInactividad() {
+        if (intervalo) clearInterval(intervalo);
+        Swal.fire({
+            title: '⏰ ¿Sigues ahí?',
+            text: 'Tu sesión se cerrará por inactividad para liberar el reparto.',
+            icon: 'warning',
+            background: '#0f172a', color: 'white',
+            timer: 60000, timerProgressBar: true,
+            confirmButtonColor: '#22c55e',
+            confirmButtonText: '¡SÍ, SEGUIR TRABAJANDO!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                registrarActividadUsuario();
+                intervalo = setInterval(cargarPedidos, 5000);
+            } else {
+                localStorage.removeItem('rep_code');
+                localStorage.removeItem('espera_');
+                location.reload();
+            }
         });
-        if (res.value) {
-            codigo = res.value.trim().toUpperCase();
-            localStorage.setItem('codigo_reparto', codigo);
-        } else {
-            return;
+    }
+    
+    async function cargarPedidos() {
+        if (!codigoActual) return;
+        try {
+            const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigoActual) + '&t=' + Date.now());
+            const data = await res.json();
+            
+            if (data.error) {
+                document.getElementById('estadoConexion').innerHTML = 'Error de código';
+                document.getElementById('estadoConexion').style.color = '#ef4444';
+                return;
+            }
+            
+            document.getElementById('estadoConexion').innerHTML = 'Conectado';
+            document.getElementById('estadoConexion').style.color = '#22c55e';
+            document.getElementById('nombreRep').innerHTML = data.nombre || codigoActual;
+            document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
+            
+            pedidosActuales = (data.pedidos || []).filter(p => {
+                const estado = (p.ESTADO || '').toUpperCase().trim();
+                return !estado.includes('CANCELADO') && !estado.includes('RECHAZADO') && !estado.includes('ENTREGADO');
+            });
+            
+            document.getElementById('contadorPedidos').innerHTML = pedidosActuales.length;
+            renderizarPedidos(pedidosActuales);
+        } catch(e) {
+            console.error("Error cargando pedidos:", e);
+            document.getElementById('estadoConexion').innerHTML = 'Offline';
+            document.getElementById('estadoConexion').style.color = '#ef4444';
         }
     }
     
-    // Guardar codigo globalmente
-    window.codigo = codigo;
+    function calcularTiempoRestante(timestampFin) {
+        if (!timestampFin || timestampFin === 0) return null;
+        const ahora = Date.now();
+        const diff = timestampFin - ahora;
+        if (diff <= 0) return { texto: "⚠️ PEDIDO RETRASADO", retrasado: true };
+        const minutos = Math.floor(diff / 60000);
+        const segundos = Math.floor((diff % 60000) / 1000);
+        return { texto: `⏳ ${minutos}:${segundos < 10 ? '0' + segundos : segundos}`, retrasado: false };
+    }
     
-    // Cargar pedidos
-    await cargarPedidos();
-    
-    // Ocultar loader y mostrar app
-    document.getElementById('loader').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    
-    console.log('✅ App iniciada con código:', codigo);
-}
+    function renderizarPedidos(pedidos) {
+        const contenedor = document.getElementById('listaPedidos');
+        if (!contenedor) return;
 
-iniciarApp();
+        if (pedidos.length === 0) {
+            contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
+            return;
+        }
+        
+        let html = '';
+        for (let p of pedidos) {
+            const estado = (p.ESTADO || '').toUpperCase().trim();
+            const total = parseFloat(p.TOTAL) || 0;
+            let telefono = p.telf || p.WHATSAPP || '';
+            const telefonoLimpio = String(telefono).replace(/\D/g, '');
+            const direccionString = p.DIRECCION || 'Sin dirección';
+            
+            const linkMaps = navigator.userAgent.match(/(iPhone|iPod|iPad)/)
+                ? `maps://maps.apple.com/?q=${encodeURIComponent(direccionString)}`
+                : `geo:0,0?q=${encodeURIComponent(direccionString)}`;
+
+            let bannerEstadoHtml = '';
+            let botones = '';
+            let mostrarBotonMapa = false;
+
+            if (estado === 'LISTO') {
+                bannerEstadoHtml = `<div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3);">🛵 PEDIDO LISTO - PASA A RECOGERLO POR EL RESTAURANTE</div>`;
+                botones = `<button class="btn-recoger" onclick="recogerPedido('${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO</button>`;
+            } 
+            else if (estado === 'EN CAMINO') {
+                mostrarBotonMapa = true;
+                bannerEstadoHtml = `<div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(79,70,229,0.15); color: #818cf8; border: 1px solid rgba(79,70,229,0.3);">🚀 EN RUTA - LLEVANDO EL PEDIDO AL CLIENTE</div>`;
+                botones = `<button class="btn-llegada" onclick="validarLlegadaGPS(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>`;
+            } 
+            else if (estado === 'LLEGÓ' || estado === 'LLEGO') {
+                mostrarBotonMapa = true;
+                bannerEstadoHtml = `<div class="text-center p-2.5 rounded-xl mb-4 font-bold tracking-wide text-xs" style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3);">📍 UBICADO EN EL DOMICILIO - ESPERANDO RESPUESTA</div>`;
+                const tEspera = localStorage.getItem('espera_' + p.ID_PEDIDO);
+                if (tEspera && parseInt(tEspera) > Date.now()) {
+                    const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
+                    const mins = Math.floor(restantes / 60);
+                    const segs = restantes % 60;
+                    botones = `<div class="btn-espera" id="reloj-${p.ID_PEDIDO}">⏳ ESPERANDO AL CLIENTE (${mins}:${segs < 10 ? '0' : ''}${segs})</div>`;
+                } else {
+                    botones = `<button class="btn-deuda" onclick="aplicarDeudaAusencia('${p.ID_PEDIDO}', ${total})">❌ CLIENTE AUSENTE / CARGAR DEUDA</button>`;
+                }
+                botones += `<button class="btn-entregar" style="margin-top:8px;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>`;
+            } 
+            else if (estado === 'RECIBIDO' || estado === 'EN PROCESO') {
+                const tiempoCocina = calcularTiempoRestante(p.timestamp_fin_elaboracion);
+                if (tiempoCocina) {
+                    const estilosRetraso = tiempoCocina.retrasado 
+                        ? 'border: 1px solid #ef4444; background: rgba(239,68,68,0.1); color: #ef4444;' 
+                        : 'border: 1px solid rgba(234,179,8,0.3); background: rgba(234,179,8,0.15); color: #eab308;';
+                    botones = `<div class="rounded-xl p-3 text-center" style="${estilosRetraso}"><div style="font-size: 11px; font-weight: bold;">🍳 TIEMPO DE PREPARACIÓN</div><div style="font-size: 18px; font-weight: 800;" id="timer-cocina-${p.ID_PEDIDO}" data-timestamp="${p.timestamp_fin_elaboracion}">${tiempoCocina.texto}</div><div style="font-size: 10px;">El restaurante está preparando el pedido</div></div>`;
+                } else {
+                    botones = `<div class="btn-espera" style="background:#475569; cursor:default;">⏳ PEDIDO EN PREPARACIÓN - ESPERANDO AL RESTAURANTE</div>`;
+                }
+            } 
+            else {
+                botones = `<div class="btn-espera" style="background:#475569; cursor:default;">⏳ ESTADO: ${estado}</div>`;
+            }
+            
+            let bloqueEfectivo = '';
+            let pagaCon = parseFloat(p.paga_con) || parseFloat(p.PAGA_CON) || 0;
+            let esEfectivo = (p.PAGO || '').toUpperCase().includes('EFECTIVO');
+
+            if (esEfectivo) {
+                if (pagaCon > total) {
+                    bloqueEfectivo = `<div style="margin-top: 10px; padding: 12px; background: rgba(34,197,94,0.05); border-radius: 12px; border: 1px dashed rgba(34,197,94,0.3);"><div class="flex justify-between"><span>💰 El cliente paga con:</span><span>${pagaCon.toFixed(2)}€</span></div><div class="flex justify-between" style="border-top: 1px dashed rgba(34,197,94,0.2); padding-top: 4px; margin-top: 4px; color: #22c55e;"><span>💵 Llevar cambio de:</span><span>${(pagaCon - total).toFixed(2)}€</span></div></div>`;
+                } else {
+                    bloqueEfectivo = `<div style="margin-top: 10px; padding: 10px; background: rgba(34,197,94,0.08); border-radius: 12px; text-align: center; font-weight: 500;">🪙 Cobro en Efectivo (Cobrar importe exacto: ${total.toFixed(2)}€)</div>`;
+                }
+            }
+
+            let mapaHtml = mostrarBotonMapa ? `<a class="btn-mapa" href="${linkMaps}">🗺️ VER RUTA EN MAPA</a>` : '';
+
+            html += `<div class="pedido-card">
+                ${bannerEstadoHtml}
+                <div class="flex justify-between" style="margin-bottom: 10px;">
+                    <span class="ref">📋 ${p.ID_PEDIDO}</span>
+                    <span class="status-badge">${estado}</span>
+                </div>
+                <div class="direccion">📍 ${direccionString}</div>
+                ${mapaHtml}
+                <div class="cliente-box" style="background: rgba(30,41,59,0.6); padding: 14px; border-radius: 14px; margin-top: 12px; margin-bottom: 12px;">
+                    <div class="cliente-nombre" style="font-weight: bold; margin-bottom: 6px;">👤 ${p.CLIENTE || 'Cliente'}</div>
+                    <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span>📞 ${telefono || 'No disponible'}</span>
+                        ${telefonoLimpio ? `<div style="display: flex; gap: 8px;"><a href="tel:+34${telefonoLimpio}" style="background:#22c55e; color:#020617; padding: 6px 12px; border-radius: 8px; text-decoration:none; font-size:12px; font-weight:bold;">📞 Llamar</a><a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background:#25D366; color:white; padding: 6px 12px; border-radius: 8px; text-decoration:none; font-size:12px; font-weight:bold;">💬 WhatsApp</a></div>` : ''}
+                    </div>
+                    <div class="pago" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px; margin-top: 6px;">💳 Método: <strong>${p.PAGO || 'Efectivo'}</strong></div>
+                    ${bloqueEfectivo}
+                </div>
+                <div class="flex justify-between items-center" style="margin: 14px 0;">
+                    <span>Total a cobrar:</span>
+                    <span style="color:#22c55e; font-size: 24px; font-weight: 800;">${total.toFixed(2)}€</span>
+                </div>
+                ${botones}
+            </div>`;
+        }
+        contenedor.innerHTML = html;
+    }
+
+    window.validarLlegadaGPS = function(btn, id) {
+        btn.disabled = true;
+        btn.innerHTML = '🛸 UBICANDO GPS...';
+        if (!navigator.geolocation) {
+            ejecutarLlegada(id);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            ejecutarLlegada(id);
+        }, () => {
+            ejecutarLlegada(id);
+        });
+    };
+
+    async function ejecutarLlegada(id) {
+        localStorage.setItem('espera_' + id, Date.now() + (6 * 60 * 1000));
+        await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+        await cargarPedidos();
+    }
+
+    window.recogerPedido = async function(id) {
+        try {
+            await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            await Swal.fire({ title: '✅ Pedido en camino', icon: 'success', background: '#0f172a', color: 'white', timer: 1500, showConfirmButton: false });
+            await cargarPedidos();
+        } catch(e) {
+            Swal.fire({ title: 'Error', text: 'No se pudo actualizar', icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    };
+
+    window.aplicarDeudaAusencia = async function(id, total) {
+        Swal.fire({
+            title: '🚨 ¿Registrar Sanción?',
+            html: `Se aplicarán <strong>${total.toFixed(2)}€</strong> de deuda al perfil de este cliente por no responder al llamado.`,
+            icon: 'warning',
+            background: '#0f172a', color: 'white',
+            showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Sí, aplicar deuda',
+            cancelButtonText: 'Volver a intentar'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=CANCELADO&tiempo=' + encodeURIComponent('cliente ausente tras 6 min de espera'));
+                localStorage.removeItem('espera_' + id);
+                await cargarPedidos();
+                Swal.fire({ title: '❌ Deuda aplicada', text: `Cliente penalizado con ${total.toFixed(2)}€`, icon: 'error', background: '#0f172a', color: 'white' });
+            }
+        });
+    };
+
+    window.confirmarEntrega = function(id, total) {
+        Swal.fire({
+            title: '💰 Confirmar Cobro',
+            html: `¿Confirmas que has cobrado <strong>${total.toFixed(2)}€</strong> y entregaste el pedido?`,
+            icon: 'question',
+            background: '#0f172a', color: 'white',
+            showCancelButton: true, confirmButtonColor: '#22c55e', confirmButtonText: '✅ Sí, entregado',
+            cancelButtonText: 'Cancelar'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                await fetch(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
+                localStorage.removeItem('espera_' + id);
+                await cargarPedidos();
+                Swal.fire({ title: '🎉 Entregado!', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#0f172a', color: 'white', timer: 2000, showConfirmButton: false });
+            }
+        });
+    };
+    
+    async function mostrarHistorial() {
+        const modal = document.getElementById('modalHistorial');
+        modal.style.display = 'flex';
+        const historialDiv = document.getElementById('historialLista');
+        historialDiv.innerHTML = '<div class="text-center" style="padding: 20px;">⏳ Cargando historial...</div>';
+        try {
+            const nombreRepartidor = document.getElementById('nombreRep').innerText;
+            const url = URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(nombreRepartidor);
+            const res = await fetch(url);
+            const data = await res.json();
+            const pedidos = data.historial || [];
+            if (pedidos.length === 0) {
+                historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas</div>';
+                return;
+            }
+            const totalGeneral = pedidos.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
+            let html = `<div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 16px;"><div class="flex justify-between"><span>📊 Total entregado:</span><span style="color: #22c55e; font-weight: bold;">${totalGeneral.toFixed(2)}€</span></div><div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${pedidos.length}</span></div></div>`;
+            for (let p of pedidos.slice().reverse()) {
+                const fecha = p.FECHA ? p.FECHA.substring(0, 10) : 'Fecha desconocida';
+                html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b;"><div><strong>${p.ID_PEDIDO}</strong><div style="font-size: 11px;">${p.CLIENTE || 'Cliente'}</div><div style="font-size: 10px;">${fecha}</div></div><div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div></div>`;
+            }
+            historialDiv.innerHTML = html;
+        } catch(e) {
+            historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">❌ Error al cargar historial</div>';
+        }
+    }
+    
+    function cerrarHistorial() {
+        document.getElementById('modalHistorial').style.display = 'none';
+    }
+    
+    function iniciarCronometrosReales() {
+        setInterval(() => {
+            document.querySelectorAll('[id^="reloj-"]').forEach(elemento => {
+                const idPedido = elemento.id.replace('reloj-', '');
+                const tEspera = localStorage.getItem('espera_' + idPedido);
+                if (tEspera) {
+                    const restantes = Math.ceil((parseInt(tEspera) - Date.now()) / 1000);
+                    if (restantes > 0) {
+                        const mins = Math.floor(restantes / 60);
+                        const segs = restantes % 60;
+                        elemento.innerHTML = `⏳ ESPERANDO AL CLIENTE (${mins}:${segs < 10 ? '0' : ''}${segs})`;
+                    } else {
+                        cargarPedidos();
+                    }
+                }
+            });
+        }, 1000);
+    }
+    
+    function iniciarActualizacionTimersCocina() {
+        setInterval(() => {
+            document.querySelectorAll('[id^="timer-cocina-"]').forEach(el => {
+                const timestamp = parseInt(el.getAttribute('data-timestamp'));
+                if (timestamp) {
+                    const tiempo = calcularTiempoRestante(timestamp);
+                    if (tiempo) {
+                        el.innerHTML = tiempo.texto;
+                        const contenedorPadre = el.parentElement;
+                        if (tiempo.retrasado) {
+                            contenedorPadre.style.border = "1px solid #ef4444";
+                            contenedorPadre.style.background = "rgba(239,68,68,0.1)";
+                            contenedorPadre.style.color = "#ef4444";
+                        } else {
+                            contenedorPadre.style.border = "1px solid rgba(234,179,8,0.3)";
+                            contenedorPadre.style.background = "rgba(234,179,8,0.15)";
+                            contenedorPadre.style.color = "#eab308";
+                        }
+                    }
+                }
+            });
+        }, 1000);
+    }
+    
+    async function iniciarApp() {
+        initAudio();
+        
+        document.getElementById('btnSalir').onclick = () => {
+            Swal.fire({
+                title: '¿Cerrar sesión?',
+                icon: 'question',
+                background: '#0f172a', color: 'white',
+                confirmButtonColor: '#ef4444', confirmButtonText: 'Sí',
+                showCancelButton: true
+            }).then(result => {
+                if (result.isConfirmed) {
+                    if (intervalo) clearInterval(intervalo);
+                    localStorage.removeItem('rep_code');
+                    localStorage.removeItem('espera_');
+                    location.reload();
+                }
+            });
+        };
+        document.getElementById('btnHistorial').onclick = mostrarHistorial;
+        document.getElementById('btnCerrarHistorial').onclick = cerrarHistorial;
+        
+        let codigo = localStorage.getItem('rep_code');
+        if (!codigo) {
+            const result = await Swal.fire({
+                title: '🔑 Código de Acceso',
+                input: 'text',
+                inputPlaceholder: 'Ej: R001, R003',
+                background: '#0f172a', color: 'white',
+                confirmButtonColor: '#22c55e', confirmButtonText: 'Ingresar',
+                allowOutsideClick: false
+            });
+            if (result.value) {
+                codigo = result.value.trim().toUpperCase();
+                localStorage.setItem('rep_code', codigo);
+            } else {
+                document.getElementById('loader').innerHTML = '<h2 style="color:#ef4444;">❌ No se ingresó código</h2>';
+                return;
+            }
+        }
+        
+        codigoActual = codigo;
+        document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
+        
+        await cargarPedidos();
+        
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        
+        if (intervalo) clearInterval(intervalo);
+        intervalo = setInterval(cargarPedidos, 5000);
+        
+        iniciarCronometrosReales();
+        iniciarActualizacionTimersCocina();
+        
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }
+    
+    iniciarApp().catch(e => console.error(e));
+    
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/sw.js').then(reg => {
+            console.log('✅ Service Worker Reparto registrado');
+        }).catch(err => {
+            console.log('❌ Error SW:', err);
+        });
+    }
+</script>
+</body>
+</html>

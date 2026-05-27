@@ -389,35 +389,158 @@
         }
     }
 
-    function imprimirTicket(pedido) {
-        const total = parseFloat(pedido.TOTAL) || 0;
-        const ventana = window.open('', '_blank', 'width=400,height=600');
-        ventana.document.write(`
-            <html><head><title>Pedido #${pedido.ID_PEDIDO}</title>
-            <style>
-                body { font-family: monospace; width: 80mm; margin: 0; padding: 10px; }
-                .text-center { text-align: center; }
-                .separator { border-top: 1px dashed #000; margin: 10px 0; }
-                .total { font-size: 18px; font-weight: bold; }
-            </style>
-            </head><body>
-            <div class="text-center"><h3>AGUADULCE EXPRESS</h3><p>${new Date().toLocaleString()}</p></div>
-            <div class="separator"></div>
-            <p><strong>Pedido:</strong> #${pedido.ID_PEDIDO}</p>
-            <p><strong>Cliente:</strong> ${pedido.CLIENTE || 'Cliente'}</p>
-            <p><strong>Entrega:</strong> ${pedido.DIRECCION || 'Para Recoger'}</p>
-            <div class="separator"></div>
-            <p><strong>Detalle:</strong></p>
-            <p>${pedido.PEDIDO_DETALLE || ''}</p>
-            <div class="separator"></div>
-            <div class="text-center total">TOTAL: ${total.toFixed(2)}€</div>
-            <div class="separator"></div>
-            <p class="text-center">¡Gracias!</p>
-            <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500);};<\/script>
-            </body></html>
-        `);
-        ventana.document.close();
+   function imprimirTicket(pedido) {
+    const total = parseFloat(pedido.TOTAL) || 0;
+    const metodoPago = pedido.PAGO || 'Efectivo';
+    let cambioTexto = '';
+    
+    // Cálculo de cambio si aplica
+    const pagaCon = parseFloat(pedido.PAGA_CON) || 0;
+    if (metodoPago.toUpperCase().includes('EFECTIVO') && pagaCon > total) {
+        const cambio = pagaCon - total;
+        cambioTexto = `
+            <div style="margin: 8px 0; padding: 5px; background: #f5f5f5; border-radius: 3px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>💵 Paga con:</span>
+                    <span><strong>${pagaCon.toFixed(2)}€</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 3px;">
+                    <span>💰 Cambio:</span>
+                    <span><strong>${cambio.toFixed(2)}€</strong></span>
+                </div>
+            </div>
+        `;
     }
+    
+    // Formatear el detalle del pedido
+    let detalleFormateado = '';
+    if (pedido.items && Array.isArray(pedido.items)) {
+        detalleFormateado = pedido.items.map(item => 
+            `<div style="margin: 4px 0;">• ${item.cantidad}x ${item.nombre}${item.opciones ? `<br><span style="font-size: 10px; color: #555; margin-left: 15px;">📌 ${item.opciones}</span>` : ''}</div>`
+        ).join('');
+    } else if (pedido.PEDIDO_DETALLE) {
+        detalleFormateado = `<div style="margin: 4px 0;">${pedido.PEDIDO_DETALLE.replace(/\|/g, '<br>• ')}</div>`;
+    }
+    
+    const contenidoTicket = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Ticket #${pedido.ID_PEDIDO}</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { 
+                    font-family: 'Courier New', Courier, monospace;
+                    width: 100%;
+                    margin: 0 auto;
+                    padding: 4mm 3mm 8mm 3mm;
+                    font-size: 11px;
+                    line-height: 1.4;
+                    background: white;
+                    color: black;
+                }
+                .text-center { text-align: center; }
+                .separator { border-top: 1px dashed #333; margin: 8px 0; }
+                .separator-doble { border-top: 2px solid #333; margin: 8px 0; }
+                .header { margin-bottom: 8px; }
+                .logo { font-size: 18px; font-weight: bold; letter-spacing: 2px; }
+                .slogan { font-size: 9px; color: #555; margin-top: 2px; }
+                .info-line { display: flex; justify-content: space-between; margin: 4px 0; }
+                .label { font-weight: bold; min-width: 55px; }
+                .section-title { font-weight: bold; margin: 8px 0 4px 0; font-size: 12px; }
+                .detalle-item { margin: 4px 0 4px 5px; }
+                .detalle-opcion { font-size: 10px; color: #555; margin-left: 15px; margin-top: 2px; }
+                .total-box { 
+                    margin: 10px 0; 
+                    padding: 5px; 
+                    text-align: center;
+                    border-top: 1px dashed #333;
+                    border-bottom: 1px dashed #333;
+                }
+                .total-number { font-size: 16px; font-weight: bold; }
+                .footer { 
+                    text-align: center; 
+                    font-size: 9px; 
+                    margin-top: 15px;
+                    padding-top: 8px;
+                    border-top: 1px solid #ddd;
+                    color: #666;
+                }
+                .thanks { font-weight: bold; margin-bottom: 5px; }
+                @media print {
+                    body { margin: 0; padding: 3mm 2mm 6mm 2mm; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <!-- ENCABEZADO MEJORADO -->
+            <div class="text-center header">
+                <div class="logo">AGUADULCE EXPRESS</div>
+                <div class="slogan">Pedidos a domicilio</div>
+                <div style="font-size: 9px; margin-top: 5px;">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            
+            <div class="separator"></div>
+            
+            <!-- INFORMACIÓN DEL PEDIDO -->
+            <div class="info-line">
+                <span class="label">Pedido:</span>
+                <span>#${pedido.ID_PEDIDO}</span>
+            </div>
+            <div class="info-line">
+                <span class="label">Cliente:</span>
+                <span>${(pedido.CLIENTE || 'Cliente').substring(0, 35)}</span>
+            </div>
+            <div class="info-line">
+                <span class="label">Entrega:</span>
+                <span>${(pedido.DIRECCION || 'Para Recoger').substring(0, 40)}</span>
+            </div>
+            <div class="info-line">
+                <span class="label">Pago:</span>
+                <span>${metodoPago}</span>
+            </div>
+            
+            <div class="separator"></div>
+            
+            <!-- DETALLE DEL PEDIDO -->
+            <div class="section-title">📋 DETALLE DEL PEDIDO</div>
+            <div class="detalle-item">${detalleFormateado}</div>
+            
+            <div class="total-box">
+                <div style="font-size: 12px;">TOTAL A PAGAR</div>
+                <div class="total-number">${total.toFixed(2)}€</div>
+            </div>
+            
+            ${cambioTexto}
+            
+            <div class="separator"></div>
+            
+            <!-- PIE DE PÁGINA CON MARGEN -->
+            <div class="footer">
+                <div class="thanks">¡Gracias por su pedido!</div>
+                <div>Recibo generado por Aguadulce Express</div>
+                <div style="margin-top: 4px;">${new Date().toLocaleDateString()}</div>
+                <div style="height: 15px;"></div> <!-- MARGEN EXTRA AL FINAL -->
+            </div>
+            
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 1000);
+                    }, 200);
+                };
+            <\/script>
+        </body>
+        </html>
+    `;
+    
+    const ventana = window.open('', '_blank', 'width=450,height=650');
+    ventana.document.write(contenidoTicket);
+    ventana.document.close();
+}
 
     function preguntarSalir() {
         Swal.fire({

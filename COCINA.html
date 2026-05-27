@@ -13,9 +13,13 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; }
         .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
+        .card-pedido:hover { transform: translateY(-2px); border-color: #06b6d440; }
         .btn-accion { transition: transform 0.1s; cursor: pointer; }
         .btn-accion:active { transform: scale(0.96); }
         .badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: bold; display: inline-block; }
+        .badge-warning { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .badge-success { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .badge-danger { background: rgba(239,68,68,0.2); color: #ef4444; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
@@ -23,8 +27,10 @@
         .opacity-50 { opacity: 0.5; }
         .historial-item { cursor: pointer; transition: all 0.2s; }
         .historial-item:hover { background: #1e293b; transform: scale(0.98); }
+        .stats-card { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 20px; padding: 12px 16px; }
+        .stats-number { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+        .comision-detalle { background: #1e293b; border-radius: 12px; padding: 12px; margin: 8px 0; }
         
-        /* ===== ESTILOS CORREGIDOS - IMAGEN BRILLANTE Y CLARA ===== */
         .banner-img {
             width: 100%;
             height: 100%;
@@ -34,7 +40,7 @@
             opacity: 1 !important;
         }
         .overlay-gradient {
-            background: linear-gradient(to top, rgba(2,6,23,0.3) 0%, transparent 35%, transparent 100%);
+            background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%);
         }
         .banner-container {
             position: relative;
@@ -50,13 +56,12 @@
 
 <div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
     <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
-    <p class="text-white/50 text-xs mb-4 text-center">🔐 PIN DEL RESTAURANTE</p>
-    <input type="password" id="pinInput" maxlength="6" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white">
+    <p class="text-white/50 text-xs mb-4 text-center">🔐 CLAVE DEL RESTAURANTE</p>
+    <input type="password" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white">
     <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
 </div>
 
 <div id="appContent" class="hidden min-h-screen">
-    <!-- BANNER CORREGIDO - IMAGEN CLARA Y BRILLANTE -->
     <div class="banner-container">
         <img id="restauranteFoto" class="banner-img" src="">
         <div class="absolute inset-0 overlay-gradient"></div>
@@ -73,15 +78,21 @@
     </div>
 
     <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
-        <div class="flex gap-3">
+        <div class="flex gap-3 flex-wrap">
             <div class="badge">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
-            <div class="badge">🍳 EN COCINA: <span id="totalCocina">0</span></div>
-            <div class="badge">✅ HISTORIAL: <span id="totalHistorial">0</span></div>
+            <div class="badge badge-warning">🍳 EN COCINA: <span id="totalCocina">0</span></div>
+            <div class="badge badge-success">✅ HISTORIAL: <span id="totalHistorial">0</span></div>
         </div>
         <div class="flex gap-4 items-center">
-            <div class="text-right">
-                <div class="text-[9px] text-white/40 uppercase">HOY / SEMANA</div>
-                <div class="text-sm font-bold text-white"><span id="statHoy" class="text-white">0.00</span>€ / <span id="statSemana" class="text-white">0.00</span>€</div>
+            <div class="text-right stats-card">
+                <div class="text-[9px] text-white/40 uppercase tracking-wider">📊 RESUMEN DE HOY</div>
+                <div class="stats-number text-white"><span id="statHoy">0.00</span>€</div>
+                <div class="text-[10px] text-white/40 mt-1">💰 Subtotal de productos</div>
+            </div>
+            <div class="text-right stats-card">
+                <div class="text-[9px] text-white/40 uppercase tracking-wider">📅 TOTAL ACUMULADO</div>
+                <div class="stats-number text-white"><span id="statSemana">0.00</span>€</div>
+                <div class="text-[10px] text-white/40 mt-1">💰 Subtotal de productos</div>
             </div>
             <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
         </div>
@@ -114,14 +125,17 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    const ACCESS_DB = { "DELI10":"6G4L1V", "CHUN20":"RT33M5", "HARO30":"8N3Z7K", "SUCU40":"TR92X5", "PERU50":"9V1L8K", "LIMA60":"FL44K8", "PECA70":"CV11Q9" };
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
 
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
+    let miRestauranteComision = parseFloat(localStorage.getItem('AE_REST_COMISION')) || 0.18;
     let pedidos = [];
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
+    
+    // Datos de restaurantes cargados desde la hoja
+    let restaurantesData = [];
 
     function activarSonidoGlobal() {
         if (!sonidosActivados) {
@@ -132,14 +146,43 @@
     }
     document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
 
+    function calcularSubtotal(totalConEnvio) {
+        let subtotal = parseFloat(totalConEnvio) - 2.50 - 0.99;
+        return subtotal > 0 ? subtotal : parseFloat(totalConEnvio);
+    }
+
+    function calcularMontoACobrar(subtotal, comision) {
+        return subtotal * (1 - comision);
+    }
+
+    async function cargarRestaurantes() {
+        try {
+            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            restaurantesData = data.RESTAURANTES || [];
+            console.log("✅ Restaurantes cargados:", restaurantesData.length);
+        } catch (error) {
+            console.error("Error cargando restaurantes:", error);
+        }
+    }
+
     function verificarPIN() {
         let pin = document.getElementById('pinInput').value.trim().toUpperCase();
-        if (ACCESS_DB[pin]) {
-            miRestauranteId = ACCESS_DB[pin];
+        
+        // Buscar el restaurante en los datos cargados por CLAVE_ACCE
+        let restauranteEncontrado = restaurantesData.find(r => String(r.CLAVE_ACCE || "").trim().toUpperCase() === pin);
+        
+        if (restauranteEncontrado) {
+            miRestauranteId = restauranteEncontrado.ID_RESTAURANTE;
+            // La comisión puede venir como 0,18 (con coma) o 0.18 (con punto)
+            let comisionRaw = String(restauranteEncontrado.COMISION_PORCENTAJE || "0.18").replace(',', '.');
+            miRestauranteComision = parseFloat(comisionRaw);
+            
             localStorage.setItem('AE_REST_ID', miRestauranteId);
+            localStorage.setItem('AE_REST_COMISION', miRestauranteComision);
             iniciarApp();
         } else {
-            Swal.fire({ title: 'PIN incorrecto', icon: 'error', background: '#020617', color: 'white' });
+            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
         }
     }
 
@@ -256,7 +299,7 @@
 
         let historial = pedidos.filter(p => {
             const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO';
+            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO' || est === 'CANCELADO';
         });
 
         document.getElementById('totalPendientes').innerText = entrantes.length;
@@ -269,28 +312,59 @@
     }
 
     function renderCardEntrante(p) {
+        const subtotal = calcularSubtotal(p.TOTAL);
         return `<div class="card-pedido">
-            <div class="flex justify-between items-start"><div><span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span><p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p><p class="text-white/60 text-xs mt-1">${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p></div><span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span></div>
-            <div class="flex gap-2 mt-3"><button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-aceptar bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button><button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-rechazar bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button></div>
+            <div class="flex justify-between items-start">
+                <div>
+                    <span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                    <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
+                    <p class="text-white/60 text-xs mt-1">${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span>
+                    <p class="text-emerald-400 font-bold text-sm mt-1">${subtotal.toFixed(2)}€</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-3">
+                <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="btn-aceptar bg-cyan-500 text-black font-bold px-4 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
+                <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="btn-rechazar bg-red-600 text-white font-bold px-4 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
+            </div>
         </div>`;
     }
 
     function renderCardCocina(p) {
         const est = (p.ESTADO || '').toUpperCase().trim();
         let estaListo = est === 'LISTO';
-        let tiempoActivo = p.tiempo_seleccionado || 0; 
+        let tiempoActivo = p.tiempo_seleccionado || 0;
+        const subtotal = calcularSubtotal(p.TOTAL);
+        const montoACobrar = calcularMontoACobrar(subtotal, miRestauranteComision);
+        const comisionMonto = subtotal - montoACobrar;
+        const comisionPorcentaje = (miRestauranteComision * 100).toFixed(0);
 
         return `<div class="card-pedido ${estaListo ? 'opacity-40 border-dashed border-white/20' : ''}">
             <div class="flex justify-between">
                 <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
                 <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO - ESPERANDO REPARTIDOR' : '🍳 EN COCINA'}</span>
             </div>
-            <p class="text-white text-sm font-bold mt-1">${p.CLIENTE}</p>
+            <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
             <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
-            <div class="flex justify-between items-center mt-2">
-                <span class="text-white font-bold">${parseFloat(p.TOTAL).toFixed(2)}€</span>
+            
+            <div class="comision-detalle mt-3">
+                <div class="flex justify-between text-xs">
+                    <span class="text-white/60">💰 Subtotal productos:</span>
+                    <span class="text-white font-bold">${subtotal.toFixed(2)}€</span>
+                </div>
+                <div class="flex justify-between text-xs mt-1">
+                    <span class="text-white/60">📊 Comisión (${comisionPorcentaje}%):</span>
+                    <span class="text-amber-400">-${comisionMonto.toFixed(2)}€</span>
+                </div>
+                <div class="flex justify-between text-sm font-bold mt-2 pt-2 border-t border-white/10">
+                    <span class="text-emerald-400">🟢 TOTAL A COBRAR:</span>
+                    <span class="text-emerald-400">${montoACobrar.toFixed(2)}€</span>
+                </div>
             </div>
-            <div class="flex gap-2 mt-3">
+            
+            <div class="flex gap-2 mt-3 flex-wrap">
                 <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
                 <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn ${tiempoActivo === 15 ? 'verde' : 'bg-cyan-500/20 text-cyan-400'} px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>15'</button>
                 <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="tiempo-btn ${tiempoActivo === 30 ? 'verde' : 'bg-cyan-500/20 text-cyan-400'} px-3 py-2 rounded-xl text-xs" ${estaListo ? 'disabled' : ''}>30'</button>
@@ -302,21 +376,33 @@
 
     function renderCardHistorial(p) {
         const est = (p.ESTADO || '').toUpperCase().trim();
-        let tagEstado = '🛵 EN REPARTO';
-        let colorTag = 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
+        const subtotal = calcularSubtotal(p.TOTAL);
+        const montoACobrar = calcularMontoACobrar(subtotal, miRestauranteComision);
+        
+        let tagEstado = '';
+        let colorTag = '';
         
         if (est === 'ENTREGADO' || est === 'FINALIZADO') {
             tagEstado = '🏁 ENTREGADO';
-            colorTag = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            colorTag = 'badge-success';
         } else if (est === 'LLEGÓ' || est === 'LLEGÓ CONTROLLER') {
             tagEstado = '📍 EN EL CLIENTE';
-            colorTag = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+            colorTag = 'badge-warning';
+        } else if (est === 'CANCELADO') {
+            tagEstado = '❌ CANCELADO';
+            colorTag = 'badge-danger';
+        } else {
+            tagEstado = '🛵 EN REPARTO';
+            colorTag = 'badge';
         }
 
-        return `<div class="card-pedido historial-item p-3 rounded-xl bg-slate-900/40 border border-white/5 dynamic-card shadow-sm">
+        return `<div class="card-pedido historial-item">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                <span class="text-white font-bold text-sm">${parseFloat(p.TOTAL || 0).toFixed(2)}€</span>
+                <div class="text-right">
+                    <span class="text-white font-bold text-sm">${subtotal.toFixed(2)}€</span>
+                    <div class="text-[10px] text-emerald-400">(+comisión: ${montoACobrar.toFixed(2)}€)</div>
+                </div>
             </div>
             <div class="flex justify-between items-start gap-2">
                 <p class="text-white/70 text-xs font-medium truncate max-w-[140px]">${p.CLIENTE || 'Cliente'}</p>
@@ -353,12 +439,26 @@
     }
 
     async function rechazarPedido(id) {
+        const confirmar = await Swal.fire({
+            title: '¿Rechazar pedido?',
+            text: 'El cliente NO pagará por este pedido.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Sí, rechazar',
+            cancelButtonText: 'Cancelar',
+            background: '#1e293b',
+            color: 'white'
+        });
+        
+        if (!confirmar.isConfirmed) return;
+        
         if (window.event && window.event.target) {
             let btn = window.event.target;
             btn.disabled = true;
             btn.style.opacity = '0.5';
         }
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=CANCELADO_RESTAURANTE`);
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO&tiempo=Rechazado por el restaurante`);
         await cargarPedidos();
     }
 
@@ -368,6 +468,7 @@
         btn.classList.add('bg-green-600', 'text-white');
         await database.ref('pedidos/'+id).update({ tiempo_seleccionado: minutos });
         await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
+        await cargarPedidos();
     }
 
     async function marcarListo(id) {
@@ -381,6 +482,11 @@
     }
 
     function imprimirTicket(pedido) {
+        const subtotal = calcularSubtotal(pedido.TOTAL);
+        const montoACobrar = calcularMontoACobrar(subtotal, miRestauranteComision);
+        const comisionMonto = subtotal - montoACobrar;
+        const comisionPorcentaje = (miRestauranteComision * 100).toFixed(0);
+        
         const ventana = window.open('', '_blank', 'width=400,height=600');
         ventana.document.write(`
             <html>
@@ -393,6 +499,7 @@
                     .bold { font-weight: bold; }
                     .separator { border-top: 1px dashed #000; margin: 10px 0; }
                     .total { font-size: 18px; font-weight: bold; }
+                    .comision { background: #f0f0f0; padding: 10px; border-radius: 8px; margin: 10px 0; }
                 </style>
             </head>
             <body>
@@ -402,16 +509,30 @@
                 </div>
                 <div class="separator"></div>
                 <p class="bold">TICKET PEDIDO: #${pedido.ID_PEDIDO}</p>
-                <p><span class="bold">Cliente:</span> ${pedido.CLIENTE}</p>
+                <p><span class="bold">Cliente:</span> ${pedido.CLIENTE || 'Cliente'}</p>
                 <p><span class="bold">Entrega:</span> ${pedido.DIRECCION || 'Para Recoger'}</p>
                 <p><span class="bold">Pago:</span> ${pedido.PAGO || 'No especificado'}</p>
                 <div class="separator"></div>
                 <p class="bold">DETALLE DEL PEDIDO:</p>
                 <p style="white-space: pre-wrap; margin: 5px 0;">${pedido.PEDIDO_DETALLE || ''}</p>
                 <div class="separator"></div>
-                <div class="text-center total">TOTAL: ${parseFloat(pedido.TOTAL).toFixed(2)}€</div>
+                <div class="comision">
+                    <div class="bold">💰 RESUMEN ECONÓMICO</div>
+                    <div class="flex justify-between" style="margin-top:8px;">
+                        <span>Subtotal productos:</span>
+                        <span class="bold">${subtotal.toFixed(2)}€</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Comisión (${comisionPorcentaje}%):</span>
+                        <span>-${comisionMonto.toFixed(2)}€</span>
+                    </div>
+                    <div class="flex justify-between" style="margin-top:8px; border-top:1px dashed #000; padding-top:8px;">
+                        <span class="bold">🟢 TOTAL A COBRAR:</span>
+                        <span class="bold">${montoACobrar.toFixed(2)}€</span>
+                    </div>
+                </div>
                 <div class="separator"></div>
-                <p class="text-center" style="font-size: 11px; margin-top: 15px;">¡Buen provecho!</p>
+                <p class="text-center" style="font-size: 11px; margin-top: 15px;">¡Gracias por trabajar con Aguadulce Express!</p>
                 <script>
                     window.onload = function() { window.print(); setTimeout(() => window.close(), 500); };
                 <\/script>
@@ -424,6 +545,11 @@
     function verDetallePedido(id) {
         let p = pedidos.find(x => x.ID_PEDIDO == id);
         if (p) {
+            const subtotal = calcularSubtotal(p.TOTAL);
+            const montoACobrar = calcularMontoACobrar(subtotal, miRestauranteComision);
+            const comisionMonto = subtotal - montoACobrar;
+            const comisionPorcentaje = (miRestauranteComision * 100).toFixed(0);
+            
             Swal.fire({
                 title: `Pedido #${p.ID_PEDIDO}`,
                 html: `
@@ -431,9 +557,22 @@
                         <p style="margin-bottom: 6px;"><strong>👤 Cliente:</strong> ${p.CLIENTE || 'Sin nombre'}</p>
                         <p style="margin-bottom: 6px;"><strong>📍 Dirección:</strong> ${p.DIRECCION || 'Para Recoger'}</p>
                         <p style="margin-bottom: 6px;"><strong>💳 Pago:</strong> ${p.PAGO || 'No especificado'}</p>
-                        <p style="margin-bottom: 6px;"><strong>💰 Total:</strong> <span style="color:#22c55e; font-weight:bold;">${parseFloat(p.TOTAL || 0).toFixed(2)}€</span></p>
+                        <div style="background: #1e293b; padding: 12px; border-radius: 12px; margin: 10px 0;">
+                            <div class="flex justify-between" style="margin-bottom: 6px;">
+                                <span>💰 Subtotal productos:</span>
+                                <span style="color:#22c55e; font-weight:bold;">${subtotal.toFixed(2)}€</span>
+                            </div>
+                            <div class="flex justify-between" style="margin-bottom: 6px;">
+                                <span>📊 Comisión (${comisionPorcentaje}%):</span>
+                                <span style="color:#f59e0b;">-${comisionMonto.toFixed(2)}€</span>
+                            </div>
+                            <div class="flex justify-between pt-2 border-t border-white/10">
+                                <span>🟢 TOTAL A COBRAR:</span>
+                                <span style="color:#22c55e; font-weight:bold;">${montoACobrar.toFixed(2)}€</span>
+                            </div>
+                        </div>
                         <div style="border-top: 1px dashed rgba(255,255,255,0.1); margin-top: 10px; padding-top: 10px;">
-                            <p><strong>📦 Detalle:</strong></p>
+                            <p><strong>📦 Detalle del pedido:</strong></p>
                             <p style="color:#94a3b8; white-space: pre-wrap; font-size: 13px; margin-top: 4px;">${p.PEDIDO_DETALLE || ''}</p>
                         </div>
                     </div>`,
@@ -449,7 +588,6 @@
         }
     }
 
-    // ===== FUNCIÓN SALIR CORREGIDA =====
     function preguntarSalir() {
         Swal.fire({
             title: '¿Cerrar sesión?',
@@ -465,13 +603,15 @@
         }).then((result) => {
             if (result.isConfirmed) {
                 localStorage.removeItem('AE_REST_ID');
+                localStorage.removeItem('AE_REST_COMISION');
                 miRestauranteId = "";
+                miRestauranteComision = 0.18;
                 document.getElementById('loginScreen').style.display = 'flex';
                 document.getElementById('appContent').classList.add('hidden');
                 document.getElementById('pinInput').value = '';
                 Swal.fire({
                     title: 'Sesión cerrada',
-                    text: 'Puedes ingresar con otro PIN',
+                    text: 'Puedes ingresar con otro restaurante',
                     icon: 'success',
                     timer: 1500,
                     showConfirmButton: false,
@@ -483,6 +623,7 @@
     }
 
     async function iniciarApp() {
+        await cargarRestaurantes();
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
         await cargarPedidos();

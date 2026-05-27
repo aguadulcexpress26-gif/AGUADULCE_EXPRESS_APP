@@ -6,7 +6,7 @@
     <title>Aguadulce Express - Reparto</title>
     
     <!-- PWA manifest específico para repartidor -->
-    <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/manifest-reparto.json">
+    <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/reparto/manifest-reparto.json">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp">
     <meta name="theme-color" content="#22c55e">
     <meta name="mobile-web-app-capable" content="yes">
@@ -42,8 +42,6 @@
         .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(2,6,23,0.95); z-index: 1000; display: none; align-items: center; justify-content: center; }
         .modal-content { background: #0f172a; border-radius: 20px; padding: 20px; max-width: 400px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid #1e293b; }
         .sonido-activo { background: #22c55e !important; color: #020617 !important; }
-        .notification-badge { position: relative; }
-        .notification-badge::after { content: "🔔"; position: absolute; top: -5px; right: -5px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -104,6 +102,7 @@
     let ultimoConteo = 0;
     let ultimoAccesoActividad = Date.now();
     const TIEMPO_MAX_INACTIVIDAD = 25 * 60 * 1000;
+    let timeoutSonido = null;
 
     function initAudio() {
         audioNotif = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
@@ -111,48 +110,32 @@
         audioNotif.loop = false;
     }
     
-   let timeoutSonido = null;
-
-function playSoundFuerte() {
-    if (!audioNotif || !sonidoActivado) return;
-    
-    // Detener sonido anterior si existe
-    if (audioNotif) {
-        audioNotif.pause();
-        audioNotif.currentTime = 0;
-    }
-    
-    // Limpiar timeout anterior
-    if (timeoutSonido) {
-        clearTimeout(timeoutSonido);
-    }
-    
-    // Reproducir nuevo sonido
-    audioNotif.volume = 1.0;
-    audioNotif.play().catch(e => console.log('Audio necesita interacción'));
-    
-    // Detener automáticamente después de 5 segundos
-    timeoutSonido = setTimeout(() => {
+    function playSoundFuerte() {
+        if (!audioNotif || !sonidoActivado) return;
         if (audioNotif) {
             audioNotif.pause();
             audioNotif.currentTime = 0;
-            console.log('🔇 Sonido detenido automáticamente (5s)');
         }
-    }, 5000);
-    
-    if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 1000]);
-}
-    
-  function playSoundNotificacion() {
-    if (audioNotif && sonidoActivado && !audioNotif.paused) {
-        return; // Si ya está sonando, no hacer nada
+        if (timeoutSonido) clearTimeout(timeoutSonido);
+        audioNotif.volume = 1.0;
+        audioNotif.play().catch(e => console.log('Audio necesita interacción'));
+        timeoutSonido = setTimeout(() => {
+            if (audioNotif) {
+                audioNotif.pause();
+                audioNotif.currentTime = 0;
+            }
+        }, 5000);
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 1000]);
     }
-    if (audioNotif && sonidoActivado) {
-        const clone = audioNotif.cloneNode();
-        clone.volume = 1.0;
-        clone.play().catch(e => console.log('Audio necesita interacción'));
+    
+    function playSoundNotificacion() {
+        if (audioNotif && sonidoActivado && !audioNotif.paused) return;
+        if (audioNotif && sonidoActivado) {
+            const clone = audioNotif.cloneNode();
+            clone.volume = 1.0;
+            clone.play().catch(e => console.log('Audio necesita interacción'));
+        }
     }
-}
 
     function registrarActividadUsuario() {
         ultimoAccesoActividad = Date.now();
@@ -173,7 +156,7 @@ function playSoundFuerte() {
         if (intervalo) clearInterval(intervalo);
         Swal.fire({
             title: '⏰ ¿Sigues ahí?',
-            text: 'Tu sesión se cerrará por inactividad para liberar el reparto.',
+            text: 'Tu sesión se cerrará por inactividad.',
             icon: 'warning',
             background: '#0f172a', color: 'white',
             timer: 60000, timerProgressBar: true,
@@ -220,9 +203,7 @@ function playSoundFuerte() {
             });
             
             const hayNuevos = nuevosPedidos.length > pedidosActuales.length;
-            
             pedidosActuales = nuevosPedidos;
-            
             document.getElementById('contadorPedidos').innerHTML = pedidosActuales.length;
             renderizarPedidos(pedidosActuales);
             
@@ -256,7 +237,6 @@ function playSoundFuerte() {
     function renderizarPedidos(pedidos) {
         const contenedor = document.getElementById('listaPedidos');
         if (!contenedor) return;
-
         if (pedidos.length === 0) {
             contenedor.innerHTML = '<div class="sin-pedidos">📭 Sin pedidos asignados en este momento</div>';
             return;
@@ -271,7 +251,6 @@ function playSoundFuerte() {
             const direccionCliente = p.DIRECCION || 'Sin dirección';
             const nombreRestaurante = p.restaurante_nombre || 'Restaurante';
             const direccionRestaurante = p.restaurante_direccion || '';
-            
             const linkMapaRestaurante = direccionRestaurante ? generarLinkMapa(direccionRestaurante) : '#';
             const linkMapaCliente = generarLinkMapa(direccionCliente);
 
@@ -349,17 +328,12 @@ function playSoundFuerte() {
                     <span class="ref">📋 ${p.ID_PEDIDO}</span>
                     <span class="status-badge">${estado}</span>
                 </div>
-                
-                <!-- Información del RESTAURANTE -->
                 <div class="restaurante-info">
                     <div style="font-size: 11px; color: #22c55e; font-weight: bold; margin-bottom: 4px;">🏪 RECOGER EN:</div>
                     <div style="font-weight: bold; font-size: 14px;">${nombreRestaurante}</div>
                     ${direccionRestaurante ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">📍 ${direccionRestaurante}</div>` : '<div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">📍 Dirección no disponible</div>'}
                 </div>
-                
                 ${mapaRestauranteHtml}
-                
-                <!-- Información del CLIENTE -->
                 <div style="background: rgba(30,41,59,0.6); padding: 14px; border-radius: 14px; margin-top: 12px; margin-bottom: 12px;">
                     <div style="font-weight: bold; margin-bottom: 6px;">👤 ${p.CLIENTE || 'Cliente'}</div>
                     <div style="font-size: 14px; margin: 4px 0;">🏠 ${direccionCliente}</div>
@@ -370,9 +344,7 @@ function playSoundFuerte() {
                     <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px; margin-top: 6px;">💳 Método: <strong>${p.PAGO || 'Efectivo'}</strong></div>
                     ${bloqueEfectivo}
                 </div>
-                
                 ${mapaClienteHtml}
-                
                 <div class="flex justify-between items-center" style="margin: 14px 0;">
                     <span>💰 Total a cobrar:</span>
                     <span style="color:#22c55e; font-size: 24px; font-weight: 800;">${total.toFixed(2)}€</span>
@@ -543,7 +515,6 @@ function playSoundFuerte() {
     
     async function iniciarApp() {
         initAudio();
-        
         const btnSonido = document.getElementById('btnActivarSonido');
         if (btnSonido) {
             btnSonido.onclick = activarSonido;
@@ -598,18 +569,13 @@ function playSoundFuerte() {
         
         codigoActual = codigo;
         document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
-        
         await cargarPedidos();
-        
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-        
         if (intervalo) clearInterval(intervalo);
         intervalo = setInterval(cargarPedidos, 5000);
-        
         iniciarCronometrosReales();
         iniciarActualizacionTimersCocina();
-        
         if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
             Notification.requestPermission();
         }
@@ -618,10 +584,10 @@ function playSoundFuerte() {
     iniciarApp().catch(e => console.error(e));
     
     if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/sw-reparto.js')
-        .then(reg => console.log('✅ SW Reparto registrado', reg))
-        .catch(err => console.error('❌ Error SW Reparto:', err));
-}
+        navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/reparto/sw-reparto.js')
+            .then(reg => console.log('✅ SW Reparto registrado', reg))
+            .catch(err => console.error('❌ Error SW Reparto:', err));
+    }
 </script>
 </body>
 </html>

@@ -170,26 +170,47 @@
    async function verificarPIN() {
     let pin = document.getElementById('pinInput').value.trim().toUpperCase();
     
-    // 🔥 Cargar restaurantes si no están cargados
-    if (restaurantesData.length === 0) {
-        await cargarRestaurantes();
-    }
+    // 🔥 Mostrar loading mientras se cargan los restaurantes
+    Swal.fire({
+        title: 'Verificando...',
+        text: 'Por favor espera',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
     
-    let restauranteEncontrado = restaurantesData.find(r => String(r.CLAVE_ACCE || "").trim().toUpperCase() === pin);
-    
-    if (restauranteEncontrado) {
-        miRestauranteId = restauranteEncontrado.ID_RESTAURANTE;
-        let comisionRaw = String(restauranteEncontrado.COMISION_PORCENTAJE || "0.18").replace(',', '.');
-        miRestauranteComision = parseFloat(comisionRaw);
+    // Cargar restaurantes desde el servidor
+    try {
+        const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+        const data = await response.json();
+        restaurantesData = data.RESTAURANTES || [];
+        console.log("✅ Restaurantes cargados:", restaurantesData.length);
+        console.log("🔑 Claves disponibles:", restaurantesData.map(r => r.CLAVE_ACCE));
         
-        localStorage.setItem('AE_REST_ID', miRestauranteId);
-        localStorage.setItem('AE_REST_COMISION', miRestauranteComision);
-        iniciarApp();
-    } else {
-        Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
+        // Buscar el restaurante por CLAVE_ACCE
+        let restauranteEncontrado = restaurantesData.find(r => {
+            let clave = String(r.CLAVE_ACCE || "").trim().toUpperCase();
+            return clave === pin;
+        });
+        
+        Swal.close();
+        
+        if (restauranteEncontrado) {
+            miRestauranteId = restauranteEncontrado.ID_RESTAURANTE;
+            let comisionRaw = String(restauranteEncontrado.COMISION_PORCENTAJE || "0.18").replace(',', '.');
+            miRestauranteComision = parseFloat(comisionRaw);
+            
+            localStorage.setItem('AE_REST_ID', miRestauranteId);
+            localStorage.setItem('AE_REST_COMISION', miRestauranteComision);
+            iniciarApp();
+        } else {
+            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
+        }
+    } catch (error) {
+        Swal.close();
+        console.error("Error:", error);
+        Swal.fire({ title: 'ERROR', text: 'No se pudo conectar con el servidor', icon: 'error', background: '#020617', color: 'white' });
     }
 }
-
     async function alternarEstadoTienda(estadoActual) {
         const nuevoEstado = estadoActual === "ABIERTO" ? "CERRADO" : "ABIERTO";
         const textoAlerta = nuevoEstado === "ABIERTO" 

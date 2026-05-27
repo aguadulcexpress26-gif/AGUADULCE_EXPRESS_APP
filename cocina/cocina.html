@@ -12,7 +12,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Cocina AE">
-    
+    f
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
@@ -399,15 +399,9 @@
     if (metodoPago.toUpperCase().includes('EFECTIVO') && pagaCon > total) {
         const cambio = pagaCon - total;
         cambioTexto = `
-            <div style="margin: 8px 0; padding: 5px; background: #f5f5f5;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span>💵 Paga con:</span>
-                    <span><strong>${pagaCon.toFixed(2)}€</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 3px;">
-                    <span>💰 Cambio:</span>
-                    <span><strong>${cambio.toFixed(2)}€</strong></span>
-                </div>
+            <div class="cambio-box">
+                <div>💵 Paga con: ${pagaCon.toFixed(2)}€</div>
+                <div>💰 Cambio: ${cambio.toFixed(2)}€</div>
             </div>
         `;
     }
@@ -415,15 +409,31 @@
     // Formatear el detalle del pedido
     let detalleFormateado = '';
     if (pedido.items && Array.isArray(pedido.items)) {
-        detalleFormateado = pedido.items.map(item => 
-            `<div style="margin: 5px 0;">
-                <strong>${item.cantidad}x ${item.nombre}</strong>
-                ${item.opciones ? `<div style="font-size: 10px; color: #555; margin-left: 15px;">📌 ${item.opciones}</div>` : ''}
-            </div>`
-        ).join('');
+        detalleFormateado = pedido.items.map(item => {
+            let itemHtml = `<div class="item-line">
+                <span class="item-cant">${item.cantidad}</span>
+                <span class="item-nombre">${item.nombre}</span>
+                <span class="item-total">${(item.precio_unitario * item.cantidad).toFixed(2)}€</span>
+            </div>`;
+            if (item.opciones && item.opciones !== '') {
+                const opcionesArray = item.opciones.split(',');
+                opcionesArray.forEach(op => {
+                    itemHtml += `<div class="item-opcion">  📌 ${op.trim()}</div>`;
+                });
+            }
+            return itemHtml;
+        }).join('');
     } else if (pedido.PEDIDO_DETALLE) {
-        detalleFormateado = `<div style="margin: 5px 0;">${pedido.PEDIDO_DETALLE.replace(/\|/g, '<br>• ')}</div>`;
+        // Limpiar y formatear el detalle
+        let detalleLimpio = pedido.PEDIDO_DETALLE
+            .replace(/\|/g, '\n')
+            .replace(/\(/g, '\n  📌 ');
+        detalleFormateado = `<div class="item-line">${detalleLimpio}</div>`;
     }
+    
+    // Información del restaurante (si está disponible)
+    const nombreRestaurante = pedido.restaurante_nombre || pedido.RESTAURANTE_NOMBRE || 'Restaurante';
+    const direccionRestaurante = pedido.restaurante_direccion || '';
     
     const contenidoTicket = `
         <!DOCTYPE html>
@@ -436,120 +446,203 @@
                 body { 
                     font-family: 'Courier New', Courier, monospace;
                     width: 100%;
+                    max-width: 80mm;
                     margin: 0 auto;
-                    padding: 15mm 3mm 8mm 3mm;
-                    font-size: 11px;
-                    line-height: 1.4;
                     background: white;
-                    color: black;
+                    color: #000;
+                }
+                .ticket {
+                    padding: 8mm 4mm 6mm 4mm;
                 }
                 .text-center { text-align: center; }
-                .separator { border-top: 1px dashed #333; margin: 8px 0; }
-                .separator-doble { border-top: 2px solid #333; margin: 8px 0; }
+                .separator { border-top: 1px dashed #888; margin: 10px 0; }
+                .separator-dashed { border-top: 1px dashed #888; margin: 8px 0; }
                 
-                /* CABECERA CON MARGEN SUPERIOR PARA GRAPAR */
-                .header { 
-                    margin-top: 10mm;
+                /* ESPACIO PARA GRAPA */
+                .grapa-space {
+                    height: 12mm;
+                    width: 100%;
+                }
+                
+                /* CABECERA */
+                .header {
+                    text-align: center;
                     margin-bottom: 10px;
-                    text-align: center;
                 }
-                .logo { 
-                    font-size: 18px; 
-                    font-weight: bold; 
+                .logo {
+                    font-size: 16px;
+                    font-weight: bold;
                     letter-spacing: 2px;
-                    margin-bottom: 3px;
                 }
-                .slogan { font-size: 9px; color: #555; margin-top: 2px; }
-                .fecha { font-size: 9px; margin-top: 5px; color: #666; }
-                
-                .info-line { display: flex; justify-content: space-between; margin: 4px 0; }
-                .label { font-weight: bold; min-width: 55px; }
-                .section-title { font-weight: bold; margin: 8px 0 4px 0; font-size: 12px; }
-                .detalle-item { margin: 4px 0 4px 5px; }
-                
-                .total-box { 
-                    margin: 10px 0; 
-                    padding: 8px; 
+                .slogan {
+                    font-size: 9px;
+                    color: #666;
+                    margin-top: 3px;
+                }
+                .fecha {
+                    font-size: 9px;
+                    color: #888;
+                    margin-top: 6px;
+                }
+                .restaurante {
+                    font-size: 10px;
+                    font-weight: bold;
+                    margin-top: 8px;
                     text-align: center;
-                    border-top: 1px dashed #333;
-                    border-bottom: 1px dashed #333;
-                    background: #fafafa;
                 }
-                .total-number { font-size: 18px; font-weight: bold; }
                 
-                .footer { 
-                    text-align: center; 
-                    font-size: 9px; 
+                /* INFO DEL PEDIDO */
+                .pedido-info {
+                    margin: 10px 0;
+                }
+                .info-line {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 5px 0;
+                    font-size: 10px;
+                }
+                .label {
+                    font-weight: bold;
+                }
+                
+                /* DETALLE DEL PEDIDO */
+                .section-title {
+                    font-weight: bold;
+                    margin: 10px 0 8px 0;
+                    font-size: 11px;
+                }
+                .item-line {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 5px 0;
+                    font-size: 10px;
+                }
+                .item-cant {
+                    width: 25px;
+                }
+                .item-nombre {
+                    flex: 1;
+                    margin-left: 5px;
+                }
+                .item-total {
+                    font-weight: bold;
+                }
+                .item-opcion {
+                    font-size: 9px;
+                    color: #666;
+                    margin-left: 30px;
+                    margin-bottom: 4px;
+                }
+                
+                /* TOTALES */
+                .total-box {
+                    text-align: center;
+                    margin: 12px 0;
+                    padding: 8px;
+                    border-top: 1px dashed #888;
+                    border-bottom: 1px dashed #888;
+                }
+                .total-label {
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                .total-number {
+                    font-size: 18px;
+                    font-weight: bold;
+                    margin-top: 4px;
+                }
+                
+                /* CAMBIO */
+                .cambio-box {
+                    background: #f5f5f5;
+                    padding: 8px;
+                    margin: 10px 0;
+                    font-size: 10px;
+                    text-align: center;
+                }
+                
+                /* PIE */
+                .footer {
+                    text-align: center;
                     margin-top: 15px;
                     padding-top: 8px;
                     border-top: 1px solid #ddd;
-                    color: #666;
+                    font-size: 8px;
+                    color: #888;
                 }
-                .thanks { font-weight: bold; margin-bottom: 5px; }
-                .espacio-grapa { 
-                    height: 8mm; 
-                    width: 100%; 
-                    background: transparent;
+                .thanks {
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                    font-size: 10px;
+                    color: #000;
+                }
+                .comprobante {
+                    font-size: 8px;
                     margin-top: 5px;
                 }
-                @media print {
-                    body { margin: 0; padding: 15mm 3mm 8mm 3mm; }
-                    .no-print { display: none; }
+                .bottom-space {
+                    height: 10mm;
                 }
             </style>
         </head>
         <body>
-            <!-- ESPACIO PARA GRAPA EN LA PARTE SUPERIOR -->
-            <div class="espacio-grapa"></div>
-            
-            <!-- ENCABEZADO CON MARGEN -->
-            <div class="header">
-                <div class="logo">AGUADULCE EXPRESS</div>
-                <div class="slogan">🍔 Restaurantes • 🛒 Supermercado</div>
-                <div class="fecha">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-            </div>
-            
-            <div class="separator"></div>
-            
-            <!-- INFORMACIÓN DEL PEDIDO -->
-            <div class="info-line">
-                <span class="label">Pedido:</span>
-                <span>#${pedido.ID_PEDIDO}</span>
-            </div>
-            <div class="info-line">
-                <span class="label">Cliente:</span>
-                <span>${(pedido.CLIENTE || 'Cliente').substring(0, 35)}</span>
-            </div>
-            <div class="info-line">
-                <span class="label">Entrega:</span>
-                <span>${(pedido.DIRECCION || 'Para Recoger').substring(0, 40)}</span>
-            </div>
-            <div class="info-line">
-                <span class="label">Pago:</span>
-                <span>${metodoPago}</span>
-            </div>
-            
-            <div class="separator"></div>
-            
-            <!-- DETALLE DEL PEDIDO -->
-            <div class="section-title">📋 DETALLE DEL PEDIDO</div>
-            <div class="detalle-item">${detalleFormateado}</div>
-            
-            <div class="total-box">
-                <div style="font-size: 12px; margin-bottom: 3px;">TOTAL</div>
-                <div class="total-number">${total.toFixed(2)}€</div>
-            </div>
-            
-            ${cambioTexto}
-            
-            <div class="separator"></div>
-            
-            <!-- PIE DE PÁGINA -->
-            <div class="footer">
-                <div class="thanks">🎉 ¡Gracias por su pedido! 🎉</div>
-                <div>Comprobante generado por Aguadulce Express</div>
-                <div style="margin-top: 4px;">${new Date().toLocaleDateString()}</div>
-                <div style="height: 10mm;"></div>
+            <div class="ticket">
+                <!-- ESPACIO PARA GRAPA -->
+                <div class="grapa-space"></div>
+                
+                <!-- CABECERA -->
+                <div class="header">
+                    <div class="logo">AGUADULCE EXPRESS</div>
+                    <div class="slogan">Pedidos a domicilio</div>
+                    <div class="fecha">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                    ${nombreRestaurante ? `<div class="restaurante">${nombreRestaurante}</div>` : ''}
+                </div>
+                
+                <div class="separator"></div>
+                
+                <!-- INFORMACIÓN DEL PEDIDO -->
+                <div class="pedido-info">
+                    <div class="info-line">
+                        <span class="label">PEDIDO:</span>
+                        <span>#${pedido.ID_PEDIDO}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="label">CLIENTE:</span>
+                        <span>${(pedido.CLIENTE || 'Cliente').substring(0, 30)}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="label">DIRECCIÓN:</span>
+                        <span>${(pedido.DIRECCION || 'Para Recoger').substring(0, 30)}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="label">PAGO:</span>
+                        <span>${metodoPago}</span>
+                    </div>
+                </div>
+                
+                <div class="separator-dashed"></div>
+                
+                <!-- DETALLE DEL PEDIDO -->
+                <div class="section-title">PRODUCTOS</div>
+                ${detalleFormateado}
+                
+                <div class="separator-dashed"></div>
+                
+                <!-- TOTAL -->
+                <div class="total-box">
+                    <div class="total-label">TOTAL</div>
+                    <div class="total-number">${total.toFixed(2)}€</div>
+                </div>
+                
+                ${cambioTexto}
+                
+                <!-- PIE DE PÁGINA -->
+                <div class="footer">
+                    <div class="thanks">🎉 ¡GRACIAS POR SU PEDIDO! 🎉</div>
+                    <div class="comprobante">Comprobante generado por Aguadulce Express</div>
+                    <div class="comprobante">${new Date().toLocaleDateString()}</div>
+                    <div class="bottom-space"></div>
+                </div>
             </div>
             
             <script>
@@ -557,18 +650,17 @@
                     setTimeout(function() {
                         window.print();
                         setTimeout(function() { window.close(); }, 1000);
-                    }, 300);
+                    }, 200);
                 };
             <\/script>
         </body>
         </html>
     `;
     
-    const ventana = window.open('', '_blank', 'width=450,height=650');
+    const ventana = window.open('', '_blank', 'width=400,height=650');
     ventana.document.write(contenidoTicket);
     ventana.document.close();
 }
-
     function preguntarSalir() {
         Swal.fire({
             title: '¿Cerrar sesión?',

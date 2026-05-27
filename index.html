@@ -70,45 +70,37 @@
             border-top: 1px solid rgba(255,255,255,0.05);
         }
         .legal-footer a {
-    color: #06b6d4;
-    text-decoration: none;
-    font-size: 10px;
-    margin: 0 8px;
-    display: inline-block;
-}
-.legal-footer p {
-    font-size: 8px;
-    color: rgba(255,255,255,0.3);
-    margin-top: 10px;
-}
-
-/* Asegurar que los modales de términos se vean completos */
-.swal2-popup {
-    max-height: 90vh !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-.swal2-html-container {
-    max-height: 65vh !important;
-    overflow-y: auto !important;
-    margin: 10px 0 !important;
-}
-.swal2-title {
-    font-size: 18px !important;
-    padding: 10px 0 !important;
-}
-        /* Asegurar que Swal (alertas) esté por encima de todo */
-.swal2-container {
-    z-index: 20000 !important;
-}
-.swal2-popup {
-    z-index: 20001 !important;
-}
-
-/* Asegurar que el modal de registro tenga un z-index menor que Swal */
-.modal-overlay {
-    z-index: 10000 !important;
-}
+            color: #06b6d4;
+            text-decoration: none;
+            font-size: 10px;
+            margin: 0 8px;
+            display: inline-block;
+        }
+        .legal-footer p {
+            font-size: 8px;
+            color: rgba(255,255,255,0.3);
+            margin-top: 10px;
+        }
+        #app-container {
+            min-height: 100vh;
+            padding-bottom: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        /* Forzar que Swal esté por encima de todo */
+        .swal2-container {
+            z-index: 99999999 !important;
+        }
+        .swal2-popup {
+            z-index: 99999999 !important;
+        }
+        
+        /* Asegurar que el modal de registro no interfiera */
+        .modal-overlay {
+            z-index: 9999 !important;
+        }
     </style>
 </head>
 <body>
@@ -386,16 +378,17 @@ function alcoholDisponible() {
 }
 
 // Verificar zona por código postal
-function validarZona(direccion) {
-    const cpRegex = /\b(\d{5})\b/;
-    const match = direccion.match(cpRegex);
-    
-    if (!match) {
-        alertaError("Código postal no encontrado", "Por favor, indica un código postal válido en tu dirección (ej: 04720).");
+function validarZona(cp) {
+    if (!cp) {
+        alertaError("Código postal requerido", "Por favor, indica tu código postal.");
         return false;
     }
     
-    const cp = match[1];
+    if (!/^\d{5}$/.test(cp)) {
+        alertaError("Código postal inválido", "El código postal debe tener 5 dígitos numéricos.");
+        return false;
+    }
+    
     if (!ZONAS_PERMITIDAS.includes(cp)) {
         alertaError("Fuera de zona de reparto", `Lo sentimos, solo realizamos entregas en Aguadulce (CP: 04720). Tu CP: ${cp}`);
         return false;
@@ -477,28 +470,43 @@ function euros(n) { return parseFloat(n || 0).toFixed(2) + "€"; }
 function guardarLocal(clave, valor) { localStorage.setItem(clave, JSON.stringify(valor)); }
 function leerLocal(clave, defecto = null) { try { const data = localStorage.getItem(clave); return data ? JSON.parse(data) : defecto; } catch { return defecto; } }
 function mostrarToast(mensaje, icono = "✅") { const toast = document.createElement('div'); toast.className = 'toast-notify'; toast.innerHTML = `${icono} ${escapeHTML(mensaje)}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 1500); }
-function alertaError(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "error", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
-function alertaInfo(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "info", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
+
+function alertaError(titulo, texto) {
+    // Cerrar modal de registro si está abierto
+    const modalRegistro = document.getElementById('modal-registro');
+    if (modalRegistro && modalRegistro.style.display === 'flex') {
+        modalRegistro.style.display = 'none';
+    }
+    
+    Swal.fire({
+        title: titulo,
+        text: texto,
+        icon: "error",
+        background: "#020617",
+        color: "#fff",
+        confirmButtonColor: "#06b6d4"
+    });
+}
+
+function alertaInfo(titulo, texto) {
+    const modalRegistro = document.getElementById('modal-registro');
+    if (modalRegistro && modalRegistro.style.display === 'flex') {
+        modalRegistro.style.display = 'none';
+    }
+    
+    Swal.fire({
+        title: titulo,
+        text: texto,
+        icon: "info",
+        background: "#020617",
+        color: "#fff",
+        confirmButtonColor: "#06b6d4"
+    });
+}
 
 // ==========================================
 // TEXTOS LEGALES
 // ==========================================
-const textosLegales = {
-    terminos: `📋 TÉRMINOS DE SERVICIO
-
-1. ACEPTACIÓN
-Al registrar sus datos y realizar un pedido a través de Aguadulce Express, el cliente acepta expresamente todas las condiciones aquí establecidas.
-
-2. PROCESO DE PEDIDO
-...`,
-
-    privacidad: `🔒 POLÍTICA DE PRIVACIDAD
-...`,
-
-    aviso: `⚖️ AVISO LEGAL
-...`
-};
-
 async function verTerminos(tipo = 'terminos') {
     // Cerrar modal de registro si está abierto
     const modalRegistro = document.getElementById('modal-registro');
@@ -610,6 +618,7 @@ Para cualquier consulta o reclamación, puede contactar a través del email [tu 
         modalRegistro.style.display = 'flex';
     }
 }
+
 // ==========================================
 // FOOTER LEGAL
 // ==========================================
@@ -695,6 +704,8 @@ function guardarCliente(cliente) { guardarLocal("ae_cliente", cliente); }
 function actualizarClienteUI() { const box = document.getElementById("info-cliente-logueado"); if(box) { const c = obtenerCliente(); box.innerHTML = c ? `<strong>${escapeHTML(c.nombre)}</strong><br>${escapeHTML(c.telf)}<br>${escapeHTML(c.dir)}` : "No identificado"; } }
 
 function guardarRegistro() {
+    const modalRegistro = document.getElementById('modal-registro');
+    
     const nombre = document.getElementById('reg-nombre')?.value.trim();
     const telf = document.getElementById('reg-telf')?.value.trim();
     const dir = document.getElementById('reg-dir')?.value.trim();
@@ -702,30 +713,61 @@ function guardarRegistro() {
     const legal = document.getElementById('reg-legal')?.checked;
     const edad = document.getElementById('reg-edad')?.checked;
     
+    // Cerrar modal inmediatamente al hacer clic
+    modalRegistro.style.display = 'none';
+    
     // Validar campos obligatorios
     if (!nombre || !telf || !dir || !cp) {
-        alertaError("Campos requeridos", "Completa todos los campos: nombre, teléfono, dirección y código postal.");
+        Swal.fire({
+            title: "Campos requeridos",
+            text: "Completa todos los campos: nombre, teléfono, dirección y código postal.",
+            icon: "error",
+            background: "#020617",
+            color: "#fff",
+            confirmButtonColor: "#06b6d4"
+        });
         return;
     }
     
     // Validar que el CP tenga 5 dígitos numéricos
     if (!/^\d{5}$/.test(cp)) {
-        alertaError("Código postal inválido", "El código postal debe tener 5 dígitos numéricos.");
+        Swal.fire({
+            title: "Código postal inválido",
+            text: "El código postal debe tener 5 dígitos numéricos.",
+            icon: "error",
+            background: "#020617",
+            color: "#fff",
+            confirmButtonColor: "#06b6d4"
+        });
         return;
     }
     
     // Validar zona (CP permitido)
     if (!ZONAS_PERMITIDAS.includes(cp)) {
-        alertaError("Fuera de zona de reparto", `Lo sentimos, solo realizamos entregas en Aguadulce (CP: 04720). Tu CP: ${cp}`);
+        Swal.fire({
+            title: "Fuera de zona de reparto",
+            text: `Solo realizamos entregas en Aguadulce (CP: 04720). Tu CP: ${cp}`,
+            icon: "error",
+            background: "#020617",
+            color: "#fff",
+            confirmButtonColor: "#06b6d4"
+        });
         return;
     }
     
     if (!legal) {
-        alertaError("Acepta términos", "Debes aceptar los términos y la política de privacidad.");
+        Swal.fire({
+            title: "Acepta términos",
+            text: "Debes aceptar los términos y la política de privacidad.",
+            icon: "error",
+            background: "#020617",
+            color: "#fff",
+            confirmButtonColor: "#06b6d4"
+        });
         return;
     }
     
-    // Construir dirección completa (dirección + CP)
+    // Construir dirección completa
     const direccionCompleta = `${dir}, ${cp}`;
     
     // Guardar preferencia de edad si aplica
@@ -734,17 +776,36 @@ function guardarRegistro() {
     }
     
     guardarCliente({ nombre, telf, dir: direccionCompleta, cp: cp, mayorEdad: edad });
-    
-    document.getElementById('modal-registro').style.display = 'none';
     actualizarClienteUI();
-    mostrarToast("Registro exitoso", "🎉");
     
-    // Recargar la vista actual para refrescar la UI (opcional)
+    Swal.fire({
+        title: "Registro exitoso",
+        text: "¡Bienvenido!",
+        icon: "success",
+        background: "#020617",
+        color: "#fff",
+        confirmButtonColor: "#06b6d4",
+        timer: 1500,
+        showConfirmButton: false
+    });
+    
     if (typeof renderHome === 'function') {
         renderHome();
     }
 }
-function borrarRegistro() { localStorage.removeItem("ae_cliente"); actualizarClienteUI(); mostrarToast("Sesión cerrada", "👋"); }
+
+function borrarRegistro() { 
+    localStorage.removeItem("ae_cliente"); 
+    localStorage.removeItem("ae_cesta");
+    cesta = [];
+    actualizarCestaVisual();
+    actualizarClienteUI(); 
+    mostrarToast("Sesión cerrada", "👋");
+    
+    const checkoutPanel = document.getElementById('panel-checkout');
+    if (checkoutPanel) checkoutPanel.style.display = 'none';
+    volverHome();
+}
 
 // ==========================================
 // CARGA DE DATOS
@@ -927,7 +988,7 @@ function abrirLightbox(urlFotosString) {
 }
 
 // ==========================================
-// OPCIONES DE PLATOS
+// OPCIONES DE PLATOS (funciones esenciales)
 // ==========================================
 function abrirDetalle(p) {
     pushPantalla('plato');
@@ -946,6 +1007,7 @@ function abrirDetalle(p) {
     actualizarTotalModal();
     document.getElementById('modal-plato').style.display = 'block';
 }
+
 function renderizarOpciones(p) {
     const cont = document.getElementById('contenedor-pasos');
     let html = '';
@@ -966,6 +1028,7 @@ function renderizarOpciones(p) {
     itemActual.precioOpciones = 0;
     actualizarTotalModal();
 }
+
 function cambiarOpcion(input, grupoId, opcionNombre, precio) {
     const grupo = document.querySelector(`.grupo-opciones[data-grupo="${grupoId}"]`);
     const tipo = grupo?.dataset.tipo;
@@ -982,6 +1045,7 @@ function cambiarOpcion(input, grupoId, opcionNombre, precio) {
     actualizarTotalModal();
     validarObligatorios();
 }
+
 function recalcularPrecioOpciones() {
     let total=0;
     for(const [gid, selec] of Object.entries(itemActual.opcionesSeleccionadas)){
@@ -992,8 +1056,11 @@ function recalcularPrecioOpciones() {
     }
     itemActual.precioOpciones = total;
 }
+
 function actualizarTotalModal() { const total = (itemActual.precioBase+itemActual.precioOpciones)*itemActual.cantidad; document.getElementById('total-modal-btn').innerText = euros(total); }
+
 function cambiarCantidadPlato(inc) { let nc = itemActual.cantidad+inc; if(nc>=1){ itemActual.cantidad=nc; document.getElementById('cant-plato-modal').innerText=nc; actualizarTotalModal(); } }
+
 function validarObligatorios() {
     let ok=true;
     document.querySelectorAll('.grupo-opciones').forEach((grupo,idx)=>{
@@ -1007,6 +1074,7 @@ function validarObligatorios() {
     document.getElementById('btn-anadir-modal').style.opacity = ok?'1':'0.5';
     return ok;
 }
+
 function añadirAlCarritoConOpciones() {
     if(!validarObligatorios()){ mostrarToast("⚠️ Completa las opciones obligatorias","⚠️"); return; }
     const totalUnitario = itemActual.precioBase+itemActual.precioOpciones;
@@ -1022,6 +1090,7 @@ function añadirAlCarritoConOpciones() {
     });
     cerrarModalPlato(); actualizarCestaVisual(); mostrarToast(`${itemActual.data.PLATO} x${itemActual.cantidad} añadido`,"🍽️");
 }
+
 function cerrarModalPlato() { document.getElementById('modal-plato').style.display = 'none'; }
 
 // ==========================================
@@ -1035,6 +1104,7 @@ function abrirRevision() {
     document.getElementById('panel-revision').style.display = 'block';
     agregarFooterLegal();
 }
+
 function abrirCheckout() {
     if (localStorage.getItem('ae_pedido_activo')) { alertaInfo("Pedido en curso", "Ya tienes un pedido activo"); return; }
     if (!obtenerCliente()) { document.getElementById('panel-revision').style.display = 'none'; document.getElementById('modal-registro').style.display = 'flex'; return; }
@@ -1055,6 +1125,7 @@ function abrirCheckout() {
     toggleMonto();
     agregarFooterLegal();
 }
+
 function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; }
 function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
 
@@ -1127,8 +1198,12 @@ async function enviarPedidoFinal() {
     if(!cliente){ alertaError("Registro","Debes registrarte"); return; }
     if(cesta.length===0){ alertaError("Carrito vacío","No hay productos"); return; }
     
+    // Extraer CP de la dirección del cliente
+    const cpMatch = cliente.dir.match(/\b(\d{5})\b/);
+    const cp = cpMatch ? cpMatch[1] : null;
+    
     // Verificar zona
-    if(!validarZona(cliente.dir)) return;
+    if(!validarZona(cp)) return;
     
     // Verificar alcohol
     if(!verificarAlcoholEnCesta()) return;

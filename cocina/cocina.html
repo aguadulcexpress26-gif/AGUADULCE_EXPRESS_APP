@@ -39,6 +39,19 @@
         .opacity-50 { opacity: 0.5; }
         .historial-item { cursor: pointer; transition: all 0.2s; }
         .historial-item:hover { background: #1e293b; transform: scale(0.98); }
+        /* Animación para nuevo pedido */
+        @keyframes pulse-red {
+            0%, 100% { background-color: rgba(239,68,68,0.1); border-left-color: rgba(239,68,68,0.3); }
+            50% { background-color: rgba(239,68,68,0.3); border-left-color: #ef4444; }
+        }
+        .nuevo-pedido-anim {
+            animation: pulse-red 1s ease-in-out 3;
+            border-left: 3px solid #ef4444;
+        }
+        /* Mejora de velocidad */
+        .pedido-card {
+            will-change: transform;
+        }
     </style>
 </head>
 <body>
@@ -104,6 +117,9 @@
 </div>
 
 <script>
+    // ==========================================
+    // CONFIGURACIÓN FIREBASE
+    // ==========================================
     const firebaseConfig = {
         apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
         authDomain: "aguadulce-notificaciones.firebaseapp.com",
@@ -116,46 +132,360 @@
 
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
 
-    const PINES_RESTAURANTES = {
-        "6G4L1V": "DELI10",
-        "RT33M5": "CHUN20",
-        "8N3Z7K": "HARO30",
-        "TR92X5": "SUCU40",
-        "9V1L8K": "PERU50",
-        "FL44K8": "LIMA60",
-        "CV11Q9": "PECA70"
-    };
-
+    // ==========================================
+    // VARIABLES GLOBALES
+    // ==========================================
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
     let pedidos = [];
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
+    
+    // Variables para notificaciones visuales (tipo WhatsApp)
+    let pendingBadgeCount = 0;
+    let originalTitle = document.title;
+    let ultimosIdsNotificados = new Set();
+    let ultimaCantidadPendientes = 0;
+    
+    // Cache de restaurante para evitar múltiples fetch
+    let miRestauranteData = null;
 
+    // ==========================================
+    // NOTIFICACIONES VISUALES (TIPO WHATSAPP)
+    // ==========================================
+    
+    async function solicitarPermisoNotificaciones() {
+        if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+            const permiso = await Notification.requestPermission();
+            if (permiso === "granted") {
+                console.log("✅ Notificaciones permitidas");
+                return true;
+            }
+        }
+        return Notification.permission === "granted";
+    }
+
+    function actualizarBadgeContador(cantidad) {
+        pendingBadgeCount = cantidad;
+        
+        // Cambiar título de la ventana (visible en barra de tareas de Windows)
+        if (cantidad > 0) {
+            document.title = `🔴 (${cantidad}) AGUADULCE - Cocina`;
+        } else {
+            document.title = originalTitle;
+        }
+        
+        // Badge nativo (si el navegador lo soporta)
+        if (navigator.setAppBadge) {
+            if (cantidad > 0) {
+                navigator.setAppBadge(cantidad);
+            } else {
+                navigator.clearAppBadge();
+            }
+        }
+    }
+
+    function notificarNuevoPedidoVisual(pedido, cantidadPendientes) {
+        // 1. Actualizar badge en título
+        actualizarBadgeContador(cantidadPendientes);
+        
+        // 2. Notificación nativa de Windows (estilo WhatsApp)
+        if (Notification.permission === "granted") {
+            const total = parseFloat(pedido.TOTAL) || 0;
+            new Notification("🍽️ NUEVO PEDIDO EN COCINA", {
+                body: `Pedido #${pedido.ID_PEDIDO}\nCliente: ${pedido.CLIENTE || 'Cliente'}\nTotal: ${total.toFixed(2)}€\nPendientes: ${cantidadPendientes}`,
+                icon: "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg",
+                tag: `pedido-${pedido.ID_PEDIDO}`,
+                renotify: true,
+                requireInteraction: true,
+                silent: false,
+                vibrate: [200, 100, 200]
+            });
+        }
+        
+        // 3. Animación visual en la ventana (parpadeo)
+        if (document.hidden) {
+            let parpadeando = false;
+            let contador = 0;
+            const interval = setInterval(() => {
+                if (contador >= 6 || !document.hidden || cantidadPendientes === 0) {
+                    document.title = cantidadPendientes > 0 ? `🔴 (${cantidadPendientes}) AGUADULCE - Cocina` : originalTitle;
+                    clearInterval(interval);
+                    return;
+                }
+                document.title = contador % 2 === 0 ? "🔴🔴🔴 NUEVO PEDIDO 🔴🔴🔴" : `🔴 (${cantidadPendientes}) AGUADULCE - Cocina`;
+                contador++;
+            }, 500);
+        }
+    }
+
+    // ==========================================
+    // AUTENTICACIÓN DINÁMICA DESDE USUARIOS
+    // ==========================================
+    
+    async function cargarPinesDesdeServidor() {
+        try {
+            const response = await fetch(scriptURL + '?action=obtenerRestaurantesConPIN&t=' + Date.now());
+            const data = await response.json();
+            return data.restaurantes || [];
+        } catch(e) {
+            console.error("Error cargando pines:", e);
+            return [];
+        }
+    }
+    
+    async function validarPINConServidor(pin) {
+        try {
+            const response = await fetch(scriptURL + '?action=validarPIN&pin=' + encodeURIComponent(pin) + '&t=' + Date.now());
+            const data = await response.json();
+            return data;
+        } catch(e) {
+            console.error("Error validando PIN:", e);
+            return { valido: false, error: e.message };
+        }
+    }
+
+    async function verificarPIN() {
+        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
+        
+        if (!pin) {
+            Swal.fire({ title: 'ERROR', text: 'Ingresa el PIN del restaurante', icon: 'error', background: '#020617', color: 'white' });
+            return;
+        }
+        
+        Swal.fire({ title: 'Verificando...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+        
+        const resultado = await validarPINConServidor(pin);
+        Swal.close();
+        
+        if (resultado.valido) {
+            miRestauranteId = resultado.idRestaurante;
+            miRestauranteData = resultado;
+            localStorage.setItem('AE_REST_ID', miRestauranteId);
+            localStorage.setItem('AE_REST_NOMBRE', resultado.nombre);
+            iniciarApp();
+        } else {
+            Swal.fire({ 
+                title: 'CLAVE INCORRECTA', 
+                text: 'La clave ingresada no es válida', 
+                icon: 'error', 
+                background: '#020617', 
+                color: 'white' 
+            });
+        }
+    }
+
+    // ==========================================
+    // TICKET PROFESIONAL FORMATEADO
+    // ==========================================
+    
+    function formatearDetalleProductos(detalleTexto) {
+        if (!detalleTexto) return '<div>No se pudo cargar el detalle</div>';
+        
+        const lineas = detalleTexto.split('\n');
+        let html = '';
+        
+        for (let linea of lineas) {
+            linea = linea.trim();
+            if (linea === '') continue;
+            
+            if (linea.match(/^\d+x\s/i)) {
+                html += `<div style="margin: 5px 0 2px 0; font-weight: bold; font-size: 11px;">${escapeHTML(linea)}</div>`;
+            } 
+            else if (linea.startsWith('+') || linea.startsWith('-') || linea.startsWith('  +')) {
+                html += `<div style="margin: 2px 0 2px 15px; font-size: 9px; color: #555;">📌 ${escapeHTML(linea.replace(/^[\+\-\s]+/, ''))}</div>`;
+            }
+            else if (linea.toLowerCase().includes('nota') || linea.toLowerCase().includes('sin ') || linea.toLowerCase().includes('con ')) {
+                html += `<div style="margin: 2px 0 2px 10px; font-size: 9px; color: #888;">📝 ${escapeHTML(linea)}</div>`;
+            }
+            else {
+                html += `<div style="margin: 3px 0; font-size: 10px;">${escapeHTML(linea)}</div>`;
+            }
+        }
+        
+        return html;
+    }
+
+    function generarTicketProfesional(pedido) {
+        const total = parseFloat(pedido.TOTAL) || 0;
+        const subtotal = parseFloat(pedido.SUBTOTAL) || (total * 0.9);
+        const envio = parseFloat(pedido.ENVIO) || 2.50;
+        const usoApp = parseFloat(pedido.USO_APP) || 0.99;
+        const metodoPago = pedido.PAGO || 'Efectivo';
+        const fechaPedido = pedido.FECHA ? new Date(pedido.FECHA) : new Date();
+        const nombreRestaurante = pedido.restaurante_nombre || '';
+        
+        const pagaCon = parseFloat(pedido.PAGA_CON) || 0;
+        let cambioHtml = '';
+        if (metodoPago.toUpperCase().includes('EFECTIVO') && pagaCon > total) {
+            const cambio = pagaCon - total;
+            cambioHtml = `
+                <div style="margin: 10px 0; padding: 8px; background: #f5f5f5; text-align: center; border-radius: 4px;">
+                    <div style="font-size: 10px;">💵 Paga con: ${pagaCon.toFixed(2)}€</div>
+                    <div style="font-size: 10px; font-weight: bold;">💰 Cambio: ${cambio.toFixed(2)}€</div>
+                </div>
+            `;
+        }
+        
+        const detalleFormateado = formatearDetalleProductos(pedido.PEDIDO_DETALLE);
+        
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Ticket #${pedido.ID_PEDIDO}</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { 
+                        font-family: 'Courier New', Courier, monospace;
+                        width: 100%;
+                        max-width: 80mm;
+                        margin: 0 auto;
+                        background: white;
+                        color: #000;
+                        padding: 8mm 3mm 6mm 3mm;
+                        font-size: 10px;
+                        line-height: 1.4;
+                    }
+                    .text-center { text-align: center; }
+                    .separator-dashed { border-top: 1px dashed #aaa; margin: 8px 0; }
+                    .separator-dotted { border-top: 1px dotted #ccc; margin: 6px 0; }
+                    .separator-double { border-top: 2px solid #000; margin: 8px 0; }
+                    .logo { font-size: 16px; font-weight: bold; text-align: center; letter-spacing: 3px; }
+                    .slogan { font-size: 8px; color: #666; text-align: center; margin-top: 3px; }
+                    .restaurante { font-size: 10px; font-weight: bold; text-align: center; margin-top: 5px; }
+                    .fecha { font-size: 8px; color: #888; text-align: center; margin-top: 5px; }
+                    .info-line { display: flex; justify-content: space-between; margin: 4px 0; font-size: 9px; }
+                    .label { font-weight: bold; }
+                    .section-title { font-weight: bold; margin: 8px 0 5px 0; font-size: 10px; }
+                    .total-box { text-align: center; margin: 10px 0; padding: 8px; background: #f9f9f9; }
+                    .total-number { font-size: 18px; font-weight: bold; margin-top: 3px; }
+                    .footer { text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ddd; font-size: 7px; color: #888; }
+                    .thanks { font-weight: bold; margin-bottom: 5px; font-size: 10px; color: #000; }
+                    .space-for-staple { margin-top: 15px; padding-top: 10px; text-align: center; font-size: 7px; color: #ccc; border-top: 1px dotted #ccc; }
+                    .desglose-line { display: flex; justify-content: space-between; margin: 3px 0; font-size: 9px; }
+                </style>
+            </head>
+            <body>
+                <div class="logo">AGUADULCE EXPRESS</div>
+                <div class="slogan">Pedidos a domicilio</div>
+                <div class="separator-dashed"></div>
+                
+                <div class="fecha">${fechaPedido.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                ${nombreRestaurante ? `<div class="restaurante">${escapeHTML(nombreRestaurante)}</div>` : ''}
+                
+                <div class="separator-dashed"></div>
+                
+                <div class="info-line">
+                    <span class="label">PEDIDO:</span>
+                    <span>#${pedido.ID_PEDIDO}</span>
+                </div>
+                <div class="info-line">
+                    <span class="label">CLIENTE:</span>
+                    <span>${escapeHTML((pedido.CLIENTE || 'Cliente').substring(0, 35))}</span>
+                </div>
+                <div class="info-line">
+                    <span class="label">DIRECCIÓN:</span>
+                    <span>${escapeHTML((pedido.DIRECCION || 'Para Recoger').substring(0, 35))}</span>
+                </div>
+                <div class="info-line">
+                    <span class="label">TELÉFONO:</span>
+                    <span>${escapeHTML(pedido.TELEFONO || '---')}</span>
+                </div>
+                <div class="info-line">
+                    <span class="label">PAGO:</span>
+                    <span>${escapeHTML(metodoPago)}</span>
+                </div>
+                
+                <div class="separator-dashed"></div>
+                
+                <div class="section-title">📦 PRODUCTOS</div>
+                ${detalleFormateado}
+                
+                <div class="separator-dotted"></div>
+                
+                <div class="section-title">💰 DESGLOSE</div>
+                <div class="desglose-line">
+                    <span>SUBTOTAL</span>
+                    <span>${subtotal.toFixed(2)}€</span>
+                </div>
+                <div class="desglose-line">
+                    <span>ENVÍO</span>
+                    <span>${envio.toFixed(2)}€</span>
+                </div>
+                ${usoApp > 0 ? `<div class="desglose-line">
+                    <span>USO DE APP</span>
+                    <span>${usoApp.toFixed(2)}€</span>
+                </div>` : ''}
+                
+                <div class="separator-double"></div>
+                
+                <div class="total-box">
+                    <div style="font-size: 10px;">TOTAL</div>
+                    <div class="total-number">${total.toFixed(2)}€</div>
+                </div>
+                
+                ${cambioHtml}
+                
+                <div class="separator-dashed"></div>
+                
+                <div class="footer">
+                    <div class="thanks">🎉 ¡GRACIAS POR SU PEDIDO! 🎉</div>
+                    <div>Comprobante generado por Aguadulce Express</div>
+                    <div>${new Date().toLocaleDateString()}</div>
+                </div>
+                
+                <div class="space-for-staple">
+                    ────────────────────────────────
+                    (Espacio para grapar al pedido)
+                    ────────────────────────────────
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                            setTimeout(function() { window.close(); }, 1000);
+                        }, 200);
+                    };
+                <\/script>
+            </body>
+            </html>
+        `;
+    }
+
+    function imprimirTicketProfesional(pedido) {
+        const contenidoTicket = generarTicketProfesional(pedido);
+        const ventana = window.open('', '_blank', 'width=450,height=700');
+        ventana.document.write(contenidoTicket);
+        ventana.document.close();
+    }
+
+    // ==========================================
+    // FUNCIONES DE ESCAPE
+    // ==========================================
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function euros(n) { return parseFloat(n || 0).toFixed(2) + "€"; }
+
+    // ==========================================
+    // FUNCIONES EXISTENTES (MANTENIDAS)
+    // ==========================================
+    
     function activarSonidoGlobal() {
         if (!sonidosActivados) {
             sonidosActivados = true;
             audioNotif.play().then(() => audioNotif.pause()).catch(e => console.log);
             Swal.fire({ title: '🔊 Sonido activado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#020617', color: 'white' });
-        }
-    }
-    document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
-
-    function verificarPIN() {
-        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
-        let encontrado = null;
-        for (let [id, clave] of Object.entries(PINES_RESTAURANTES)) {
-            if (clave === pin) {
-                encontrado = id;
-                break;
-            }
-        }
-        if (encontrado) {
-            miRestauranteId = encontrado;
-            localStorage.setItem('AE_REST_ID', miRestauranteId);
-            iniciarApp();
-        } else {
-            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave ingresada no es válida', icon: 'error', background: '#020617', color: 'white' });
         }
     }
 
@@ -209,12 +539,35 @@
                 </button>
             `;
 
+            // Detectar nuevos pedidos para notificaciones
+            const nuevosIds = new Set(pedidosActivos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').map(p => p.ID_PEDIDO));
+            const cantidadPendientes = nuevosIds.size;
+            
+            // Verificar si hay nuevos pedidos que no estaban antes
+            for (let id of nuevosIds) {
+                if (!ultimosIdsNotificados.has(id)) {
+                    const pedidoNuevo = pedidosActivos.find(p => p.ID_PEDIDO === id);
+                    if (pedidoNuevo) {
+                        notificarNuevoPedidoVisual(pedidoNuevo, cantidadPendientes);
+                        // Sonido también
+                        if (sonidosActivados) {
+                            audioNotif.play().catch(e => console.log);
+                        }
+                    }
+                }
+            }
+            
+            ultimosIdsNotificados = nuevosIds;
+            
+            // Actualizar badge si cambió la cantidad
+            if (ultimaCantidadPendientes !== cantidadPendientes) {
+                actualizarBadgeContador(cantidadPendientes);
+                ultimaCantidadPendientes = cantidadPendientes;
+            }
+
             pedidos = [...pedidosActivos, ...pedidosHistorial];
             renderizarTodo();
 
-            if (sonidosActivados && pedidosActivos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').length > 0) {
-                audioNotif.play().catch(e => console.log);
-            }
         } catch (error) {
             console.error("Error cargando pedidos:", error);
         }
@@ -245,13 +598,21 @@
         document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
     }
 
+    function calcularTiempo(fechaStr) {
+        if (!fechaStr) return "---";
+        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
+        if (diff < 1) return "Ahora";
+        if (diff < 60) return `Hace ${diff} min`;
+        return `Hace ${Math.floor(diff/60)}h`;
+    }
+
     function renderCardEntrante(p) {
-        return `<div class="card-pedido">
+        return `<div class="card-pedido" data-id="${p.ID_PEDIDO}">
             <div class="flex justify-between items-start">
                 <div>
                     <span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                    <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
-                    <p class="text-white/60 text-xs mt-1">${(p.PEDIDO_DETALLE || '').substring(0, 60)}...</p>
+                    <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
+                    <p class="text-white/60 text-xs mt-1">${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 60))}...</p>
                 </div>
                 <div class="text-right">
                     <span class="text-white/40 text-xs">${calcularTiempo(p.FECHA)}</span>
@@ -272,8 +633,8 @@
                 <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
                 <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO' : '🍳 EN COCINA'}</span>
             </div>
-            <p class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</p>
-            <p class="text-white/60 text-xs">📦 ${(p.PEDIDO_DETALLE || '').substring(0, 50)}...</p>
+            <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
+            <p class="text-white/60 text-xs">📦 ${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 50))}...</p>
             <div class="flex gap-2 mt-3 flex-wrap">
                 <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
                 <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button>
@@ -316,22 +677,37 @@
                 <span class="text-white font-bold text-sm">${total.toFixed(2)}€</span>
             </div>
             <div class="flex justify-between items-start gap-2">
-                <p class="text-white/70 text-xs">${p.CLIENTE || 'Cliente'}</p>
+                <p class="text-white/70 text-xs">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
                 <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${colorClass}">${estadoTexto}</span>
             </div>
-            <p class="text-white/40 text-[11px] mt-1">🛵 ${p.REPARTIDOR || 'Sin repartidor'}</p>
+            <p class="text-white/40 text-[11px] mt-1">🛵 ${escapeHTML(p.REPARTIDOR || 'Sin repartidor')}</p>
             <div class="mt-3 pt-2 border-t border-white/5">
                 <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="w-full bg-white/5 hover:bg-cyan-500/20 text-white py-1.5 rounded-lg text-[11px]">📋 VER DETALLE</button>
             </div>
         </div>`;
     }
 
-    function calcularTiempo(fechaStr) {
-        if (!fechaStr) return "---";
-        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
-        if (diff < 1) return "Ahora";
-        if (diff < 60) return `Hace ${diff} min`;
-        return `Hace ${Math.floor(diff/60)}h`;
+    function verDetallePedido(id) {
+        let p = pedidos.find(x => x.ID_PEDIDO == id);
+        if (p) {
+            Swal.fire({
+                title: `Pedido #${p.ID_PEDIDO}`,
+                html: `<div class="text-left">
+                    <p><strong>👤 Cliente:</strong> ${escapeHTML(p.CLIENTE || 'Sin nombre')}</p>
+                    <p><strong>📍 Dirección:</strong> ${escapeHTML(p.DIRECCION || 'No especificada')}</p>
+                    <p><strong>📞 Teléfono:</strong> ${escapeHTML(p.TELEFONO || 'No especificado')}</p>
+                    <p><strong>💳 Pago:</strong> ${escapeHTML(p.PAGO || 'No especificado')}</p>
+                    <p><strong>💰 Total:</strong> ${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
+                    <hr class="my-2 border-white/10">
+                    <p><strong>📦 Detalle:</strong></p>
+                    <p style="white-space: pre-wrap; font-size: 12px;">${escapeHTML(p.PEDIDO_DETALLE || '')}</p>
+                </div>`,
+                background: '#020617', color: 'white', confirmButtonColor: '#f59e0b',
+                showCancelButton: true, confirmButtonText: '🖨️ Imprimir Ticket', cancelButtonText: 'Cerrar'
+            }).then(result => { 
+                if (result.isConfirmed) imprimirTicketProfesional(p); 
+            });
+        }
     }
 
     async function aceptarPedido(id) {
@@ -369,158 +745,6 @@
         await cargarPedidos();
     }
 
-    function verDetallePedido(id) {
-        let p = pedidos.find(x => x.ID_PEDIDO == id);
-        if (p) {
-            Swal.fire({
-                title: `Pedido #${p.ID_PEDIDO}`,
-                html: `<div class="text-left">
-                    <p><strong>👤 Cliente:</strong> ${p.CLIENTE || 'Sin nombre'}</p>
-                    <p><strong>📍 Dirección:</strong> ${p.DIRECCION || 'No especificada'}</p>
-                    <p><strong>💳 Pago:</strong> ${p.PAGO || 'No especificado'}</p>
-                    <p><strong>💰 Total:</strong> ${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
-                    <hr class="my-2 border-white/10">
-                    <p><strong>📦 Detalle:</strong></p>
-                    <p style="white-space: pre-wrap;">${p.PEDIDO_DETALLE || ''}</p>
-                </div>`,
-                background: '#020617', color: 'white', confirmButtonColor: '#f59e0b',
-                showCancelButton: true, confirmButtonText: '🖨️ Imprimir', cancelButtonText: 'Cerrar'
-            }).then(result => { if (result.isConfirmed) imprimirTicket(p); });
-        }
-    }
-
-    function imprimirTicket(pedido) {
-        const total = parseFloat(pedido.TOTAL) || 0;
-        const metodoPago = pedido.PAGO || 'Efectivo';
-        let cambioTexto = '';
-        
-        const pagaCon = parseFloat(pedido.PAGA_CON) || 0;
-        if (metodoPago.toUpperCase().includes('EFECTIVO') && pagaCon > total) {
-            const cambio = pagaCon - total;
-            cambioTexto = `
-                <div style="margin: 8px 0; padding: 8px; background: #f5f5f5; text-align: center;">
-                    <div>💵 Paga con: ${pagaCon.toFixed(2)}€</div>
-                    <div>💰 Cambio: ${cambio.toFixed(2)}€</div>
-                </div>
-            `;
-        }
-        
-        // Usar el mismo detalle que se ve en el modal
-        let detalleFormateado = '';
-        const detalleTexto = pedido.PEDIDO_DETALLE || '';
-        
-        if (detalleTexto) {
-            // Formatear el detalle para que se vea limpio
-            const lineas = detalleTexto.split('\n');
-            detalleFormateado = lineas.map(linea => {
-                if (linea.trim() === '') return '';
-                // Detectar si es un producto (empieza con número y x)
-                if (linea.match(/^\d+x\s/i)) {
-                    return `<div style="margin: 3px 0; font-weight: bold;">${linea}</div>`;
-                } else {
-                    return `<div style="margin: 2px 0 2px 12px; font-size: 9px; color: #555;">📌 ${linea}</div>`;
-                }
-            }).join('');
-        } else {
-            detalleFormateado = '<div>No se pudo cargar el detalle</div>';
-        }
-        
-        const nombreRestaurante = pedido.restaurante_nombre || '';
-        const fechaPedido = pedido.FECHA ? new Date(pedido.FECHA) : new Date();
-        
-        const contenidoTicket = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Ticket #${pedido.ID_PEDIDO}</title>
-                <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { 
-                        font-family: 'Courier New', Courier, monospace;
-                        width: 100%;
-                        max-width: 80mm;
-                        margin: 0 auto;
-                        background: white;
-                        color: #000;
-                        padding: 12mm 3mm 8mm 3mm;
-                    }
-                    .text-center { text-align: center; }
-                    .separator { border-top: 1px dashed #888; margin: 6px 0; }
-                    .logo { font-size: 16px; font-weight: bold; text-align: center; letter-spacing: 2px; }
-                    .slogan { font-size: 9px; color: #666; text-align: center; margin-top: 3px; }
-                    .fecha { font-size: 9px; color: #888; text-align: center; margin-top: 5px; }
-                    .info-line { display: flex; justify-content: space-between; margin: 5px 0; font-size: 10px; }
-                    .label { font-weight: bold; }
-                    .section-title { font-weight: bold; margin: 8px 0 5px 0; font-size: 11px; }
-                    .total-box { text-align: center; margin: 8px 0; padding: 6px; border-top: 1px dashed #888; border-bottom: 1px dashed #888; }
-                    .total-number { font-size: 18px; font-weight: bold; margin-top: 3px; }
-                    .footer { text-align: center; margin-top: 10px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 8px; color: #888; }
-                    .thanks { font-weight: bold; margin-bottom: 4px; font-size: 10px; color: #000; }
-                </style>
-            </head>
-            <body>
-                <div class="logo">AGUADULCE EXPRESS</div>
-                <div class="slogan">Pedidos a domicilio</div>
-                <div class="fecha">${fechaPedido.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                ${nombreRestaurante ? `<div style="text-align: center; font-size: 10px; font-weight: bold; margin-top: 6px;">${nombreRestaurante}</div>` : ''}
-                
-                <div class="separator"></div>
-                
-                <div class="info-line">
-                    <span class="label">PEDIDO:</span>
-                    <span>#${pedido.ID_PEDIDO}</span>
-                </div>
-                <div class="info-line">
-                    <span class="label">CLIENTE:</span>
-                    <span>${(pedido.CLIENTE || 'Cliente').substring(0, 30)}</span>
-                </div>
-                <div class="info-line">
-                    <span class="label">DIRECCIÓN:</span>
-                    <span>${(pedido.DIRECCION || 'Para Recoger').substring(0, 30)}</span>
-                </div>
-                <div class="info-line">
-                    <span class="label">PAGO:</span>
-                    <span>${metodoPago}</span>
-                </div>
-                
-                <div class="separator"></div>
-                
-                <div class="section-title">PRODUCTOS</div>
-                ${detalleFormateado}
-                
-                <div class="separator"></div>
-                
-                <div class="total-box">
-                    <div>TOTAL</div>
-                    <div class="total-number">${total.toFixed(2)}€</div>
-                </div>
-                
-                ${cambioTexto}
-                
-                <div class="footer">
-                    <div class="thanks">🎉 ¡GRACIAS POR SU PEDIDO! 🎉</div>
-                    <div>Comprobante generado por Aguadulce Express</div>
-                    <div>${new Date().toLocaleDateString()}</div>
-                </div>
-                
-                <script>
-                    window.onload = function() {
-                        setTimeout(function() {
-                            window.print();
-                            setTimeout(function() { window.close(); }, 800);
-                        }, 200);
-                    };
-                <\/script>
-            </body>
-            </html>
-        `;
-        
-        const ventana = window.open('', '_blank', 'width=400,height=650');
-        ventana.document.write(contenidoTicket);
-        ventana.document.close();
-    }
-
     function preguntarSalir() {
         Swal.fire({
             title: '¿Cerrar sesión?',
@@ -533,28 +757,49 @@
         }).then(result => {
             if (result.isConfirmed) {
                 localStorage.removeItem('AE_REST_ID');
+                localStorage.removeItem('AE_REST_NOMBRE');
                 location.reload();
             }
         });
     }
 
+    // ==========================================
+    // INICIALIZACIÓN (OPTIMIZADA PARA VELOCIDAD)
+    // ==========================================
+    
     async function iniciarApp() {
+        originalTitle = document.title;
+        
+        // Solicitar permiso de notificaciones al inicio
+        await solicitarPermisoNotificaciones();
+        
+        // Mostrar interfaz
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
+        
+        // Cargar pedidos inmediatamente
         await cargarPedidos();
-        setInterval(cargarPedidos, 8000);
+        
+        // Intervalo más rápido para mejor respuesta (4 segundos)
+        setInterval(cargarPedidos, 4000);
     }
 
-    window.onload = () => {
-        if (miRestauranteId) {
+    // Verificar si ya hay sesión guardada
+    (async function() {
+        const nombreGuardado = localStorage.getItem('AE_REST_NOMBRE');
+        if (miRestauranteId && nombreGuardado) {
+            miRestauranteData = { idRestaurante: miRestauranteId, nombre: nombreGuardado };
             iniciarApp();
         } else {
             document.getElementById('loginScreen').style.display = 'flex';
             document.getElementById('appContent').classList.add('hidden');
         }
-    };
+    })();
+
+    // Event listeners
+    document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
     
-    // Service Worker para Cocina
+    // Service Worker
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/cocina/sw-cocina.js')
             .then(reg => console.log('✅ Service Worker Cocina registrado', reg))

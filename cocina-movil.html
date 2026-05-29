@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Aguadulce Express - Cocina Móvil</title>
+    
+    <!-- PWA manifest específico para cocina móvil -->
+    <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json">
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
+    <meta name="theme-color" content="#f59e0b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Cocina AE">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        .card-pedido { 
+            background: #0f172a; 
+            border: 1px solid #1e293b; 
+            border-radius: 16px; 
+            padding: 14px; 
+            margin-bottom: 10px; 
+        }
+        
+        .badge { 
+            background: rgba(6,182,212,0.2); 
+            color: #06b6d4; 
+            padding: 4px 10px; 
+            border-radius: 30px; 
+            font-size: 10px; 
+            font-weight: bold; 
+            display: inline-block; 
+        }
+        .badge-warning { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .badge-success { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .badge-danger { background: rgba(239,68,68,0.2); color: #ef4444; }
+        
+        .banner-container { position: relative; height: 160px; overflow: hidden; }
+        .banner-img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+        .overlay-gradient { background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%); }
+        
+        .stats-card { 
+            background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); 
+            border: 1px solid #1e293b; 
+            border-radius: 16px; 
+            padding: 8px 12px; 
+        }
+        .stats-number { font-size: 20px; font-weight: 800; }
+        
+        .tiempo-btn { transition: all 0.1s; cursor: pointer; }
+        .tiempo-btn:active { transform: scale(0.95); }
+        
+        /* ============================================
+           DISEÑO EXCLUSIVO PARA MÓVIL/TABLET
+           UNA SOLA COLUMNA CON TABS
+           ============================================ */
+        .tabs-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            background: #0f172a;
+            padding: 6px;
+            border-radius: 50px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .tab-btn {
+            flex: 1;
+            text-align: center;
+            padding: 10px 8px;
+            border-radius: 40px;
+            font-size: 13px;
+            font-weight: bold;
+            background: transparent;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn.activo {
+            background: #f59e0b;
+            color: #020617;
+        }
+        .tab-contenido {
+            display: none;
+        }
+        .tab-contenido.activo {
+            display: block;
+        }
+        
+        .lista-scroll {
+            max-height: 55vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-right: 4px;
+        }
+        
+        .contador-badge {
+            background: #f59e0b;
+            color: #020617;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 6px;
+        }
+        
+        @media (max-width: 480px) {
+            .banner-container { height: 130px; }
+            .stats-number { font-size: 16px; }
+            .card-pedido { padding: 10px; }
+            .tab-btn { font-size: 11px; padding: 8px 4px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
+    <h1 class="text-4xl font-black italic uppercase text-cyan-400 mb-8 text-center">Aguadulce</h1>
+    <p class="text-white/50 text-xs mb-4 text-center">🔐 PIN DEL RESTAURANTE</p>
+    <input type="password" id="pinInput" maxlength="10" class="w-full max-w-[250px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-2xl tracking-widest text-white">
+    <button onclick="verificarPIN()" class="mt-6 bg-cyan-400 text-black px-8 py-3 rounded-2xl font-black uppercase block mx-auto">Ingresar</button>
+</div>
+
+<div id="appContent" class="hidden min-h-screen pb-5">
+    
+    <!-- Banner -->
+    <div class="banner-container relative">
+        <img id="restauranteFoto" class="banner-img" src="">
+        <div class="absolute inset-0 overlay-gradient"></div>
+        <div class="absolute bottom-0 left-0 right-0 p-3 flex justify-between items-end">
+            <div>
+                <span class="text-cyan-400 text-[9px] font-bold uppercase backdrop-blur-sm bg-black/30 px-2 py-1 rounded-lg">📍 COCINA MÓVIL</span>
+                <h1 id="restauranteNombre" class="text-lg font-black text-white drop-shadow-lg mt-1">CARGANDO...</h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <div id="contenedorBotonTienda"></div>
+                <button onclick="preguntarSalir()" class="bg-white/10 backdrop-blur-sm px-2 py-1 rounded-xl text-xs">🚪 SALIR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="p-3 flex flex-wrap justify-between items-center gap-2 border-b border-white/10">
+        <div class="flex gap-2 flex-wrap">
+            <div class="badge">📥 <span id="totalPendientes">0</span></div>
+            <div class="badge badge-warning">🍳 <span id="totalCocina">0</span></div>
+            <div class="badge badge-success">✅ <span id="totalHistorial">0</span></div>
+        </div>
+        <div class="flex gap-2">
+            <div class="stats-card text-center">
+                <div class="text-[8px] text-white/40">💰 HOY</div>
+                <div class="stats-number text-white"><span id="statHoy">0</span>€</div>
+            </div>
+            <div class="stats-card text-center">
+                <div class="text-[8px] text-white/40">📅 SEMANA</div>
+                <div class="stats-number text-white"><span id="statSemana">0</span>€</div>
+            </div>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-[10px] px-2 py-1 rounded-full">🔊</button>
+        </div>
+    </div>
+
+    <!-- TABS (PESTAÑAS) PARA MÓVIL -->
+    <div class="p-3">
+        <div class="tabs-container">
+            <div class="tab-btn activo" data-tab="entrantes">
+                📥 ENTRANTES <span id="badgeEntrantes" class="contador-badge">0</span>
+            </div>
+            <div class="tab-btn" data-tab="cocina">
+                🍳 COCINA <span id="badgeCocina" class="contador-badge">0</span>
+            </div>
+            <div class="tab-btn" data-tab="historial">
+                ✅ HISTORIAL
+            </div>
+        </div>
+
+        <!-- Contenido de Entrantes -->
+        <div id="tabEntrantes" class="tab-contenido activo">
+            <div id="listaEntrantes" class="lista-scroll"></div>
+        </div>
+
+        <!-- Contenido de Cocina -->
+        <div id="tabCocina" class="tab-contenido">
+            <div id="listaCocina" class="lista-scroll"></div>
+        </div>
+
+        <!-- Contenido de Historial -->
+        <div id="tabHistorial" class="tab-contenido">
+            <div id="listaHistorial" class="lista-scroll"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // CONFIGURACIÓN (MISMA QUE LA ORIGINAL)
+    // ==========================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
+        authDomain: "aguadulce-notificaciones.firebaseapp.com",
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
+        projectId: "aguadulce-notificaciones",
+        storageBucket: "aguadulce-notificaciones.firebasestorage.app",
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
+
+    // Variables
+    let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
+    let pedidos = [];
+    let sonidosActivados = false;
+    let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audioNotif.volume = 0.8;
+    
+    let ultimosIdsNotificados = new Set();
+    let miRestauranteData = null;
+
+    // ==========================================
+    // FUNCIONES PRINCIPALES (IGUALES A LA ORIGINAL)
+    // ==========================================
+    
+    async function solicitarPermisoNotificaciones() {
+        if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+            await Notification.requestPermission();
+        }
+    }
+
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    async function validarPINConServidor(pin) {
+        try {
+            const response = await fetch(scriptURL + '?action=validarPIN&pin=' + encodeURIComponent(pin) + '&t=' + Date.now());
+            return await response.json();
+        } catch(e) {
+            return { valido: false, error: e.message };
+        }
+    }
+
+    async function verificarPIN() {
+        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
+        if (!pin) {
+            Swal.fire({ title: 'ERROR', text: 'Ingresa el PIN', icon: 'error', background: '#020617', color: 'white' });
+            return;
+        }
+        Swal.fire({ title: 'Verificando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+        const resultado = await validarPINConServidor(pin);
+        Swal.close();
+        
+        if (resultado.valido) {
+            miRestauranteId = resultado.idRestaurante;
+            localStorage.setItem('AE_REST_ID', miRestauranteId);
+            localStorage.setItem('AE_REST_NOMBRE', resultado.nombre);
+            iniciarApp();
+        } else {
+            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave no es válida', icon: 'error', background: '#020617', color: 'white' });
+        }
+    }
+
+    function activarSonidoGlobal() {
+        if (!sonidosActivados) {
+            sonidosActivados = true;
+            audioNotif.play().then(() => audioNotif.pause()).catch(e => console.log);
+            Swal.fire({ title: '🔊 Sonido activado', icon: 'success', timer: 1500, showConfirmButton: false });
+        }
+    }
+
+    async function alternarEstadoTienda(estadoActual) {
+        const nuevoEstado = estadoActual === "ABIERTO" ? "CERRADO" : "ABIERTO";
+        const confirmar = await Swal.fire({
+            title: `${nuevoEstado === "ABIERTO" ? "🟢" : "🔴"} ¿Cambiar estado?`,
+            showCancelButton: true,
+            background: "#1e293b", color: "#fff"
+        });
+        if (!confirmar.isConfirmed) return;
+        await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
+        cargarPedidos();
+    }
+
+    function calcularTiempo(fechaStr) {
+        if (!fechaStr) return "---";
+        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
+        if (diff < 1) return "Ahora";
+        if (diff < 60) return `Hace ${diff} min`;
+        return `Hace ${Math.floor(diff/60)}h`;
+    }
+
+    async function cargarPedidos() {
+        if (!miRestauranteId) return;
+        try {
+            let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
+            let data = await res.json();
+            
+            if (data.tienda) {
+                document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
+                const fotoElement = document.getElementById('restauranteFoto');
+                if (data.tienda.foto && fotoElement.src !== data.tienda.foto) {
+                    fotoElement.src = data.tienda.foto;
+                }
+            }
+
+            let pedidosActivos = data.pedidos || [];
+            let pedidosHistorial = data.historial || [];
+            let stats = data.stats || {};
+            
+            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
+            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
+
+            let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
+            document.getElementById('contenedorBotonTienda').innerHTML = `
+                <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-2 py-1 rounded-lg font-bold text-[10px] ${tiendaEst === "ABIERTO" ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">
+                    ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO" : "🔴 CERRADO"}
+                </button>
+            `;
+
+            // Notificaciones de nuevos pedidos
+            const nuevosIds = new Set(pedidosActivos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').map(p => p.ID_PEDIDO));
+            for (let id of nuevosIds) {
+                if (!ultimosIdsNotificados.has(id)) {
+                    const pedidoNuevo = pedidosActivos.find(p => p.ID_PEDIDO === id);
+                    if (pedidoNuevo && Notification.permission === "granted") {
+                        new Notification("🍽️ NUEVO PEDIDO", {
+                            body: `Pedido #${pedidoNuevo.ID_PEDIDO}`,
+                            icon: "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg"
+                        });
+                    }
+                    if (sonidosActivados) {
+                        audioNotif.play().catch(e => console.log);
+                    }
+                }
+            }
+            ultimosIdsNotificados = nuevosIds;
+
+            pedidos = [...pedidosActivos, ...pedidosHistorial];
+            renderizarTodo();
+
+        } catch (error) {
+            console.error("Error:", error);
+        }
+    }
+
+    function renderizarTodo() {
+        let entrantes = pedidos.filter(p => {
+            const est = (p.ESTADO || '').toUpperCase().trim();
+            return est === 'RECIBIDO' || est === 'NUEVO' || est === '';
+        });
+
+        let cocina = pedidos.filter(p => {
+            const est = (p.ESTADO || '').toUpperCase().trim();
+            return est === 'EN PROCESO' || est === 'LISTO';
+        });
+
+        let historial = pedidos.filter(p => {
+            const est = (p.ESTADO || '').toUpperCase().trim();
+            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO' || est === 'CANCELADO' || est === 'RECHAZADO';
+        });
+
+        document.getElementById('totalPendientes').innerText = entrantes.length;
+        document.getElementById('totalCocina').innerText = cocina.length;
+        document.getElementById('totalHistorial').innerText = historial.length;
+        
+        document.getElementById('badgeEntrantes').innerText = entrantes.length;
+        document.getElementById('badgeCocina').innerText = cocina.length;
+
+        document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
+        document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
+        document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
+    }
+
+    function renderCardEntrante(p) {
+        const total = parseFloat(p.TOTAL) || 0;
+        return `<div class="card-pedido">
+            <div class="flex justify-between items-start">
+                <div>
+                    <span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                    <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
+                    <p class="text-white/60 text-[11px] mt-1">${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 50))}...</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-white/40 text-[10px]">${calcularTiempo(p.FECHA)}</span>
+                    <p class="text-emerald-400 font-bold text-sm">${total.toFixed(2)}€</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-3">
+                <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-bold px-3 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
+                <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="bg-red-600 text-white font-bold px-3 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
+            </div>
+        </div>`;
+    }
+
+    function renderCardCocina(p) {
+        const estaListo = (p.ESTADO || '').toUpperCase() === 'LISTO';
+        const total = parseFloat(p.TOTAL) || 0;
+        return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
+            <div class="flex justify-between">
+                <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                <span class="text-emerald-400 font-bold text-sm">${total.toFixed(2)}€</span>
+            </div>
+            <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
+            <p class="text-white/60 text-[11px]">📦 ${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 50))}...</p>
+            <div class="flex gap-2 mt-3 flex-wrap">
+                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-2 py-1.5 rounded-xl text-[10px]">📋 DETALLE</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">15'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">30'</button>
+                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">45'</button>
+                <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-2 py-1.5 rounded-xl text-[10px]">✅ LISTO</button>
+            </div>
+        </div>`;
+    }
+
+    function renderCardHistorial(p) {
+        const total = parseFloat(p.TOTAL) || 0;
+        let estadoTexto = p.ESTADO || 'ENTREGADO';
+        return `<div class="card-pedido">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                <span class="text-white font-bold text-sm">${total.toFixed(2)}€</span>
+            </div>
+            <p class="text-white/70 text-xs">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
+            <p class="text-white/40 text-[10px] mt-1">🛵 ${escapeHTML(p.REPARTIDOR || 'Sin repartidor')} - ${estadoTexto}</p>
+            <div class="mt-2 pt-2 border-t border-white/5">
+                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="w-full bg-white/5 text-white py-1 rounded-lg text-[10px]">📋 VER DETALLE</button>
+            </div>
+        </div>`;
+    }
+
+    function verDetallePedido(id) {
+        let p = pedidos.find(x => x.ID_PEDIDO == id);
+        if (p) {
+            Swal.fire({
+                title: `Pedido #${p.ID_PEDIDO}`,
+                html: `<div class="text-left">
+                    <p><strong>👤 Cliente:</strong> ${escapeHTML(p.CLIENTE || 'Sin nombre')}</p>
+                    <p><strong>📍 Dirección:</strong> ${escapeHTML(p.DIRECCION || 'No especificada')}</p>
+                    <p><strong>📞 Teléfono:</strong> ${escapeHTML(p.TELEFONO || 'No especificado')}</p>
+                    <p><strong>💳 Pago:</strong> ${escapeHTML(p.PAGO || 'No especificado')}</p>
+                    <p><strong>💰 Total:</strong> ${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
+                    <hr class="my-2 border-white/10">
+                    <p><strong>📦 Detalle:</strong></p>
+                    <p style="white-space: pre-wrap; font-size: 12px;">${escapeHTML(p.PEDIDO_DETALLE || '')}</p>
+                </div>`,
+                background: '#020617', color: 'white', confirmButtonColor: '#f59e0b',
+                confirmButtonText: 'Cerrar'
+            });
+        }
+    }
+
+    async function aceptarPedido(id) {
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
+        await cargarPedidos();
+    }
+
+    async function rechazarPedido(id) {
+        const confirmar = await Swal.fire({
+            title: '¿Rechazar pedido?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            background: '#1e293b', color: 'white'
+        });
+        if (!confirmar.isConfirmed) return;
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO`);
+        await cargarPedidos();
+    }
+
+    async function asignarTiempo(id, minutos, btn) {
+        btn.disabled = true;
+        btn.classList.add('bg-green-600', 'text-white');
+        await database.ref('pedidos/'+id).update({ tiempo_seleccionado: minutos });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
+        await cargarPedidos();
+    }
+
+    async function marcarListo(id) {
+        await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() });
+        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
+        await cargarPedidos();
+    }
+
+    function preguntarSalir() {
+        Swal.fire({
+            title: '¿Cerrar sesión?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Sí, salir',
+            background: '#1e293b', color: 'white'
+        }).then(result => {
+            if (result.isConfirmed) {
+                localStorage.removeItem('AE_REST_ID');
+                localStorage.removeItem('AE_REST_NOMBRE');
+                location.reload();
+            }
+        });
+    }
+
+    // Tabs para móvil
+    function initTabs() {
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.getAttribute('data-tab');
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('activo'));
+                document.querySelectorAll('.tab-contenido').forEach(c => c.classList.remove('activo'));
+                btn.classList.add('activo');
+                if (tab === 'entrantes') document.getElementById('tabEntrantes').classList.add('activo');
+                if (tab === 'cocina') document.getElementById('tabCocina').classList.add('activo');
+                if (tab === 'historial') document.getElementById('tabHistorial').classList.add('activo');
+            });
+        });
+    }
+
+    // Inicialización
+    async function iniciarApp() {
+        await solicitarPermisoNotificaciones();
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appContent').classList.remove('hidden');
+        initTabs();
+        await cargarPedidos();
+        setInterval(cargarPedidos, 4000);
+    }
+
+    (async function() {
+        const nombreGuardado = localStorage.getItem('AE_REST_NOMBRE');
+        if (miRestauranteId && nombreGuardado) {
+            iniciarApp();
+        } else {
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('appContent').classList.add('hidden');
+        }
+    })();
+
+    document.getElementById('btnActivarSonido')?.addEventListener('click', activarSonidoGlobal);
+    
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/cocina/sw-cocina.js').catch(e => console.log);
+    }
+</script>
+</body>
+</html>

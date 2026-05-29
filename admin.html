@@ -26,6 +26,8 @@
         .numero-grande { font-size: 24px; font-weight: 800; color: #06b6d4; }
         .btn-accion { background: #f59e0b; color: #020617; padding: 6px 12px; border-radius: 10px; font-size: 11px; font-weight: bold; border: none; cursor: pointer; margin-top: 8px; width: 100%; }
         .btn-accion:active { transform: scale(0.96); }
+        .btn-limpiar { background: #334155; color: #cbd5e1; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; border: none; cursor: pointer; }
+        .btn-limpiar:active { transform: scale(0.96); }
         audio { display: none; }
         .scroll-horizontal { overflow-x: auto; white-space: nowrap; padding-bottom: 8px; }
     </style>
@@ -47,7 +49,10 @@
             <h1 class="text-xl font-black italic uppercase text-cyan-400">📊 Monitor</h1>
             <p class="text-white/40 text-[10px]">Actualización en tiempo real</p>
         </div>
-        <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-xl text-xs font-bold">🔊 ACTIVAR SONIDO</button>
+        <div class="flex gap-2">
+            <button id="btnLimpiar" class="btn-limpiar">🗑️ LIMPIAR VISTA</button>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-xl text-xs font-bold">🔊 ACTIVAR SONIDO</button>
+        </div>
     </div>
 
     <!-- Estadísticas -->
@@ -104,7 +109,6 @@
     let audioElement = null;
     let tabActual = 'pendientes';
     let ultimoConteoPendientes = 0;
-    let intervaloFirebase = null;
 
     function initAudio() {
         audioElement = document.getElementById('audio-alerta');
@@ -168,6 +172,16 @@
         return { texto: `Hace ${horas}h ${mins}min`, minutos: diffMin };
     }
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
     function renderizarPedidos() {
         let filtrados = [];
         if (tabActual === 'pendientes') {
@@ -205,7 +219,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <div class="flex items-center gap-2 flex-wrap">
-                                <span class="font-mono font-bold text-cyan-400 text-sm">#${p.id}</span>
+                                <span class="font-mono font-bold text-cyan-400 text-sm">#${escapeHtml(p.id)}</span>
                                 <span class="badge ${getEstadoParaFiltro(p.estado) === 'pendiente' ? 'badge-recibido' : (getEstadoParaFiltro(p.estado) === 'cocina' ? 'badge-proceso' : (getEstadoParaFiltro(p.estado) === 'reparto' ? 'badge-reparto' : 'badge-entregado'))}">${getTextoEstado(p.estado)}</span>
                                 ${alertaMensaje}
                             </div>
@@ -227,16 +241,6 @@
             `;
         }
         contenedor.innerHTML = html;
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
     }
 
     function actualizarEstadisticas() {
@@ -282,6 +286,30 @@
         });
     }
 
+    function limpiarVista() {
+        Swal.fire({
+            title: '¿Limpiar filtros?',
+            text: 'Esto solo oculta los pedidos de la vista, no los elimina.',
+            icon: 'question',
+            background: '#020617', color: 'white',
+            confirmButtonColor: '#f59e0b', confirmButtonText: 'Limpiar',
+            cancelButtonText: 'Cancelar',
+            showCancelButton: true
+        }).then(result => {
+            if (result.isConfirmed) {
+                // Volver a la pestaña de pendientes
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                const tabPendientes = document.querySelector('.tab[data-tab="pendientes"]');
+                if (tabPendientes) {
+                    tabPendientes.classList.add('active');
+                    tabActual = 'pendientes';
+                    renderizarPedidos();
+                }
+                Swal.fire({ title: '✅ Vista limpiada', text: 'Ahora se muestran los pedientes pendientes', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
+            }
+        });
+    }
+
     function activarSonido() {
         sonidoActivado = !sonidoActivado;
         localStorage.setItem('monitor_sonido', sonidoActivado);
@@ -315,6 +343,8 @@
             btnSonido.style.background = '#f59e0b';
         }
         btnSonido.onclick = activarSonido;
+
+        document.getElementById('btnLimpiar').onclick = limpiarVista;
 
         document.querySelectorAll('.tab').forEach(tab => {
             tab.onclick = () => {

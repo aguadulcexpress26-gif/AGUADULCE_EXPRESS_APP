@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aguadulce Express - Control Operativo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; font-family: system-ui, sans-serif; color: white; padding: 16px; }
+        .pedido-card { background: #0f172a; border-radius: 20px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #1e293b; transition: all 0.3s; }
+        .pedido-card.alerta { border-left-color: #f59e0b; background: rgba(245,158,11,0.05); }
+        .pedido-card.critico { border-left-color: #ef4444; background: rgba(239,68,68,0.1); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: bold; }
+        .badge-recibido { background: rgba(6,182,212,0.2); color: #06b6d4; }
+        .badge-proceso { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .btn-control { background: #1e293b; padding: 8px 16px; border-radius: 30px; font-weight: bold; border: none; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #06b6d4; color: #020617; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-success { background: #22c55e; color: white; }
+        select, input { background: #1e293b; border: 1px solid #334155; border-radius: 30px; padding: 8px 16px; color: white; outline: none; }
+        .limpiado { opacity: 0.5; background: #0f172a; border-left-color: #22c55e; }
+        .stats-card { background: #0f172a; border-radius: 16px; padding: 12px; }
+        audio { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="loader" class="flex justify-center items-center h-screen">
+    <div class="text-center">
+        <div class="w-10 h-10 border-4 border-cyan-400/20 border-t-cyan-400 rounded-full animate-spin mx-auto mb-4"></div>
+        <p>Cargando panel de control...</p>
+    </div>
+</div>
+
+<div id="app" style="display: none;">
+    
+    <!-- HEADER -->
+    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div>
+            <div class="titulo text-xl font-bold">🎮 PANEL DE CONTROL</div>
+            <div class="text-white/40 text-[10px]">Monitoreo en tiempo real - Pedidos no atendidos</div>
+        </div>
+        <button id="btnLimpiarTodo" class="btn-control btn-danger text-sm">🗑️ LIMPIAR VISTA</button>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+        <div>
+            <label class="text-[10px] text-white/40 block mb-1">🏪 FILTRAR POR RESTAURANTE</label>
+            <select id="filtroRestaurante" class="w-full text-sm">
+                <option value="TODOS">📋 TODOS LOS RESTAURANTES</option>
+            </select>
+        </div>
+        <div>
+            <label class="text-[10px] text-white/40 block mb-1">📅 FILTRAR POR FECHA</label>
+            <input type="date" id="filtroFecha" class="w-full text-sm">
+        </div>
+        <div>
+            <label class="text-[10px] text-white/40 block mb-1">⚡ ORDENAR POR</label>
+            <select id="ordenarPor" class="w-full text-sm">
+                <option value="CRITICO">🔴 Más crítico (mayor espera)</option>
+                <option value="RECIENTE">🕐 Más reciente primero</option>
+                <option value="RESTAURANTE">🏪 Por restaurante</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- ESTADÍSTICAS RÁPIDAS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
+        <div class="stats-card text-center">
+            <div class="text-2xl font-bold text-cyan-400" id="totalPedidos">0</div>
+            <div class="text-[10px] text-white/40">PENDIENTES</div>
+        </div>
+        <div class="stats-card text-center">
+            <div class="text-2xl font-bold text-yellow-400" id="alertaPedidos">0</div>
+            <div class="text-[10px] text-white/40">ALERTA (5-9min)</div>
+        </div>
+        <div class="stats-card text-center">
+            <div class="text-2xl font-bold text-red-400" id="criticoPedidos">0</div>
+            <div class="text-[10px] text-white/40">CRÍTICO (10+min)</div>
+        </div>
+        <div class="stats-card text-center">
+            <div class="text-2xl font-bold text-green-400" id="atendidosHoy">0</div>
+            <div class="text-[10px] text-white/40">ATENDIDOS HOY</div>
+        </div>
+    </div>
+
+    <!-- LISTA DE PEDIDOS CRÍTICOS -->
+    <div class="mb-2 flex justify-between items-center">
+        <span class="text-sm font-bold">📋 PEDIDOS EN ESPERA</span>
+        <span class="text-[10px] text-white/30" id="ultimaActualizacion"></span>
+    </div>
+    <div id="listaPedidos"></div>
+
+</div>
+
+<audio id="audio-alerta" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+    const URL_GS = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
+    const STORAGE_KEY = 'monitor_pedidos_limpiados';
+    
+    let pedidosLimpiados = new Set();
+    let sonidoActivado = true;
+    let audioElement = null;
+    let todosLosPedidos = [];
+    let restaurantesLista = [];
+
+    // Cargar pedidos limpiados de localStorage
+    function cargarLimpiados() {
+        const guardados = localStorage.getItem(STORAGE_KEY);
+        if (guardados) {
+            pedidosLimpiados = new Set(JSON.parse(guardados));
+        }
+    }
+
+    // Guardar pedidos limpiados
+    function guardarLimpiados() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...pedidosLimpiados]));
+    }
+
+    // Limpiar un pedido (no se mostrará más aunque siga activo)
+    function limpiarPedido(idPedido) {
+        pedidosLimpiados.add(idPedido);
+        guardarLimpiados();
+        aplicarFiltros();
+        
+        Swal.fire({
+            title: '✅ Pedido limpiado',
+            text: 'Este pedido ya no aparecerá en el monitor',
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    }
+
+    // Limpiar todos los pedidos visibles actualmente
+    function limpiarTodosVisibles() {
+        const pedidosFiltrados = filtrarYOrdenarPedidos(todosLosPedidos);
+        pedidosFiltrados.forEach(p => pedidosLimpiados.add(p.id));
+        guardarLimpiados();
+        aplicarFiltros();
+        
+        Swal.fire({
+            title: '🧹 Vista limpiada',
+            text: `${pedidosFiltrados.length} pedido(s) eliminado(s) del monitor`,
+            icon: 'info',
+            timer: 2000,
+            showConfirmButton: false
+        });
+    }
+
+    // Inicializar audio
+    function initAudio() {
+        audioElement = document.getElementById('audio-alerta');
+        if (audioElement) audioElement.volume = 0.8;
+    }
+
+    function playSound() {
+        if (audioElement && sonidoActivado) {
+            audioElement.currentTime = 0;
+            audioElement.play().catch(e => console.log('Audio necesita interacción usuario'));
+        }
+    }
+
+    // Formatear estado
+    function getTextoEstado(estado) {
+        const e = (estado || '').toUpperCase();
+        if (e === 'RECIBIDO' || e === 'NUEVO') return '📥 PENDIENTE';
+        if (e === 'EN PROCESO') return '🍳 EN COCINA';
+        if (e === 'LISTO') return '✅ LISTO';
+        if (e === 'RECOGIDO' || e === 'EN CAMINO') return '🛵 EN REPARTO';
+        if (e === 'LLEGÓ') return '📍 EN CLIENTE';
+        if (e === 'ENTREGADO' || e === 'FINALIZADO') return '🎉 ENTREGADO';
+        return estado || '📥 PENDIENTE';
+    }
+
+    // Obtener tiempo transcurrido
+    function getTiempoTranscurrido(fechaRaw) {
+        if (!fechaRaw) return { texto: '---', minutos: 999 };
+        
+        let fechaDate;
+        if (fechaRaw instanceof Date) {
+            fechaDate = fechaRaw;
+        } else if (typeof fechaRaw === 'string') {
+            const partes = fechaRaw.split(' ');
+            const fechaParte = partes[0];
+            let horaParte = partes[1] || '00:00:00';
+            if (fechaParte.includes('/')) {
+                const [dia, mes, anio] = fechaParte.split('/');
+                const [hora, min, seg] = horaParte.split(':');
+                fechaDate = new Date(anio, mes-1, dia, hora, min, seg);
+            } else if (fechaParte.includes('-')) {
+                const [anio, mes, dia] = fechaParte.split('-');
+                const [hora, min, seg] = horaParte.split(':');
+                fechaDate = new Date(anio, mes-1, dia, hora, min, seg);
+            } else {
+                fechaDate = new Date(fechaRaw);
+            }
+        }
+        
+        if (!fechaDate || isNaN(fechaDate.getTime())) return { texto: '---', minutos: 999 };
+        
+        const ahora = new Date();
+        const diffMs = ahora - fechaDate;
+        const diffMin = Math.floor(diffMs / 60000);
+        
+        if (diffMin < 1) return { texto: 'Ahora mismo', minutos: 0 };
+        if (diffMin < 60) return { texto: `${diffMin} min`, minutos: diffMin };
+        const horas = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return { texto: `${horas}h ${mins}min`, minutos: diffMin };
+    }
+
+    // Obtener nivel de alerta
+    function getNivelAlerta(minutos) {
+        if (minutos >= 10) return 'critico';
+        if (minutos >= 5) return 'alerta';
+        return 'normal';
+    }
+
+    // Filtrar y ordenar pedidos
+    function filtrarYOrdenarPedidos(pedidos) {
+        const restauranteFiltro = document.getElementById('filtroRestaurante').value;
+        const fechaFiltro = document.getElementById('filtroFecha').value;
+        const ordenarPor = document.getElementById('ordenarPor').value;
+        
+        let filtrados = pedidos.filter(p => {
+            // Filtrar por restaurante
+            if (restauranteFiltro !== 'TODOS' && p.restaurante_nombre !== restauranteFiltro) return false;
+            
+            // Filtrar por fecha
+            if (fechaFiltro && p.fechaRaw) {
+                const fechaPedido = p.fechaRaw.split(' ')[0];
+                const fechaPedidoFormateada = fechaPedido.replace(/\//g, '-').split('-').reverse().join('-');
+                if (fechaPedidoFormateada !== fechaFiltro && fechaPedido !== fechaFiltro.replace(/-/g, '/')) return false;
+            }
+            
+            // No mostrar pedidos limpiados
+            if (pedidosLimpiados.has(p.id)) return false;
+            
+            // Solo mostrar pedidos NO entregados/finalizados
+            const estado = (p.estado || '').toUpperCase();
+            const esActivo = estado !== 'ENTREGADO' && estado !== 'FINALIZADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO';
+            return esActivo;
+        });
+        
+        // Ordenar
+        if (ordenarPor === 'CRITICO') {
+            filtrados.sort((a, b) => b.tiempo.minutos - a.tiempo.minutos);
+        } else if (ordenarPor === 'RECIENTE') {
+            filtrados.sort((a, b) => new Date(b.fechaRaw) - new Date(a.fechaRaw));
+        } else if (ordenarPor === 'RESTAURANTE') {
+            filtrados.sort((a, b) => a.restaurante_nombre.localeCompare(b.restaurante_nombre));
+        }
+        
+        return filtrados;
+    }
+
+    // Renderizar lista
+    function renderizarPedidos(pedidosFiltrados) {
+        const contenedor = document.getElementById('listaPedidos');
+        
+        // Actualizar estadísticas
+        const total = pedidosFiltrados.length;
+        const alerta = pedidosFiltrados.filter(p => p.nivelAlerta === 'alerta').length;
+        const critico = pedidosFiltrados.filter(p => p.nivelAlerta === 'critico').length;
+        
+        document.getElementById('totalPedidos').textContent = total;
+        document.getElementById('alertaPedidos').textContent = alerta;
+        document.getElementById('criticoPedidos').textContent = critico;
+        document.getElementById('ultimaActualizacion').textContent = new Date().toLocaleTimeString();
+        
+        // Contar atendidos hoy (entregados en el día)
+        const hoy = new Date().toLocaleDateString();
+        const atendidos = todosLosPedidos.filter(p => {
+            const estado = (p.estado || '').toUpperCase();
+            const fechaPedido = p.fechaRaw ? p.fechaRaw.split(' ')[0] : '';
+            return (estado === 'ENTREGADO' || estado === 'FINALIZADO') && fechaPedido === hoy;
+        }).length;
+        document.getElementById('atendidosHoy').textContent = atendidos;
+        
+        if (pedidosFiltrados.length === 0) {
+            contenedor.innerHTML = '<div class="text-center py-10 text-white/30">✅ Todos los pedidos están siendo atendidos</div>';
+            return;
+        }
+        
+        let html = '';
+        for (let p of pedidosFiltrados) {
+            const alertaClass = p.nivelAlerta;
+            const estado = (p.estado || 'RECIBIDO').toUpperCase();
+            const direccionShort = p.direccion ? p.direccion.substring(0, 50) : 'Sin dirección';
+            
+            html += `
+                <div class="pedido-card ${alertaClass}">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1">
+                            <div class="flex flex-wrap items-center gap-2 mb-1">
+                                <span class="font-mono font-bold text-cyan-400 text-sm">#${escapeHtml(p.id)}</span>
+                                <span class="badge ${getColorEstado(p.estado)}">${getTextoEstado(p.estado)}</span>
+                                ${alertaClass === 'critico' ? '<span class="text-red-400 text-[10px] font-bold">🔴 CRÍTICO - LLAMAR AHORA</span>' : (alertaClass === 'alerta' ? '<span class="text-yellow-400 text-[10px]">🟡 ATENCIÓN</span>' : '')}
+                            </div>
+                            <div class="text-white text-sm font-bold">${escapeHtml(p.cliente || 'Cliente')}</div>
+                            <div class="text-white/40 text-[11px]">📍 ${escapeHtml(direccionShort)}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-emerald-400 font-bold text-lg">${p.total.toFixed(2)}€</div>
+                            <div class="text-white/40 text-[11px] ${alertaClass === 'critico' ? 'text-red-400 font-bold' : ''}">⏱️ ${p.tiempo.texto}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3 pt-2 border-t border-white/10 flex justify-between items-center">
+                        <div class="text-[12px]">
+                            <span class="text-cyan-400 font-bold">🏪 ${escapeHtml(p.restaurante_nombre)}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="llamarRestaurante('${escapeHtml(p.telefonoRestaurante)}', '${escapeHtml(p.restaurante_nombre)}', '${escapeHtml(p.id)}')" 
+                                    class="bg-red-600 text-white text-[11px] px-3 py-1.5 rounded-full hover:bg-red-700 transition">
+                                📞 LLAMAR
+                            </button>
+                            <button onclick="limpiarPedido('${p.id}')" 
+                                    class="bg-green-600 text-white text-[11px] px-3 py-1.5 rounded-full hover:bg-green-700 transition">
+                                ✅ OK
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        contenedor.innerHTML = html;
+    }
+
+    function getColorEstado(estado) {
+        const e = (estado || '').toUpperCase();
+        if (e === 'RECIBIDO' || e === 'NUEVO') return 'badge-recibido';
+        if (e === 'EN PROCESO') return 'badge-proceso';
+        return 'badge-recibido';
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function llamarRestaurante(telefono, nombreRestaurante, idPedido) {
+        if (telefono && telefono !== '') {
+            window.location.href = `tel:${telefono}`;
+            Swal.fire({
+                title: '📞 Llamando...',
+                text: `${nombreRestaurante} - Pedido #${idPedido}`,
+                icon: 'info',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire({
+                title: '⚠️ Sin teléfono',
+                text: `No hay teléfono registrado para ${nombreRestaurante}`,
+                icon: 'warning',
+                timer: 2000
+            });
+        }
+    }
+
+    // Cargar pedidos desde Google Sheets
+    async function cargarPedidos() {
+        try {
+            const response = await fetch(`${URL_GS}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            
+            const restaurantes = data.RESTAURANTES || [];
+            const pedidosRaw = data.PEDIDOS || [];
+            const configuracion = data.CONFIGURACION || [];
+            
+            console.log("📦 Pedidos totales:", pedidosRaw.length);
+            
+            // Construir lista de pedidos
+            todosLosPedidos = pedidosRaw.map(p => {
+                const restaurante = restaurantes.find(r => String(r.ID_RESTAURANTE).trim() === String(p.ID_RESTAURANTE).trim());
+                const tiempo = getTiempoTranscurrido(p.FECHA);
+                
+                return {
+                    id: p.ID_PEDIDO,
+                    cliente: p.CLIENTE,
+                    direccion: p.DIRECCION,
+                    total: parseFloat(p.TOTAL) || 0,
+                    estado: p.ESTADO,
+                    restaurante_nombre: restaurante ? (restaurante.NOMBRE_RESTAURANTE || restaurante.NOMBRE || 'Restaurante') : 'Restaurante',
+                    telefonoRestaurante: restaurante ? (restaurante.TELEFONO || restaurante.CELULAR || restaurante.WHATSAPP || '') : '',
+                    fechaRaw: p.FECHA,
+                    tiempo: tiempo,
+                    nivelAlerta: getNivelAlerta(tiempo.minutos)
+                };
+            });
+            
+            // Cargar restaurantes para el filtro
+            const restaurantesUnicos = [...new Set(todosLosPedidos.map(p => p.restaurante_nombre))].sort();
+            const selectRestaurante = document.getElementById('filtroRestaurante');
+            selectRestaurante.innerHTML = '<option value="TODOS">📋 TODOS LOS RESTAURANTES</option>';
+            restaurantesUnicos.forEach(r => {
+                selectRestaurante.innerHTML += `<option value="${escapeHtml(r)}">🏪 ${escapeHtml(r)}</option>`;
+            });
+            
+            // Verificar pedidos críticos nuevos para sonido
+            const pedidosActivos = todosLosPedidos.filter(p => {
+                const estado = (p.estado || '').toUpperCase();
+                return estado !== 'ENTREGADO' && estado !== 'FINALIZADO';
+            });
+            const criticosNuevos = pedidosActivos.filter(p => p.nivelAlerta === 'critico' && !pedidosLimpiados.has(p.id));
+            if (criticosNuevos.length > 0) {
+                playSound();
+            }
+            
+            aplicarFiltros();
+            
+        } catch (error) {
+            console.error("Error:", error);
+            document.getElementById('listaPedidos').innerHTML = '<div class="text-center py-10 text-red-400">❌ Error al cargar datos</div>';
+        }
+    }
+
+    function aplicarFiltros() {
+        const filtrados = filtrarYOrdenarPedidos(todosLosPedidos);
+        renderizarPedidos(filtrados);
+    }
+
+    // Inicializar
+    function iniciarMonitor() {
+        initAudio();
+        cargarLimpiados();
+        
+        // Fecha por defecto = hoy
+        const hoy = new Date().toISOString().split('T')[0];
+        document.getElementById('filtroFecha').value = hoy;
+        
+        // Event listeners
+        document.getElementById('filtroRestaurante').addEventListener('change', () => aplicarFiltros());
+        document.getElementById('filtroFecha').addEventListener('change', () => aplicarFiltros());
+        document.getElementById('ordenarPor').addEventListener('change', () => aplicarFiltros());
+        document.getElementById('btnLimpiarTodo').onclick = () => limpiarTodosVisibles();
+        
+        // Cargar y auto-actualizar cada 10 segundos
+        cargarPedidos();
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        
+        setInterval(() => cargarPedidos(), 10000);
+        
+        // Solicitar notificaciones
+        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
+
+    // Exponer funciones globales
+    window.limpiarPedido = limpiarPedido;
+    window.llamarRestaurante = llamarRestaurante;
+    
+    iniciarMonitor();
+</script>
+</body>
+</html>

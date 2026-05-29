@@ -6,10 +6,9 @@
     <title>Aguadulce Express - Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; color: white; padding: 16px; }
+        body { background: #020617; font-family: system-ui, sans-serif; color: white; padding: 16px; }
         .pedido-card { background: #0f172a; border-radius: 20px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #1e293b; }
         .pedido-card.alerta { border-left-color: #f59e0b; background: rgba(245,158,11,0.05); }
         .pedido-card.critico { border-left-color: #ef4444; background: rgba(239,68,68,0.1); }
@@ -18,12 +17,10 @@
         .badge-proceso { background: rgba(245,158,11,0.2); color: #f59e0b; }
         .badge-reparto { background: rgba(79,70,229,0.2); color: #818cf8; }
         .badge-entregado { background: rgba(34,197,94,0.2); color: #22c55e; }
-        .btn-actualizar { background: #06b6d4; color: #020617; padding: 8px 16px; border-radius: 30px; font-weight: bold; border: none; cursor: pointer; margin-bottom: 16px; }
-        .btn-actualizar:active { transform: scale(0.96); }
+        .btn-actualizar { background: #06b6d4; color: #020617; padding: 8px 16px; border-radius: 30px; font-weight: bold; border: none; cursor: pointer; }
         .fecha-info { background: #1e293b; border-radius: 20px; padding: 6px 12px; font-size: 11px; display: inline-block; margin-bottom: 16px; }
         audio { display: none; }
-        .titulo { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
-        .refresco { font-size: 10px; color: #64748b; margin-bottom: 16px; }
+        .titulo { font-size: 20px; font-weight: 800; }
     </style>
 </head>
 <body>
@@ -37,21 +34,18 @@
 
 <div id="app" style="display: none;">
     
-    <!-- Cabecera simple -->
     <div class="flex justify-between items-center mb-4">
         <div>
             <div class="titulo">📊 MONITOR DE PEDIDOS</div>
-            <div class="refresco">Actualización automática cada 10 segundos</div>
+            <div class="text-white/40 text-[10px] mt-1">Mostrando TODOS los pedidos activos</div>
         </div>
         <button id="btnActualizar" class="btn-actualizar">🔄 ACTUALIZAR</button>
     </div>
 
-    <!-- Fecha -->
     <div class="text-center mb-4">
         <span class="fecha-info" id="fechaActual"></span>
     </div>
 
-    <!-- Lista de pedidos (solo lo que importa) -->
     <div id="listaPedidos"></div>
 
 </div>
@@ -61,7 +55,7 @@
 </audio>
 
 <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
+    const URL_GS = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
     
     let sonidoActivado = localStorage.getItem('monitor_sonido') === 'true';
     let audioElement = null;
@@ -101,6 +95,7 @@
         if (e === 'RECOGIDO' || e === 'EN CAMINO') return '🛵 EN REPARTO';
         if (e === 'LLEGÓ') return '📍 EN EL CLIENTE';
         if (e === 'ENTREGADO' || e === 'FINALIZADO') return '🎉 ENTREGADO';
+        if (e === 'RECHAZADO') return '❌ RECHAZADO';
         return estado || '📥 RECIBIDO';
     }
 
@@ -158,52 +153,24 @@
 
     async function cargarPedidos() {
         try {
-            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+            const response = await fetch(`${URL_GS}?action=cargarTodo&t=${Date.now()}`);
             const data = await response.json();
             
             const restaurantes = data.RESTAURANTES || [];
             const pedidosRaw = data.PEDIDOS || [];
             
-            // Filtrar solo pedidos RECIENTES (últimas 24 horas) y en estado activo
-            const ahora = new Date();
-            const hace24h = new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
+            console.log("📦 TOTAL PEDIDOS EN EXCEL:", pedidosRaw.length);
             
-            const pedidosFiltrados = pedidosRaw.filter(p => {
+            // Filtrar SOLO pedidos activos (no entregados, no rechazados, no cancelados)
+            const pedidosActivos = pedidosRaw.filter(p => {
                 const estado = (p.ESTADO || '').toUpperCase();
-                // Mostrar pedidos que NO estén entregados ni rechazados
                 const esActivo = estado !== 'ENTREGADO' && estado !== 'FINALIZADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO';
-                if (!esActivo) return false;
-                
-                // Filtrar por fecha (solo últimos 7 días para no saturar)
-                let fechaPedido = null;
-                if (p.FECHA) {
-                    if (p.FECHA instanceof Date) {
-                        fechaPedido = p.FECHA;
-                    } else {
-                        const partes = p.FECHA.split(' ');
-                        const fechaParte = partes[0];
-                        if (fechaParte.includes('/')) {
-                            const [dia, mes, anio] = fechaParte.split('/');
-                            fechaPedido = new Date(anio, mes-1, dia);
-                        }
-                    }
-                }
-                if (fechaPedido) {
-                    const diffDias = (ahora - fechaPedido) / (1000 * 60 * 60 * 24);
-                    if (diffDias > 7) return false;
-                }
-                return true;
+                return esActivo;
             });
             
-            // Ordenar por fecha (más reciente primero)
-            pedidosFiltrados.sort((a, b) => {
-                const fechaA = a.FECHA ? new Date(a.FECHA) : 0;
-                const fechaB = b.FECHA ? new Date(b.FECHA) : 0;
-                return fechaB - fechaA;
-            });
+            console.log("📦 PEDIDOS ACTIVOS:", pedidosActivos.length);
             
-            // Mapear con datos del restaurante
-            const pedidos = pedidosFiltrados.map(p => {
+            const pedidos = pedidosActivos.map(p => {
                 const restaurante = restaurantes.find(r => String(r.ID_RESTAURANTE).trim() === String(p.ID_RESTAURANTE).trim());
                 return {
                     id: p.ID_PEDIDO,
@@ -212,12 +179,18 @@
                     total: parseFloat(p.TOTAL) || 0,
                     estado: p.ESTADO,
                     restaurante_nombre: restaurante ? (restaurante.NOMBRE_RESTAURANTE || restaurante.NOMBRE) : 'Restaurante',
-                    fechaRaw: p.FECHA,
-                    detalle: p.PEDIDO_DETALLE
+                    fechaRaw: p.FECHA
                 };
             });
             
-            // Sonido si hay nuevos pedidos pendientes
+            // Ordenar por fecha (más reciente primero)
+            pedidos.sort((a, b) => {
+                const fechaA = a.fechaRaw ? new Date(a.fechaRaw) : 0;
+                const fechaB = b.fechaRaw ? new Date(b.fechaRaw) : 0;
+                return fechaB - fechaA;
+            });
+            
+            // Sonido si hay nuevos pendientes
             const pendientes = pedidos.filter(p => {
                 const e = (p.estado || '').toUpperCase();
                 return e === 'RECIBIDO' || e === 'NUEVO';
@@ -226,8 +199,8 @@
             if (pendientes > ultimoConteo && pendientes > 0) {
                 playSound();
                 if (Notification.permission === 'granted') {
-                    new Notification('📦 Nuevo pedido sin confirmar', {
-                        body: `Hay ${pendientes} pedido(s) pendientes de aceptar.`,
+                    new Notification('📦 Nuevo pedido', {
+                        body: `${pendientes} pedido(s) pendiente(s) de confirmar.`,
                         icon: 'https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg'
                     });
                 }
@@ -237,7 +210,7 @@
             renderizarPedidos(pedidos);
             
         } catch (error) {
-            console.error("Error cargando pedidos:", error);
+            console.error("Error:", error);
             document.getElementById('listaPedidos').innerHTML = '<div class="text-center py-10 text-red-400">❌ Error al cargar datos</div>';
         }
     }
@@ -263,8 +236,7 @@
                 }
             }
             
-            // Dirección truncada
-            const direccionShort = p.direccion ? p.direccion.substring(0, 40) : 'Sin dirección';
+            const direccionShort = p.direccion ? p.direccion.substring(0, 45) : 'Sin dirección';
             
             html += `
                 <div class="pedido-card ${alertaClass}">
@@ -283,12 +255,9 @@
                     <div class="text-white text-sm font-bold">${escapeHtml(p.cliente || 'Cliente sin nombre')}</div>
                     <div class="text-white/40 text-[11px] mt-1">📍 ${escapeHtml(direccionShort)}</div>
                     
-                    <div class="mt-3 pt-2 border-t border-white/10 flex justify-between items-center">
+                    <div class="mt-3 pt-2 border-t border-white/10">
                         <div class="text-[12px]">
                             <span class="text-cyan-400 font-bold">🏪 ${escapeHtml(p.restaurante_nombre)}</span>
-                        </div>
-                        <div class="text-[10px] text-white/30">
-                            ⏰ ${p.fechaRaw ? new Date(p.fechaRaw).toLocaleTimeString() : '---'}
                         </div>
                     </div>
                 </div>
@@ -305,11 +274,10 @@
     function iniciarMonitor() {
         initAudio();
         
-        // Fecha actual
         const hoy = new Date();
-        document.getElementById('fechaActual').innerHTML = hoy.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        document.getElementById('fechaActual').innerHTML = hoy.toLocaleDateString('es-ES');
         
-        // Añadir botón de sonido
+        // Botón sonido
         const btnSonido = document.createElement('button');
         btnSonido.id = 'btnActivarSonido';
         btnSonido.className = 'btn-actualizar ml-2';
@@ -324,7 +292,6 @@
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
         
-        // Actualizar cada 10 segundos
         setInterval(cargarPedidos, 10000);
         
         if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {

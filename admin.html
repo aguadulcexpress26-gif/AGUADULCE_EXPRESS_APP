@@ -30,6 +30,7 @@
         .btn-limpiar:active { transform: scale(0.96); }
         audio { display: none; }
         .scroll-horizontal { overflow-x: auto; white-space: nowrap; padding-bottom: 8px; }
+        .fecha-info { background: #1e293b; border-radius: 20px; padding: 6px 12px; font-size: 11px; display: inline-block; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -50,9 +51,14 @@
             <p class="text-white/40 text-[10px]">Actualización en tiempo real</p>
         </div>
         <div class="flex gap-2">
-            <button id="btnLimpiar" class="btn-limpiar">🗑️ LIMPIAR VISTA</button>
+            <button id="btnLimpiar" class="btn-limpiar">🗑️ SOLO HOY</button>
             <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-xl text-xs font-bold">🔊 ACTIVAR SONIDO</button>
         </div>
+    </div>
+
+    <!-- Fecha actual -->
+    <div class="text-center mb-4">
+        <span class="fecha-info" id="fechaActual"></span>
     </div>
 
     <!-- Estadísticas -->
@@ -71,16 +77,17 @@
         </div>
         <div class="estadistica">
             <div class="numero-grande text-emerald-400" id="totalEntregados">0</div>
-            <div class="text-[10px] text-white/50">✅ Entregados</div>
+            <div class="text-[10px] text-white/50">✅ Entregados hoy</div>
         </div>
     </div>
 
-    <!-- Tabs (scroll horizontal para móvil) -->
+    <!-- Tabs -->
     <div class="scroll-horizontal flex gap-2 mb-5">
-        <div class="tab active" data-tab="pendientes">⚠️ SIN CONFIRMAR</div>
-        <div class="tab" data-tab="cocina">🍳 EN COCINA</div>
-        <div class="tab" data-tab="reparto">🛵 EN REPARTO</div>
-        <div class="tab" data-tab="historial">✅ HISTORIAL</div>
+        <div class="tab active" data-tab="pendientes">⚠️ PENDIENTES HOY</div>
+        <div class="tab" data-tab="cocina">🍳 EN COCINA HOY</div>
+        <div class="tab" data-tab="reparto">🛵 EN REPARTO HOY</div>
+        <div class="tab" data-tab="entregados">✅ ENTREGADOS HOY</div>
+        <div class="tab" data-tab="historial">📜 HISTORIAL COMPLETO</div>
     </div>
 
     <!-- Lista de pedidos -->
@@ -109,6 +116,8 @@
     let audioElement = null;
     let tabActual = 'pendientes';
     let ultimoConteoPendientes = 0;
+    let hoyInicio = null;
+    let hoyFin = null;
 
     function initAudio() {
         audioElement = document.getElementById('audio-alerta');
@@ -120,6 +129,19 @@
             audioElement.currentTime = 0;
             audioElement.play().catch(e => console.log('Audio necesita interacción'));
         }
+    }
+
+    // Configurar fechas de hoy (inicio y fin del día)
+    function configurarFechasHoy() {
+        const ahora = new Date();
+        hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0, 0).getTime();
+        hoyFin = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 23, 59, 59, 999).getTime();
+        document.getElementById('fechaActual').innerText = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    function esPedidoDeHoy(timestamp) {
+        if (!timestamp) return false;
+        return timestamp >= hoyInicio && timestamp <= hoyFin;
     }
 
     async function cargarRestaurantesDesdeGS() {
@@ -182,21 +204,35 @@
         });
     }
 
-    function renderizarPedidos() {
+    function filtrarPedidosPorTab() {
         let filtrados = [];
         if (tabActual === 'pendientes') {
-            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'pendiente');
+            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'pendiente' && esPedidoDeHoy(p.timestamp));
         } else if (tabActual === 'cocina') {
-            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'cocina');
+            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'cocina' && esPedidoDeHoy(p.timestamp));
         } else if (tabActual === 'reparto') {
-            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'reparto');
+            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'reparto' && esPedidoDeHoy(p.timestamp));
+        } else if (tabActual === 'entregados') {
+            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'entregado' && esPedidoDeHoy(p.timestamp));
         } else {
-            filtrados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'entregado').slice(0, 30);
+            // HISTORIAL COMPLETO - todos los pedidos sin filtro de fecha
+            filtrados = todosLosPedidos.slice().sort((a,b) => b.timestamp - a.timestamp);
         }
+        return filtrados;
+    }
 
+    function renderizarPedidos() {
+        const filtrados = filtrarPedidosPorTab();
         const contenedor = document.getElementById('listaPedidos');
+        
         if (!filtrados.length) {
-            contenedor.innerHTML = '<div class="text-center py-10 text-white/30">📭 No hay pedidos en esta categoría</div>';
+            let mensaje = '';
+            if (tabActual === 'historial') {
+                mensaje = '📜 No hay pedidos en el historial';
+            } else {
+                mensaje = '📭 No hay pedidos en esta categoría hoy';
+            }
+            contenedor.innerHTML = `<div class="text-center py-10 text-white/30">${mensaje}</div>`;
             return;
         }
 
@@ -206,16 +242,20 @@
             const tiempo = getTiempoTranscurrido(p.timestamp);
             let alertaClass = '';
             let alertaMensaje = '';
-            if (esPendiente && tiempo.minutos >= 10) {
+            if (esPendiente && tiempo.minutos >= 10 && tabActual !== 'historial') {
                 alertaClass = 'critico';
                 alertaMensaje = '<span class="text-red-400 text-[10px] ml-2">🔴 +10 min</span>';
-            } else if (esPendiente && tiempo.minutos >= 5) {
+            } else if (esPendiente && tiempo.minutos >= 5 && tabActual !== 'historial') {
                 alertaClass = 'alerta';
                 alertaMensaje = '<span class="text-yellow-400 text-[10px] ml-2">🟡 +5 min</span>';
             }
 
+            const fechaPedido = p.timestamp ? new Date(p.timestamp).toLocaleDateString() : 'Fecha desconocida';
+            const mostrarFecha = tabActual === 'historial' ? `<div class="text-white/30 text-[9px] mb-1">📅 ${fechaPedido}</div>` : '';
+
             html += `
                 <div class="pedido-card ${alertaClass}">
+                    ${mostrarFecha}
                     <div class="flex justify-between items-start">
                         <div>
                             <div class="flex items-center gap-2 flex-wrap">
@@ -244,10 +284,11 @@
     }
 
     function actualizarEstadisticas() {
-        const pendientes = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'pendiente').length;
-        const cocina = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'cocina').length;
-        const reparto = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'reparto').length;
-        const entregados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'entregado').length;
+        // Estadísticas solo de hoy
+        const pendientes = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'pendiente' && esPedidoDeHoy(p.timestamp)).length;
+        const cocina = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'cocina' && esPedidoDeHoy(p.timestamp)).length;
+        const reparto = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'reparto' && esPedidoDeHoy(p.timestamp)).length;
+        const entregados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'entregado' && esPedidoDeHoy(p.timestamp)).length;
         
         document.getElementById('totalPendientes').innerText = pendientes;
         document.getElementById('totalCocina').innerText = cocina;
@@ -287,27 +328,15 @@
     }
 
     function limpiarVista() {
-        Swal.fire({
-            title: '¿Limpiar filtros?',
-            text: 'Esto solo oculta los pedidos de la vista, no los elimina.',
-            icon: 'question',
-            background: '#020617', color: 'white',
-            confirmButtonColor: '#f59e0b', confirmButtonText: 'Limpiar',
-            cancelButtonText: 'Cancelar',
-            showCancelButton: true
-        }).then(result => {
-            if (result.isConfirmed) {
-                // Volver a la pestaña de pendientes
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                const tabPendientes = document.querySelector('.tab[data-tab="pendientes"]');
-                if (tabPendientes) {
-                    tabPendientes.classList.add('active');
-                    tabActual = 'pendientes';
-                    renderizarPedidos();
-                }
-                Swal.fire({ title: '✅ Vista limpiada', text: 'Ahora se muestran los pedientes pendientes', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
-            }
-        });
+        // Solo cambiar a pestaña de pendientes y recargar vista
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        const tabPendientes = document.querySelector('.tab[data-tab="pendientes"]');
+        if (tabPendientes) {
+            tabPendientes.classList.add('active');
+            tabActual = 'pendientes';
+            renderizarPedidos();
+        }
+        Swal.fire({ title: '✅ Vista actualizada', text: 'Mostrando pedidos pendientes de hoy', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
     }
 
     function activarSonido() {
@@ -328,6 +357,7 @@
 
     async function iniciarMonitor() {
         initAudio();
+        configurarFechasHoy();
         await cargarRestaurantesDesdeGS();
         cargarPedidosFirebase();
         

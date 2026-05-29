@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MONITOR SIMPLE - Aguadulce Express</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #020617; font-family: system-ui; color: white; padding: 16px; }
+        .pedido { background: #0f172a; border-radius: 16px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #ef4444; }
+        .critico { border-left-color: #ef4444; background: rgba(239,68,68,0.1); }
+        .alerta { border-left-color: #f59e0b; }
+        .normal { border-left-color: #06b6d4; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; }
+        .bg-recibido { background: #06b6d4; color: black; }
+    </style>
+</head>
+<body>
+
+<div class="mb-4">
+    <h1 class="text-2xl font-bold">🎮 MONITOR DE CONTROL</h1>
+    <p class="text-white/40 text-sm">Pedidos pendientes de atención</p>
+</div>
+
+<div class="grid grid-cols-3 gap-3 mb-4">
+    <div class="bg-cyan-500/20 p-3 rounded-xl text-center">
+        <div class="text-2xl font-bold" id="total">0</div>
+        <div class="text-xs">Pendientes</div>
+    </div>
+    <div class="bg-yellow-500/20 p-3 rounded-xl text-center">
+        <div class="text-2xl font-bold" id="alerta">0</div>
+        <div class="text-xs">Alerta (5-9min)</div>
+    </div>
+    <div class="bg-red-500/20 p-3 rounded-xl text-center">
+        <div class="text-2xl font-bold" id="critico">0</div>
+        <div class="text-xs">Crítico (10+min)</div>
+    </div>
+</div>
+
+<div id="lista" class="space-y-3"></div>
+
+<script>
+    const URL_GS = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
+    
+    async function cargar() {
+        try {
+            const response = await fetch(`${URL_GS}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            
+            const restaurantes = data.RESTAURANTES || [];
+            const pedidos = data.PEDIDOS || [];
+            const configPedidos = data.CONFIGURACION || [];
+            
+            const todosPedidos = [...pedidos, ...configPedidos];
+            
+            console.log("📦 Total pedidos:", todosPedidos.length);
+            
+            // Filtrar SOLO activos y de hoy
+            const hoy = new Date().toLocaleDateString('es-ES');
+            const activos = todosPedidos.filter(p => {
+                const estado = (p.ESTADO || '').toUpperCase();
+                const esActivo = estado !== 'ENTREGADO' && estado !== 'FINALIZADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO';
+                
+                // Fecha del pedido
+                let fechaPedido = p.FECHA || p.fecha || '';
+                if (fechaPedido.includes('T')) fechaPedido = fechaPedido.split('T')[0].split('-').reverse().join('/');
+                const fechaStr = fechaPedido.split(' ')[0];
+                
+                return esActivo && fechaStr === hoy;
+            });
+            
+            console.log("📦 Pedidos activos hoy:", activos.length);
+            
+            // Calcular tiempos
+            const ahora = new Date();
+            const pedidosConTiempo = activos.map(p => {
+                let fechaPedido = p.FECHA || p.fecha;
+                let minutos = 999;
+                
+                if (fechaPedido) {
+                    let fechaDate;
+                    if (typeof fechaPedido === 'string') {
+                        if (fechaPedido.includes('T')) {
+                            fechaDate = new Date(fechaPedido);
+                        } else {
+                            const partes = fechaPedido.split(' ');
+                            const fechaParte = partes[0];
+                            const horaParte = partes[1] || '00:00:00';
+                            const [dia, mes, anio] = fechaParte.split('/');
+                            const [hora, min, seg] = horaParte.split(':');
+                            fechaDate = new Date(anio, mes-1, dia, hora, min, seg);
+                        }
+                    }
+                    if (fechaDate && !isNaN(fechaDate)) {
+                        minutos = Math.floor((ahora - fechaDate) / 60000);
+                    }
+                }
+                
+                const restaurante = restaurantes.find(r => String(r.ID_RESTAURANTE) === String(p.ID_RESTAURANTE));
+                
+                return {
+                    id: p.ID_PEDIDO,
+                    cliente: p.CLIENTE || 'Cliente',
+                    direccion: p.DIRECCION || '',
+                    total: parseFloat(p.TOTAL) || 0,
+                    estado: p.ESTADO || 'RECIBIDO',
+                    restaurante: restaurante ? (restaurante.NOMBRE_RESTAURANTE || restaurante.NOMBRE) : 'Restaurante',
+                    telefono: restaurante ? (restaurante.TELEFONO || '') : '',
+                    minutos: minutos
+                };
+            });
+            
+            // Ordenar por más crítico
+            pedidosConTiempo.sort((a, b) => b.minutos - a.minutos);
+            
+            // Actualizar stats
+            const total = pedidosConTiempo.length;
+            const alerta = pedidosConTiempo.filter(p => p.minutos >= 5 && p.minutos < 10).length;
+            const critico = pedidosConTiempo.filter(p => p.minutos >= 10).length;
+            
+            document.getElementById('total').textContent = total;
+            document.getElementById('alerta').textContent = alerta;
+            document.getElementById('critico').textContent = critico;
+            
+            // Renderizar
+            const contenedor = document.getElementById('lista');
+            if (pedidosConTiempo.length === 0) {
+                contenedor.innerHTML = '<div class="text-center py-10 text-white/40">✅ No hay pedidos pendientes</div>';
+                return;
+            }
+            
+            let html = '';
+            for (const p of pedidosConTiempo) {
+                let clase = 'normal';
+                if (p.minutos >= 10) clase = 'critico';
+                else if (p.minutos >= 5) clase = 'alerta';
+                
+                const tiempoTexto = p.minutos < 1 ? 'Ahora mismo' : `${p.minutos} min`;
+                
+                html += `
+                    <div class="pedido ${clase}">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="font-mono text-cyan-400">#${p.id}</span>
+                                <span class="badge bg-recibido ml-2">${p.estado}</span>
+                                ${p.minutos >= 10 ? '<span class="ml-2 text-red-400 text-xs">🔴 URGENTE</span>' : ''}
+                            </div>
+                            <div class="text-emerald-400 font-bold">${p.total.toFixed(2)}€</div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="font-bold">${p.cliente}</div>
+                            <div class="text-white/40 text-sm">📍 ${p.direccion.substring(0, 60)}</div>
+                        </div>
+                        <div class="mt-2 flex justify-between items-center">
+                            <div>
+                                <span class="text-cyan-400">🏪 ${p.restaurante}</span>
+                                <span class="text-white/40 text-sm ml-2">⏱️ ${tiempoTexto}</span>
+                            </div>
+                            ${p.telefono ? `<button onclick="window.location.href='tel:${p.telefono}'" class="bg-red-600 px-3 py-1 rounded-full text-sm">📞 LLAMAR</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            contenedor.innerHTML = html;
+            
+        } catch (e) {
+            console.error(e);
+            document.getElementById('lista').innerHTML = '<div class="text-red-400">Error: ' + e.message + '</div>';
+        }
+    }
+    
+    cargar();
+    setInterval(cargar, 10000);
+</script>
+</body>
+</html>

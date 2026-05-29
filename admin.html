@@ -3,31 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Aguadulce Express - Monitor de Pedidos</title>
+    <title>Aguadulce Express - Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; color: white; padding: 16px; }
-        .pedido-card { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; }
-        .pedido-card.alerta { border-left: 4px solid #f59e0b; }
-        .pedido-card.critico { border-left: 4px solid #ef4444; background: rgba(239,68,68,0.1); }
+        .pedido-card { background: #0f172a; border-radius: 20px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #1e293b; }
+        .pedido-card.alerta { border-left-color: #f59e0b; background: rgba(245,158,11,0.05); }
+        .pedido-card.critico { border-left-color: #ef4444; background: rgba(239,68,68,0.1); }
         .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: bold; }
         .badge-recibido { background: rgba(6,182,212,0.2); color: #06b6d4; }
         .badge-proceso { background: rgba(245,158,11,0.2); color: #f59e0b; }
         .badge-reparto { background: rgba(79,70,229,0.2); color: #818cf8; }
         .badge-entregado { background: rgba(34,197,94,0.2); color: #22c55e; }
-        .tab { padding: 8px 16px; border-radius: 30px; cursor: pointer; transition: all 0.2s; font-size: 13px; white-space: nowrap; }
-        .tab.active { background: #06b6d4; color: #020617; font-weight: bold; }
-        .estadistica { background: #0f172a; border-radius: 16px; padding: 12px; text-align: center; }
-        .numero-grande { font-size: 24px; font-weight: 800; color: #06b6d4; }
-        .btn-limpiar { background: #334155; color: #cbd5e1; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; border: none; cursor: pointer; }
-        .btn-limpiar:active { transform: scale(0.96); }
+        .btn-actualizar { background: #06b6d4; color: #020617; padding: 8px 16px; border-radius: 30px; font-weight: bold; border: none; cursor: pointer; margin-bottom: 16px; }
+        .btn-actualizar:active { transform: scale(0.96); }
+        .fecha-info { background: #1e293b; border-radius: 20px; padding: 6px 12px; font-size: 11px; display: inline-block; margin-bottom: 16px; }
         audio { display: none; }
-        .scroll-horizontal { overflow-x: auto; white-space: nowrap; padding-bottom: 8px; }
-        .fecha-info { background: #1e293b; border-radius: 20px; padding: 6px 12px; font-size: 11px; display: inline-block; margin-bottom: 10px; }
-        .cargando { text-align: center; padding: 40px; color: #64748b; }
+        .titulo { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+        .refresco { font-size: 10px; color: #64748b; margin-bottom: 16px; }
     </style>
 </head>
 <body>
@@ -35,60 +31,28 @@
 <div id="loader" class="flex justify-center items-center h-screen">
     <div class="text-center">
         <div class="w-10 h-10 border-4 border-cyan-400/20 border-t-cyan-400 rounded-full animate-spin mx-auto mb-4"></div>
-        <p>Cargando monitor desde Excel...</p>
+        <p>Cargando monitor...</p>
     </div>
 </div>
 
 <div id="app" style="display: none;">
     
-    <!-- Cabecera -->
-    <div class="flex justify-between items-center mb-5 flex-wrap gap-3">
+    <!-- Cabecera simple -->
+    <div class="flex justify-between items-center mb-4">
         <div>
-            <h1 class="text-xl font-black italic uppercase text-cyan-400">📊 Monitor</h1>
-            <p class="text-white/40 text-[10px]">Datos desde la hoja de cálculo</p>
+            <div class="titulo">📊 MONITOR DE PEDIDOS</div>
+            <div class="refresco">Actualización automática cada 10 segundos</div>
         </div>
-        <div class="flex gap-2">
-            <button id="btnLimpiar" class="btn-limpiar">🗑️ ACTUALIZAR</button>
-            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-xl text-xs font-bold">🔊 ACTIVAR SONIDO</button>
-        </div>
+        <button id="btnActualizar" class="btn-actualizar">🔄 ACTUALIZAR</button>
     </div>
 
-    <!-- Fecha actual -->
+    <!-- Fecha -->
     <div class="text-center mb-4">
         <span class="fecha-info" id="fechaActual"></span>
     </div>
 
-    <!-- Estadísticas -->
-    <div class="grid grid-cols-2 gap-3 mb-5">
-        <div class="estadistica">
-            <div class="numero-grande" id="totalPendientes">0</div>
-            <div class="text-[10px] text-white/50">⚠️ Sin confirmar</div>
-        </div>
-        <div class="estadistica">
-            <div class="numero-grande text-amber-400" id="totalCocina">0</div>
-            <div class="text-[10px] text-white/50">🍳 En cocina</div>
-        </div>
-        <div class="estadistica">
-            <div class="numero-grande text-purple-400" id="totalReparto">0</div>
-            <div class="text-[10px] text-white/50">🛵 En reparto</div>
-        </div>
-        <div class="estadistica">
-            <div class="numero-grande text-emerald-400" id="totalEntregados">0</div>
-            <div class="text-[10px] text-white/50">✅ Entregados hoy</div>
-        </div>
-    </div>
-
-    <!-- Tabs -->
-    <div class="scroll-horizontal flex gap-2 mb-5">
-        <div class="tab active" data-tab="pendientes">⚠️ PENDIENTES</div>
-        <div class="tab" data-tab="cocina">🍳 EN COCINA</div>
-        <div class="tab" data-tab="reparto">🛵 EN REPARTO</div>
-        <div class="tab" data-tab="entregados">✅ ENTREGADOS</div>
-        <div class="tab" data-tab="historial">📜 HISTORIAL (todo)</div>
-    </div>
-
-    <!-- Lista de pedidos -->
-    <div id="listaPedidos" class="cargando">Cargando pedidos...</div>
+    <!-- Lista de pedidos (solo lo que importa) -->
+    <div id="listaPedidos"></div>
 
 </div>
 
@@ -99,13 +63,9 @@
 <script>
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
     
-    let todosLosPedidos = [];
-    let restaurantes = [];
     let sonidoActivado = localStorage.getItem('monitor_sonido') === 'true';
     let audioElement = null;
-    let tabActual = 'pendientes';
-    let ultimoConteoPendientes = 0;
-    let hoyStr = null;
+    let ultimoConteo = 0;
 
     function initAudio() {
         audioElement = document.getElementById('audio-alerta');
@@ -119,122 +79,46 @@
         }
     }
 
-    function getFechaHoyStr() {
-        const hoy = new Date();
-        return hoy.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
-
-    function formatearFechaExcel(fechaStr) {
-        if (!fechaStr) return null;
-        // La fecha en Excel puede venir como "27/05/2026 5:20:25" o como objeto Date
-        if (fechaStr instanceof Date) {
-            return fechaStr.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    function activarSonido() {
+        sonidoActivado = !sonidoActivado;
+        localStorage.setItem('monitor_sonido', sonidoActivado);
+        const btn = document.getElementById('btnActivarSonido');
+        if (sonidoActivado) {
+            btn.innerHTML = '🔊 SONIDO ON';
+            btn.style.background = '#22c55e';
+            playSound();
+        } else {
+            btn.innerHTML = '🔇 SONIDO OFF';
+            btn.style.background = '#334155';
         }
-        // Extraer solo la parte de la fecha (YYYY-MM-DD o DD/MM/YYYY)
-        const partes = fechaStr.split(' ');
-        const fechaParte = partes[0];
-        if (fechaParte.includes('/')) {
-            const [dia, mes, anio] = fechaParte.split('/');
-            return `${dia.padStart(2,'0')}/${mes.padStart(2,'0')}/${anio}`;
-        }
-        if (fechaParte.includes('-')) {
-            const [anio, mes, dia] = fechaParte.split('-');
-            return `${dia}/${mes}/${anio}`;
-        }
-        return fechaParte;
-    }
-
-    async function cargarDatos() {
-        try {
-            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
-            const data = await response.json();
-            
-            restaurantes = data.RESTAURANTES || [];
-            const pedidosRaw = data.PEDIDOS || [];
-            
-            // Procesar pedidos y filtrar por fecha si es necesario
-            todosLosPedidos = pedidosRaw.map(p => {
-                let fecha = null;
-                let fechaStr = p.FECHA || '';
-                if (fechaStr) {
-                    if (fechaStr instanceof Date) {
-                        fecha = fechaStr.toLocaleDateString('es-ES');
-                    } else {
-                        const partes = fechaStr.split(' ');
-                        const fechaParte = partes[0];
-                        if (fechaParte.includes('/')) {
-                            const [dia, mes, anio] = fechaParte.split('/');
-                            fecha = `${dia}/${mes}/${anio}`;
-                        } else if (fechaParte.includes('-')) {
-                            const [anio, mes, dia] = fechaParte.split('-');
-                            fecha = `${dia}/${mes}/${anio}`;
-                        } else {
-                            fecha = fechaParte;
-                        }
-                    }
-                }
-                
-                return {
-                    id: p.ID_PEDIDO || '',
-                    cliente: p.CLIENTE || '',
-                    direccion: p.DIRECCION || '',
-                    total: parseFloat(p.TOTAL) || 0,
-                    estado: (p.ESTADO || 'RECIBIDO').toUpperCase(),
-                    repartidor: p.REPARTIDOR || '',
-                    restaurante_id: p.ID_RESTAURANTE || '',
-                    fecha: fecha,
-                    fechaRaw: p.FECHA,
-                    detalle: p.PEDIDO_DETALLE || ''
-                };
-            });
-            
-            console.log("📦 Pedidos cargados desde Excel:", todosLosPedidos.length);
-            return true;
-        } catch (error) {
-            console.error("Error cargando datos:", error);
-            return false;
-        }
-    }
-
-    function getNombreRestaurante(idRest) {
-        const rest = restaurantes.find(r => String(r.ID_RESTAURANTE).trim() === String(idRest).trim());
-        return rest ? (rest.NOMBRE_RESTAURANTE || rest.NOMBRE || idRest) : idRest;
     }
 
     function getTextoEstado(estado) {
         const e = (estado || '').toUpperCase();
-        if (e === 'RECIBIDO') return '📥 RECIBIDO';
-        if (e === 'NUEVO') return '🆕 NUEVO';
+        if (e === 'RECIBIDO' || e === 'NUEVO') return '📥 SIN CONFIRMAR';
         if (e === 'EN PROCESO') return '🍳 EN COCINA';
         if (e === 'LISTO') return '✅ LISTO';
         if (e === 'RECOGIDO' || e === 'EN CAMINO') return '🛵 EN REPARTO';
         if (e === 'LLEGÓ') return '📍 EN EL CLIENTE';
         if (e === 'ENTREGADO' || e === 'FINALIZADO') return '🎉 ENTREGADO';
-        if (e === 'RECHAZADO') return '❌ RECHAZADO';
-        return estado || 'RECIBIDO';
+        return estado || '📥 RECIBIDO';
     }
 
-    function getEstadoParaFiltro(estado) {
+    function getColorEstado(estado) {
         const e = (estado || '').toUpperCase();
-        if (e === 'RECIBIDO' || e === 'NUEVO') return 'pendiente';
-        if (e === 'EN PROCESO' || e === 'LISTO') return 'cocina';
-        if (e === 'RECOGIDO' || e === 'EN CAMINO' || e === 'LLEGÓ') return 'reparto';
-        if (e === 'ENTREGADO' || e === 'FINALIZADO') return 'entregado';
-        return 'pendiente';
+        if (e === 'RECIBIDO' || e === 'NUEVO') return 'badge-recibido';
+        if (e === 'EN PROCESO' || e === 'LISTO') return 'badge-proceso';
+        if (e === 'RECOGIDO' || e === 'EN CAMINO' || e === 'LLEGÓ') return 'badge-reparto';
+        if (e === 'ENTREGADO' || e === 'FINALIZADO') return 'badge-entregado';
+        return 'badge-recibido';
     }
 
-    function esPedidoDeHoy(fecha) {
-        if (!fecha) return false;
-        return fecha === hoyStr;
-    }
-
-    function calcularTiempoTranscurrido(fechaRaw) {
-        if (!fechaRaw) return { texto: '---', minutos: 0 };
+    function getTiempoTranscurrido(fechaRaw) {
+        if (!fechaRaw) return { texto: '---', minutos: 999 };
         let fechaDate;
         if (fechaRaw instanceof Date) {
             fechaDate = fechaRaw;
         } else if (typeof fechaRaw === 'string') {
-            // Intentar parsear la fecha
             const partes = fechaRaw.split(' ');
             const fechaParte = partes[0];
             let horaParte = partes[1] || '00:00:00';
@@ -250,12 +134,12 @@
                 fechaDate = new Date(fechaRaw);
             }
         }
-        if (!fechaDate || isNaN(fechaDate.getTime())) return { texto: '---', minutos: 0 };
+        if (!fechaDate || isNaN(fechaDate.getTime())) return { texto: '---', minutos: 999 };
         
         const ahora = new Date();
         const diffMs = ahora - fechaDate;
         const diffMin = Math.floor(diffMs / 60000);
-        if (diffMin < 1) return { texto: 'Hace segundos', minutos: 0 };
+        if (diffMin < 1) return { texto: 'Ahora mismo', minutos: 0 };
         if (diffMin < 60) return { texto: `Hace ${diffMin} min`, minutos: diffMin };
         const horas = Math.floor(diffMin / 60);
         const mins = diffMin % 60;
@@ -272,73 +156,139 @@
         });
     }
 
-    function getPedidosFiltrados() {
-        if (tabActual === 'pendientes') {
-            return todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'pendiente' && esPedidoDeHoy(p.fecha));
-        } else if (tabActual === 'cocina') {
-            return todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'cocina' && esPedidoDeHoy(p.fecha));
-        } else if (tabActual === 'reparto') {
-            return todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'reparto' && esPedidoDeHoy(p.fecha));
-        } else if (tabActual === 'entregados') {
-            return todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'entregado' && esPedidoDeHoy(p.fecha));
-        } else {
-            return todosLosPedidos.slice().sort((a,b) => new Date(b.fechaRaw) - new Date(a.fechaRaw));
+    async function cargarPedidos() {
+        try {
+            const response = await fetch(`${scriptURL}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            
+            const restaurantes = data.RESTAURANTES || [];
+            const pedidosRaw = data.PEDIDOS || [];
+            
+            // Filtrar solo pedidos RECIENTES (últimas 24 horas) y en estado activo
+            const ahora = new Date();
+            const hace24h = new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
+            
+            const pedidosFiltrados = pedidosRaw.filter(p => {
+                const estado = (p.ESTADO || '').toUpperCase();
+                // Mostrar pedidos que NO estén entregados ni rechazados
+                const esActivo = estado !== 'ENTREGADO' && estado !== 'FINALIZADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO';
+                if (!esActivo) return false;
+                
+                // Filtrar por fecha (solo últimos 7 días para no saturar)
+                let fechaPedido = null;
+                if (p.FECHA) {
+                    if (p.FECHA instanceof Date) {
+                        fechaPedido = p.FECHA;
+                    } else {
+                        const partes = p.FECHA.split(' ');
+                        const fechaParte = partes[0];
+                        if (fechaParte.includes('/')) {
+                            const [dia, mes, anio] = fechaParte.split('/');
+                            fechaPedido = new Date(anio, mes-1, dia);
+                        }
+                    }
+                }
+                if (fechaPedido) {
+                    const diffDias = (ahora - fechaPedido) / (1000 * 60 * 60 * 24);
+                    if (diffDias > 7) return false;
+                }
+                return true;
+            });
+            
+            // Ordenar por fecha (más reciente primero)
+            pedidosFiltrados.sort((a, b) => {
+                const fechaA = a.FECHA ? new Date(a.FECHA) : 0;
+                const fechaB = b.FECHA ? new Date(b.FECHA) : 0;
+                return fechaB - fechaA;
+            });
+            
+            // Mapear con datos del restaurante
+            const pedidos = pedidosFiltrados.map(p => {
+                const restaurante = restaurantes.find(r => String(r.ID_RESTAURANTE).trim() === String(p.ID_RESTAURANTE).trim());
+                return {
+                    id: p.ID_PEDIDO,
+                    cliente: p.CLIENTE,
+                    direccion: p.DIRECCION,
+                    total: parseFloat(p.TOTAL) || 0,
+                    estado: p.ESTADO,
+                    restaurante_nombre: restaurante ? (restaurante.NOMBRE_RESTAURANTE || restaurante.NOMBRE) : 'Restaurante',
+                    fechaRaw: p.FECHA,
+                    detalle: p.PEDIDO_DETALLE
+                };
+            });
+            
+            // Sonido si hay nuevos pedidos pendientes
+            const pendientes = pedidos.filter(p => {
+                const e = (p.estado || '').toUpperCase();
+                return e === 'RECIBIDO' || e === 'NUEVO';
+            }).length;
+            
+            if (pendientes > ultimoConteo && pendientes > 0) {
+                playSound();
+                if (Notification.permission === 'granted') {
+                    new Notification('📦 Nuevo pedido sin confirmar', {
+                        body: `Hay ${pendientes} pedido(s) pendientes de aceptar.`,
+                        icon: 'https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg'
+                    });
+                }
+            }
+            ultimoConteo = pendientes;
+            
+            renderizarPedidos(pedidos);
+            
+        } catch (error) {
+            console.error("Error cargando pedidos:", error);
+            document.getElementById('listaPedidos').innerHTML = '<div class="text-center py-10 text-red-400">❌ Error al cargar datos</div>';
         }
     }
 
-    function renderizarPedidos() {
-        const filtrados = getPedidosFiltrados();
+    function renderizarPedidos(pedidos) {
         const contenedor = document.getElementById('listaPedidos');
         
-        if (!filtrados.length) {
-            let mensaje = '';
-            if (tabActual === 'historial') {
-                mensaje = '📜 No hay pedidos en el historial';
-            } else {
-                mensaje = '📭 No hay pedidos en esta categoría hoy';
-            }
-            contenedor.innerHTML = `<div class="text-center py-10 text-white/30">${mensaje}</div>`;
+        if (!pedidos.length) {
+            contenedor.innerHTML = '<div class="text-center py-10 text-white/30">📭 No hay pedidos activos</div>';
             return;
         }
-
+        
         let html = '';
-        for (let p of filtrados) {
-            const esPendiente = getEstadoParaFiltro(p.estado) === 'pendiente';
-            const tiempo = calcularTiempoTranscurrido(p.fechaRaw);
+        for (let p of pedidos) {
+            const estado = (p.estado || 'RECIBIDO').toUpperCase();
+            const tiempo = getTiempoTranscurrido(p.fechaRaw);
             let alertaClass = '';
-            let alertaMensaje = '';
-            if (esPendiente && tiempo.minutos >= 10 && tabActual !== 'historial') {
-                alertaClass = 'critico';
-                alertaMensaje = '<span class="text-red-400 text-[10px] ml-2">🔴 +10 min</span>';
-            } else if (esPendiente && tiempo.minutos >= 5 && tabActual !== 'historial') {
-                alertaClass = 'alerta';
-                alertaMensaje = '<span class="text-yellow-400 text-[10px] ml-2">🟡 +5 min</span>';
+            if (estado === 'RECIBIDO' || estado === 'NUEVO') {
+                if (tiempo.minutos >= 10) {
+                    alertaClass = 'critico';
+                } else if (tiempo.minutos >= 5) {
+                    alertaClass = 'alerta';
+                }
             }
-
-            const mostrarFecha = tabActual === 'historial' ? `<div class="text-white/30 text-[9px] mb-1">📅 ${p.fecha || 'Fecha desconocida'}</div>` : '';
-
+            
+            // Dirección truncada
+            const direccionShort = p.direccion ? p.direccion.substring(0, 40) : 'Sin dirección';
+            
             html += `
                 <div class="pedido-card ${alertaClass}">
-                    ${mostrarFecha}
-                    <div class="flex justify-between items-start">
+                    <div class="flex justify-between items-start mb-2">
                         <div>
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="font-mono font-bold text-cyan-400 text-sm">#${escapeHtml(p.id)}</span>
-                                <span class="badge ${getEstadoParaFiltro(p.estado) === 'pendiente' ? 'badge-recibido' : (getEstadoParaFiltro(p.estado) === 'cocina' ? 'badge-proceso' : (getEstadoParaFiltro(p.estado) === 'reparto' ? 'badge-reparto' : 'badge-entregado'))}">${getTextoEstado(p.estado)}</span>
-                                ${alertaMensaje}
-                            </div>
-                            <div class="text-white text-sm font-bold mt-1">${escapeHtml(p.cliente || 'Cliente')}</div>
-                            <div class="text-white/40 text-[11px] mt-1">${escapeHtml(p.direccion || 'Sin dirección')}</div>
+                            <span class="font-mono font-bold text-cyan-400">#${escapeHtml(p.id)}</span>
+                            <span class="badge ${getColorEstado(p.estado)} ml-2">${getTextoEstado(p.estado)}</span>
+                            ${alertaClass === 'critico' ? '<span class="text-red-400 text-[10px] ml-2">🔴 URGENTE</span>' : (alertaClass === 'alerta' ? '<span class="text-yellow-400 text-[10px] ml-2">🟡 ATENCIÓN</span>' : '')}
                         </div>
                         <div class="text-right">
-                            <div class="text-emerald-400 font-bold text-base">${p.total.toFixed(2)}€</div>
+                            <div class="text-emerald-400 font-bold">${p.total.toFixed(2)}€</div>
                             <div class="text-white/40 text-[10px]">${tiempo.texto}</div>
                         </div>
                     </div>
-                    <div class="mt-2 pt-2 border-t border-white/10 flex justify-between items-center">
-                        <div class="text-[11px]">
-                            <span class="text-white/60">🏪 ${escapeHtml(getNombreRestaurante(p.restaurante_id))}</span>
-                            ${p.repartidor ? `<span class="text-white/40 ml-2">🛵 ${escapeHtml(p.repartidor)}</span>` : ''}
+                    
+                    <div class="text-white text-sm font-bold">${escapeHtml(p.cliente || 'Cliente sin nombre')}</div>
+                    <div class="text-white/40 text-[11px] mt-1">📍 ${escapeHtml(direccionShort)}</div>
+                    
+                    <div class="mt-3 pt-2 border-t border-white/10 flex justify-between items-center">
+                        <div class="text-[12px]">
+                            <span class="text-cyan-400 font-bold">🏪 ${escapeHtml(p.restaurante_nombre)}</span>
+                        </div>
+                        <div class="text-[10px] text-white/30">
+                            ⏰ ${p.fechaRaw ? new Date(p.fechaRaw).toLocaleTimeString() : '---'}
                         </div>
                     </div>
                 </div>
@@ -347,94 +297,35 @@
         contenedor.innerHTML = html;
     }
 
-    function actualizarEstadisticas() {
-        const pendientes = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'pendiente' && esPedidoDeHoy(p.fecha)).length;
-        const cocina = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'cocina' && esPedidoDeHoy(p.fecha)).length;
-        const reparto = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'reparto' && esPedidoDeHoy(p.fecha)).length;
-        const entregados = todosLosPedidos.filter(p => getEstadoParaFiltro(p.estado) === 'entregado' && esPedidoDeHoy(p.fecha)).length;
-        
-        document.getElementById('totalPendientes').innerText = pendientes;
-        document.getElementById('totalCocina').innerText = cocina;
-        document.getElementById('totalReparto').innerText = reparto;
-        document.getElementById('totalEntregados').innerText = entregados;
-
-        if (pendientes > ultimoConteoPendientes && pendientes > 0) {
-            playSound();
-        }
-        ultimoConteoPendientes = pendientes;
+    function actualizar() {
+        document.getElementById('listaPedidos').innerHTML = '<div class="text-center py-10 text-white/30">🔄 Actualizando...</div>';
+        cargarPedidos();
     }
 
-    async function actualizarTodo() {
-        document.getElementById('listaPedidos').innerHTML = '<div class="cargando">Actualizando...</div>';
-        const exito = await cargarDatos();
-        if (exito) {
-            actualizarEstadisticas();
-            renderizarPedidos();
-        } else {
-            document.getElementById('listaPedidos').innerHTML = '<div class="text-center py-10 text-red-400">❌ Error al cargar datos. Verifica conexión.</div>';
-        }
-    }
-
-    function limpiarVista() {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        const tabPendientes = document.querySelector('.tab[data-tab="pendientes"]');
-        if (tabPendientes) {
-            tabPendientes.classList.add('active');
-            tabActual = 'pendientes';
-            renderizarPedidos();
-        }
-        Swal.fire({ title: '✅ Vista actualizada', text: 'Mostrando pedidos pendientes de hoy', icon: 'success', background: '#020617', color: 'white', timer: 1500, showConfirmButton: false });
-    }
-
-    function activarSonido() {
-        sonidoActivado = !sonidoActivado;
-        localStorage.setItem('monitor_sonido', sonidoActivado);
-        const btn = document.getElementById('btnActivarSonido');
-        if (sonidoActivado) {
-            btn.innerHTML = '🔊 SONIDO ACTIVADO';
-            btn.style.background = '#22c55e';
-            btn.style.color = '#020617';
-            playSound();
-        } else {
-            btn.innerHTML = '🔇 ACTIVAR SONIDO';
-            btn.style.background = '#f59e0b';
-            btn.style.color = '#020617';
-        }
-    }
-
-    async function iniciarMonitor() {
+    function iniciarMonitor() {
         initAudio();
-        hoyStr = getFechaHoyStr();
-        document.getElementById('fechaActual').innerHTML = hoyStr;
         
-        await actualizarTodo();
+        // Fecha actual
+        const hoy = new Date();
+        document.getElementById('fechaActual').innerHTML = hoy.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
         
+        // Añadir botón de sonido
+        const btnSonido = document.createElement('button');
+        btnSonido.id = 'btnActivarSonido';
+        btnSonido.className = 'btn-actualizar ml-2';
+        btnSonido.style.background = sonidoActivado ? '#22c55e' : '#334155';
+        btnSonido.innerHTML = sonidoActivado ? '🔊 SONIDO ON' : '🔇 SONIDO OFF';
+        btnSonido.onclick = activarSonido;
+        document.querySelector('.flex.justify-between.items-center.mb-4').appendChild(btnSonido);
+        
+        document.getElementById('btnActualizar').onclick = () => actualizar();
+        
+        cargarPedidos();
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-
-        const btnSonido = document.getElementById('btnActivarSonido');
-        if (sonidoActivado) {
-            btnSonido.innerHTML = '🔊 SONIDO ACTIVADO';
-            btnSonido.style.background = '#22c55e';
-        } else {
-            btnSonido.innerHTML = '🔇 ACTIVAR SONIDO';
-            btnSonido.style.background = '#f59e0b';
-        }
-        btnSonido.onclick = activarSonido;
-
-        document.getElementById('btnLimpiar').onclick = () => actualizarTodo();
-
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.onclick = () => {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                tabActual = tab.dataset.tab;
-                renderizarPedidos();
-            };
-        });
-
-        // Actualizar automáticamente cada 15 segundos
-        setInterval(actualizarTodo, 15000);
+        
+        // Actualizar cada 10 segundos
+        setInterval(cargarPedidos, 10000);
         
         if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
             Notification.requestPermission();

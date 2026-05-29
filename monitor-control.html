@@ -6,6 +6,9 @@
     <title>Aguadulce Express - Control Operativo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #020617; font-family: system-ui, sans-serif; color: white; padding: 16px; }
@@ -23,7 +26,12 @@
         select, input { background: #1e293b; border: 1px solid #334155; border-radius: 30px; padding: 8px 16px; color: white; outline: none; }
         .limpiado { opacity: 0.5; background: #0f172a; border-left-color: #22c55e; }
         .stats-card { background: #0f172a; border-radius: 16px; padding: 12px; }
+        .nuevo-pedido { animation: slideIn 0.5s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         audio { display: none; }
+        .conexion-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+        .conectado { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
+        .desconectado { background: #ef4444; }
     </style>
 </head>
 <body>
@@ -41,7 +49,11 @@
     <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
         <div>
             <div class="titulo text-xl font-bold">🎮 PANEL DE CONTROL</div>
-            <div class="text-white/40 text-[10px]">Monitoreo en tiempo real - Pedidos no atendidos</div>
+            <div class="text-white/40 text-[10px] flex items-center gap-2">
+                <span>Monitoreo en tiempo real</span>
+                <span class="conexion-status" id="statusFirebase"></span>
+                <span id="statusTexto" class="text-[9px]">Conectando...</span>
+            </div>
         </div>
         <button id="btnLimpiarTodo" class="btn-control btn-danger text-sm">🗑️ LIMPIAR VISTA</button>
     </div>
@@ -102,85 +114,208 @@
 </audio>
 
 <script>
+    // ============================================
+    // CONFIGURACIÓN
+    // ============================================
     const URL_GS = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
     const STORAGE_KEY = 'monitor_pedidos_limpiados';
+    
+    // Firebase config
+    const firebaseConfig = {
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/"
+    };
     
     let pedidosLimpiados = new Set();
     let sonidoActivado = true;
     let audioElement = null;
-    let todosLosPedidos = [];
+    let todosLosPedidos = new Map(); // Map de id -> pedido
     let restaurantesLista = [];
-
-    // Cargar pedidos limpiados de localStorage
-    function cargarLimpiados() {
-        const guardados = localStorage.getItem(STORAGE_KEY);
-        if (guardados) {
-            pedidosLimpiados = new Set(JSON.parse(guardados));
+    let db = null;
+    let escuchandoFirebase = false;
+    
+    // ============================================
+    // INICIALIZAR FIREBASE
+    // ============================================
+    function initFirebase() {
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            db = firebase.database();
+            
+            // Actualizar estado de conexión
+            const connectedRef = firebase.database().ref('.info/connected');
+            connectedRef.on('value', (snap) => {
+                const statusElement = document.getElementById('statusFirebase');
+                const statusTexto = document.getElementById('statusTexto');
+                if (snap.val() === true) {
+                    statusElement.className = 'conexion-status conectado';
+                    statusTexto.textContent = 'Tiempo real activo';
+                    statusTexto.style.color = '#22c55e';
+                } else {
+                    statusElement.className = 'conexion-status desconectado';
+                    statusTexto.textContent = 'Desconectado - usando polling';
+                    statusTexto.style.color = '#ef4444';
+                }
+            });
+            
+            console.log("✅ Firebase inicializado");
+            return true;
+        } catch (e) {
+            console.error("❌ Error Firebase:", e);
+            return false;
         }
     }
-
-    // Guardar pedidos limpiados
-    function guardarLimpiados() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([...pedidosLimpiados]));
-    }
-
-    // Limpiar un pedido (no se mostrará más aunque siga activo)
-    function limpiarPedido(idPedido) {
-        pedidosLimpiados.add(idPedido);
-        guardarLimpiados();
-        aplicarFiltros();
+    
+    // ============================================
+    // ESCUCHAR PEDIDOS NUEVOS EN TIEMPO REAL
+    // ============================================
+    function escucharPedidosFirebase() {
+        if (!db || escuchandoFirebase) return;
         
-        Swal.fire({
-            title: '✅ Pedido limpiado',
-            text: 'Este pedido ya no aparecerá en el monitor',
-            icon: 'success',
-            timer: 1500,
-            showConfirmButton: false
-        });
-    }
-
-    // Limpiar todos los pedidos visibles actualmente
-    function limpiarTodosVisibles() {
-        const pedidosFiltrados = filtrarYOrdenarPedidos(todosLosPedidos);
-        pedidosFiltrados.forEach(p => pedidosLimpiados.add(p.id));
-        guardarLimpiados();
-        aplicarFiltros();
+        const pedidosRef = db.ref('pedidos');
         
-        Swal.fire({
-            title: '🧹 Vista limpiada',
-            text: `${pedidosFiltrados.length} pedido(s) eliminado(s) del monitor`,
-            icon: 'info',
-            timer: 2000,
-            showConfirmButton: false
+        // Escuchar NUEVOS pedidos
+        pedidosRef.on('child_added', (snapshot) => {
+            const pedido = snapshot.val();
+            const idPedido = snapshot.key;
+            
+            console.log("🆕 NUEVO PEDIDO DETECTADO EN FIREBASE:", idPedido, pedido);
+            
+            // Verificar si ya lo tenemos
+            if (!todosLosPedidos.has(idPedido)) {
+                // Agregar el pedido
+                const pedidoFormateado = formatearPedidoDesdeFirebase(idPedido, pedido);
+                todosLosPedidos.set(idPedido, pedidoFormateado);
+                
+                // Reproducir sonido
+                playSound();
+                
+                // Mostrar notificación
+                if (Notification.permission === 'granted') {
+                    new Notification('🆕 NUEVO PEDIDO', {
+                        body: `${pedidoFormateado.restaurante_nombre} - ${pedidoFormateado.total}€`,
+                        icon: 'https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg'
+                    });
+                }
+                
+                // Forzar refresco
+                aplicarFiltros();
+            }
         });
+        
+        // Escuchar CAMBIOS en pedidos (estado)
+        pedidosRef.on('child_changed', (snapshot) => {
+            const pedido = snapshot.val();
+            const idPedido = snapshot.key;
+            
+            console.log("🔄 PEDIDO ACTUALIZADO:", idPedido, pedido.estado);
+            
+            if (todosLosPedidos.has(idPedido)) {
+                const pedidoActualizado = formatearPedidoDesdeFirebase(idPedido, pedido);
+                todosLosPedidos.set(idPedido, pedidoActualizado);
+                aplicarFiltros();
+            }
+        });
+        
+        escuchandoFirebase = true;
+        console.log("👂 Escuchando pedidos en tiempo real desde Firebase");
     }
-
-    // Inicializar audio
+    
+    // ============================================
+    // FORMATEAR PEDIDO DESDE FIREBASE
+    // ============================================
+    function formatearPedidoDesdeFirebase(id, data) {
+        const fechaRaw = data.FECHA || data.fecha || new Date().toLocaleString();
+        const tiempo = getTiempoTranscurrido(fechaRaw);
+        
+        return {
+            id: id,
+            cliente: data.CLIENTE || data.cliente || "Cliente",
+            direccion: data.DIRECCION || data.direccion || "",
+            total: parseFloat(data.TOTAL || data.total || 0),
+            estado: data.ESTADO || data.estado || "RECIBIDO",
+            restaurante_nombre: data.restaurante_nombre || data.RESTAURANTE_NOMBRE || "Restaurante",
+            telefonoRestaurante: data.telefono_restaurante || "",
+            fechaRaw: fechaRaw,
+            tiempo: tiempo,
+            nivelAlerta: getNivelAlerta(tiempo.minutos)
+        };
+    }
+    
+    // ============================================
+    // CARGAR DESDE GOOGLE SHEETS (FALBACK)
+    // ============================================
+    async function cargarDesdeGoogleSheets() {
+        try {
+            const response = await fetch(`${URL_GS}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            
+            // IMPORTANTE: Leer de CONFIGURACION y PEDIDOS
+            const pedidosDesdeConfig = data.CONFIGURACION || [];
+            const pedidosDesdePedidos = data.PEDIDOS || [];
+            const restaurantes = data.RESTAURANTES || [];
+            
+            console.log("📦 Pedidos en CONFIGURACION:", pedidosDesdeConfig.length);
+            console.log("📦 Pedidos en PEDIDOS:", pedidosDesdePedidos.length);
+            
+            // Combinar ambos arrays
+            const todosPedidosRaw = [...pedidosDesdeConfig, ...pedidosDesdePedidos];
+            
+            // Para cada pedido, agregar al Map si no existe en Firebase
+            for (const p of todosPedidosRaw) {
+                const idPedido = p.ID_PEDIDO || p.id_pedido;
+                if (idPedido && !todosLosPedidos.has(idPedido)) {
+                    const restaurante = restaurantes.find(r => String(r.ID_RESTAURANTE).trim() === String(p.ID_RESTAURANTE).trim());
+                    const tiempo = getTiempoTranscurrido(p.FECHA || p.fecha);
+                    
+                    todosLosPedidos.set(idPedido, {
+                        id: idPedido,
+                        cliente: p.CLIENTE || p.cliente || "Cliente",
+                        direccion: p.DIRECCION || p.direccion || "",
+                        total: parseFloat(p.TOTAL || p.total || 0),
+                        estado: p.ESTADO || p.estado || "RECIBIDO",
+                        restaurante_nombre: restaurante ? (restaurante.NOMBRE_RESTAURANTE || restaurante.NOMBRE || 'Restaurante') : 'Restaurante',
+                        telefonoRestaurante: restaurante ? (restaurante.TELEFONO || restaurante.CELULAR || '') : '',
+                        fechaRaw: p.FECHA || p.fecha,
+                        tiempo: tiempo,
+                        nivelAlerta: getNivelAlerta(tiempo.minutos)
+                    });
+                }
+            }
+            
+            // Actualizar lista de restaurantes para el filtro
+            const restaurantesUnicos = [...new Set([...todosLosPedidos.values()].map(p => p.restaurante_nombre))].sort();
+            const selectRestaurante = document.getElementById('filtroRestaurante');
+            const valorActual = selectRestaurante.value;
+            selectRestaurante.innerHTML = '<option value="TODOS">📋 TODOS LOS RESTAURANTES</option>';
+            restaurantesUnicos.forEach(r => {
+                selectRestaurante.innerHTML += `<option value="${escapeHtml(r)}">🏪 ${escapeHtml(r)}</option>`;
+            });
+            if (valorActual) selectRestaurante.value = valorActual;
+            
+            console.log("✅ Total pedidos en memoria:", todosLosPedidos.size);
+            
+        } catch (error) {
+            console.error("❌ Error cargando desde Sheets:", error);
+        }
+    }
+    
+    // ============================================
+    // FUNCIONES UTILITARIAS
+    // ============================================
     function initAudio() {
         audioElement = document.getElementById('audio-alerta');
         if (audioElement) audioElement.volume = 0.8;
     }
-
+    
     function playSound() {
         if (audioElement && sonidoActivado) {
             audioElement.currentTime = 0;
             audioElement.play().catch(e => console.log('Audio necesita interacción usuario'));
         }
     }
-
-    // Formatear estado
-    function getTextoEstado(estado) {
-        const e = (estado || '').toUpperCase();
-        if (e === 'RECIBIDO' || e === 'NUEVO') return '📥 PENDIENTE';
-        if (e === 'EN PROCESO') return '🍳 EN COCINA';
-        if (e === 'LISTO') return '✅ LISTO';
-        if (e === 'RECOGIDO' || e === 'EN CAMINO') return '🛵 EN REPARTO';
-        if (e === 'LLEGÓ') return '📍 EN CLIENTE';
-        if (e === 'ENTREGADO' || e === 'FINALIZADO') return '🎉 ENTREGADO';
-        return estado || '📥 PENDIENTE';
-    }
-
-    // Obtener tiempo transcurrido
+    
     function getTiempoTranscurrido(fechaRaw) {
         if (!fechaRaw) return { texto: '---', minutos: 999 };
         
@@ -216,21 +351,101 @@
         const mins = diffMin % 60;
         return { texto: `${horas}h ${mins}min`, minutos: diffMin };
     }
-
-    // Obtener nivel de alerta
+    
     function getNivelAlerta(minutos) {
         if (minutos >= 10) return 'critico';
         if (minutos >= 5) return 'alerta';
         return 'normal';
     }
-
-    // Filtrar y ordenar pedidos
-    function filtrarYOrdenarPedidos(pedidos) {
+    
+    function getTextoEstado(estado) {
+        const e = (estado || '').toUpperCase();
+        if (e === 'RECIBIDO' || e === 'NUEVO') return '📥 PENDIENTE';
+        if (e === 'EN PROCESO') return '🍳 EN COCINA';
+        if (e === 'LISTO') return '✅ LISTO';
+        if (e === 'RECOGIDO' || e === 'EN CAMINO') return '🛵 EN REPARTO';
+        if (e === 'LLEGÓ') return '📍 EN CLIENTE';
+        if (e === 'ENTREGADO' || e === 'FINALIZADO') return '🎉 ENTREGADO';
+        return estado || '📥 PENDIENTE';
+    }
+    
+    function getColorEstado(estado) {
+        const e = (estado || '').toUpperCase();
+        if (e === 'RECIBIDO' || e === 'NUEVO') return 'badge-recibido';
+        if (e === 'EN PROCESO') return 'badge-proceso';
+        return 'badge-recibido';
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    function limpiarPedido(idPedido) {
+        pedidosLimpiados.add(idPedido);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...pedidosLimpiados]));
+        aplicarFiltros();
+        
+        Swal.fire({
+            title: '✅ Pedido limpiado',
+            text: 'Ya no aparecerá en el monitor',
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    }
+    
+    function limpiarTodosVisibles() {
+        const pedidosFiltrados = filtrarYOrdenarPedidos();
+        pedidosFiltrados.forEach(p => pedidosLimpiados.add(p.id));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...pedidosLimpiados]));
+        aplicarFiltros();
+        
+        Swal.fire({
+            title: '🧹 Vista limpiada',
+            text: `${pedidosFiltrados.length} pedido(s) eliminado(s) del monitor`,
+            icon: 'info',
+            timer: 2000,
+            showConfirmButton: false
+        });
+    }
+    
+    function llamarRestaurante(telefono, nombreRestaurante, idPedido) {
+        if (telefono && telefono !== '') {
+            window.location.href = `tel:${telefono}`;
+            Swal.fire({
+                title: '📞 Llamando...',
+                text: `${nombreRestaurante} - Pedido #${idPedido}`,
+                icon: 'info',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire({
+                title: '⚠️ Sin teléfono',
+                text: `No hay teléfono registrado para ${nombreRestaurante}`,
+                icon: 'warning',
+                timer: 2000
+            });
+        }
+    }
+    
+    // ============================================
+    // FILTRAR Y RENDERIZAR
+    // ============================================
+    function filtrarYOrdenarPedidos() {
         const restauranteFiltro = document.getElementById('filtroRestaurante').value;
         const fechaFiltro = document.getElementById('filtroFecha').value;
         const ordenarPor = document.getElementById('ordenarPor').value;
         
-        let filtrados = pedidos.filter(p => {
+        let pedidosArray = [...todosLosPedidos.values()];
+        
+        let filtrados = pedidosArray.filter(p => {
             // Filtrar por restaurante
             if (restauranteFiltro !== 'TODOS' && p.restaurante_nombre !== restauranteFiltro) return false;
             
@@ -261,8 +476,7 @@
         
         return filtrados;
     }
-
-    // Renderizar lista
+    
     function renderizarPedidos(pedidosFiltrados) {
         const contenedor = document.getElementById('listaPedidos');
         
@@ -276,9 +490,9 @@
         document.getElementById('criticoPedidos').textContent = critico;
         document.getElementById('ultimaActualizacion').textContent = new Date().toLocaleTimeString();
         
-        // Contar atendidos hoy (entregados en el día)
+        // Contar atendidos hoy
         const hoy = new Date().toLocaleDateString();
-        const atendidos = todosLosPedidos.filter(p => {
+        const atendidos = [...todosLosPedidos.values()].filter(p => {
             const estado = (p.estado || '').toUpperCase();
             const fechaPedido = p.fechaRaw ? p.fechaRaw.split(' ')[0] : '';
             return (estado === 'ENTREGADO' || estado === 'FINALIZADO') && fechaPedido === hoy;
@@ -293,8 +507,6 @@
         let html = '';
         for (let p of pedidosFiltrados) {
             const alertaClass = p.nivelAlerta;
-            const estado = (p.estado || 'RECIBIDO').toUpperCase();
-            const direccionShort = p.direccion ? p.direccion.substring(0, 50) : 'Sin dirección';
             
             html += `
                 <div class="pedido-card ${alertaClass}">
@@ -306,7 +518,7 @@
                                 ${alertaClass === 'critico' ? '<span class="text-red-400 text-[10px] font-bold">🔴 CRÍTICO - LLAMAR AHORA</span>' : (alertaClass === 'alerta' ? '<span class="text-yellow-400 text-[10px]">🟡 ATENCIÓN</span>' : '')}
                             </div>
                             <div class="text-white text-sm font-bold">${escapeHtml(p.cliente || 'Cliente')}</div>
-                            <div class="text-white/40 text-[11px]">📍 ${escapeHtml(direccionShort)}</div>
+                            <div class="text-white/40 text-[11px]">📍 ${escapeHtml(p.direccion.substring(0, 50))}</div>
                         </div>
                         <div class="text-right">
                             <div class="text-emerald-400 font-bold text-lg">${p.total.toFixed(2)}€</div>
@@ -319,11 +531,11 @@
                             <span class="text-cyan-400 font-bold">🏪 ${escapeHtml(p.restaurante_nombre)}</span>
                         </div>
                         <div class="flex gap-2">
-                            <button onclick="llamarRestaurante('${escapeHtml(p.telefonoRestaurante)}', '${escapeHtml(p.restaurante_nombre)}', '${escapeHtml(p.id)}')" 
+                            <button onclick="window.llamarRestaurante('${escapeHtml(p.telefonoRestaurante)}', '${escapeHtml(p.restaurante_nombre)}', '${escapeHtml(p.id)}')" 
                                     class="bg-red-600 text-white text-[11px] px-3 py-1.5 rounded-full hover:bg-red-700 transition">
                                 📞 LLAMAR
                             </button>
-                            <button onclick="limpiarPedido('${p.id}')" 
+                            <button onclick="window.limpiarPedido('${p.id}')" 
                                     class="bg-green-600 text-white text-[11px] px-3 py-1.5 rounded-full hover:bg-green-700 transition">
                                 ✅ OK
                             </button>
@@ -334,110 +546,37 @@
         }
         contenedor.innerHTML = html;
     }
-
-    function getColorEstado(estado) {
-        const e = (estado || '').toUpperCase();
-        if (e === 'RECIBIDO' || e === 'NUEVO') return 'badge-recibido';
-        if (e === 'EN PROCESO') return 'badge-proceso';
-        return 'badge-recibido';
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-
-    function llamarRestaurante(telefono, nombreRestaurante, idPedido) {
-        if (telefono && telefono !== '') {
-            window.location.href = `tel:${telefono}`;
-            Swal.fire({
-                title: '📞 Llamando...',
-                text: `${nombreRestaurante} - Pedido #${idPedido}`,
-                icon: 'info',
-                timer: 2000,
-                showConfirmButton: false
-            });
-        } else {
-            Swal.fire({
-                title: '⚠️ Sin teléfono',
-                text: `No hay teléfono registrado para ${nombreRestaurante}`,
-                icon: 'warning',
-                timer: 2000
-            });
-        }
-    }
-
-    // Cargar pedidos desde Google Sheets
-    async function cargarPedidos() {
-        try {
-            const response = await fetch(`${URL_GS}?action=cargarTodo&t=${Date.now()}`);
-            const data = await response.json();
-            
-            const restaurantes = data.RESTAURANTES || [];
-            const pedidosRaw = data.PEDIDOS || [];
-            const configuracion = data.CONFIGURACION || [];
-            
-            console.log("📦 Pedidos totales:", pedidosRaw.length);
-            
-            // Construir lista de pedidos
-            todosLosPedidos = pedidosRaw.map(p => {
-                const restaurante = restaurantes.find(r => String(r.ID_RESTAURANTE).trim() === String(p.ID_RESTAURANTE).trim());
-                const tiempo = getTiempoTranscurrido(p.FECHA);
-                
-                return {
-                    id: p.ID_PEDIDO,
-                    cliente: p.CLIENTE,
-                    direccion: p.DIRECCION,
-                    total: parseFloat(p.TOTAL) || 0,
-                    estado: p.ESTADO,
-                    restaurante_nombre: restaurante ? (restaurante.NOMBRE_RESTAURANTE || restaurante.NOMBRE || 'Restaurante') : 'Restaurante',
-                    telefonoRestaurante: restaurante ? (restaurante.TELEFONO || restaurante.CELULAR || restaurante.WHATSAPP || '') : '',
-                    fechaRaw: p.FECHA,
-                    tiempo: tiempo,
-                    nivelAlerta: getNivelAlerta(tiempo.minutos)
-                };
-            });
-            
-            // Cargar restaurantes para el filtro
-            const restaurantesUnicos = [...new Set(todosLosPedidos.map(p => p.restaurante_nombre))].sort();
-            const selectRestaurante = document.getElementById('filtroRestaurante');
-            selectRestaurante.innerHTML = '<option value="TODOS">📋 TODOS LOS RESTAURANTES</option>';
-            restaurantesUnicos.forEach(r => {
-                selectRestaurante.innerHTML += `<option value="${escapeHtml(r)}">🏪 ${escapeHtml(r)}</option>`;
-            });
-            
-            // Verificar pedidos críticos nuevos para sonido
-            const pedidosActivos = todosLosPedidos.filter(p => {
-                const estado = (p.estado || '').toUpperCase();
-                return estado !== 'ENTREGADO' && estado !== 'FINALIZADO';
-            });
-            const criticosNuevos = pedidosActivos.filter(p => p.nivelAlerta === 'critico' && !pedidosLimpiados.has(p.id));
-            if (criticosNuevos.length > 0) {
-                playSound();
-            }
-            
-            aplicarFiltros();
-            
-        } catch (error) {
-            console.error("Error:", error);
-            document.getElementById('listaPedidos').innerHTML = '<div class="text-center py-10 text-red-400">❌ Error al cargar datos</div>';
-        }
-    }
-
+    
     function aplicarFiltros() {
-        const filtrados = filtrarYOrdenarPedidos(todosLosPedidos);
+        const filtrados = filtrarYOrdenarPedidos();
         renderizarPedidos(filtrados);
     }
-
-    // Inicializar
+    
+    // ============================================
+    // CARGA INICIAL
+    // ============================================
+    async function cargarDatosIniciales() {
+        // Cargar limpiados de localStorage
+        const guardados = localStorage.getItem(STORAGE_KEY);
+        if (guardados) {
+            pedidosLimpiados = new Set(JSON.parse(guardados));
+        }
+        
+        // Cargar desde Google Sheets
+        await cargarDesdeGoogleSheets();
+        
+        // Inicializar Firebase y escuchar en tiempo real
+        if (initFirebase()) {
+            escucharPedidosFirebase();
+        }
+        
+        // Aplicar filtros
+        aplicarFiltros();
+    }
+    
+    // Inicializar todo
     function iniciarMonitor() {
         initAudio();
-        cargarLimpiados();
         
         // Fecha por defecto = hoy
         const hoy = new Date().toISOString().split('T')[0];
@@ -449,19 +588,26 @@
         document.getElementById('ordenarPor').addEventListener('change', () => aplicarFiltros());
         document.getElementById('btnLimpiarTodo').onclick = () => limpiarTodosVisibles();
         
-        // Cargar y auto-actualizar cada 10 segundos
-        cargarPedidos();
+        // Cargar datos
+        cargarDatosIniciales();
+        
+        // Ocultar loader
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
         
-        setInterval(() => cargarPedidos(), 10000);
+        // Polling de respaldo cada 10 segundos
+        setInterval(() => {
+            cargarDesdeGoogleSheets().then(() => aplicarFiltros());
+        }, 10000);
         
         // Solicitar notificaciones
         if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
             Notification.requestPermission();
         }
+        
+        console.log("🚀 Monitor iniciado - Escuchando Firebase y Sheets");
     }
-
+    
     // Exponer funciones globales
     window.limpiarPedido = limpiarPedido;
     window.llamarRestaurante = llamarRestaurante;

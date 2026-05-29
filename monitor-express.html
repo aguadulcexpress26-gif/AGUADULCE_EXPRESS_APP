@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 EXPRESS MONITOR - SISTEMA CENTRAL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #0f172a; font-family: 'Segoe UI', system-ui; padding: 20px; }
+        .table-container { overflow-x: auto; background: #1e293b; border-radius: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #334155; padding: 12px; text-align: left; color: white; font-weight: 600; position: sticky; top: 0; }
+        td { padding: 10px 12px; border-bottom: 1px solid #334155; color: #e2e8f0; }
+        tr:hover { background: #334155; cursor: pointer; }
+        .nuevo-pedido { animation: flash 1s ease; background: #06b6d4 !important; }
+        @keyframes flash { 0% { background: #06b6d4; } 100% { background: transparent; } }
+        .estado-recibido { color: #06b6d4; font-weight: bold; }
+        .estado-proceso { color: #f59e0b; font-weight: bold; }
+        .estado-listo { color: #22c55e; font-weight: bold; }
+        .estado-reparto { color: #8b5cf6; font-weight: bold; }
+        .estado-entregado { color: #64748b; }
+        .critico { background: rgba(239,68,68,0.2); border-left: 3px solid #ef4444; }
+        .alerta { background: rgba(245,158,11,0.1); border-left: 3px solid #f59e0b; }
+        audio { display: none; }
+        .filtro-activo { background: #06b6d4; color: #0f172a; }
+    </style>
+</head>
+<body>
+
+<div class="max-w-full mx-auto">
+    
+    <!-- HEADER -->
+    <div class="flex flex-wrap justify-between items-center gap-3 mb-5">
+        <div>
+            <h1 class="text-2xl font-bold text-white">📊 EXPRESS MONITOR</h1>
+            <p class="text-white/40 text-sm">Sistema central de pedidos - Tiempo real</p>
+        </div>
+        <div class="flex gap-2">
+            <button id="btnSonido" class="px-4 py-2 rounded-full text-sm font-bold" style="background: #22c55e; color: white;">🔊 SONIDO ON</button>
+            <button id="btnActualizar" class="px-4 py-2 rounded-full text-sm font-bold" style="background: #06b6d4; color: #0f172a;">🔄 ACTUALIZAR</button>
+        </div>
+    </div>
+
+    <!-- ESTADÍSTICAS RÁPIDAS -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+        <div class="bg-cyan-500/10 p-3 rounded-xl text-center border border-cyan-500/30">
+            <div class="text-2xl font-bold text-cyan-400" id="totalPedidos">0</div>
+            <div class="text-[10px] text-white/40">TOTAL PEDIDOS</div>
+        </div>
+        <div class="bg-blue-500/10 p-3 rounded-xl text-center border border-blue-500/30">
+            <div class="text-2xl font-bold text-blue-400" id="recibidos">0</div>
+            <div class="text-[10px] text-white/40">RECIBIDOS</div>
+        </div>
+        <div class="bg-yellow-500/10 p-3 rounded-xl text-center border border-yellow-500/30">
+            <div class="text-2xl font-bold text-yellow-400" id="enProceso">0</div>
+            <div class="text-[10px] text-white/40">EN COCINA</div>
+        </div>
+        <div class="bg-purple-500/10 p-3 rounded-xl text-center border border-purple-500/30">
+            <div class="text-2xl font-bold text-purple-400" id="enReparto">0</div>
+            <div class="text-[10px] text-white/40">EN REPARTO</div>
+        </div>
+        <div class="bg-green-500/10 p-3 rounded-xl text-center border border-green-500/30">
+            <div class="text-2xl font-bold text-green-400" id="entregadosHoy">0</div>
+            <div class="text-[10px] text-white/40">ENTREGADOS HOY</div>
+        </div>
+    </div>
+
+    <!-- FILTROS RÁPIDOS -->
+    <div class="flex flex-wrap gap-2 mb-4">
+        <button class="filtro-restaurante px-3 py-1 rounded-full text-xs bg-gray-700 text-white hover:bg-cyan-600 transition" data-restaurante="TODOS">📋 TODOS</button>
+    </div>
+    <div id="filtrosRestaurantes" class="flex flex-wrap gap-2 mb-4"></div>
+
+    <!-- TABLA DE PEDIDOS (como Excel) -->
+    <div class="table-container">
+        <table id="tablaPedidos">
+            <thead>
+                <tr>
+                    <th>ID PEDIDO</th>
+                    <th>CLIENTE</th>
+                    <th>DIRECCIÓN</th>
+                    <th>TOTAL</th>
+                    <th>ESTADO</th>
+                    <th>RESTAURANTE</th>
+                    <th>TIEMPO</th>
+                    <th>📞</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyPedidos">
+                <tr><td colspan="8" class="text-center py-10 text-white/40">Cargando pedidos...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<audio id="audioNuevo" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+    // ============================================
+    // CONFIGURACIÓN
+    // ============================================
+    const URL_GS = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
+    
+    const firebaseConfig = {
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/"
+    };
+    
+    let todosPedidos = [];
+    let restaurantesMap = new Map();
+    let ultimoConteo = 0;
+    let sonidoActivado = true;
+    let audioElement = null;
+    let filtroActual = "TODOS";
+    let idsConocidos = new Set();
+    
+    // ============================================
+    // INICIALIZAR
+    // ============================================
+    function init() {
+        audioElement = document.getElementById('audioNuevo');
+        if (audioElement) audioElement.volume = 0.8;
+        
+        document.getElementById('btnSonido').onclick = toggleSonido;
+        document.getElementById('btnActualizar').onclick = () => cargarDesdeSheets();
+        
+        // Inicializar Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        // Escuchar cambios en tiempo real
+        const db = firebase.database();
+        const pedidosRef = db.ref('pedidos');
+        
+        pedidosRef.on('child_added', (snapshot) => {
+            const pedido = snapshot.val();
+            const id = snapshot.key;
+            console.log("🆕 NUEVO PEDIDO:", id, pedido.estado);
+            if (!idsConocidos.has(id)) {
+                cargarDesdeSheets(); // Recargar completo
+                if (sonidoActivado && audioElement) {
+                    audioElement.currentTime = 0;
+                    audioElement.play().catch(e => console.log("Audio necesita interacción"));
+                }
+            }
+        });
+        
+        pedidosRef.on('child_changed', (snapshot) => {
+            console.log("🔄 PEDIDO ACTUALIZADO:", snapshot.key);
+            cargarDesdeSheets(); // Recargar completo
+        });
+        
+        // Carga inicial
+        cargarDesdeSheets();
+        
+        // Auto-refresco cada 10 segundos
+        setInterval(() => cargarDesdeSheets(), 10000);
+        
+        // Solicitar notificaciones
+        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
+    
+    // ============================================
+    // CARGAR DESDE GOOGLE SHEETS
+    // ============================================
+    async function cargarDesdeSheets() {
+        try {
+            const response = await fetch(`${URL_GS}?action=cargarTodo&t=${Date.now()}`);
+            const data = await response.json();
+            
+            const restaurantes = data.RESTAURANTES || [];
+            const pedidosRaw = data.PEDIDOS || [];
+            const configPedidos = data.CONFIGURACION || [];
+            
+            // Crear mapa de restaurantes
+            restaurantesMap.clear();
+            restaurantes.forEach(r => {
+                const id = String(r.ID_RESTAURANTE).trim();
+                restaurantesMap.set(id, {
+                    nombre: r.NOMBRE_RESTAURANTE || r.NOMBRE || "Restaurante",
+                    telefono: r.TELEFONO || r.CELULAR || ""
+                });
+            });
+            
+            // Combinar todos los pedidos
+            const todosRaw = [...pedidosRaw, ...configPedidos];
+            
+            // Procesar pedidos
+            const pedidosProcesados = todosRaw.map(p => {
+                const idRest = String(p.ID_RESTAURANTE || "").trim();
+                const restaurante = restaurantesMap.get(idRest);
+                
+                // Calcular tiempo
+                let minutos = 999;
+                let fechaRaw = p.FECHA || p.fecha;
+                if (fechaRaw) {
+                    let fechaDate;
+                    if (typeof fechaRaw === 'string') {
+                        if (fechaRaw.includes('T')) {
+                            fechaDate = new Date(fechaRaw);
+                        } else if (fechaRaw.includes('/')) {
+                            const partes = fechaRaw.split(' ');
+                            const fechaParte = partes[0];
+                            const horaParte = partes[1] || '00:00:00';
+                            const [dia, mes, anio] = fechaParte.split('/');
+                            const [hora, min, seg] = horaParte.split(':');
+                            fechaDate = new Date(anio, mes-1, dia, hora, min, seg);
+                        }
+                    }
+                    if (fechaDate && !isNaN(fechaDate)) {
+                        minutos = Math.floor((new Date() - fechaDate) / 60000);
+                    }
+                }
+                
+                const estado = (p.ESTADO || p.estado || "RECIBIDO").toUpperCase();
+                
+                return {
+                    id: p.ID_PEDIDO || p.id || "N/A",
+                    cliente: p.CLIENTE || p.cliente || "Sin nombre",
+                    direccion: p.DIRECCION || p.direccion || "Sin dirección",
+                    total: parseFloat(p.TOTAL || p.total || 0),
+                    estado: estado,
+                    restauranteId: idRest,
+                    restauranteNombre: restaurante ? restaurante.nombre : "Restaurante",
+                    telefonoRestaurante: restaurante ? restaurante.telefono : "",
+                    minutos: minutos,
+                    fechaRaw: fechaRaw
+                };
+            });
+            
+            // Ordenar por fecha (más reciente primero)
+            pedidosProcesados.sort((a, b) => {
+                if (!a.fechaRaw) return 1;
+                if (!b.fechaRaw) return -1;
+                return new Date(b.fechaRaw) - new Date(a.fechaRaw);
+            });
+            
+            todosPedidos = pedidosProcesados;
+            
+            // Actualizar IDs conocidos
+            idsConocidos.clear();
+            todosPedidos.forEach(p => idsConocidos.add(p.id));
+            
+            // Verificar nuevos pedidos para sonido
+            if (todosPedidos.length > ultimoConteo && sonidoActivado) {
+                const nuevos = todosPedidos.length - ultimoConteo;
+                if (nuevos > 0 && audioElement) {
+                    audioElement.currentTime = 0;
+                    audioElement.play().catch(e => console.log("Audio necesita interacción usuario"));
+                    if (Notification.permission === 'granted') {
+                        new Notification(`📦 ${nuevos} nuevo(s) pedido(s)`, {
+                            body: `Total pendientes: ${todosPedidos.filter(p => p.estado === 'RECIBIDO').length}`,
+                            icon: 'https://i.postimg.cc/mZwjLXxw/Logo-Aguadulce-Express.jpg'
+                        });
+                    }
+                }
+            }
+            ultimoConteo = todosPedidos.length;
+            
+            // Actualizar filtros de restaurantes
+            actualizarFiltrosRestaurantes();
+            
+            // Renderizar tabla
+            renderizarTabla();
+            
+        } catch (error) {
+            console.error("Error:", error);
+            document.getElementById('tbodyPedidos').innerHTML = `<tr><td colspan="8" class="text-center py-10 text-red-400">❌ Error: ${error.message}</td></tr>`;
+        }
+    }
+    
+    // ============================================
+    // ACTUALIZAR FILTROS DE RESTAURANTES
+    // ============================================
+    function actualizarFiltrosRestaurantes() {
+        const restaurantesUnicos = [...new Set(todosPedidos.map(p => p.restauranteNombre))].sort();
+        const container = document.getElementById('filtrosRestaurantes');
+        
+        let html = `<button class="filtro-restaurante px-3 py-1 rounded-full text-xs bg-gray-700 text-white hover:bg-cyan-600 transition" data-restaurante="TODOS">📋 TODOS (${todosPedidos.length})</button>`;
+        
+        restaurantesUnicos.forEach(r => {
+            const count = todosPedidos.filter(p => p.restauranteNombre === r).length;
+            const activo = filtroActual === r ? 'bg-cyan-600' : 'bg-gray-700';
+            html += `<button class="filtro-restaurante px-3 py-1 rounded-full text-xs ${activo} text-white hover:bg-cyan-600 transition" data-restaurante="${r.replace(/"/g, '&quot;')}">🏪 ${r} (${count})</button>`;
+        });
+        
+        container.innerHTML = html;
+        
+        // Agregar event listeners
+        document.querySelectorAll('.filtro-restaurante').forEach(btn => {
+            btn.onclick = () => {
+                filtroActual = btn.getAttribute('data-restaurante');
+                renderizarTabla();
+                // Actualizar estilo activo
+                document.querySelectorAll('.filtro-restaurante').forEach(b => {
+                    if (b.getAttribute('data-restaurante') === filtroActual) {
+                        b.classList.add('bg-cyan-600');
+                        b.classList.remove('bg-gray-700');
+                    } else {
+                        b.classList.add('bg-gray-700');
+                        b.classList.remove('bg-cyan-600');
+                    }
+                });
+            };
+        });
+    }
+    
+    // ============================================
+    // RENDERIZAR TABLA (como Excel)
+    // ============================================
+    function renderizarTabla() {
+        // Filtrar
+        let filtrados = todosPedidos;
+        if (filtroActual !== "TODOS") {
+            filtrados = filtrados.filter(p => p.restauranteNombre === filtroActual);
+        }
+        
+        // Estadísticas
+        const total = filtrados.length;
+        const recibidos = filtrados.filter(p => p.estado === 'RECIBIDO' || p.estado === 'NUEVO').length;
+        const enProceso = filtrados.filter(p => p.estado === 'EN PROCESO').length;
+        const enReparto = filtrados.filter(p => p.estado === 'RECOGIDO' || p.estado === 'EN CAMINO' || p.estado === 'LLEGÓ').length;
+        
+        // Entregados hoy
+        const hoy = new Date().toLocaleDateString('es-ES');
+        const entregadosHoy = filtrados.filter(p => {
+            if (!p.fechaRaw) return false;
+            let fechaStr = '';
+            if (typeof p.fechaRaw === 'string') {
+                if (p.fechaRaw.includes('T')) {
+                    fechaStr = new Date(p.fechaRaw).toLocaleDateString('es-ES');
+                } else if (p.fechaRaw.includes('/')) {
+                    fechaStr = p.fechaRaw.split(' ')[0];
+                }
+            }
+            return (p.estado === 'ENTREGADO' || p.estado === 'FINALIZADO') && fechaStr === hoy;
+        }).length;
+        
+        document.getElementById('totalPedidos').textContent = total;
+        document.getElementById('recibidos').textContent = recibidos;
+        document.getElementById('enProceso').textContent = enProceso;
+        document.getElementById('enReparto').textContent = enReparto;
+        document.getElementById('entregadosHoy').textContent = entregadosHoy;
+        
+        // Renderizar filas
+        const tbody = document.getElementById('tbodyPedidos');
+        
+        if (filtrados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-10 text-white/40">📭 No hay pedidos</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        for (const p of filtrados) {
+            // Clase de estado
+            let estadoClass = '';
+            let estadoTexto = p.estado;
+            if (p.estado === 'RECIBIDO' || p.estado === 'NUEVO') estadoClass = 'estado-recibido';
+            else if (p.estado === 'EN PROCESO') estadoClass = 'estado-proceso';
+            else if (p.estado === 'LISTO') estadoClass = 'estado-listo';
+            else if (p.estado === 'RECOGIDO' || p.estado === 'EN CAMINO') estadoClass = 'estado-reparto';
+            else if (p.estado === 'ENTREGADO' || p.estado === 'FINALIZADO') estadoClass = 'estado-entregado';
+            
+            // Alerta por tiempo
+            let rowClass = '';
+            let tiempoTexto = p.minutos >= 60 ? `${Math.floor(p.minutos/60)}h ${p.minutos%60}min` : `${p.minutos} min`;
+            if (p.minutos >= 10 && (p.estado === 'RECIBIDO' || p.estado === 'NUEVO')) {
+                rowClass = 'critico';
+                tiempoTexto = `🔴 ${tiempoTexto}`;
+            } else if (p.minutos >= 5 && (p.estado === 'RECIBIDO' || p.estado === 'NUEVO')) {
+                rowClass = 'alerta';
+                tiempoTexto = `🟡 ${tiempoTexto}`;
+            } else if (p.minutos < 1) {
+                tiempoTexto = '🆕 Ahora';
+            }
+            
+            html += `
+                <tr class="${rowClass}">
+                    <td class="font-mono text-cyan-400 font-bold">${p.id}</td>
+                    <td>${escapeHtml(p.cliente)}</td>
+                    <td class="max-w-xs truncate" title="${escapeHtml(p.direccion)}">${escapeHtml(p.direccion.substring(0, 50))}${p.direccion.length > 50 ? '...' : ''}</td>
+                    <td class="font-bold text-emerald-400">${p.total.toFixed(2)}€</td>
+                    <td class="${estadoClass}">${estadoTexto}</td>
+                    <td>🏪 ${escapeHtml(p.restauranteNombre)}</td>
+                    <td class="text-white/60 text-sm">${tiempoTexto}</td>
+                    <td>
+                        ${p.telefonoRestaurante ? `<button onclick="window.location.href='tel:${p.telefonoRestaurante}'" class="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded-full">📞 Llamar</button>` : '—'}
+                    </td>
+                </tr>
+            `;
+        }
+        tbody.innerHTML = html;
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    function toggleSonido() {
+        sonidoActivado = !sonidoActivado;
+        const btn = document.getElementById('btnSonido');
+        if (sonidoActivado) {
+            btn.innerHTML = '🔊 SONIDO ON';
+            btn.style.background = '#22c55e';
+        } else {
+            btn.innerHTML = '🔇 SONIDO OFF';
+            btn.style.background = '#334155';
+        }
+    }
+    
+    // Iniciar
+    init();
+</script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 MONITOR CON LIMPIEZA MANUAL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #0f172a; font-family: system-ui; padding: 20px; }
+        .table-container { overflow-x: auto; background: #1e293b; border-radius: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #334155; padding: 12px; text-align: left; color: white; position: sticky; top: 0; }
+        td { padding: 10px 12px; border-bottom: 1px solid #334155; color: #e2e8f0; }
+        tr:hover { background: #334155; }
+        .estado-recibido { color: #06b6d4; font-weight: bold; }
+        .critico { background: rgba(239,68,68,0.2); border-left: 3px solid #ef4444; }
+        .alerta { background: rgba(245,158,11,0.1); border-left: 3px solid #f59e0b; }
+        .oculto { display: none; }
+        audio { display: none; }
+        .btn-ok { background: #22c55e; color: white; border: none; padding: 4px 12px; border-radius: 20px; cursor: pointer; font-size: 11px; font-weight: bold; }
+        .btn-ok:hover { background: #16a34a; }
+        .btn-limpiar-todo { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        .btn-limpiar-todo:hover { background: #dc2626; }
+    </style>
+</head>
+<body>
+
+<div class="max-w-full">
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-3">
+        <div>
+            <h1 class="text-2xl font-bold text-white">📊 MONITOR DE CONTROL</h1>
+            <p class="text-white/40 text-sm">✅ Marca "OK" para eliminar pedidos de tu vista</p>
+        </div>
+        <div class="flex gap-2">
+            <button id="btnSonido" class="px-4 py-2 rounded-full text-sm font-bold bg-green-600 text-white">🔊 SONIDO ON</button>
+            <button id="btnLimpiarTodo" class="btn-limpiar-todo">🗑️ LIMPIAR TODOS VISIBLES</button>
+            <button id="btnReset" class="px-4 py-2 rounded-full text-sm font-bold bg-gray-600 text-white">🔄 RESET VISTA</button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-4 gap-3 mb-4">
+        <div class="bg-cyan-500/20 p-3 rounded-xl text-center"><div class="text-2xl font-bold text-cyan-400" id="total">0</div><div class="text-xs">EN PANTALLA</div></div>
+        <div class="bg-yellow-500/20 p-3 rounded-xl text-center"><div class="text-2xl font-bold text-yellow-400" id="pendientes">0</div><div class="text-xs">PENDIENTES REALES</div></div>
+        <div class="bg-red-500/20 p-3 rounded-xl text-center"><div class="text-2xl font-bold text-red-400" id="criticos">0</div><div class="text-xs">CRÍTICOS (10+ min)</div></div>
+        <div class="bg-blue-500/20 p-3 rounded-xl text-center"><div class="text-2xl font-bold text-blue-400" id="limpiados">0</div><div class="text-xs">LIMPIADOS (ocultos)</div></div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="table-container">
+        <table class="min-w-full">
+            <thead>
+                <tr>
+                    <th>OK</th>
+                    <th>ID</th>
+                    <th>CLIENTE</th>
+                    <th>DIRECCIÓN</th>
+                    <th>TOTAL</th>
+                    <th>ESTADO</th>
+                    <th>RESTAURANTE</th>
+                    <th>TIEMPO</th>
+                    <th>📞</th>
+                </tr>
+            </thead>
+            <tbody id="tablaBody">
+                <tr><td colspan="9" class="text-center py-10">Cargando pedidos...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<audio id="audioAlerta"><source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+
+<script>
+    const STORAGE_KEY = 'monitor_pedidos_ocultos';
+    const firebaseConfig = { databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/" };
+    
+    let sonidoOn = true;
+    let audio = null;
+    let todosPedidos = [];
+    let idsOcultos = new Set();
+    
+    // Cargar IDs ocultos de localStorage
+    function cargarOcultos() {
+        const guardados = localStorage.getItem(STORAGE_KEY);
+        if (guardados) {
+            idsOcultos = new Set(JSON.parse(guardados));
+            console.log("📦 IDs ocultos cargados:", idsOcultos.size);
+        }
+    }
+    
+    // Guardar IDs ocultos
+    function guardarOcultos() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...idsOcultos]));
+        document.getElementById('limpiados').textContent = idsOcultos.size;
+    }
+    
+    // Ocultar un pedido (marcar como OK)
+    function ocultarPedido(id) {
+        idsOcultos.add(id);
+        guardarOcultos();
+        renderizarTabla();
+        
+        // Pequeño efecto visual
+        const btn = event.target;
+        btn.textContent = '✓';
+        btn.style.background = '#16a34a';
+        setTimeout(() => {
+            if (btn) btn.textContent = 'OK';
+        }, 500);
+    }
+    
+    // Ocultar todos los pedidos VISIBLES actualmente
+    function ocultarTodosVisibles() {
+        const pedidosVisibles = todosPedidos.filter(p => !idsOcultos.has(p.id));
+        pedidosVisibles.forEach(p => idsOcultos.add(p.id));
+        guardarOcultos();
+        renderizarTabla();
+        
+        // Notificación
+        const msg = document.createElement('div');
+        msg.className = 'fixed top-20 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        msg.textContent = `✅ ${pedidosVisibles.length} pedido(s) limpiado(s) de la vista`;
+        document.body.appendChild(msg);
+        setTimeout(() => msg.remove(), 2000);
+    }
+    
+    // Reset: mostrar todos los pedidos nuevamente
+    function resetVista() {
+        idsOcultos.clear();
+        guardarOcultos();
+        renderizarTabla();
+        
+        const msg = document.createElement('div');
+        msg.className = 'fixed top-20 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        msg.textContent = `🔄 Vista reseteada - Todos los pedidos visibles nuevamente`;
+        document.body.appendChild(msg);
+        setTimeout(() => msg.remove(), 2000);
+    }
+    
+    // Calcular minutos desde fecha
+    function calcularMinutos(fechaRaw) {
+        if (!fechaRaw) return 999;
+        let fechaDate;
+        if (typeof fechaRaw === 'number') {
+            fechaDate = new Date(fechaRaw);
+        } else if (typeof fechaRaw === 'string') {
+            if (fechaRaw.includes('T')) {
+                fechaDate = new Date(fechaRaw);
+            } else if (fechaRaw.includes('/')) {
+                const partes = fechaRaw.split(' ');
+                const fechaParte = partes[0];
+                const horaParte = partes[1] || '00:00:00';
+                const [dia, mes, anio] = fechaParte.split('/');
+                const [hora, min, seg] = horaParte.split(':');
+                fechaDate = new Date(anio, mes-1, dia, hora, min, seg);
+            } else {
+                fechaDate = new Date(fechaRaw);
+            }
+        }
+        if (!fechaDate || isNaN(fechaDate)) return 999;
+        return Math.floor((new Date() - fechaDate) / 60000);
+    }
+    
+    // Obtener nombre del restaurante
+    function getRestauranteNombre(pedido) {
+        const restaurantesPorId = {
+            "CHUHAN": "CHUHAN PIZZERIA KEBAB",
+            "DELI10": "DELICIOUS FOOD",
+            "HARO30": "HARO RESTAURANTE",
+            "SUCU40": "LA SUCURSAL",
+            "PECA70": "PECADOS"
+        };
+        const idRest = pedido.ID_RESTAURANTE || pedido.restaurante_id || pedido.id_restaurante || "";
+        if (restaurantesPorId[idRest]) return restaurantesPorId[idRest];
+        if (pedido.restaurante_nombre) return pedido.restaurante_nombre;
+        return "Restaurante";
+    }
+    
+    // Renderizar tabla
+    function renderizarTabla() {
+        // Filtrar pedidos ocultos
+        const pedidosVisibles = todosPedidos.filter(p => !idsOcultos.has(p.id));
+        
+        // Estadísticas
+        const pendientesReales = todosPedidos.filter(p => {
+            const estado = (p.ESTADO || p.estado || "RECIBIDO").toUpperCase();
+            return estado !== "ENTREGADO" && estado !== "FINALIZADO" && estado !== "RECHAZADO";
+        }).length;
+        
+        const criticos = pedidosVisibles.filter(p => {
+            const minutos = calcularMinutos(p.FECHA || p.fecha || p.timestamp);
+            const estado = (p.ESTADO || p.estado || "RECIBIDO").toUpperCase();
+            return minutos >= 10 && (estado === "RECIBIDO" || estado === "NUEVO");
+        }).length;
+        
+        document.getElementById('total').textContent = pedidosVisibles.length;
+        document.getElementById('pendientes').textContent = pendientesReales;
+        document.getElementById('criticos').textContent = criticos;
+        document.getElementById('limpiados').textContent = idsOcultos.size;
+        
+        // Ordenar por fecha (más nuevo primero)
+        const ordenados = [...pedidosVisibles].sort((a, b) => {
+            const fechaA = a.FECHA || a.fecha || a.timestamp || 0;
+            const fechaB = b.FECHA || b.fecha || b.timestamp || 0;
+            return new Date(fechaB) - new Date(fechaA);
+        });
+        
+        const tbody = document.getElementById('tablaBody');
+        if (ordenados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-white/40">✅ Todos los pedidos han sido atendidos o limpiados</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        for (const p of ordenados) {
+            const id = p.ID_PEDIDO || p.id;
+            const minutos = calcularMinutos(p.FECHA || p.fecha || p.timestamp);
+            const estado = (p.ESTADO || p.estado || "RECIBIDO").toUpperCase();
+            
+            let rowClass = '';
+            let tiempoText = minutos < 1 ? '🆕 Ahora' : `${minutos} min`;
+            if (minutos >= 10 && (estado === 'RECIBIDO' || estado === 'NUEVO')) {
+                rowClass = 'critico';
+                tiempoText = `🔴 ${minutos} min`;
+            } else if (minutos >= 5 && (estado === 'RECIBIDO' || estado === 'NUEVO')) {
+                rowClass = 'alerta';
+                tiempoText = `🟡 ${minutos} min`;
+            }
+            
+            html += `
+                <tr class="${rowClass}">
+                    <td><button class="btn-ok" onclick="ocultarPedido('${id}')">✓ OK</button></td>
+                    <td class="font-mono text-cyan-400 text-xs">${id || 'N/A'}</td>
+                    <td class="max-w-[150px] truncate" title="${escapeHtml(p.CLIENTE || p.cliente || 'Sin nombre')}">${escapeHtml((p.CLIENTE || p.cliente || 'Sin nombre').substring(0, 25))}</td>
+                    <td class="max-w-[200px] truncate" title="${escapeHtml(p.DIRECCION || p.direccion || '')}">${escapeHtml((p.DIRECCION || p.direccion || '').substring(0, 35))}</td>
+                    <td class="font-bold text-emerald-400">${parseFloat(p.TOTAL || p.total || 0).toFixed(2)}€</td>
+                    <td class="${estado === 'RECIBIDO' || estado === 'NUEVO' ? 'estado-recibido' : ''}">${estado}</td>
+                    <td class="max-w-[120px] truncate">🏪 ${escapeHtml(getRestauranteNombre(p))}</td>
+                    <td class="text-white/60 text-sm">${tiempoText}</td>
+                    <td>—</td>
+                </tr>
+            `;
+        }
+        tbody.innerHTML = html;
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, (m) => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
+    }
+    
+    // Cargar desde Firebase
+    function cargarDesdeFirebase() {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const pedidosRef = db.ref('pedidos');
+        
+        pedidosRef.once('value', (snap) => {
+            const nuevosPedidos = [];
+            snap.forEach((child) => {
+                const pedido = child.val();
+                pedido.id = child.key;
+                nuevosPedidos.push(pedido);
+            });
+            
+            console.log("📦 Pedidos desde Firebase:", nuevosPedidos.length);
+            todosPedidos = nuevosPedidos;
+            renderizarTabla();
+            
+            // Notificar si hay nuevos
+            if (nuevosPedidos.length > 0 && sonidoOn && audio) {
+                audio.currentTime = 0;
+                audio.play().catch(e => console.log("Haz clic en la pantalla primero"));
+            }
+        });
+        
+        // Escuchar nuevos pedidos en tiempo real
+        pedidosRef.on('child_added', (snap) => {
+            const nuevoPedido = snap.val();
+            nuevoPedido.id = snap.key;
+            
+            // Verificar si ya existe
+            const existe = todosPedidos.some(p => p.id === nuevoPedido.id);
+            if (!existe) {
+                todosPedidos.unshift(nuevoPedido);
+                renderizarTabla();
+                if (sonidoOn && audio) {
+                    audio.currentTime = 0;
+                    audio.play().catch(e => console.log("Haz clic en la pantalla primero"));
+                }
+            }
+        });
+    }
+    
+    // Inicializar
+    function init() {
+        audio = document.getElementById('audioAlerta');
+        if (audio) audio.volume = 0.8;
+        
+        cargarOcultos();
+        
+        document.getElementById('btnSonido').onclick = () => {
+            sonidoOn = !sonidoOn;
+            const btn = document.getElementById('btnSonido');
+            btn.textContent = sonidoOn ? "🔊 SONIDO ON" : "🔇 SONIDO OFF";
+            btn.className = `px-4 py-2 rounded-full text-sm font-bold ${sonidoOn ? 'bg-green-600' : 'bg-gray-600'} text-white`;
+        };
+        
+        document.getElementById('btnLimpiarTodo').onclick = () => ocultarTodosVisibles();
+        document.getElementById('btnReset').onclick = () => resetVista();
+        
+        cargarDesdeFirebase();
+        
+        // Auto-refresco cada 15 segundos
+        setInterval(() => {
+            cargarDesdeFirebase();
+        }, 15000);
+        
+        // Solicitar notificaciones
+        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
+    
+    // Exponer funciones globales
+    window.ocultarPedido = ocultarPedido;
+    
+    init();
+</script>
+</body>
+</html>

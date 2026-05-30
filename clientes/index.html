@@ -1342,8 +1342,24 @@ if ('serviceWorker' in navigator) {
 // INICIALIZACIÓN
 // ==========================================
 async function initApp() {
+    
     // ==========================================
-    // 🔥 AUTENTICACIÓN ANÓNIMA (AÑADIR AQUÍ)
+    // 🛡️ LIMPIEZA DE EMERGENCIA (AÑADIDO AQUÍ)
+    // ==========================================
+    if ('serviceWorker' in navigator) {
+        try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let registration of registrations) {
+                await registration.unregister();
+                console.log("🛡️ Service Worker antiguo/FCM removido con éxito.");
+            }
+        } catch (swError) {
+            console.error("Error limpiando Service Worker:", swError);
+        }
+    }
+
+    // ==========================================
+    // 🔥 AUTENTICACIÓN ANÓNIMA
     // ==========================================
     try {
         const userCredential = await firebase.auth().signInAnonymously();
@@ -1354,11 +1370,16 @@ async function initApp() {
         alertaError("Error de conexión", "No se pudo autenticar. Revisa tu conexión.");
         return;
     }
+
     document.getElementById('loader').style.display = 'flex';
+
     try {
         cargarCesta();
         actualizarClienteUI();
-        await cargarBaseDatos();
+        
+        // Aquí es donde se congelaba por el CORS viejo de Google Script
+        await cargarBaseDatos(); 
+        
         renderHome();
         restaurarPedidoActivo();
         initAudio();
@@ -1373,10 +1394,14 @@ async function initApp() {
         if (appContainer) {
             observer.observe(appContainer, { childList: true, subtree: true });
         }
-    } catch(e) { console.error(e); alertaError("ERROR", "No se pudo conectar"); }
-    finally { document.getElementById('loader').style.display = 'none'; }
+    } catch(e) { 
+        console.error("Fallo en la carga inicial:", e); 
+        alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); 
+    }
+    finally { 
+        document.getElementById('loader').style.display = 'none'; 
+    }
 }
-
 document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>

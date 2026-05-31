@@ -345,12 +345,6 @@ async function clienteEsMayorDeEdad() {
 }
 
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
-    // ⚠️ MODO PRUEBA: Todos los restaurantes aparecen como ABIERTOS
-    // Cambia a false para usar horarios reales cuando los horarios estén en Firebase
-    return { abierto: true, horario: "🟢 ABIERTO" };
-    
-    // Código original para horarios reales (descomentar cuando los horarios estén en Firebase)
-    /*
     if (restaurant.DIA_LIBRE === 'SI' || restaurant.ESTADO === 'LIBRE') return { abierto: false, horario: "📅 Día libre" };
     const horariosRest = db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
     if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
@@ -366,7 +360,6 @@ function estaRestauranteAbiertoConDiaLibre(restaurant) {
     let horario = `${horarioHoy.apertura1 || ''}-${horarioHoy.cierre1 || ''}`;
     if(a2) horario += ` / ${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
     return { abierto, horario: horario || "Consultar horario" };
-    */
 }
 
 // ==========================================
@@ -510,7 +503,7 @@ async function cargarBaseDatos() {
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         console.log("✅ Menú:", db.menu.length);
         
-        // Horarios
+        // ⭐ Horarios (convertir array a objeto)
         const horariosSnap = await database.ref('horarios_restaurantes').once('value');
         const horariosRaw = horariosSnap.val();
         db.horariosPorDia = {};
@@ -526,6 +519,48 @@ async function cargarBaseDatos() {
                 };
             });
         }
+        console.log("✅ Horarios procesados:", Object.keys(db.horariosPorDia).length);
+        
+        // Configuración (banner y logo)
+        const configSnap = await database.ref('config').once('value');
+        const configData = configSnap.val();
+        if (configData && Array.isArray(configData) && configData[0]) {
+            db.config = configData[0];
+            const headerBg = document.getElementById('header-bg');
+            if (headerBg && db.config.FONDO_CABECERA) {
+                headerBg.style.backgroundImage = `url(${db.config.FONDO_CABECERA})`;
+                headerBg.style.backgroundSize = 'cover';
+                headerBg.style.backgroundPosition = 'center';
+            }
+            const appLogo = document.getElementById('app-logo');
+            if (appLogo && db.config.LOGO_URL) {
+                appLogo.src = db.config.LOGO_URL;
+            }
+        }
+        
+        // Anuncios
+        const anunciosSnap = await database.ref('anuncios').once('value');
+        const anunciosData = anunciosSnap.val();
+        if (anunciosData && Array.isArray(anunciosData)) {
+            db.anuncios = anunciosData;
+            const textoAnuncio = document.getElementById('texto-anuncio');
+            const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI');
+            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) {
+                textoAnuncio.innerText = anuncioActivo.TEXTO;
+            }
+        }
+        
+        console.log("🎉 Carga completa:", {
+            restaurantes: db.restaurantes.length,
+            platos: db.menu.length,
+            horarios: Object.keys(db.horariosPorDia).length
+        });
+        
+    } catch (error) {
+        console.error('❌ Error:', error);
+        throw error;
+    }
+}
         console.log("✅ Horarios procesados:", Object.keys(db.horariosPorDia).length);
         
         // Configuración (banner y logo)

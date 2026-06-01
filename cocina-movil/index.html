@@ -58,10 +58,6 @@
         .tiempo-btn { transition: all 0.1s; cursor: pointer; }
         .tiempo-btn:active { transform: scale(0.95); }
         
-        /* ============================================
-           DISEÑO EXCLUSIVO PARA MÓVIL/TABLET
-           UNA SOLA COLUMNA CON TABS
-           ============================================ */
         .tabs-container {
             display: flex;
             gap: 8px;
@@ -132,7 +128,6 @@
 
 <div id="appContent" class="hidden min-h-screen pb-5">
     
-    <!-- Banner -->
     <div class="banner-container relative">
         <img id="restauranteFoto" class="banner-img" src="">
         <div class="absolute inset-0 overlay-gradient"></div>
@@ -148,7 +143,6 @@
         </div>
     </div>
 
-    <!-- Stats -->
     <div class="p-3 flex flex-wrap justify-between items-center gap-2 border-b border-white/10">
         <div class="flex gap-2 flex-wrap">
             <div class="badge">📥 <span id="totalPendientes">0</span></div>
@@ -168,7 +162,6 @@
         </div>
     </div>
 
-    <!-- TABS (PESTAÑAS) PARA MÓVIL -->
     <div class="p-3">
         <div class="tabs-container">
             <div class="tab-btn activo" data-tab="entrantes">
@@ -182,17 +175,14 @@
             </div>
         </div>
 
-        <!-- Contenido de Entrantes -->
         <div id="tabEntrantes" class="tab-contenido activo">
             <div id="listaEntrantes" class="lista-scroll"></div>
         </div>
 
-        <!-- Contenido de Cocina -->
         <div id="tabCocina" class="tab-contenido">
             <div id="listaCocina" class="lista-scroll"></div>
         </div>
 
-        <!-- Contenido de Historial -->
         <div id="tabHistorial" class="tab-contenido">
             <div id="listaHistorial" class="lista-scroll"></div>
         </div>
@@ -201,7 +191,7 @@
 
 <script>
     // ==========================================
-    // CONFIGURACIÓN (MISMA QUE LA ORIGINAL)
+    // CONFIGURACIÓN FIREBASE
     // ==========================================
     const firebaseConfig = {
         apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
@@ -213,9 +203,9 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
+    // URL del script solo para validar PIN
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
 
-    // Variables
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
     let pedidos = [];
     let sonidosActivados = false;
@@ -226,7 +216,7 @@
     let miRestauranteData = null;
 
     // ==========================================
-    // FUNCIONES PRINCIPALES (IGUALES A LA ORIGINAL)
+    // FUNCIONES
     // ==========================================
     
     async function solicitarPermisoNotificaciones() {
@@ -290,7 +280,7 @@
             background: "#1e293b", color: "#fff"
         });
         if (!confirmar.isConfirmed) return;
-        await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
+        await database.ref('restaurantes_estado/' + miRestauranteId).set({ estado: nuevoEstado, timestamp: Date.now() });
         cargarPedidos();
     }
 
@@ -305,39 +295,68 @@
     async function cargarPedidos() {
         if (!miRestauranteId) return;
         try {
-            let res = await fetch(`${scriptURL}?action=leerPanelCompleto&idRest=${miRestauranteId}&t=${Date.now()}`);
-            let data = await res.json();
+            // Leer desde Firebase
+            const snapshot = await database.ref('pedidos').once('value');
+            const todosPedidos = snapshot.val() || {};
             
-            if (data.tienda) {
-                document.getElementById('restauranteNombre').innerText = data.tienda.nombre || "Restaurante";
-                const fotoElement = document.getElementById('restauranteFoto');
-                if (data.tienda.foto && fotoElement.src !== data.tienda.foto) {
-                    fotoElement.src = data.tienda.foto;
+            const pedidosRestaurante = [];
+            for (const id in todosPedidos) {
+                const p = todosPedidos[id];
+                if (p.restaurante_id === miRestauranteId || p.ID_RESTAURANTE === miRestauranteId) {
+                    p.id = id;
+                    p.ID_PEDIDO = id;
+                    pedidosRestaurante.push(p);
                 }
             }
-
-            let pedidosActivos = data.pedidos || [];
-            let pedidosHistorial = data.historial || [];
-            let stats = data.stats || {};
             
-            document.getElementById('statHoy').innerHTML = (parseFloat(stats.diaria) || 0).toFixed(2);
-            document.getElementById('statSemana').innerHTML = (parseFloat(stats.semanal) || 0).toFixed(2);
-
-            let tiendaEst = (data.tienda && data.tienda.estado || "CERRADO").toUpperCase();
-            document.getElementById('contenedorBotonTienda').innerHTML = `
-                <button onclick="alternarEstadoTienda('${tiendaEst}')" class="px-2 py-1 rounded-lg font-bold text-[10px] ${tiendaEst === "ABIERTO" ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">
-                    ${tiendaEst === "ABIERTO" ? "🟢 ABIERTO" : "🔴 CERRADO"}
-                </button>
-            `;
-
+            // Calcular stats
+            const hoy = new Date().toLocaleDateString('es-ES');
+            const ahora = new Date();
+            const diaSemana = ahora.getDay();
+            const inicioSemana = new Date(ahora);
+            inicioSemana.setDate(ahora.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
+            const fechaInicioSemana = inicioSemana.toLocaleDateString('es-ES');
+            
+            let diaria = 0, semanal = 0;
+            const entrantes = [];
+            const cocina = [];
+            const historial = [];
+            
+            for (const p of pedidosRestaurante) {
+                const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : '';
+                const total = parseFloat(p.total || p.TOTAL || 0);
+                const estado = (p.estado || p.ESTADO || 'RECIBIDO').toUpperCase();
+                
+                if (estado !== 'RECHAZADO' && estado !== 'CANCELADO') {
+                    if (fecha === hoy) diaria += total;
+                    if (fecha >= fechaInicioSemana) semanal += total;
+                }
+                
+                if (estado === 'RECIBIDO' || estado === 'NUEVO' || estado === '') {
+                    entrantes.push(p);
+                } else if (estado === 'EN PROCESO' || estado === 'LISTO') {
+                    cocina.push(p);
+                } else {
+                    historial.push(p);
+                }
+            }
+            
+            document.getElementById('statHoy').innerHTML = diaria.toFixed(2);
+            document.getElementById('statSemana').innerHTML = semanal.toFixed(2);
+            document.getElementById('totalPendientes').innerText = entrantes.length;
+            document.getElementById('totalCocina').innerText = cocina.length;
+            document.getElementById('totalHistorial').innerText = historial.length;
+            document.getElementById('badgeEntrantes').innerText = entrantes.length;
+            document.getElementById('badgeCocina').innerText = cocina.length;
+            
             // Notificaciones de nuevos pedidos
-            const nuevosIds = new Set(pedidosActivos.filter(p => (p.ESTADO || '').toUpperCase() === 'RECIBIDO').map(p => p.ID_PEDIDO));
-            for (let id of nuevosIds) {
+            const nuevosIds = new Set(entrantes.map(p => p.id));
+            for (const id of nuevosIds) {
                 if (!ultimosIdsNotificados.has(id)) {
-                    const pedidoNuevo = pedidosActivos.find(p => p.ID_PEDIDO === id);
+                    const pedidoNuevo = entrantes.find(p => p.id === id);
                     if (pedidoNuevo && Notification.permission === "granted") {
                         new Notification("🍽️ NUEVO PEDIDO", {
-                            body: `Pedido #${pedidoNuevo.ID_PEDIDO}`,
+                            body: `Pedido #${id}`,
                             icon: "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg"
                         });
                     }
@@ -347,114 +366,121 @@
                 }
             }
             ultimosIdsNotificados = nuevosIds;
-
-            pedidos = [...pedidosActivos, ...pedidosHistorial];
-            renderizarTodo();
-
+            
+            // Renderizar
+            document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
+            document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
+            document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
+            
+            // Cargar datos del restaurante
+            const restoSnap = await database.ref('restaurantes').once('value');
+            const restaurantes = restoSnap.val();
+            let restauranteInfo = null;
+            if (restaurantes && Array.isArray(restaurantes)) {
+                restauranteInfo = restaurantes.find(r => r.ID_RESTAURANTE === miRestauranteId);
+            } else if (restaurantes && typeof restaurantes === 'object') {
+                for (const key in restaurantes) {
+                    if (restaurantes[key].ID_RESTAURANTE === miRestauranteId) {
+                        restauranteInfo = restaurantes[key];
+                        break;
+                    }
+                }
+            }
+            
+            if (restauranteInfo) {
+                document.getElementById('restauranteNombre').innerText = restauranteInfo.NOMBRE_RESTAURANTE || restauranteInfo.NOMBRE || "Restaurante";
+                const fotoElement = document.getElementById('restauranteFoto');
+                if (restauranteInfo.FOTO && fotoElement.src !== restauranteInfo.FOTO) {
+                    fotoElement.src = restauranteInfo.FOTO;
+                }
+                
+                const estadoTienda = restauranteInfo.ESTADO || "CERRADO";
+                const btnClase = estadoTienda === "ABIERTO" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400";
+                document.getElementById('contenedorBotonTienda').innerHTML = `
+                    <button onclick="alternarEstadoTienda('${estadoTienda}')" class="px-2 py-1 rounded-lg font-bold text-[10px] ${btnClase}">
+                        ${estadoTienda === "ABIERTO" ? "🟢 ABIERTO" : "🔴 CERRADO"}
+                    </button>
+                `;
+            }
+            
         } catch (error) {
             console.error("Error:", error);
         }
     }
 
-    function renderizarTodo() {
-        let entrantes = pedidos.filter(p => {
-            const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'RECIBIDO' || est === 'NUEVO' || est === '';
-        });
-
-        let cocina = pedidos.filter(p => {
-            const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'EN PROCESO' || est === 'LISTO';
-        });
-
-        let historial = pedidos.filter(p => {
-            const est = (p.ESTADO || '').toUpperCase().trim();
-            return est === 'RECOGIDO' || est === 'EN CAMINO' || est === 'LLEGÓ' || est === 'ENTREGADO' || est === 'FINALIZADO' || est === 'CANCELADO' || est === 'RECHAZADO';
-        });
-
-        document.getElementById('totalPendientes').innerText = entrantes.length;
-        document.getElementById('totalCocina').innerText = cocina.length;
-        document.getElementById('totalHistorial').innerText = historial.length;
-        
-        document.getElementById('badgeEntrantes').innerText = entrantes.length;
-        document.getElementById('badgeCocina').innerText = cocina.length;
-
-        document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
-        document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
-        document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
-    }
-
     function renderCardEntrante(p) {
-        const total = parseFloat(p.TOTAL) || 0;
+        const total = parseFloat(p.total || p.TOTAL || 0);
+        const fecha = p.fecha;
         return `<div class="card-pedido">
             <div class="flex justify-between items-start">
                 <div>
-                    <span class="text-cyan-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
-                    <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
-                    <p class="text-white/60 text-[11px] mt-1">${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 50))}...</p>
+                    <span class="text-cyan-400 font-bold text-sm">#${p.id}</span>
+                    <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.cliente || p.CLIENTE || 'Cliente')}</p>
+                    <p class="text-white/60 text-[11px] mt-1">${escapeHTML((p.PEDIDO_DETALLE || p.pedido_detalle || '').substring(0, 50))}...</p>
                 </div>
                 <div class="text-right">
-                    <span class="text-white/40 text-[10px]">${calcularTiempo(p.FECHA)}</span>
+                    <span class="text-white/40 text-[10px]">${calcularTiempo(fecha)}</span>
                     <p class="text-emerald-400 font-bold text-sm">${total.toFixed(2)}€</p>
                 </div>
             </div>
             <div class="flex gap-2 mt-3">
-                <button onclick="aceptarPedido('${p.ID_PEDIDO}')" class="bg-cyan-500 text-black font-bold px-3 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
-                <button onclick="rechazarPedido('${p.ID_PEDIDO}')" class="bg-red-600 text-white font-bold px-3 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
+                <button onclick="aceptarPedido('${p.id}')" class="bg-cyan-500 text-black font-bold px-3 py-2 rounded-xl text-xs flex-1">✅ ACEPTAR</button>
+                <button onclick="rechazarPedido('${p.id}')" class="bg-red-600 text-white font-bold px-3 py-2 rounded-xl text-xs flex-1">❌ RECHAZAR</button>
             </div>
         </div>`;
     }
 
     function renderCardCocina(p) {
-        const estaListo = (p.ESTADO || '').toUpperCase() === 'LISTO';
-        const total = parseFloat(p.TOTAL) || 0;
+        const estaListo = (p.estado || p.ESTADO || '').toUpperCase() === 'LISTO';
+        const total = parseFloat(p.total || p.TOTAL || 0);
         return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
             <div class="flex justify-between">
-                <span class="text-amber-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                <span class="text-amber-400 font-bold text-sm">#${p.id}</span>
                 <span class="text-emerald-400 font-bold text-sm">${total.toFixed(2)}€</span>
             </div>
-            <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
-            <p class="text-white/60 text-[11px]">📦 ${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 50))}...</p>
+            <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.cliente || p.CLIENTE || 'Cliente')}</p>
+            <p class="text-white/60 text-[11px]">📦 ${escapeHTML((p.PEDIDO_DETALLE || p.pedido_detalle || '').substring(0, 50))}...</p>
             <div class="flex gap-2 mt-3 flex-wrap">
-                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="bg-white/10 text-white px-2 py-1.5 rounded-xl text-[10px]">📋 DETALLE</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">15'</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 30, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">30'</button>
-                <button onclick="asignarTiempo('${p.ID_PEDIDO}', 45, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">45'</button>
-                <button onclick="marcarListo('${p.ID_PEDIDO}')" class="bg-emerald-600 text-white px-2 py-1.5 rounded-xl text-[10px]">✅ LISTO</button>
+                <button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-2 py-1.5 rounded-xl text-[10px]">📋 DETALLE</button>
+                <button onclick="asignarTiempo('${p.id}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">15'</button>
+                <button onclick="asignarTiempo('${p.id}', 30, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">30'</button>
+                <button onclick="asignarTiempo('${p.id}', 45, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-2 py-1.5 rounded-xl text-[10px]">45'</button>
+                <button onclick="marcarListo('${p.id}')" class="bg-emerald-600 text-white px-2 py-1.5 rounded-xl text-[10px]">✅ LISTO</button>
             </div>
         </div>`;
     }
 
     function renderCardHistorial(p) {
-        const total = parseFloat(p.TOTAL) || 0;
-        let estadoTexto = p.ESTADO || 'ENTREGADO';
+        const total = parseFloat(p.total || p.TOTAL || 0);
+        let estadoTexto = p.estado || p.ESTADO || 'ENTREGADO';
         return `<div class="card-pedido">
             <div class="flex justify-between items-center mb-2">
-                <span class="text-emerald-400 font-bold text-sm">#${p.ID_PEDIDO}</span>
+                <span class="text-emerald-400 font-bold text-sm">#${p.id}</span>
                 <span class="text-white font-bold text-sm">${total.toFixed(2)}€</span>
             </div>
-            <p class="text-white/70 text-xs">${escapeHTML(p.CLIENTE || 'Cliente')}</p>
-            <p class="text-white/40 text-[10px] mt-1">🛵 ${escapeHTML(p.REPARTIDOR || 'Sin repartidor')} - ${estadoTexto}</p>
+            <p class="text-white/70 text-xs">${escapeHTML(p.cliente || p.CLIENTE || 'Cliente')}</p>
+            <p class="text-white/40 text-[10px] mt-1">🛵 ${escapeHTML(p.repartidor || p.REPARTIDOR || 'Sin repartidor')} - ${estadoTexto}</p>
             <div class="mt-2 pt-2 border-t border-white/5">
-                <button onclick="verDetallePedido('${p.ID_PEDIDO}')" class="w-full bg-white/5 text-white py-1 rounded-lg text-[10px]">📋 VER DETALLE</button>
+                <button onclick="verDetallePedido('${p.id}')" class="w-full bg-white/5 text-white py-1 rounded-lg text-[10px]">📋 VER DETALLE</button>
             </div>
         </div>`;
     }
 
-    function verDetallePedido(id) {
-        let p = pedidos.find(x => x.ID_PEDIDO == id);
+    async function verDetallePedido(id) {
+        const snap = await database.ref('pedidos/' + id).once('value');
+        const p = snap.val();
         if (p) {
             Swal.fire({
-                title: `Pedido #${p.ID_PEDIDO}`,
+                title: `Pedido #${id}`,
                 html: `<div class="text-left">
-                    <p><strong>👤 Cliente:</strong> ${escapeHTML(p.CLIENTE || 'Sin nombre')}</p>
-                    <p><strong>📍 Dirección:</strong> ${escapeHTML(p.DIRECCION || 'No especificada')}</p>
-                    <p><strong>📞 Teléfono:</strong> ${escapeHTML(p.TELEFONO || 'No especificado')}</p>
-                    <p><strong>💳 Pago:</strong> ${escapeHTML(p.PAGO || 'No especificado')}</p>
-                    <p><strong>💰 Total:</strong> ${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</p>
+                    <p><strong>👤 Cliente:</strong> ${escapeHTML(p.cliente || 'Sin nombre')}</p>
+                    <p><strong>📍 Dirección:</strong> ${escapeHTML(p.direccion || 'No especificada')}</p>
+                    <p><strong>📞 Teléfono:</strong> ${escapeHTML(p.telefono || 'No especificado')}</p>
+                    <p><strong>💳 Pago:</strong> ${escapeHTML(p.metodo_pago || 'Efectivo')}</p>
+                    <p><strong>💰 Total:</strong> ${(parseFloat(p.total || 0)).toFixed(2)}€</p>
                     <hr class="my-2 border-white/10">
                     <p><strong>📦 Detalle:</strong></p>
-                    <p style="white-space: pre-wrap; font-size: 12px;">${escapeHTML(p.PEDIDO_DETALLE || '')}</p>
+                    <p style="white-space: pre-wrap; font-size: 12px;">${escapeHTML(p.PEDIDO_DETALLE || p.pedido_detalle || '')}</p>
                 </div>`,
                 background: '#020617', color: 'white', confirmButtonColor: '#f59e0b',
                 confirmButtonText: 'Cerrar'
@@ -463,8 +489,8 @@
     }
 
     async function aceptarPedido(id) {
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO`);
-        await cargarPedidos();
+        await database.ref('pedidos/' + id).update({ estado: 'EN PROCESO', ESTADO: 'EN PROCESO', timestamp_inicio: Date.now() });
+        cargarPedidos();
     }
 
     async function rechazarPedido(id) {
@@ -476,22 +502,20 @@
             background: '#1e293b', color: 'white'
         });
         if (!confirmar.isConfirmed) return;
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=RECHAZADO`);
-        await cargarPedidos();
+        await database.ref('pedidos/' + id).update({ estado: 'RECHAZADO', ESTADO: 'RECHAZADO' });
+        cargarPedidos();
     }
 
     async function asignarTiempo(id, minutos, btn) {
         btn.disabled = true;
         btn.classList.add('bg-green-600', 'text-white');
-        await database.ref('pedidos/'+id).update({ tiempo_seleccionado: minutos });
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=EN PROCESO&tiempo=${minutos}`);
-        await cargarPedidos();
+        await database.ref('pedidos/' + id).update({ tiempo_seleccionado: minutos, estado: 'EN PROCESO', ESTADO: 'EN PROCESO' });
+        cargarPedidos();
     }
 
     async function marcarListo(id) {
-        await database.ref('pedidos/'+id).update({ estado: 'listo', timestamp_listo: Date.now() });
-        await fetch(`${scriptURL}?action=actualizarEstado&idPedido=${id}&nuevoEstado=LISTO`);
-        await cargarPedidos();
+        await database.ref('pedidos/' + id).update({ estado: 'LISTO', ESTADO: 'LISTO', timestamp_listo: Date.now() });
+        cargarPedidos();
     }
 
     function preguntarSalir() {
@@ -511,7 +535,6 @@
         });
     }
 
-    // Tabs para móvil
     function initTabs() {
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -526,14 +549,21 @@
         });
     }
 
-    // Inicialización
+    function iniciarEscuchaTiempoReal() {
+        const pedidosRef = database.ref('pedidos');
+        pedidosRef.on('value', () => {
+            cargarPedidos();
+        });
+    }
+
     async function iniciarApp() {
         await solicitarPermisoNotificaciones();
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
         initTabs();
         await cargarPedidos();
-        setInterval(cargarPedidos, 4000);
+        iniciarEscuchaTiempoReal();
+        setInterval(cargarPedidos, 5000);
     }
 
     (async function() {

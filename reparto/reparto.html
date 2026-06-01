@@ -13,8 +13,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Reparto AE">
     
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background-color: #020617; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
@@ -98,14 +100,27 @@
 </div>
 
 <script>
-    const URL = 'https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec';
+    // ==========================================
+    // CONFIGURACIÓN FIREBASE
+    // ==========================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
+        authDomain: "aguadulce-notificaciones.firebaseapp.com",
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
+        projectId: "aguadulce-notificaciones",
+        storageBucket: "aguadulce-notificaciones.firebasestorage.app",
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
     let codigoActual = null;
     let intervalo = null;
     let pedidosActuales = [];
     let audioNotif = null;
     let sonidoActivado = localStorage.getItem('sonido_reparto') === 'true';
     let timeoutSonido = null;
-    let pedidosAbiertos = new Set(); // Para mantener las tarjetas desplegadas
+    let pedidosAbiertos = new Set();
+    let repartidorInfo = null;
 
     function initAudio() {
         audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
@@ -133,25 +148,49 @@
     async function cargarPedidos() {
         if (!codigoActual) return;
         try {
-            const res = await fetch(URL + '?action=getPedidosReparto&idRepartidor=' + encodeURIComponent(codigoActual) + '&t=' + Date.now());
-            const data = await res.json();
-            if (data.error) {
-                document.getElementById('estadoConexion').innerHTML = 'Error de código';
-                document.getElementById('estadoConexion').style.color = '#ef4444';
-                return;
+            // Obtener ID del repartidor desde la hoja REPARTIDORES
+            if (!repartidorInfo) {
+                const repartidoresSnap = await database.ref('repartidores').once('value');
+                const repartidores = repartidoresSnap.val();
+                if (repartidores && Array.isArray(repartidores)) {
+                    repartidorInfo = repartidores.find(r => String(r.ID_REPARTIDOR || r.CODIGO || '').toUpperCase() === codigoActual);
+                } else if (repartidores && typeof repartidores === 'object') {
+                    for (const key in repartidores) {
+                        const r = repartidores[key];
+                        if (String(r.ID_REPARTIDOR || r.CODIGO || '').toUpperCase() === codigoActual) {
+                            repartidorInfo = r;
+                            break;
+                        }
+                    }
+                }
+                
+                if (repartidorInfo) {
+                    document.getElementById('nombreRep').innerHTML = repartidorInfo.NOMBRE || repartidorInfo.REPARTIDOR || codigoActual;
+                    document.getElementById('saldo').innerHTML = (parseFloat(repartidorInfo.SALDO_BILLETERA || 0)).toFixed(2) + '€';
+                }
             }
-            document.getElementById('estadoConexion').innerHTML = 'Conectado';
-            document.getElementById('estadoConexion').style.color = '#22c55e';
-            document.getElementById('nombreRep').innerHTML = data.nombre || codigoActual;
-            document.getElementById('saldo').innerHTML = (parseFloat(data.saldo) || 0).toFixed(2) + '€';
             
-            const nuevosPedidos = (data.pedidos || []).filter(p => {
-                const estado = (p.ESTADO || '').toUpperCase().trim();
-                return !estado.includes('CANCELADO') && !estado.includes('RECHAZADO') && !estado.includes('ENTREGADO');
-            });
+            // Leer pedidos desde Firebase
+            const snapshot = await database.ref('pedidos').once('value');
+            const todosPedidos = snapshot.val() || {};
+            const nombreRepartidor = repartidorInfo ? (repartidorInfo.NOMBRE || repartidorInfo.REPARTIDOR) : codigoActual;
             
-            const hayNuevos = nuevosPedidos.length > pedidosActuales.length;
-            pedidosActuales = nuevosPedidos;
+            const misPedidos = [];
+            for (const id in todosPedidos) {
+                const p = todosPedidos[id];
+                const repartidorAsignado = p.repartidor || p.REPARTIDOR || '';
+                if (repartidorAsignado.toUpperCase() === nombreRepartidor.toUpperCase()) {
+                    const estado = (p.estado || p.ESTADO || '').toUpperCase();
+                    if (estado !== 'ENTREGADO' && estado !== 'FINALIZADO' && estado !== 'CANCELADO' && estado !== 'RECHAZADO') {
+                        p.id = id;
+                        p.ID_PEDIDO = id;
+                        misPedidos.push(p);
+                    }
+                }
+            }
+            
+            const hayNuevos = misPedidos.length > pedidosActuales.length;
+            pedidosActuales = misPedidos;
             document.getElementById('contadorPedidos').innerHTML = pedidosActuales.length;
             renderizarPedidos(pedidosActuales);
             
@@ -186,22 +225,6 @@
         }
     }
     
-    function calcularTiempoRestante(timestampFin) {
-        if (!timestampFin || timestampFin === 0) return null;
-        const ahora = Date.now();
-        const diff = timestampFin - ahora;
-        if (diff <= 0) return { texto: "⚠️ PEDIDO RETRASADO", retrasado: true };
-        const minutos = Math.floor(diff / 60000);
-        const segundos = Math.floor((diff % 60000) / 1000);
-        return { texto: `⏳ ${minutos}:${segundos < 10 ? '0' + segundos : segundos}`, retrasado: false };
-    }
-    
-    function silenciarYMarcarRecogido(idPedido) {
-        if (timeoutSonido) clearTimeout(timeoutSonido);
-        if (audioNotif) audioNotif.pause();
-        recogerPedido(idPedido);
-    }
-    
     function renderizarPedidos(pedidos) {
         const contenedor = document.getElementById('listaPedidos');
         if (!contenedor) return;
@@ -212,39 +235,39 @@
         
         let html = '';
         for (let p of pedidos) {
-            const estado = (p.ESTADO || '').toUpperCase().trim();
-            const total = parseFloat(p.TOTAL) || 0;
-            let telefono = p.telf || p.WHATSAPP || '';
+            const estado = (p.estado || p.ESTADO || '').toUpperCase().trim();
+            const total = parseFloat(p.total || p.TOTAL || 0);
+            let telefono = p.telefono || p.TELEFONO || p.telf || '';
             const telefonoLimpio = String(telefono).replace(/\D/g, '');
-            const direccionCliente = p.DIRECCION || 'Sin dirección';
-            const nombreRestaurante = p.restaurante_nombre || 'Restaurante';
+            const direccionCliente = p.direccion || p.DIRECCION || 'Sin dirección';
+            const nombreRestaurante = p.restaurante_nombre || p.RESTAURANTE_NOMBRE || 'Restaurante';
             const direccionRestaurante = p.restaurante_direccion || '';
             const linkMapaRestaurante = direccionRestaurante ? generarLinkMapa(direccionRestaurante) : '#';
             const linkMapaCliente = generarLinkMapa(direccionCliente);
-            const estaAbierto = pedidosAbiertos.has(p.ID_PEDIDO);
+            const estaAbierto = pedidosAbiertos.has(p.id);
             const flechaClase = estaAbierto ? 'flecha abierta' : 'flecha';
             
             let estadoTexto = '';
             if (estado === 'LISTO') estadoTexto = '🛵 LISTO PARA RECOGER';
             else if (estado === 'EN CAMINO') estadoTexto = '🚀 EN RUTA';
             else if (estado === 'LLEGÓ' || estado === 'LLEGO') estadoTexto = '📍 EN EL CLIENTE';
-            else if (estado === 'RECIBIDO' || estado === 'EN PROCESO') estadoTexto = '🍳 EN PREPARACIÓN';
+            else if (estado === 'RECIBIDO' || estado === 'NUEVO' || estado === 'EN PROCESO') estadoTexto = '🍳 EN PREPARACIÓN';
             else estadoTexto = estado;
             
             html += `
-                <div class="pedido-card ${estado === 'LISTO' ? 'nuevo' : ''}" data-id="${p.ID_PEDIDO}">
-                    <div class="card-header" onclick="toggleCard('${p.ID_PEDIDO}')">
+                <div class="pedido-card ${estado === 'LISTO' ? 'nuevo' : ''}" data-id="${p.id}">
+                    <div class="card-header" onclick="toggleCard('${p.id}')">
                         <div>
-                            <div class="ref">📋 ${p.ID_PEDIDO}</div>
-                            <div class="text-white text-sm font-bold mt-1">${p.CLIENTE || 'Cliente'}</div>
+                            <div class="ref">📋 ${p.id}</div>
+                            <div class="text-white text-sm font-bold mt-1">${p.cliente || p.CLIENTE || 'Cliente'}</div>
                         </div>
                         <div class="text-right">
                             <div class="status-badge">${estadoTexto}</div>
                             <div class="text-emerald-400 font-bold text-sm mt-1">${total.toFixed(2)}€</div>
                         </div>
-                        <span id="flecha-${p.ID_PEDIDO}" class="flecha ${flechaClase}">▼</span>
+                        <span id="flecha-${p.id}" class="flecha ${flechaClase}">▼</span>
                     </div>
-                    <div id="content-${p.ID_PEDIDO}" class="card-content ${estaAbierto ? 'open' : ''}">
+                    <div id="content-${p.id}" class="card-content ${estaAbierto ? 'open' : ''}">
                         <div class="restaurante-info">
                             <div style="font-size: 11px; color: #22c55e; font-weight: bold;">🏪 RECOGER EN:</div>
                             <div style="font-weight: bold;">${nombreRestaurante}</div>
@@ -252,7 +275,7 @@
                         </div>
                         ${estado === 'LISTO' ? `<a class="btn-mapa" href="${linkMapaRestaurante}" target="_blank">🏪 VER RUTA AL RESTAURANTE</a>` : ''}
                         <div style="background: rgba(30,41,59,0.6); padding: 14px; border-radius: 14px; margin-top: 12px;">
-                            <div style="font-weight: bold;">👤 ${p.CLIENTE || 'Cliente'}</div>
+                            <div style="font-weight: bold;">👤 ${p.cliente || p.CLIENTE || 'Cliente'}</div>
                             <div style="font-size: 14px; margin-top: 4px;">🏠 ${direccionCliente}</div>
                             <div class="flex justify-between items-center mt-2">
                                 <span>📞 ${telefono || 'No disponible'}</span>
@@ -261,20 +284,20 @@
                                     <a href="https://wa.me/34${telefonoLimpio}" target="_blank" style="background:#25D366; color:white; padding: 6px 12px; border-radius: 8px; text-decoration:none; font-size:12px; font-weight:bold;">💬 WhatsApp</a>
                                 </div>` : ''}
                             </div>
-                            <div class="mt-2 pt-2 border-t border-white/10">💳 Método: <strong>${p.PAGO || 'Efectivo'}</strong></div>
+                            <div class="mt-2 pt-2 border-t border-white/10">💳 Método: <strong>${p.metodo_pago || p.PAGO || 'Efectivo'}</strong></div>
                         </div>
                         ${estado === 'EN CAMINO' || estado === 'LLEGÓ' ? `<a class="btn-mapa-cliente" href="${linkMapaCliente}" target="_blank">📍 VER RUTA AL CLIENTE</a>` : ''}
                         <div class="flex justify-between items-center mt-3">
                             <span>💰 Total a cobrar:</span>
                             <span style="color:#22c55e; font-size: 24px; font-weight: 800;">${total.toFixed(2)}€</span>
                         </div>
-                        ${estado === 'LISTO' ? `<button class="btn-recoger" onclick="silenciarYMarcarRecogido('${p.ID_PEDIDO}')">🛵 RECOGER PEDIDO (SILENCIA ALERTA)</button>` : ''}
-                        ${estado === 'EN CAMINO' ? `<button class="btn-llegada" onclick="validarLlegadaGPS(this, '${p.ID_PEDIDO}')">📍 HE LLEGADO AL CLIENTE</button>` : ''}
+                        ${estado === 'LISTO' ? `<button class="btn-recoger" onclick="recogerPedido('${p.id}')">🛵 RECOGER PEDIDO</button>` : ''}
+                        ${estado === 'EN CAMINO' ? `<button class="btn-llegada" onclick="validarLlegadaGPS(this, '${p.id}')">📍 HE LLEGADO AL CLIENTE</button>` : ''}
                         ${estado === 'LLEGÓ' || estado === 'LLEGO' ? `
-                            <button class="btn-deuda" onclick="aplicarDeudaAusencia('${p.ID_PEDIDO}', ${total})">❌ CLIENTE AUSENTE / CARGAR DEUDA</button>
-                            <button class="btn-entregar" style="margin-top:8px;" onclick="confirmarEntrega('${p.ID_PEDIDO}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>
+                            <button class="btn-deuda" onclick="aplicarDeudaAusencia('${p.id}', ${total})">❌ CLIENTE AUSENTE / CARGAR DEUDA</button>
+                            <button class="btn-entregar" style="margin-top:8px;" onclick="confirmarEntrega('${p.id}', ${total})">💰 CONFIRMAR COBRO Y ENTREGA</button>
                         ` : ''}
-                        ${estado === 'RECIBIDO' || estado === 'EN PROCESO' ? `<div class="btn-espera">⏳ ESPERANDO QUE EL RESTAURANTE PREPARE EL PEDIDO</div>` : ''}
+                        ${estado === 'RECIBIDO' || estado === 'NUEVO' || estado === 'EN PROCESO' ? `<div class="btn-espera">⏳ ESPERANDO QUE EL RESTAURANTE PREPARE EL PEDIDO</div>` : ''}
                     </div>
                 </div>
             `;
@@ -294,13 +317,13 @@
     
     async function ejecutarLlegada(id) {
         localStorage.setItem('espera_' + id, Date.now() + (6 * 60 * 1000));
-        await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=LLEGÓ');
+        await database.ref('pedidos/' + id).update({ estado: 'LLEGÓ', ESTADO: 'LLEGÓ', timestamp_llegada: Date.now() });
         await cargarPedidos();
     }
     
     window.recogerPedido = async function(id) {
         try {
-            await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=EN CAMINO');
+            await database.ref('pedidos/' + id).update({ estado: 'EN CAMINO', ESTADO: 'EN CAMINO', timestamp_recogido: Date.now() });
             await Swal.fire({ title: '✅ Pedido en camino', icon: 'success', background: '#0f172a', color: 'white', timer: 1500, showConfirmButton: false });
             await cargarPedidos();
         } catch(e) {
@@ -318,7 +341,12 @@
             cancelButtonText: 'Volver a intentar'
         }).then(async (result) => {
             if (result.isConfirmed) {
-                await fetch(URL + '?action=actualizarEstado&idPedido=' + id + '&nuevoEstado=CANCELADO&tiempo=' + encodeURIComponent('cliente ausente tras 6 min de espera'));
+                await database.ref('pedidos/' + id).update({ 
+                    estado: 'CANCELADO', 
+                    ESTADO: 'CANCELADO', 
+                    motivo_cancelacion: 'cliente ausente tras 6 min de espera',
+                    deuda_aplicada: total
+                });
                 localStorage.removeItem('espera_' + id);
                 await cargarPedidos();
                 Swal.fire({ title: '❌ Deuda aplicada', text: `Cliente penalizado con ${total.toFixed(2)}€`, icon: 'error', background: '#0f172a', color: 'white' });
@@ -336,9 +364,23 @@
             cancelButtonText: 'Cancelar'
         }).then(async (result) => {
             if (result.isConfirmed) {
-                await fetch(URL + '?action=finalizarEntrega&idPedido=' + id + '&total=' + total);
+                await database.ref('pedidos/' + id).update({ 
+                    estado: 'ENTREGADO', 
+                    ESTADO: 'ENTREGADO', 
+                    finalizado: true, 
+                    timestamp_entregado: Date.now() 
+                });
                 localStorage.removeItem('espera_' + id);
                 await cargarPedidos();
+                
+                // Actualizar saldo del repartidor
+                if (repartidorInfo) {
+                    const saldoActual = parseFloat(repartidorInfo.SALDO_BILLETERA || 0);
+                    const nuevoSaldo = saldoActual + total;
+                    await database.ref('repartidores/' + repartidorInfo.ID_REPARTIDOR + '/SALDO_BILLETERA').set(nuevoSaldo);
+                    document.getElementById('saldo').innerHTML = nuevoSaldo.toFixed(2) + '€';
+                }
+                
                 Swal.fire({ title: '🎉 Entregado!', text: `+${total.toFixed(2)}€ en tu billetera`, icon: 'success', background: '#0f172a', color: 'white', timer: 2000, showConfirmButton: false });
             }
         });
@@ -350,20 +392,31 @@
         const historialDiv = document.getElementById('historialLista');
         historialDiv.innerHTML = '<div class="text-center" style="padding: 20px;">⏳ Cargando historial...</div>';
         try {
-            const nombreRepartidor = document.getElementById('nombreRep').innerText;
-            const url = URL + '?action=getHistorialRepartidor&nombre=' + encodeURIComponent(nombreRepartidor);
-            const res = await fetch(url);
-            const data = await res.json();
-            const pedidos = data.historial || [];
-            if (pedidos.length === 0) {
+            const nombreRepartidor = repartidorInfo ? (repartidorInfo.NOMBRE || repartidorInfo.REPARTIDOR) : codigoActual;
+            const snapshot = await database.ref('pedidos').once('value');
+            const todosPedidos = snapshot.val() || {};
+            const historial = [];
+            for (const id in todosPedidos) {
+                const p = todosPedidos[id];
+                const repartidorAsignado = p.repartidor || p.REPARTIDOR || '';
+                if (repartidorAsignado.toUpperCase() === nombreRepartidor.toUpperCase()) {
+                    const estado = (p.estado || p.ESTADO || '').toUpperCase();
+                    if (estado === 'ENTREGADO' || estado === 'FINALIZADO') {
+                        p.id = id;
+                        historial.push(p);
+                    }
+                }
+            }
+            
+            if (historial.length === 0) {
                 historialDiv.innerHTML = '<div class="text-center" style="padding: 40px;">📭 No hay entregas registradas</div>';
                 return;
             }
-            const totalGeneral = pedidos.reduce((sum, p) => sum + (parseFloat(p.TOTAL) || 0), 0);
-            let html = `<div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 16px;"><div class="flex justify-between"><span>📊 Total entregado:</span><span style="color: #22c55e; font-weight: bold;">${totalGeneral.toFixed(2)}€</span></div><div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${pedidos.length}</span></div></div>`;
-            for (let p of pedidos.slice().reverse()) {
-                const fecha = p.FECHA ? p.FECHA.substring(0, 10) : 'Fecha desconocida';
-                html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b;"><div><strong>${p.ID_PEDIDO}</strong><div style="font-size: 11px;">${p.CLIENTE || 'Cliente'}</div><div style="font-size: 10px;">${fecha}</div></div><div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.TOTAL) || 0).toFixed(2)}€</div></div>`;
+            const totalGeneral = historial.reduce((sum, p) => sum + (parseFloat(p.total || p.TOTAL || 0)), 0);
+            let html = `<div style="padding: 12px; background: #1e293b; border-radius: 12px; margin-bottom: 16px;"><div class="flex justify-between"><span>📊 Total entregado:</span><span style="color: #22c55e; font-weight: bold;">${totalGeneral.toFixed(2)}€</span></div><div class="flex justify-between mt-1"><span>📦 Pedidos entregados:</span><span>${historial.length}</span></div></div>`;
+            for (let p of historial.slice().reverse()) {
+                const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : 'Fecha desconocida';
+                html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #1e293b;"><div><strong>${p.id}</strong><div style="font-size: 11px;">${p.cliente || p.CLIENTE || 'Cliente'}</div><div style="font-size: 10px;">${fecha}</div></div><div style="color: #22c55e; font-weight: bold;">${(parseFloat(p.total || p.TOTAL || 0)).toFixed(2)}€</div></div>`;
             }
             historialDiv.innerHTML = html;
         } catch(e) {
@@ -389,6 +442,13 @@
                 btn.style.color = '#020617';
             }
         }
+    }
+    
+    function iniciarEscuchaTiempoReal() {
+        const pedidosRef = database.ref('pedidos');
+        pedidosRef.on('value', () => {
+            cargarPedidos();
+        });
     }
     
     async function iniciarApp() {
@@ -444,11 +504,36 @@
         
         codigoActual = codigo;
         document.getElementById('codigoRep').innerHTML = '🔑 ' + codigoActual;
+        
+        // Cargar información del repartidor
+        const repartidoresSnap = await database.ref('repartidores').once('value');
+        const repartidores = repartidoresSnap.val();
+        if (repartidores && Array.isArray(repartidores)) {
+            repartidorInfo = repartidores.find(r => String(r.ID_REPARTIDOR || r.CODIGO || '').toUpperCase() === codigoActual);
+        } else if (repartidores && typeof repartidores === 'object') {
+            for (const key in repartidores) {
+                const r = repartidores[key];
+                if (String(r.ID_REPARTIDOR || r.CODIGO || '').toUpperCase() === codigoActual) {
+                    repartidorInfo = r;
+                    break;
+                }
+            }
+        }
+        
+        if (repartidorInfo) {
+            document.getElementById('nombreRep').innerHTML = repartidorInfo.NOMBRE || repartidorInfo.REPARTIDOR || codigoActual;
+            document.getElementById('saldo').innerHTML = (parseFloat(repartidorInfo.SALDO_BILLETERA || 0)).toFixed(2) + '€';
+        }
+        
         await cargarPedidos();
         document.getElementById('loader').style.display = 'none';
         document.getElementById('app').style.display = 'block';
+        
+        iniciarEscuchaTiempoReal();
+        
         if (intervalo) clearInterval(intervalo);
         intervalo = setInterval(cargarPedidos, 8000);
+        
         if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
             Notification.requestPermission();
         }

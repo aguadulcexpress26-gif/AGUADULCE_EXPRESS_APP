@@ -68,64 +68,8 @@ function guardarCliente(cliente){guardarLocal("ae_cliente",cliente)}
 function actualizarClienteUI(){const box=document.getElementById("info-cliente-logueado");if(box){const c=obtenerCliente();box.innerHTML=c?`<strong>${escapeHTML(c.nombre)}</strong><br>${escapeHTML(c.telf)}<br>${escapeHTML(c.dir)}`:"No identificado"}}
 function guardarRegistro(){const modalRegistro=document.getElementById('modal-registro');const nombre=document.getElementById('reg-nombre')?.value.trim();const telf=document.getElementById('reg-telf')?.value.trim();const dir=document.getElementById('reg-dir')?.value.trim();const cp=document.getElementById('reg-cp')?.value.trim();const legal=document.getElementById('reg-legal')?.checked;const edad=document.getElementById('reg-edad')?.checked;modalRegistro.style.display='none';if(!nombre||!telf||!dir||!cp){alertaError("Campos requeridos","Completa todos los campos.");return}if(!/^\d{5}$/.test(cp)){alertaError("CP inválido","5 dígitos numéricos.");return}if(!ZONAS_PERMITIDAS.includes(cp)){alertaError("Fuera de zona","Solo entregamos en Aguadulce (04720).");return}if(!legal){alertaError("Acepta términos","Debes aceptar los términos.");return}const direccionCompleta=`${dir}, ${cp}`;if(edad)localStorage.setItem('ae_edad_verificada_'+telf,'true');guardarCliente({nombre,telf,dir:direccionCompleta,cp:cp,mayorEdad:edad});actualizarClienteUI();Swal.fire({title:"¡Bienvenido!",text:"Registro exitoso",icon:"success",background:"#020617",color:"#fff",confirmButtonColor:"#06b6d4",timer:1500,showConfirmButton:false});renderHome()}
 function borrarRegistro(){localStorage.removeItem("ae_cliente");localStorage.removeItem("ae_cesta");cesta=[];actualizarCestaVisual();actualizarClienteUI();mostrarToast("Sesión cerrada","👋");volverHome()}
-async function cargarBaseDatos() {
-    try {
-        console.log("🔄 Cargando datos desde Firebase...");
-        
-        const restaurantesSnap = await database.ref('restaurantes').once('value');
-        db.restaurantes = restaurantesSnap.val() ? Object.values(restaurantesSnap.val()) : [];
-        console.log("✅ Restaurantes:", db.restaurantes.length);
-        
-        const menuSnap = await database.ref('menu_general').once('value');
-        db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
-        console.log("✅ Menú:", db.menu.length);
-        
-        // ⭐ Horarios - CORREGIDO para objetos (no arrays)
-        const horariosSnap = await database.ref('horarios_restaurantes').once('value');
-        const horariosRaw = horariosSnap.val();
-        db.horariosPorDia = {};
-        if (horariosRaw && typeof horariosRaw === 'object') {
-            for (const [idRest, horariosDias] of Object.entries(horariosRaw)) {
-                db.horariosPorDia[idRest] = horariosDias;
-            }
-        }
-        console.log("✅ Horarios:", Object.keys(db.horariosPorDia).length);
-        
-        const configSnap = await database.ref('config').once('value');
-        const configData = configSnap.val();
-        if (configData && Array.isArray(configData) && configData[0]) {
-            db.config = configData[0];
-            const headerBg = document.getElementById('header-bg');
-            if (headerBg && db.config.FONDO_CABECERA) {
-                headerBg.style.backgroundImage = `url(${db.config.FONDO_CABECERA})`;
-                headerBg.style.backgroundSize = 'cover';
-                headerBg.style.backgroundPosition = 'center';
-            }
-            const appLogo = document.getElementById('app-logo');
-            if (appLogo && db.config.LOGO_URL) {
-                appLogo.src = db.config.LOGO_URL;
-            }
-        }
-        
-        const anunciosSnap = await database.ref('anuncios').once('value');
-        const anunciosData = anunciosSnap.val();
-        if (anunciosData && Array.isArray(anunciosData)) {
-            db.anuncios = anunciosData;
-            const textoAnuncio = document.getElementById('texto-anuncio');
-            const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI');
-            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) {
-                textoAnuncio.innerText = anuncioActivo.TEXTO;
-            }
-        }
-        
-        console.log("🎉 Carga completa!");
-        
-    } catch (error) {
-        console.error("❌ Error:", error);
-        throw error;
-    }
-}
-    function renderHome(){const app=document.getElementById("app-container");if(!app)return;let html=`<p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;db.restaurantes.forEach(rest=>{const{abierto,horario}=estaRestauranteAbiertoConDiaLibre(rest);html+=`<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto?'grayscale opacity-50':'cursor-pointer active:scale-95'}" ${abierto?`onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${rest.FOTO}','${rest.ESTADO}')"`:''}>
+async function cargarBaseDatos(){try{console.log("🔄 Cargando datos desde Firebase...");const restaurantesSnap=await database.ref('restaurantes').once('value');db.restaurantes=restaurantesSnap.val()?Object.values(restaurantesSnap.val()):[];console.log("✅ Restaurantes:",db.restaurantes.length);const menuSnap=await database.ref('menu_general').once('value');db.menu=menuSnap.val()?Object.values(menuSnap.val()):[];console.log("✅ Menú:",db.menu.length);const horariosSnap=await database.ref('horarios_restaurantes').once('value');const horariosRaw=horariosSnap.val();db.horariosPorDia={};if(horariosRaw&&typeof horariosRaw==='object'){for(const[idRest,horariosDias]of Object.entries(horariosRaw)){db.horariosPorDia[idRest]=horariosDias}}console.log("✅ Horarios:",Object.keys(db.horariosPorDia).length);const configSnap=await database.ref('config').once('value');const configData=configSnap.val();if(configData&&Array.isArray(configData)&&configData[0]){db.config=configData[0];const headerBg=document.getElementById('header-bg');if(headerBg&&db.config.FONDO_CABECERA){headerBg.style.backgroundImage=`url(${db.config.FONDO_CABECERA})`;headerBg.style.backgroundSize='cover';headerBg.style.backgroundPosition='center'}const appLogo=document.getElementById('app-logo');if(appLogo&&db.config.LOGO_URL){appLogo.src=db.config.LOGO_URL}}const anunciosSnap=await database.ref('anuncios').once('value');const anunciosData=anunciosSnap.val();if(anunciosData&&Array.isArray(anunciosData)){db.anuncios=anunciosData;const textoAnuncio=document.getElementById('texto-anuncio');const anuncioActivo=anunciosData.find(a=>a.ACTIVO==='SI');if(textoAnuncio&&anuncioActivo&&anuncioActivo.TEXTO){textoAnuncio.innerText=anuncioActivo.TEXTO}}console.log("🎉 Carga completa!")}catch(error){console.error("❌ Error:",error);throw error}}
+function renderHome(){const app=document.getElementById("app-container");if(!app)return;let html=`<p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;db.restaurantes.forEach(rest=>{const{abierto,horario}=estaRestauranteAbiertoConDiaLibre(rest);html+=`<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto?'grayscale opacity-50':'cursor-pointer active:scale-95'}" ${abierto?`onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${rest.FOTO}','${rest.ESTADO}')"`:''}>
                     <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-100">
                     <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
                     <div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>

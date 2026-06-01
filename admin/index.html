@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrativo - Aguadulce Express</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { background: #0f172a; }
+        .card { background: #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+        .btn { padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #06b6d4; color: #020617; }
+        .btn-primary:hover { background: #0891b2; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-success:hover { background: #16a34a; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .tab-btn { padding: 8px 16px; border-radius: 8px; cursor: pointer; background: #334155; color: white; }
+        .tab-btn.active { background: #06b6d4; color: #020617; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background: #334155; color: white; position: sticky; top: 0; }
+        .pedido-row:hover { background: #334155; cursor: pointer; }
+        .selected { background: #06b6d420; border-left: 3px solid #06b6d4; }
+        .pagado { opacity: 0.6; background: #1e293b; }
+        .resumen-card { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 15px; text-align: center; }
+        .resumen-number { font-size: 28px; font-weight: bold; color: #06b6d4; }
+        .login-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-card { background: #1e293b; padding: 30px; border-radius: 20px; width: 100%; max-width: 400px; }
+    </style>
+</head>
+<body>
+
+<div id="loginScreen" class="login-container">
+    <div class="login-card">
+        <h1 class="text-2xl font-bold text-cyan-400 mb-6 text-center">Panel Administrativo</h1>
+        <input type="password" id="passwordInput" placeholder="Contraseña" class="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white mb-4">
+        <button onclick="verificarLogin()" class="btn btn-primary w-full">Acceder</button>
+    </div>
+</div>
+
+<div id="mainContent" style="display: none;">
+    <div class="p-6 max-w-full mx-auto">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-white">📊 Panel Administrativo</h1>
+                <p class="text-white/40 text-sm">Gestión de pedidos y pagos a restaurantes</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="exportarCSV()" class="btn btn-primary">📎 Exportar CSV</button>
+                <button onclick="cerrarSesion()" class="btn btn-danger">🚪 Salir</button>
+            </div>
+        </div>
+
+        <!-- Resumen -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="resumen-card"><div class="text-white/60 text-sm">Total Pedidos</div><div class="resumen-number" id="totalPedidos">0</div></div>
+            <div class="resumen-card"><div class="text-white/60 text-sm">Total Facturado</div><div class="resumen-number" id="totalFacturado">0€</div></div>
+            <div class="resumen-card"><div class="text-white/60 text-sm">Total Comisiones</div><div class="resumen-number" id="totalComisiones">0€</div></div>
+            <div class="resumen-card"><div class="text-white/60 text-sm">Pendiente Pagar</div><div class="resumen-number text-yellow-400" id="pendientePagar">0€</div></div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex gap-2 mb-4 flex-wrap">
+            <button class="tab-btn active" onclick="cambiarTab('pedidos')">📋 Pedidos Pendientes</button>
+            <button class="tab-btn" onclick="cambiarTab('pagados')">✅ Pedidos Pagados</button>
+            <button class="tab-btn" onclick="cambiarTab('restaurantes')">🏪 Restaurantes</button>
+        </div>
+
+        <!-- Tab Pedidos Pendientes -->
+        <div id="tabPedidos" class="tab-content">
+            <div class="card">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-3">
+                    <div class="flex gap-3">
+                        <select id="filtroRestaurante" class="bg-white/10 border border-white/20 rounded-lg p-2 text-white">
+                            <option value="TODOS">Todos los restaurantes</option>
+                        </select>
+                        <input type="date" id="filtroFecha" class="bg-white/10 border border-white/20 rounded-lg p-2 text-white">
+                        <button onclick="aplicarFiltros()" class="btn btn-primary">🔍 Filtrar</button>
+                        <button onclick="limpiarFiltros()" class="btn btn-primary" style="background:#64748b;">🗑️ Limpiar</button>
+                    </div>
+                    <button id="btnPagarSeleccionados" onclick="abrirModalPago()" class="btn btn-success" style="display: none;">💰 Pagar Seleccionados</button>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="seleccionarTodos" onchange="toggleSeleccionarTodos()"></th>
+                                <th>ID Pedido</th>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>Total</th>
+                                <th>Subtotal</th>
+                                <th>Comisión</th>
+                                <th>A Pagar</th>
+                                <th>Restaurante</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaPedidos"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Pedidos Pagados -->
+        <div id="tabPagados" class="tab-content" style="display: none;">
+            <div class="card">
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr><th>ID Pedido</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>A Pagar</th><th>Restaurante</th><th>Transferencia</th><th>Fecha Pago</th></tr>
+                            </thead>
+                        <tbody id="listaPagados"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Restaurantes -->
+        <div id="tabRestaurantes" class="tab-content" style="display: none;">
+            <div class="card">
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead><tr><th>ID</th><th>Restaurante</th><th>Comisión %</th><th>Pedidos</th><th>Total Pagado</th><th>Pendiente</th></tr></thead>
+                        <tbody id="listaRestaurantes"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para pagar -->
+<div id="modalPago" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #1e293b; border-radius: 20px; padding: 30px; width: 90%; max-width: 500px;">
+        <h2 class="text-xl font-bold text-white mb-4">💰 Registrar Pago</h2>
+        <p class="text-white/70 mb-2">Pedidos seleccionados: <span id="totalSeleccionados">0</span></p>
+        <p class="text-cyan-400 text-2xl font-bold mb-4" id="montoSeleccionado">0.00€</p>
+        <input type="text" id="numeroTransferencia" placeholder="Número de transferencia" class="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white mb-4">
+        <div class="flex gap-3">
+            <button onclick="confirmarPago()" class="btn btn-success flex-1">✓ Confirmar Pago</button>
+            <button onclick="cerrarModalPago()" class="btn btn-danger flex-1">✕ Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // CONFIGURACIÓN
+    // ==========================================
+    const ADMIN_PASSWORD = "admin123"; // Cambia esta contraseña
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
+        authDomain: "aguadulce-notificaciones.firebaseapp.com",
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com/",
+        projectId: "aguadulce-notificaciones",
+        storageBucket: "aguadulce-notificaciones.appspot.com",
+        messagingSenderId: "940283725281",
+        appId: "1:940283725281:web:3b388d2e7f362a99d2bea0"
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    
+    let todosPedidos = [];
+    let restaurantesMap = new Map();
+    let pedidosSeleccionados = new Set();
+    let filtroRestauranteActual = "TODOS";
+    let filtroFechaActual = "";
+    
+    // ==========================================
+    // LOGIN
+    // ==========================================
+    function verificarLogin() {
+        const pass = document.getElementById('passwordInput').value;
+        if (pass === ADMIN_PASSWORD) {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            cargarDatos();
+        } else {
+            Swal.fire({ title: 'Error', text: 'Contraseña incorrecta', icon: 'error', background: '#1e293b', color: 'white' });
+        }
+    }
+    
+    function cerrarSesion() {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('mainContent').style.display = 'none';
+        pedidosSeleccionados.clear();
+    }
+    
+    // ==========================================
+    // CARGA DE DATOS
+    // ==========================================
+    async function cargarDatos() {
+        await Promise.all([cargarPedidos(), cargarRestaurantes()]);
+        renderizarTodo();
+    }
+    
+    async function cargarPedidos() {
+        const snap = await database.ref('pedidos').once('value');
+        const pedidosObj = snap.val();
+        todosPedidos = [];
+        for (const id in pedidosObj) {
+            const p = pedidosObj[id];
+            p.id = id;
+            todosPedidos.push(p);
+        }
+        todosPedidos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        console.log("Pedidos cargados:", todosPedidos.length);
+    }
+    
+    async function cargarRestaurantes() {
+        const snap = await database.ref('restaurantes').once('value');
+        const restaurantes = snap.val();
+        restaurantesMap.clear();
+        if (restaurantes && Array.isArray(restaurantes)) {
+            restaurantes.forEach(r => {
+                restaurantesMap.set(r.ID_RESTAURANTE, {
+                    nombre: r.NOMBRE_RESTAURANTE || r.NOMBRE || "Restaurante",
+                    comision: parseFloat(r.COMISION_PORCENTAJE) || 0
+                });
+            });
+        } else if (restaurantes && typeof restaurantes === 'object') {
+            for (const id in restaurantes) {
+                const r = restaurantes[id];
+                restaurantesMap.set(r.ID_RESTAURANTE || id, {
+                    nombre: r.NOMBRE_RESTAURANTE || r.NOMBRE || "Restaurante",
+                    comision: parseFloat(r.COMISION_PORCENTAJE) || 0
+                });
+            }
+        }
+        console.log("Restaurantes cargados:", restaurantesMap.size);
+        
+        // Llenar select de restaurantes
+        const select = document.getElementById('filtroRestaurante');
+        select.innerHTML = '<option value="TODOS">Todos los restaurantes</option>';
+        for (const [id, r] of restaurantesMap) {
+            select.innerHTML += `<option value="${id}">${r.nombre}</option>`;
+        }
+    }
+    
+    // ==========================================
+    // CÁLCULOS
+    // ==========================================
+    const ENVIO = 2.50;
+    const USO_APP = 0.99;
+    
+    function calcularPagoRestaurante(pedido, comisionPorcentaje) {
+        const total = parseFloat(pedido.total || pedido.TOTAL || 0);
+        const subtotalProductos = total - ENVIO - USO_APP;
+        const comision = subtotalProductos * (comisionPorcentaje / 100);
+        const pagoRestaurante = subtotalProductos - comision;
+        return { subtotalProductos, comision, pagoRestaurante };
+    }
+    
+    function estaPagado(pedido) {
+        return pedido.pagado === true || pedido.estado_pago === 'pagado';
+    }
+    
+    // ==========================================
+    // RENDERIZADO
+    // ==========================================
+    function aplicarFiltros() {
+        filtroRestauranteActual = document.getElementById('filtroRestaurante').value;
+        filtroFechaActual = document.getElementById('filtroFecha').value;
+        renderizarPedidosPendientes();
+        actualizarResumen();
+    }
+    
+    function limpiarFiltros() {
+        document.getElementById('filtroRestaurante').value = 'TODOS';
+        document.getElementById('filtroFecha').value = '';
+        aplicarFiltros();
+    }
+    
+    function renderizarTodo() {
+        renderizarPedidosPendientes();
+        renderizarPedidosPagados();
+        renderizarRestaurantes();
+        actualizarResumen();
+        actualizarFiltrosRestaurantes();
+    }
+    
+    function renderizarPedidosPendientes() {
+        const pendientes = todosPedidos.filter(p => !estaPagado(p));
+        
+        let filtrados = pendientes;
+        if (filtroRestauranteActual !== 'TODOS') {
+            filtrados = filtrados.filter(p => p.restaurante_id === filtroRestauranteActual);
+        }
+        if (filtroFechaActual) {
+            filtrados = filtrados.filter(p => {
+                const fechaPedido = p.fecha ? p.fecha.split('T')[0] : '';
+                return fechaPedido === filtroFechaActual;
+            });
+        }
+        
+        const tbody = document.getElementById('listaPedidos');
+        if (filtrados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-white/40">No hay pedidos pendientes</td></tr>';
+            document.getElementById('btnPagarSeleccionados').style.display = 'none';
+            return;
+        }
+        
+        let html = '';
+        for (const p of filtrados) {
+            const restaurante = restaurantesMap.get(p.restaurante_id);
+            const comisionPorcentaje = restaurante?.comision || 0;
+            const { subtotalProductos, comision, pagoRestaurante } = calcularPagoRestaurante(p, comisionPorcentaje);
+            const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : 'Fecha desconocida';
+            const seleccionado = pedidosSeleccionados.has(p.id);
+            
+            html += `<tr class="pedido-row ${seleccionado ? 'selected' : ''}" onclick="toggleSeleccionarPedido('${p.id}')">
+                        <td onclick="event.stopPropagation()"><input type="checkbox" class="checkbox-pedido" data-id="${p.id}" ${seleccionado ? 'checked' : ''} onchange="toggleSeleccionarPedido('${p.id}')"></td>
+                        <td class="font-mono text-cyan-400">${p.id}</td>
+                        <td>${fecha}</td>
+                        <td>${escapeHtml(p.cliente || 'Sin nombre')}</td>
+                        <td class="font-bold">${(parseFloat(p.total || 0)).toFixed(2)}€</td>
+                        <td>${subtotalProductos.toFixed(2)}€</td>
+                        <td>${comision.toFixed(2)}€ (${comisionPorcentaje}%)</td>
+                        <td class="font-bold text-green-400">${pagoRestaurante.toFixed(2)}€</td>
+                        <td>${restaurante?.nombre || p.restaurante_nombre || 'Desconocido'}</td>
+                     </tr>`;
+        }
+        tbody.innerHTML = html;
+        
+        const seleccionados = filtrados.filter(p => pedidosSeleccionados.has(p.id));
+        document.getElementById('btnPagarSeleccionados').style.display = seleccionados.length > 0 ? 'block' : 'none';
+    }
+    
+    function renderizarPedidosPagados() {
+        const pagados = todosPedidos.filter(p => estaPagado(p));
+        const tbody = document.getElementById('listaPagados');
+        if (pagados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-10 text-white/40">No hay pedidos pagados</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        for (const p of pagados) {
+            const restaurante = restaurantesMap.get(p.restaurante_id);
+            const comisionPorcentaje = restaurante?.comision || 0;
+            const { pagoRestaurante } = calcularPagoRestaurante(p, comisionPorcentaje);
+            const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : '---';
+            const fechaPago = p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-ES') : '---';
+            
+            html += `<tr>
+                        <td class="font-mono">${p.id}</td>
+                        <td>${fecha}</td>
+                        <td>${escapeHtml(p.cliente || 'Sin nombre')}</td>
+                        <td>${(parseFloat(p.total || 0)).toFixed(2)}€</td>
+                        <td class="font-bold text-green-400">${pagoRestaurante.toFixed(2)}€</td>
+                        <td>${restaurante?.nombre || p.restaurante_nombre || 'Desconocido'}</td>
+                        <td>${p.numero_transferencia || '---'}</td>
+                        <td>${fechaPago}</td>
+                     </tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+    
+    function renderizarRestaurantes() {
+        const resumen = new Map();
+        for (const p of todosPedidos) {
+            const restauranteId = p.restaurante_id;
+            if (!resumen.has(restauranteId)) {
+                resumen.set(restauranteId, { totalPedidos: 0, totalPagado: 0, totalPendiente: 0 });
+            }
+            const r = resumen.get(restauranteId);
+            r.totalPedidos++;
+            
+            const restaurante = restaurantesMap.get(restauranteId);
+            const comisionPorcentaje = restaurante?.comision || 0;
+            const { pagoRestaurante } = calcularPagoRestaurante(p, comisionPorcentaje);
+            
+            if (estaPagado(p)) {
+                r.totalPagado += pagoRestaurante;
+            } else {
+                r.totalPendiente += pagoRestaurante;
+            }
+            resumen.set(restauranteId, r);
+        }
+        
+        const tbody = document.getElementById('listaRestaurantes');
+        if (resumen.size === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-white/40">No hay datos de restaurantes</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        for (const [id, datos] of resumen) {
+            const restaurante = restaurantesMap.get(id);
+            const nombre = restaurante?.nombre || id;
+            const comision = restaurante?.comision || 0;
+            html += `<tr>
+                        <td class="font-mono text-cyan-400">${id}</td>
+                        <td>${escapeHtml(nombre)}</td>
+                        <td>${comision}%</td>
+                        <td>${datos.totalPedidos}</td>
+                        <td class="text-green-400">${datos.totalPagado.toFixed(2)}€</td>
+                        <td class="text-yellow-400">${datos.totalPendiente.toFixed(2)}€</td>
+                     </tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+    
+    function actualizarResumen() {
+        let totalFacturado = 0, totalComisiones = 0, pendientePagar = 0;
+        const pedidosPendientes = todosPedidos.filter(p => !estaPagado(p));
+        
+        for (const p of pedidosPendientes) {
+            const restaurante = restaurantesMap.get(p.restaurante_id);
+            const comisionPorcentaje = restaurante?.comision || 0;
+            const total = parseFloat(p.total || 0);
+            const { comision, pagoRestaurante } = calcularPagoRestaurante(p, comisionPorcentaje);
+            totalFacturado += total;
+            totalComisiones += comision;
+            pendientePagar += pagoRestaurante;
+        }
+        
+        document.getElementById('totalPedidos').innerText = pedidosPendientes.length;
+        document.getElementById('totalFacturado').innerText = totalFacturado.toFixed(2) + '€';
+        document.getElementById('totalComisiones').innerText = totalComisiones.toFixed(2) + '€';
+        document.getElementById('pendientePagar').innerText = pendientePagar.toFixed(2) + '€';
+    }
+    
+    function actualizarFiltrosRestaurantes() {
+        const pedidosPendientes = todosPedidos.filter(p => !estaPagado(p));
+        const restaurantesUnicos = [...new Set(pedidosPendientes.map(p => p.restaurante_id))];
+        const select = document.getElementById('filtroRestaurante');
+        const valorActual = select.value;
+        select.innerHTML = '<option value="TODOS">Todos los restaurantes</option>';
+        for (const id of restaurantesUnicos) {
+            const r = restaurantesMap.get(id);
+            if (r) {
+                select.innerHTML += `<option value="${id}">${r.nombre}</option>`;
+            }
+        }
+        if (valorActual) select.value = valorActual;
+    }
+    
+    // ==========================================
+    // SELECCIÓN DE PEDIDOS
+    // ==========================================
+    function toggleSeleccionarPedido(id) {
+        if (pedidosSeleccionados.has(id)) {
+            pedidosSeleccionados.delete(id);
+        } else {
+            pedidosSeleccionados.add(id);
+        }
+        renderizarPedidosPendientes();
+    }
+    
+    function toggleSeleccionarTodos() {
+        const pendientes = todosPedidos.filter(p => !estaPagado(p));
+        let filtrados = pendientes;
+        if (filtroRestauranteActual !== 'TODOS') {
+            filtrados = filtrados.filter(p => p.restaurante_id === filtroRestauranteActual);
+        }
+        if (filtroFechaActual) {
+            filtrados = filtrados.filter(p => {
+                const fechaPedido = p.fecha ? p.fecha.split('T')[0] : '';
+                return fechaPedido === filtroFechaActual;
+            });
+        }
+        
+        const todosChecked = filtrados.every(p => pedidosSeleccionados.has(p.id));
+        if (todosChecked) {
+            filtrados.forEach(p => pedidosSeleccionados.delete(p.id));
+        } else {
+            filtrados.forEach(p => pedidosSeleccionados.add(p.id));
+        }
+        renderizarPedidosPendientes();
+    }
+    
+    function abrirModalPago() {
+        const pendientes = todosPedidos.filter(p => !estaPagado(p) && pedidosSeleccionados.has(p.id));
+        if (pendientes.length === 0) {
+            Swal.fire({ title: 'Error', text: 'No hay pedidos seleccionados', icon: 'error', background: '#1e293b', color: 'white' });
+            return;
+        }
+        
+        let montoTotal = 0;
+        for (const p of pendientes) {
+            const restaurante = restaurantesMap.get(p.restaurante_id);
+            const comisionPorcentaje = restaurante?.comision || 0;
+            const { pagoRestaurante } = calcularPagoRestaurante(p, comisionPorcentaje);
+            montoTotal += pagoRestaurante;
+        }
+        
+        document.getElementById('totalSeleccionados').innerText = pendientes.length;
+        document.getElementById('montoSeleccionado').innerText = montoTotal.toFixed(2) + '€';
+        document.getElementById('numeroTransferencia').value = '';
+        document.getElementById('modalPago').style.display = 'flex';
+    }
+    
+    function cerrarModalPago() {
+        document.getElementById('modalPago').style.display = 'none';
+    }
+    
+    async function confirmarPago() {
+        const numTransferencia = document.getElementById('numeroTransferencia').value.trim();
+        if (!numTransferencia) {
+            Swal.fire({ title: 'Error', text: 'Ingresa el número de transferencia', icon: 'error', background: '#1e293b', color: 'white' });
+            return;
+        }
+        
+        const pedidosAPagar = todosPedidos.filter(p => !estaPagado(p) && pedidosSeleccionados.has(p.id));
+        
+        for (const p of pedidosAPagar) {
+            await database.ref('pedidos/' + p.id).update({
+                pagado: true,
+                estado_pago: 'pagado',
+                numero_transferencia: numTransferencia,
+                fecha_pago: new Date().toISOString()
+            });
+        }
+        
+        pedidosSeleccionados.clear();
+        cerrarModalPago();
+        await cargarPedidos();
+        renderizarTodo();
+        
+        Swal.fire({ title: '✅ Pago registrado', text: `${pedidosAPagar.length} pedido(s) marcados como pagados`, icon: 'success', background: '#1e293b', color: 'white' });
+    }
+    
+    function exportarCSV() {
+        const pendientes = todosPedidos.filter(p => !estaPagado(p));
+        let headers = ['ID Pedido', 'Fecha', 'Cliente', 'Teléfono', 'Dirección', 'Total', 'Subtotal', 'Comisión', 'A Pagar', 'Restaurante'];
+        let rows = [];
+        
+        for (const p of pendientes) {
+            const restaurante = restaurantesMap.get(p.restaurante_id);
+            const comisionPorcentaje = restaurante?.comision || 0;
+            const total = parseFloat(p.total || 0);
+            const { subtotalProductos, comision, pagoRestaurante } = calcularPagoRestaurante(p, comisionPorcentaje);
+            const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : '';
+            
+            rows.push([
+                p.id, fecha, p.cliente || '', p.telefono || '', p.direccion || '',
+                total.toFixed(2), subtotalProductos.toFixed(2), comision.toFixed(2),
+                pagoRestaurante.toFixed(2), restaurante?.nombre || p.restaurante_nombre || ''
+            ]);
+        }
+        
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csv += row.map(cell => `"${cell}"`).join(',') + '\n';
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pedidos_pendientes_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        Swal.fire({ title: '✅ Exportado', text: 'Archivo CSV generado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#1e293b', color: 'white' });
+    }
+    
+    function cambiarTab(tab) {
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        
+        if (tab === 'pedidos') {
+            document.getElementById('tabPedidos').style.display = 'block';
+            document.querySelector('.tab-btn[onclick="cambiarTab(\'pedidos\')"]').classList.add('active');
+            renderizarPedidosPendientes();
+        } else if (tab === 'pagados') {
+            document.getElementById('tabPagados').style.display = 'block';
+            document.querySelector('.tab-btn[onclick="cambiarTab(\'pagados\')"]').classList.add('active');
+            renderizarPedidosPagados();
+        } else if (tab === 'restaurantes') {
+            document.getElementById('tabRestaurantes').style.display = 'block';
+            document.querySelector('.tab-btn[onclick="cambiarTab(\'restaurantes\')"]').classList.add('active');
+            renderizarRestaurantes();
+        }
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
+    }
+    
+    // Inicialización
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') verificarLogin(); });
+</script>
+</body>
+</html>

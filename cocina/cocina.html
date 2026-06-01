@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Aguadulce Express - Cocina</title>
     
-    <!-- PWA manifest específico para cocina -->
     <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
     <meta name="theme-color" content="#f59e0b">
@@ -43,10 +42,7 @@
             0%, 100% { background-color: rgba(239,68,68,0.1); border-left-color: rgba(239,68,68,0.3); }
             50% { background-color: rgba(239,68,68,0.3); border-left-color: #ef4444; }
         }
-        .nuevo-pedido-anim {
-            animation: pulse-red 1s ease-in-out 3;
-            border-left: 3px solid #ef4444;
-        }
+        .nuevo-pedido-anim { animation: pulse-red 1s ease-in-out 3; border-left: 3px solid #ef4444; }
         .pedido-card { will-change: transform; }
     </style>
 </head>
@@ -114,7 +110,7 @@
 
 <script>
     // ==========================================
-    // CONFIGURACIÓN FIREBASE
+    // CONFIGURACIÓN
     // ==========================================
     const firebaseConfig = {
         apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
@@ -126,88 +122,39 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    // URL del script solo para validar PIN (se mantiene)
     const scriptURL = "https://script.google.com/macros/s/AKfycbzYFDShcrP7I4FKhiH3q5UcEInpSKJstrumJ9ddI4Tj9S31ZUgwiuie81fGFmCJ6ob2/exec";
 
-    // ==========================================
-    // VARIABLES GLOBALES
-    // ==========================================
     let miRestauranteId = localStorage.getItem('AE_REST_ID') || "";
     let pedidos = [];
     let sonidosActivados = false;
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
-    
-    let pendingBadgeCount = 0;
-    let originalTitle = document.title;
     let ultimosIdsNotificados = new Set();
     let ultimaCantidadPendientes = 0;
-    let miRestauranteData = null;
-    let unsubscribePedidos = null;
+    let originalTitle = document.title;
 
     // ==========================================
-    // NOTIFICACIONES VISUALES
+    // FUNCIONES
     // ==========================================
     
     async function solicitarPermisoNotificaciones() {
         if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-            const permiso = await Notification.requestPermission();
-            if (permiso === "granted") {
-                console.log("✅ Notificaciones permitidas");
-                return true;
-            }
-        }
-        return Notification.permission === "granted";
-    }
-
-    function actualizarBadgeContador(cantidad) {
-        pendingBadgeCount = cantidad;
-        if (cantidad > 0) {
-            document.title = `🔴 (${cantidad}) AGUADULCE - Cocina`;
-        } else {
-            document.title = originalTitle;
-        }
-        if (navigator.setAppBadge) {
-            if (cantidad > 0) {
-                navigator.setAppBadge(cantidad);
-            } else {
-                navigator.clearAppBadge();
-            }
+            await Notification.requestPermission();
         }
     }
 
-    function notificarNuevoPedidoVisual(pedido, cantidadPendientes) {
-        actualizarBadgeContador(cantidadPendientes);
-        if (Notification.permission === "granted") {
-            const total = parseFloat(pedido.total || pedido.TOTAL || 0);
-            new Notification("🍽️ NUEVO PEDIDO EN COCINA", {
-                body: `Pedido #${pedido.id || pedido.ID_PEDIDO}\nCliente: ${pedido.cliente || pedido.CLIENTE || 'Cliente'}\nTotal: ${total.toFixed(2)}€`,
-                icon: "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg",
-                tag: `pedido-${pedido.id}`,
-                renotify: true,
-                requireInteraction: true,
-                vibrate: [200, 100, 200]
-            });
-        }
-        if (document.hidden) {
-            let contador = 0;
-            const interval = setInterval(() => {
-                if (contador >= 6 || !document.hidden || cantidadPendientes === 0) {
-                    document.title = cantidadPendientes > 0 ? `🔴 (${cantidadPendientes}) AGUADULCE - Cocina` : originalTitle;
-                    clearInterval(interval);
-                    return;
-                }
-                document.title = contador % 2 === 0 ? "🔴🔴🔴 NUEVO PEDIDO 🔴🔴🔴" : `🔴 (${cantidadPendientes}) AGUADULCE - Cocina`;
-                contador++;
-            }, 500);
-        }
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
     }
 
-    // ==========================================
-    // AUTENTICACIÓN
-    // ==========================================
-    
-       async function validarPINConServidor(pin) {
+    // ⭐ VALIDACIÓN PIN CON POST (CORREGIDO)
+    async function validarPINConServidor(pin) {
         try {
             const formData = new URLSearchParams();
             formData.append('action', 'validarPIN');
@@ -225,95 +172,28 @@
             return { valido: false, error: e.message };
         }
     }
-    // ==========================================
-    // FUNCIONES DE TICKET
-    // ==========================================
-    
-    function escapeHTML(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
 
-    function formatearDetalleProductos(detalleTexto) {
-        if (!detalleTexto) return '<div>No se pudo cargar el detalle</div>';
-        const lineas = detalleTexto.split('\n');
-        let html = '';
-        for (let linea of lineas) {
-            linea = linea.trim();
-            if (linea === '') continue;
-            if (linea.match(/^\d+x\s/i)) {
-                html += `<div style="margin: 5px 0 2px 0; font-weight: bold; font-size: 11px;">${escapeHTML(linea)}</div>`;
-            } else if (linea.startsWith('+') || linea.startsWith('-') || linea.startsWith('  +')) {
-                html += `<div style="margin: 2px 0 2px 15px; font-size: 9px; color: #555;">📌 ${escapeHTML(linea.replace(/^[\+\-\s]+/, ''))}</div>`;
-            } else if (linea.toLowerCase().includes('nota') || linea.toLowerCase().includes('sin ') || linea.toLowerCase().includes('con ')) {
-                html += `<div style="margin: 2px 0 2px 10px; font-size: 9px; color: #888;">📝 ${escapeHTML(linea)}</div>`;
-            } else {
-                html += `<div style="margin: 3px 0; font-size: 10px;">${escapeHTML(linea)}</div>`;
-            }
+    // ⭐ FUNCIÓN PRINCIPAL DE LOGIN
+    async function verificarPIN() {
+        let pin = document.getElementById('pinInput').value.trim().toUpperCase();
+        if (!pin) {
+            Swal.fire({ title: 'ERROR', text: 'Ingresa el PIN', icon: 'error', background: '#020617', color: 'white' });
+            return;
         }
-        return html;
-    }
-
-    function generarTicketProfesional(pedido) {
-        const total = parseFloat(pedido.total || pedido.TOTAL || 0);
-        const subtotal = parseFloat(pedido.subtotal || pedido.SUBTOTAL || (total * 0.9));
-        const envio = parseFloat(pedido.envio || pedido.ENVIO || 2.50);
-        const usoApp = parseFloat(pedido.usoApp || pedido.USO_APP || 0.99);
-        const metodoPago = pedido.metodo_pago || pedido.PAGO || 'Efectivo';
-        const fechaPedido = pedido.fecha ? new Date(pedido.fecha) : new Date();
-        const nombreRestaurante = pedido.restaurante_nombre || '';
-        const pagaCon = parseFloat(pedido.paga_con || pedido.PAGA_CON || 0);
+        Swal.fire({ title: 'Verificando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+        const resultado = await validarPINConServidor(pin);
+        Swal.close();
         
-        let cambioHtml = '';
-        if (metodoPago.toUpperCase().includes('EFECTIVO') && pagaCon > total) {
-            const cambio = pagaCon - total;
-            cambioHtml = `<div style="margin:10px 0;padding:8px;background:#f5f5f5;text-align:center;border-radius:4px;"><div>💵 Paga con: ${pagaCon.toFixed(2)}€</div><div>💰 Cambio: ${cambio.toFixed(2)}€</div></div>`;
+        if (resultado.valido) {
+            miRestauranteId = resultado.idRestaurante;
+            localStorage.setItem('AE_REST_ID', miRestauranteId);
+            localStorage.setItem('AE_REST_NOMBRE', resultado.nombre);
+            iniciarApp();
+        } else {
+            Swal.fire({ title: 'CLAVE INCORRECTA', text: 'La clave no es válida', icon: 'error', background: '#020617', color: 'white' });
         }
-        
-        const detalleFormateado = formatearDetalleProductos(pedido.PEDIDO_DETALLE || pedido.pedido_detalle || '');
-        
-        return `<!DOCTYPE html>
-            <html>
-            <head><meta charset="UTF-8"><title>Ticket #${pedido.id}</title>
-            <style>
-                *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;width:100%;max-width:80mm;margin:0 auto;background:white;color:#000;padding:8mm 3mm 6mm 3mm;font-size:10px;line-height:1.4}
-                .separator-dashed{border-top:1px dashed #aaa;margin:8px 0}.logo{font-size:16px;font-weight:bold;text-align:center}.info-line{display:flex;justify-content:space-between;margin:4px 0}.section-title{font-weight:bold;margin:8px 0 5px 0}.total-box{text-align:center;margin:10px 0;padding:8px;background:#f9f9f9}.total-number{font-size:18px;font-weight:bold}
-            </style>
-            </head>
-            <body>
-                <div class="logo">AGUADULCE EXPRESS</div>
-                <div class="separator-dashed"></div>
-                <div class="info-line"><span>PEDIDO:</span><span>#${pedido.id}</span></div>
-                <div class="info-line"><span>CLIENTE:</span><span>${escapeHTML(pedido.cliente || 'Cliente')}</span></div>
-                <div class="info-line"><span>DIRECCIÓN:</span><span>${escapeHTML(pedido.direccion || '').substring(0,35)}</span></div>
-                <div class="separator-dashed"></div>
-                <div class="section-title">📦 PRODUCTOS</div>
-                ${detalleFormateado}
-                <div class="separator-dotted"></div>
-                <div class="total-box"><div>TOTAL</div><div class="total-number">${total.toFixed(2)}€</div></div>
-                ${cambioHtml}
-                <div class="separator-dashed"></div>
-                <div class="footer">🎉 ¡GRACIAS POR SU PEDIDO! 🎉</div>
-                <script>window.onload=function(){setTimeout(function(){window.print();setTimeout(function(){window.close()},1000)},200)}<\/script>
-            </body>
-            </html>`;
     }
 
-    function imprimirTicketProfesional(pedido) {
-        const ventana = window.open('', '_blank', 'width=450,height=700');
-        ventana.document.write(generarTicketProfesional(pedido));
-        ventana.document.close();
-    }
-
-    // ==========================================
-    // FUNCIONES PRINCIPALES (MIGRADAS A FIREBASE)
-    // ==========================================
-    
     function activarSonidoGlobal() {
         if (!sonidosActivados) {
             sonidosActivados = true;
@@ -328,40 +208,37 @@
             title: `${nuevoEstado === "ABIERTO" ? "🟢" : "🔴"} ¿Cambiar estado?`,
             text: nuevoEstado === "ABIERTO" ? "¿Quieres ABRIR el restaurante?" : "¿Quieres CERRAR el restaurante?",
             showCancelButton: true,
-            confirmButtonColor: nuevoEstado === "ABIERTO" ? "#10B981" : "#EF4444",
             background: "#1e293b", color: "#fff"
         });
         if (!confirmar.isConfirmed) return;
         
-        // Actualizar en Firebase
         await database.ref('restaurantes_estado/' + miRestauranteId).set({ estado: nuevoEstado, timestamp: Date.now() });
-        
-        // También actualizar en el script (para compatibilidad)
-        try {
-            await fetch(`${scriptURL}?action=cambiarEstadoTienda&idRest=${miRestauranteId}&nuevoEstado=${nuevoEstado}&t=${Date.now()}`);
-        } catch(e) { console.log(e); }
         cargarPedidos();
+    }
+
+    function calcularTiempo(fechaStr) {
+        if (!fechaStr) return "---";
+        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
+        if (diff < 1) return "Ahora";
+        if (diff < 60) return `Hace ${diff} min`;
+        return `Hace ${Math.floor(diff/60)}h`;
     }
 
     async function cargarPedidos() {
         if (!miRestauranteId) return;
         try {
-            // Leer desde Firebase
             const snapshot = await database.ref('pedidos').once('value');
             const todosPedidos = snapshot.val() || {};
             
-            // Filtrar pedidos del restaurante
             const pedidosRestaurante = [];
             for (const id in todosPedidos) {
                 const p = todosPedidos[id];
-                if (p.restaurante_id === miRestauranteId || p.ID_RESTAURANTE === miRestauranteId) {
-                    p.ID_PEDIDO = id;
+                if (p.restaurante_id === miRestauranteId) {
                     p.id = id;
                     pedidosRestaurante.push(p);
                 }
             }
             
-            // Calcular stats del día y semana
             const hoy = new Date().toLocaleDateString('es-ES');
             const ahora = new Date();
             const diaSemana = ahora.getDay();
@@ -370,22 +247,22 @@
             const fechaInicioSemana = inicioSemana.toLocaleDateString('es-ES');
             
             let diaria = 0, semanal = 0;
-            const pendientes = [];
+            const entrantes = [];
             const cocina = [];
             const historial = [];
             
             for (const p of pedidosRestaurante) {
                 const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : '';
-                const total = parseFloat(p.total || p.TOTAL || 0);
-                const estado = (p.estado || p.ESTADO || 'RECIBIDO').toUpperCase();
+                const total = parseFloat(p.total || 0);
+                const estado = (p.estado || 'RECIBIDO').toUpperCase();
                 
                 if (estado !== 'RECHAZADO' && estado !== 'CANCELADO') {
                     if (fecha === hoy) diaria += total;
                     if (fecha >= fechaInicioSemana) semanal += total;
                 }
                 
-                if (estado === 'RECIBIDO' || estado === 'NUEVO' || estado === '') {
-                    pendientes.push(p);
+                if (estado === 'RECIBIDO' || estado === 'NUEVO') {
+                    entrantes.push(p);
                 } else if (estado === 'EN PROCESO' || estado === 'LISTO') {
                     cocina.push(p);
                 } else {
@@ -395,37 +272,40 @@
             
             document.getElementById('statHoy').innerHTML = diaria.toFixed(2);
             document.getElementById('statSemana').innerHTML = semanal.toFixed(2);
+            document.getElementById('totalPendientes').innerText = entrantes.length;
+            document.getElementById('totalCocina').innerText = cocina.length;
+            document.getElementById('totalHistorial').innerText = historial.length;
             
-            // Verificar nuevos pedidos
-            const nuevosIds = new Set(pendientes.map(p => p.id));
+            // Notificaciones de nuevos pedidos
+            const nuevosIds = new Set(entrantes.map(p => p.id));
             const cantidadPendientes = nuevosIds.size;
             
             for (const id of nuevosIds) {
                 if (!ultimosIdsNotificados.has(id)) {
-                    const pedidoNuevo = pendientes.find(p => p.id === id);
-                    if (pedidoNuevo) {
-                        notificarNuevoPedidoVisual(pedidoNuevo, cantidadPendientes);
-                        if (sonidosActivados) {
-                            audioNotif.play().catch(e => console.log);
-                        }
+                    const pedidoNuevo = entrantes.find(p => p.id === id);
+                    if (pedidoNuevo && Notification.permission === "granted") {
+                        new Notification("🍽️ NUEVO PEDIDO", {
+                            body: `Pedido #${id}`,
+                            icon: "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg"
+                        });
                     }
+                    if (sonidosActivados) audioNotif.play().catch(e => console.log);
                 }
             }
             ultimosIdsNotificados = nuevosIds;
             
             if (ultimaCantidadPendientes !== cantidadPendientes) {
-                actualizarBadgeContador(cantidadPendientes);
+                if (cantidadPendientes > 0) {
+                    document.title = `🔴 (${cantidadPendientes}) AGUADULCE - Cocina`;
+                } else {
+                    document.title = originalTitle;
+                }
                 ultimaCantidadPendientes = cantidadPendientes;
             }
             
-            // Renderizar
-            document.getElementById('listaEntrantes').innerHTML = pendientes.map(p => renderCardEntrante(p)).join('');
+            document.getElementById('listaEntrantes').innerHTML = entrantes.map(p => renderCardEntrante(p)).join('');
             document.getElementById('listaCocina').innerHTML = cocina.map(p => renderCardCocina(p)).join('');
             document.getElementById('listaHistorial').innerHTML = historial.map(p => renderCardHistorial(p)).join('');
-            
-            document.getElementById('totalPendientes').innerText = pendientes.length;
-            document.getElementById('totalCocina').innerText = cocina.length;
-            document.getElementById('totalHistorial').innerText = historial.length;
             
             // Cargar datos del restaurante
             const restoSnap = await database.ref('restaurantes').once('value');
@@ -449,7 +329,6 @@
                     fotoElement.src = restauranteInfo.FOTO;
                 }
                 
-                // Estado de tienda
                 const estadoTienda = restauranteInfo.ESTADO || "CERRADO";
                 const btnClase = estadoTienda === "ABIERTO" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400";
                 document.getElementById('contenedorBotonTienda').innerHTML = `
@@ -460,30 +339,21 @@
             }
             
         } catch (error) {
-            console.error("Error cargando pedidos:", error);
+            console.error("Error:", error);
         }
     }
 
-    function calcularTiempo(fechaStr) {
-        if (!fechaStr) return "---";
-        let diff = Math.floor((new Date() - new Date(fechaStr)) / 60000);
-        if (diff < 1) return "Ahora";
-        if (diff < 60) return `Hace ${diff} min`;
-        return `Hace ${Math.floor(diff/60)}h`;
-    }
-
     function renderCardEntrante(p) {
-        const total = parseFloat(p.total || p.TOTAL || 0);
-        const fecha = p.fecha || p.FECHA;
-        return `<div class="card-pedido nuevo-pedido-anim" data-id="${p.id}">
+        const total = parseFloat(p.total || 0);
+        return `<div class="card-pedido nuevo-pedido-anim">
             <div class="flex justify-between items-start">
                 <div>
                     <span class="text-cyan-400 font-bold text-sm">#${p.id}</span>
-                    <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.cliente || p.CLIENTE || 'Cliente')}</p>
-                    <p class="text-white/60 text-xs mt-1">${escapeHTML((p.PEDIDO_DETALLE || p.pedido_detalle || '').substring(0, 60))}...</p>
+                    <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.cliente || 'Cliente')}</p>
+                    <p class="text-white/60 text-xs mt-1">${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 60))}...</p>
                 </div>
                 <div class="text-right">
-                    <span class="text-white/40 text-xs">${calcularTiempo(fecha)}</span>
+                    <span class="text-white/40 text-xs">${calcularTiempo(p.fecha)}</span>
                     <p class="text-emerald-400 font-bold text-sm mt-1">${total.toFixed(2)}€</p>
                 </div>
             </div>
@@ -495,15 +365,15 @@
     }
 
     function renderCardCocina(p) {
-        const estaListo = (p.estado || p.ESTADO || '').toUpperCase() === 'LISTO';
-        const total = parseFloat(p.total || p.TOTAL || 0);
+        const estaListo = (p.estado || '').toUpperCase() === 'LISTO';
+        const total = parseFloat(p.total || 0);
         return `<div class="card-pedido ${estaListo ? 'opacity-50' : ''}">
             <div class="flex justify-between">
                 <span class="text-amber-400 font-bold text-sm">#${p.id}</span>
                 <span class="text-white/40 text-xs">${estaListo ? '🟢 LISTO' : '🍳 EN COCINA'}</span>
             </div>
-            <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.cliente || p.CLIENTE || 'Cliente')}</p>
-            <p class="text-white/60 text-xs">📦 ${escapeHTML((p.PEDIDO_DETALLE || p.pedido_detalle || '').substring(0, 50))}...</p>
+            <p class="text-white text-sm font-bold mt-1">${escapeHTML(p.cliente || 'Cliente')}</p>
+            <p class="text-white/60 text-xs">📦 ${escapeHTML((p.PEDIDO_DETALLE || '').substring(0, 50))}...</p>
             <div class="flex gap-2 mt-3 flex-wrap">
                 <button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 DETALLE</button>
                 <button onclick="asignarTiempo('${p.id}', 15, this)" class="tiempo-btn bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-xs">15'</button>
@@ -515,41 +385,14 @@
     }
 
     function renderCardHistorial(p) {
-        const total = parseFloat(p.total || p.TOTAL || 0);
-        const estado = (p.estado || p.ESTADO || '').toUpperCase();
-        let estadoTexto = '';
-        let colorClass = '';
-        
-        if (estado === 'ENTREGADO' || estado === 'FINALIZADO') {
-            estadoTexto = '🏁 ENTREGADO';
-            colorClass = 'badge-success';
-        } else if (estado === 'EN CAMINO') {
-            estadoTexto = '🛵 EN REPARTO';
-            colorClass = 'badge';
-        } else if (estado === 'LLEGÓ') {
-            estadoTexto = '📍 EN EL CLIENTE';
-            colorClass = 'badge-warning';
-        } else if (estado === 'RECHAZADO') {
-            estadoTexto = '❌ RECHAZADO';
-            colorClass = 'badge-danger';
-        } else if (estado === 'CANCELADO') {
-            estadoTexto = '⚠️ CANCELADO';
-            colorClass = 'badge-danger';
-        } else {
-            estadoTexto = estado;
-            colorClass = 'badge';
-        }
-        
+        const total = parseFloat(p.total || 0);
         return `<div class="card-pedido historial-item">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-emerald-400 font-bold text-sm">#${p.id}</span>
                 <span class="text-white font-bold text-sm">${total.toFixed(2)}€</span>
             </div>
-            <div class="flex justify-between items-start gap-2">
-                <p class="text-white/70 text-xs">${escapeHTML(p.cliente || p.CLIENTE || 'Cliente')}</p>
-                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${colorClass}">${estadoTexto}</span>
-            </div>
-            <p class="text-white/40 text-[11px] mt-1">🛵 ${escapeHTML(p.repartidor || p.REPARTIDOR || 'Sin repartidor')}</p>
+            <p class="text-white/70 text-xs">${escapeHTML(p.cliente || 'Cliente')}</p>
+            <p class="text-white/40 text-[11px] mt-1">🛵 ${escapeHTML(p.repartidor || 'Sin repartidor')}</p>
             <div class="mt-3 pt-2 border-t border-white/5">
                 <button onclick="verDetallePedido('${p.id}')" class="w-full bg-white/5 hover:bg-cyan-500/20 text-white py-1.5 rounded-lg text-[11px]">📋 VER DETALLE</button>
             </div>
@@ -560,64 +403,51 @@
         database.ref('pedidos/' + id).once('value').then(snap => {
             const p = snap.val();
             if (p) {
-                p.id = id;
                 Swal.fire({
                     title: `Pedido #${id}`,
                     html: `<div class="text-left">
                         <p><strong>👤 Cliente:</strong> ${escapeHTML(p.cliente || 'Sin nombre')}</p>
                         <p><strong>📍 Dirección:</strong> ${escapeHTML(p.direccion || 'No especificada')}</p>
                         <p><strong>📞 Teléfono:</strong> ${escapeHTML(p.telefono || 'No especificado')}</p>
-                        <p><strong>💳 Pago:</strong> ${escapeHTML(p.metodo_pago || 'Efectivo')}</p>
                         <p><strong>💰 Total:</strong> ${(parseFloat(p.total || 0)).toFixed(2)}€</p>
                         <hr class="my-2 border-white/10">
                         <p><strong>📦 Detalle:</strong></p>
-                        <p style="white-space: pre-wrap; font-size: 12px;">${escapeHTML(p.PEDIDO_DETALLE || p.pedido_detalle || '')}</p>
+                        <p style="white-space: pre-wrap; font-size: 12px;">${escapeHTML(p.PEDIDO_DETALLE || '')}</p>
                     </div>`,
                     background: '#020617', color: 'white', confirmButtonColor: '#f59e0b',
-                    showCancelButton: true, confirmButtonText: '🖨️ Imprimir Ticket', cancelButtonText: 'Cerrar'
-                }).then(result => { 
-                    if (result.isConfirmed) imprimirTicketProfesional(p); 
+                    showCancelButton: true, confirmButtonText: 'Cerrar'
                 });
             }
         });
     }
 
     async function aceptarPedido(id) {
-        await database.ref('pedidos/' + id).update({ estado: 'EN PROCESO', ESTADO: 'EN PROCESO', timestamp_inicio: Date.now() });
+        await database.ref('pedidos/' + id).update({ estado: 'EN PROCESO', timestamp_inicio: Date.now() });
         cargarPedidos();
     }
 
     async function rechazarPedido(id) {
         const confirmar = await Swal.fire({
             title: '¿Rechazar pedido?',
-            text: 'El cliente NO pagará por este pedido.',
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, rechazar',
-            background: '#1e293b',
-            color: 'white'
+            background: '#1e293b', color: 'white'
         });
         if (!confirmar.isConfirmed) return;
-        await database.ref('pedidos/' + id).update({ estado: 'RECHAZADO', ESTADO: 'RECHAZADO', motivo_rechazo: 'Rechazado por el restaurante' });
+        await database.ref('pedidos/' + id).update({ estado: 'RECHAZADO' });
         cargarPedidos();
     }
 
     async function asignarTiempo(id, minutos, btn) {
         btn.disabled = true;
         btn.classList.add('bg-green-600', 'text-white');
-        const timestampFin = Date.now() + (minutos * 60 * 1000);
-        await database.ref('pedidos/' + id).update({ 
-            tiempo_seleccionado: minutos, 
-            timestamp_fin_elaboracion: timestampFin,
-            estado: 'EN PROCESO',
-            ESTADO: 'EN PROCESO'
-        });
+        await database.ref('pedidos/' + id).update({ tiempo_seleccionado: minutos, estado: 'EN PROCESO' });
         cargarPedidos();
     }
 
     async function marcarListo(id) {
-        await database.ref('pedidos/' + id).update({ estado: 'LISTO', ESTADO: 'LISTO', timestamp_listo: Date.now() });
+        await database.ref('pedidos/' + id).update({ estado: 'LISTO', timestamp_listo: Date.now() });
         cargarPedidos();
     }
 
@@ -628,8 +458,7 @@
             showCancelButton: true,
             confirmButtonColor: '#d33',
             confirmButtonText: 'Sí, salir',
-            background: '#1e293b',
-            color: 'white'
+            background: '#1e293b', color: 'white'
         }).then(result => {
             if (result.isConfirmed) {
                 localStorage.removeItem('AE_REST_ID');
@@ -639,43 +468,23 @@
         });
     }
 
-    // ==========================================
-    // ESCUCHA EN TIEMPO REAL
-    // ==========================================
-    function iniciarEscuchaTiempoReal() {
-        const pedidosRef = database.ref('pedidos');
-        pedidosRef.on('value', () => {
-            cargarPedidos();
-        });
-    }
-
-    // ==========================================
-    // INICIALIZACIÓN
-    // ==========================================
-    
     async function iniciarApp() {
         originalTitle = document.title;
         await solicitarPermisoNotificaciones();
-        
-        // Mostrar interfaz
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContent').classList.remove('hidden');
         
-        // Cargar pedidos inmediatamente
-        await cargarPedidos();
-        
         // Escuchar cambios en tiempo real
-        iniciarEscuchaTiempoReal();
+        database.ref('pedidos').on('value', () => cargarPedidos());
         
-        // Intervalo de respaldo cada 5 segundos
+        await cargarPedidos();
         setInterval(cargarPedidos, 5000);
     }
 
-    // Verificar si ya hay sesión guardada
+    // Verificar sesión guardada
     (async function() {
         const nombreGuardado = localStorage.getItem('AE_REST_NOMBRE');
         if (miRestauranteId && nombreGuardado) {
-            miRestauranteData = { idRestaurante: miRestauranteId, nombre: nombreGuardado };
             iniciarApp();
         } else {
             document.getElementById('loginScreen').style.display = 'flex';

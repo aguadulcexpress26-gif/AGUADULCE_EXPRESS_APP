@@ -308,18 +308,27 @@
         document.getElementById(modalId).classList.add('hidden');
     }
     
-    // ==================== RESTAURANTES ====================
-    async function cargarRestaurantes() {
+   // ==================== RESTAURANTES - VERSIÓN CORREGIDA ====================
+async function cargarRestaurantes() {
+    console.log("Cargando restaurantes...");
+    try {
         const snapshot = await database.ref('restaurantes').once('value');
         const restaurantes = snapshot.val() || {};
+        console.log("Restaurantes en Firebase:", restaurantes);
+        
         const container = document.getElementById('listaRestaurantes');
         
         // Filtrar solo los que son PIN válidos (no números)
         const restaurantesFiltrados = {};
         for (const [key, value] of Object.entries(restaurantes)) {
-            if (isNaN(key) && key.length >= 4) {
+            if (isNaN(key) && key.length >= 4 && key !== 'null') {
                 restaurantesFiltrados[key] = value;
             }
+        }
+        
+        if (Object.keys(restaurantesFiltrados).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
+            return;
         }
         
         container.innerHTML = '';
@@ -348,63 +357,126 @@
             `;
         }
         actualizarSelectsRestaurantes();
+    } catch (error) {
+        console.error("Error cargando restaurantes:", error);
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+async function guardarRestaurante() {
+    console.log("Intentando guardar restaurante...");
+    
+    const pin = document.getElementById('restPin').value.toUpperCase().trim();
+    const nombre = document.getElementById('restNombre').value.trim();
+    const id_restaurante = document.getElementById('restId').value.trim();
+    const foto = document.getElementById('restFoto').value.trim();
+    
+    console.log("Datos del formulario:", { pin, nombre, id_restaurante, foto });
+    
+    if (!pin || !nombre) {
+        Swal.fire({ 
+            title: 'Error', 
+            text: 'El PIN y el Nombre son obligatorios', 
+            icon: 'error', 
+            background: '#0f172a', 
+            color: 'white' 
+        });
+        console.log("Validación fallida: PIN o nombre vacío");
+        return;
     }
     
-    async function guardarRestaurante() {
-        const pin = document.getElementById('restPin').value.toUpperCase();
-        const nombre = document.getElementById('restNombre').value;
-        const id_restaurante = document.getElementById('restId').value;
-        const foto = document.getElementById('restFoto').value;
-        
-        if (!pin || !nombre) {
-            Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
-        await database.ref(`restaurantes/${pin}`).set({
-            nombre,
-            id_restaurante,
-            foto,
+    if (pin.length < 4) {
+        Swal.fire({ 
+            title: 'Error', 
+            text: 'El PIN debe tener al menos 4 caracteres', 
+            icon: 'error', 
+            background: '#0f172a', 
+            color: 'white' 
+        });
+        return;
+    }
+    
+    try {
+        const restauranteData = {
+            nombre: nombre,
+            id_restaurante: id_restaurante || pin,
+            foto: foto || '',
             activo: true,
             creado_en: Date.now()
-        });
+        };
+        
+        console.log("Guardando en Firebase:", `restaurantes/${pin}`, restauranteData);
+        
+        await database.ref(`restaurantes/${pin}`).set(restauranteData);
+        
+        console.log("✅ Restaurante guardado exitosamente");
+        
+        // Limpiar formulario
+        document.getElementById('restPin').value = '';
+        document.getElementById('restNombre').value = '';
+        document.getElementById('restId').value = '';
+        document.getElementById('restFoto').value = '';
         
         cerrarModal('modalRestaurante');
-        cargarRestaurantes();
-        Swal.fire({ title: 'Éxito', text: 'Restaurante guardado en Firebase', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    }
-    
-    async function toggleRestaurante(pin, activo) {
-        await database.ref(`restaurantes/${pin}/activo`).set(activo);
-        cargarRestaurantes();
-    }
-    
-    async function eliminarRestaurante(pin) {
-        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) {
-            await database.ref(`restaurantes/${pin}`).remove();
-            cargarRestaurantes();
-        }
-    }
-    
-    function actualizarSelectsRestaurantes() {
-        database.ref('restaurantes').once('value', snapshot => {
-            const restaurantes = snapshot.val() || {};
-            let optionsHtml = '<option value="">Seleccionar restaurante</option>';
-            
-            for (const [pin, data] of Object.entries(restaurantes)) {
-                if (isNaN(pin) && pin.length >= 4) {
-                    optionsHtml += `<option value="${pin}">${data.nombre || pin}</option>`;
-                }
-            }
-            
-            const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido', 'userRestaurante'];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                if (select) select.innerHTML = optionsHtml;
-            });
+        await cargarRestaurantes();
+        
+        Swal.fire({ 
+            title: 'Éxito', 
+            text: `Restaurante "${nombre}" guardado correctamente en Firebase`, 
+            icon: 'success', 
+            timer: 2000, 
+            showConfirmButton: false,
+            background: '#0f172a', 
+            color: 'white' 
+        });
+        
+    } catch (error) {
+        console.error("❌ Error al guardar restaurante:", error);
+        Swal.fire({ 
+            title: 'Error al guardar', 
+            text: error.message, 
+            icon: 'error', 
+            background: '#0f172a', 
+            color: 'white' 
         });
     }
+}
+
+async function toggleRestaurante(pin, activo) {
+    console.log(`Cambiando restaurante ${pin} a activo=${activo}`);
+    try {
+        await database.ref(`restaurantes/${pin}/activo`).set(activo);
+        await cargarRestaurantes();
+        Swal.fire({ title: 'Actualizado', text: `Restaurante ${activo ? 'activado' : 'desactivado'}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    } catch (error) {
+        console.error("Error al cambiar estado:", error);
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+async function eliminarRestaurante(pin) {
+    const confirm = await Swal.fire({ 
+        title: '¿Eliminar restaurante?', 
+        text: `¿Estás seguro de eliminar "${pin}"? Esta acción no se puede deshacer.`, 
+        icon: 'warning', 
+        showCancelButton: true, 
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Sí, eliminar',
+        background: '#0f172a', 
+        color: 'white' 
+    });
+    
+    if (confirm.isConfirmed) {
+        try {
+            await database.ref(`restaurantes/${pin}`).remove();
+            await cargarRestaurantes();
+            Swal.fire({ title: 'Eliminado', text: 'Restaurante eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            console.error("Error al eliminar:", error);
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
+}
     
     // ==================== HORARIOS (2 TURNOS) ====================
     async function cargarHorarios() {

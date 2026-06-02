@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     
     <style>
+        /* (Tu estilo permanece igual) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; }
         .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
@@ -135,6 +136,7 @@
             const restaurante = snapshot.val();
             
             if (restaurante && restaurante.activo === true) {
+                // Guardamos tanto el PIN como el ID_REAL del restaurante
                 restauranteActual = {
                     pin: pin,
                     nombre: restaurante.NOMBRE_RESTAURANTE || restaurante.nombre,
@@ -171,28 +173,18 @@
     }
     
     function cerrarSesion() {
-    // Detener listener de pedidos
-    if (pedidosListener) {
-        try { pedidosListener.off(); } catch(e) {}
-        pedidosListener = null;
+        if (pedidosListener) {
+            try { pedidosListener.off(); } catch(e) {}
+            pedidosListener = null;
+        }
+        localStorage.removeItem('restaurante_cocina');
+        document.getElementById('dashboardPanel').classList.add('hidden');
+        document.getElementById('loginScreen').classList.remove('hidden');
+        const pinInput = document.getElementById('pinInput');
+        if (pinInput) pinInput.value = '';
+        restauranteActual = null;
+        console.log("✅ Sesión cerrada correctamente");
     }
-    
-    // Limpiar localStorage
-    localStorage.removeItem('restaurante_cocina');
-    
-    // Ocultar dashboard y mostrar login
-    document.getElementById('dashboardPanel').classList.add('hidden');
-    document.getElementById('loginScreen').classList.remove('hidden');
-    
-    // Limpiar input de PIN
-    const pinInput = document.getElementById('pinInput');
-    if (pinInput) pinInput.value = '';
-    
-    // Resetear variables globales
-    restauranteActual = null;
-    
-    console.log("✅ Sesión cerrada correctamente");
-}
     
     // Verificar sesión guardada
     const saved = localStorage.getItem('restaurante_cocina');
@@ -218,10 +210,16 @@
             const coccion = [];
             const listos = [];
             
+            // --- FILTRO CORREGIDO: Compara con ID_RESTAURANTE O con el PIN ---
             for (const [id, data] of Object.entries(todosPedidos)) {
-                if (data.restaurante_id !== restauranteActual.id_restaurante && data.restaurante_id !== restauranteActual.pin) continue;
+                // Verificamos si el pedido pertenece a este restaurante (por ID real O por PIN)
+                const pertenece = (data.restaurante_id === restauranteActual.id_restaurante) || 
+                                 (data.restaurante_id === restauranteActual.pin);
                 
-                const estado = data.estado || 'PENDIENTE';
+                if (!pertenece) continue;
+                
+                // Normalizamos el estado a mayúsculas para evitar fallos
+                const estado = (data.estado || 'PENDIENTE').toUpperCase();
                 
                 if (estado === 'PENDIENTE') {
                     pendientes.push({ id, ...data });
@@ -229,8 +227,6 @@
                     coccion.push({ id, ...data });
                 } else if (estado === 'LISTO') {
                     listos.push({ id, ...data });
-                } else if (estado === 'RECHAZADO') {
-                    // No mostrar
                 }
             }
             
@@ -263,15 +259,15 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <span class="text-amber-400 font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
-                            <p class="text-white font-bold text-sm mt-1">${p.cliente_nombre || 'Cliente'}</p>
-                            <p class="text-white/50 text-xs">${p.direccion || 'Sin dirección'}</p>
+                            <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
+                            <p class="text-white/50 text-xs">${escapeHTML(p.direccion || 'Sin dirección')}</p>
                         </div>
                         <div class="text-right">
                             <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
                         </div>
                     </div>
                     <div class="bg-slate-800/50 rounded-xl p-2 my-2">
-                        <p class="text-white/60 text-xs line-clamp-2">📦 ${(p.detalle || '').substring(0, 80)}...</p>
+                        <p class="text-white/60 text-xs line-clamp-2">📦 ${escapeHTML((p.detalle || '').substring(0, 80))}...</p>
                     </div>
                     <div class="flex gap-2 mt-3">
                         <button onclick="aceptarPedido('${p.id}')" class="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-sm font-bold">✅ ACEPTAR</button>
@@ -300,7 +296,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <span class="text-cyan-400 font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
-                            <p class="text-white font-bold text-sm mt-1">${p.cliente_nombre || 'Cliente'}</p>
+                            <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
                         </div>
                         <div class="text-right">
                             <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
@@ -337,7 +333,7 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <span class="text-emerald-400 font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
-                            <p class="text-white font-bold text-sm mt-1">${p.cliente_nombre || 'Cliente'}</p>
+                            <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
                         </div>
                         <div class="text-right">
                             <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
@@ -363,7 +359,6 @@
             timestamp_aceptado: Date.now()
         });
         
-        // Enviar notificación al cliente
         await database.ref(`pedidos/${id}/mensaje_cliente`).set({
             texto: '✅ Tu pedido ha sido aceptado y está en preparación',
             timestamp: Date.now()
@@ -390,13 +385,11 @@
                 timestamp_rechazo: Date.now()
             });
             
-            // Notificar al cliente
             await database.ref(`pedidos/${id}/mensaje_cliente`).set({
                 texto: '❌ El restaurante ha rechazado tu pedido. No se realizará ningún cargo.',
                 timestamp: Date.now()
             });
             
-            // Notificar al repartidor si tenía asignado
             const pedido = await database.ref(`pedidos/${id}`).once('value');
             const data = pedido.val();
             if (data.repartidor_asignado) {
@@ -412,7 +405,6 @@
     }
     
     async function asignarTiempo(id, minutos, btn) {
-        // Remover selección de otros botones en el mismo pedido
         const parent = btn.parentElement;
         const buttons = parent.querySelectorAll('.tiempo-btn');
         buttons.forEach(b => b.classList.remove('seleccionado'));
@@ -436,7 +428,6 @@
             timestamp_inicio_coccion: Date.now()
         });
         
-        // Iniciar cuenta regresiva en Firebase (se actualizará cada minuto)
         const interval = setInterval(async () => {
             const snap = await database.ref(`pedidos/${id}/tiempo_restante`).once('value');
             const restante = snap.val();
@@ -451,7 +442,6 @@
             }
         }, 60000);
         
-        // Guardar el interval ID para limpiarlo después
         await database.ref(`pedidos/${id}/interval_id`).set(interval.toString());
         
         Swal.fire({ title: '⏰ Temporizador iniciado', text: `Cuenta regresiva: ${minutos} minutos`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
@@ -473,13 +463,11 @@
                 timestamp_listo: Date.now()
             });
             
-            // Notificar al cliente
             await database.ref(`pedidos/${id}/mensaje_cliente`).set({
                 texto: '🍽️ Tu pedido está listo. El repartidor lo recogerá pronto.',
                 timestamp: Date.now()
             });
             
-            // Notificar al repartidor si tiene asignado
             const pedido = await database.ref(`pedidos/${id}`).once('value');
             const data = pedido.val();
             if (data.repartidor_asignado) {
@@ -492,6 +480,17 @@
             
             Swal.fire({ title: '✅ Pedido listo', text: 'Esperando al repartidor', icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
         }
+    }
+
+    // Función de escape para evitar inyección HTML
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
     }
 </script>
 </body>

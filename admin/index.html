@@ -276,7 +276,7 @@
     </div>
 </div>
 
-<div id="modalRepartidor" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+<<div id="modalRepartidor" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">🛵 Repartidor</h3>
         <input type="text" id="repNombre" placeholder="Nombre completo" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
@@ -972,39 +972,78 @@
     }
     
     // ==================== REPARTIDORES ====================
-    async function cargarRepartidores() {
-        const snapshot = await database.ref('repartidores').once('value');
-        const repartidores = snapshot.val() || {};
-        const container = document.getElementById('listaRepartidores');
-        container.innerHTML = '';
-        for (const [id, data] of Object.entries(repartidores)) {
-            container.innerHTML += `
-                <div class="card repartidor-card bg-slate-800 rounded-2xl p-4">
-                    <div class="flex justify-between items-start">
-                        <div><p class="font-bold text-white text-lg">${data.nombre}</p><p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p><p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p></div>
-                        <div><div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</div></div>
+   async function cargarRepartidores() {
+    const snapshot = await database.ref('repartidores').once('value');
+    const repartidores = snapshot.val() || {};
+    const container = document.getElementById('listaRepartidores');
+    
+    container.innerHTML = '';
+    for (const [id, data] of Object.entries(repartidores)) {
+        container.innerHTML += `
+            <div class="card repartidor-card bg-slate-800 rounded-2xl p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="font-bold text-white text-lg">${escapeHTML(data.nombre)}</p>
+                        <p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p>
+                        <p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p>
+                        <p class="text-cyan-400 text-xs mt-1">🔑 Contraseña: ${data.password || 'No definida'}</p>
                     </div>
-                    <div class="flex gap-2 mt-4">
-                        <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}</button>
-                        <button onclick="eliminarRepartidor('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                    <div>
+                        <div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                            ${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}
+                        </div>
                     </div>
                 </div>
-            `;
-        }
-        cargarReporteRepartidores();
+                <div class="flex gap-2 mt-4">
+                    <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                        ${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}
+                    </button>
+                    <button onclick="eliminarRepartidor('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                </div>
+            </div>
+        `;
     }
+    cargarReporteRepartidores();
+}
     
     async function guardarRepartidor() {
-        const nombre = document.getElementById('repNombre').value;
-        const telefono = document.getElementById('repTelefono').value;
-        const vehiculo = document.getElementById('repVehiculo').value;
-        if (!nombre) { Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' }); return; }
-        const id = nombre.replace(/ /g, '_').toLowerCase();
-        await database.ref(`repartidores/${id}`).set({ nombre, telefono, vehiculo, activo: true, creado_en: Date.now() });
-        cerrarModal('modalRepartidor');
-        cargarRepartidores();
-        Swal.fire({ title: 'Éxito', text: 'Repartidor guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    const nombre = document.getElementById('repNombre').value.trim();
+    const telefono = document.getElementById('repTelefono').value.trim();
+    const vehiculo = document.getElementById('repVehiculo').value.trim();
+    let password = document.getElementById('repPassword').value.trim();
+    
+    if (!nombre) {
+        Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
     }
+    
+    // Si no se proporcionó contraseña, generar una automática
+    if (!password) {
+        password = Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+    
+    const id = nombre.replace(/ /g, '_').toLowerCase();
+    
+    await database.ref(`repartidores/${id}`).set({
+        nombre: nombre,
+        telefono: telefono || '',
+        vehiculo: vehiculo || '',
+        password: password,
+        activo: true,
+        creado_en: Date.now()
+    });
+    
+    cerrarModal('modalRepartidor');
+    cargarRepartidores();
+    
+    Swal.fire({ 
+        title: '✅ Repartidor creado', 
+        html: `Nombre: ${nombre}<br>🔑 Contraseña: <strong>${password}</strong>`, 
+        icon: 'success', 
+        background: '#0f172a', 
+        color: 'white' 
+    });
+}
     
     async function toggleRepartidor(id, activo) { await database.ref(`repartidores/${id}/activo`).set(activo); cargarRepartidores(); }
     async function eliminarRepartidor(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`repartidores/${id}`).remove(); cargarRepartidores(); } }

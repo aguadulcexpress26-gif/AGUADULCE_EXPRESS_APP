@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aguadulce Express - Repartidor</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .card-pedido { background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
+        .card-pedido:hover { transform: translateY(-2px); border-color: #06b6d4; }
+        .badge-pendiente { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .badge-asignado { background: rgba(6,182,212,0.2); color: #06b6d4; }
+        .badge-camino { background: rgba(139,92,246,0.2); color: #8b5cf6; }
+        .badge-entregado { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .stats-card { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 20px; padding: 12px 16px; }
+        .stats-number { font-size: 28px; font-weight: 800; }
+        .btn-accion { transition: all 0.1s; cursor: pointer; }
+        .btn-accion:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+<div id="loginScreen" class="min-h-screen flex flex-col items-center justify-center p-5">
+    <div class="text-center mb-8">
+        <div class="text-6xl mb-4">🛵</div>
+        <h1 class="text-3xl font-black italic uppercase text-cyan-400">Aguadulce</h1>
+        <p class="text-white/50 text-xs mt-2">Área de Repartidores</p>
+    </div>
+    <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 w-full max-w-sm">
+        <p class="text-white/50 text-xs mb-4 text-center">🔐 INGRESA TUS CREDENCIALES</p>
+        <input type="text" id="repartidorNombre" placeholder="Nombre del repartidor" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="password" id="repartidorPass" placeholder="Contraseña" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-4">
+        <button onclick="loginRepartidor()" class="w-full bg-cyan-400 text-black font-black py-3 rounded-xl uppercase italic">Ingresar</button>
+        <p class="text-center text-white/30 text-xs mt-4">Usa el nombre y contraseña que te dio el administrador</p>
+    </div>
+</div>
+
+<div id="dashboardPanel" class="hidden min-h-screen pb-20">
+    <div class="bg-gradient-to-r from-cyan-500/20 to-transparent p-5">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-black uppercase italic text-white">🛵 Repartidor</h1>
+                <p id="repartidorNombreDisplay" class="text-cyan-400 text-xs font-bold mt-1">CARGANDO...</p>
+            </div>
+            <button onclick="logoutRepartidor()" class="bg-red-600/20 text-red-400 px-4 py-2 rounded-xl text-sm font-bold">🚪 Salir</button>
+        </div>
+    </div>
+
+    <div class="p-4">
+        <div class="grid grid-cols-3 gap-3 mb-6">
+            <div class="stats-card text-center">
+                <div class="text-[10px] text-white/40 uppercase">Asignados</div>
+                <div class="stats-number text-cyan-400" id="totalAsignados">0</div>
+            </div>
+            <div class="stats-card text-center">
+                <div class="text-[10px] text-white/40 uppercase">En Camino</div>
+                <div class="stats-number text-purple-400" id="totalEnCamino">0</div>
+            </div>
+            <div class="stats-card text-center">
+                <div class="text-[10px] text-white/40 uppercase">Hoy (€)</div>
+                <div class="stats-number text-emerald-400" id="totalGanadoHoy">0</div>
+            </div>
+        </div>
+
+        <div class="flex gap-3 mb-4 border-b border-white/10 pb-3">
+            <button onclick="filtrarPedidos('todos')" id="filtro-todos" class="tab-btn active bg-cyan-400 text-black px-4 py-2 rounded-xl text-sm font-bold">📋 Todos</button>
+            <button onclick="filtrarPedidos('asignado')" id="filtro-asignado" class="tab-btn bg-white/5 text-white/70 px-4 py-2 rounded-xl text-sm font-bold">🛵 Asignados</button>
+            <button onclick="filtrarPedidos('entregado')" id="filtro-entregado" class="tab-btn bg-white/5 text-white/70 px-4 py-2 rounded-xl text-sm font-bold">✅ Entregados</button>
+        </div>
+
+        <div id="listaPedidos" class="space-y-3"></div>
+    </div>
+</div>
+
+<script>
+    // ==================== CONFIGURACIÓN FIREBASE ====================
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJcLQ0ikUwZSV7L_8mLLax8B5qnhP0Roc",
+        authDomain: "aguadulce-notificaciones.firebaseapp.com",
+        databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
+        projectId: "aguadulce-notificaciones",
+        storageBucket: "aguadulce-notificaciones.firebasestorage.app",
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    
+    // ==================== VARIABLES ====================
+    let repartidorActual = null;
+    let pedidosListener = null;
+    let filtroActual = 'todos';
+    
+    // ==================== AUTENTICACIÓN ====================
+    async function loginRepartidor() {
+        const nombre = document.getElementById('repartidorNombre').value.trim();
+        const password = document.getElementById('repartidorPass').value;
+        
+        if (!nombre || !password) {
+            Swal.fire({ title: 'Error', text: 'Ingresa nombre y contraseña', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        // Verificar credenciales en Firebase
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        
+        let encontrado = null;
+        for (const [id, data] of Object.entries(repartidores)) {
+            if (data.nombre === nombre && data.password === password && data.activo !== false) {
+                encontrado = { id, ...data };
+                break;
+            }
+        }
+        
+        if (encontrado) {
+            repartidorActual = encontrado;
+            localStorage.setItem('repartidor_actual', JSON.stringify(repartidorActual));
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardPanel').classList.remove('hidden');
+            document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+            iniciarEscuchaPedidos();
+            cargarReporteDiario();
+        } else {
+            Swal.fire({ title: 'Error', text: 'Credenciales incorrectas o repartidor inactivo', icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
+    
+    function logoutRepartidor() {
+        if (pedidosListener) pedidosListener.off();
+        repartidorActual = null;
+        localStorage.removeItem('repartidor_actual');
+        document.getElementById('dashboardPanel').classList.add('hidden');
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('repartidorNombre').value = '';
+        document.getElementById('repartidorPass').value = '';
+    }
+    
+    // Verificar sesión guardada
+    const saved = localStorage.getItem('repartidor_actual');
+    if (saved) {
+        repartidorActual = JSON.parse(saved);
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('dashboardPanel').classList.remove('hidden');
+        document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+        iniciarEscuchaPedidos();
+        cargarReporteDiario();
+    }
+    
+    // ==================== ESCUCHAR PEDIDOS ====================
+    function iniciarEscuchaPedidos() {
+        if (pedidosListener) pedidosListener.off();
+        
+        pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
+            const todosPedidos = snapshot.val() || {};
+            const misPedidos = [];
+            
+            for (const [id, data] of Object.entries(todosPedidos)) {
+                if (data.repartidor_asignado === repartidorActual.nombre) {
+                    misPedidos.push({ id, ...data });
+                }
+            }
+            
+            misPedidos.sort((a, b) => (b.fecha || 0) - (a.fecha || 0));
+            renderizarPedidos(misPedidos);
+            actualizarContadores(misPedidos);
+        });
+    }
+    
+    function actualizarContadores(pedidos) {
+        const asignados = pedidos.filter(p => p.estado === 'LISTO' || p.estado === 'asignado').length;
+        const enCamino = pedidos.filter(p => p.estado === 'EN CAMINO' || p.estado === 'encamino').length;
+        
+        document.getElementById('totalAsignados').innerText = asignados;
+        document.getElementById('totalEnCamino').innerText = enCamino;
+    }
+    
+    async function cargarReporteDiario() {
+        const hoy = new Date().toDateString();
+        const snapshot = await database.ref(`repartidores_reportes/${repartidorActual.nombre.replace(/ /g, '_')}/${hoy}`).once('value');
+        const reporte = snapshot.val();
+        
+        if (reporte) {
+            document.getElementById('totalGanadoHoy').innerHTML = (reporte.total_ganado || 0).toFixed(2);
+        } else {
+            document.getElementById('totalGanadoHoy').innerHTML = '0.00';
+        }
+    }
+    
+    function filtrarPedidos(filtro) {
+        filtroActual = filtro;
+        
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-cyan-400', 'text-black');
+            btn.classList.add('bg-white/5', 'text-white/70');
+        });
+        
+        const btnId = `filtro-${filtro}`;
+        const btnActivo = document.getElementById(btnId);
+        if (btnActivo) {
+            btnActivo.classList.remove('bg-white/5', 'text-white/70');
+            btnActivo.classList.add('bg-cyan-400', 'text-black');
+        }
+        
+        // Re-renderizar con el filtro
+        if (pedidosListener) {
+            pedidosListener.off();
+            iniciarEscuchaPedidos();
+        }
+    }
+    
+    function renderizarPedidos(pedidos) {
+        let pedidosFiltrados = pedidos;
+        
+        if (filtroActual === 'asignado') {
+            pedidosFiltrados = pedidos.filter(p => p.estado === 'LISTO' || p.estado === 'asignado');
+        } else if (filtroActual === 'entregado') {
+            pedidosFiltrados = pedidos.filter(p => p.estado === 'ENTREGADO' || p.estado === 'entregado');
+        }
+        
+        const container = document.getElementById('listaPedidos');
+        
+        if (pedidosFiltrados.length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">📭 No hay pedidos</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        for (const pedido of pedidosFiltrados) {
+            const estado = pedido.estado?.toUpperCase() || 'LISTO';
+            let badgeClass = 'badge-asignado';
+            let badgeText = '📦 Listo para recoger';
+            let acciones = '';
+            
+            if (estado === 'LISTO') {
+                badgeClass = 'badge-asignado';
+                badgeText = '📦 Listo para recoger';
+                acciones = `<button onclick="marcarEnCamino('${pedido.id}')" class="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold w-full">🛵 Marcar en camino</button>`;
+            } else if (estado === 'EN CAMINO') {
+                badgeClass = 'badge-camino';
+                badgeText = '🛵 En camino';
+                acciones = `<button onclick="marcarEntregado('${pedido.id}')" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold w-full">✅ Marcar entregado</button>`;
+            } else if (estado === 'ENTREGADO') {
+                badgeClass = 'badge-entregado';
+                badgeText = '✅ Entregado';
+                acciones = `<div class="text-xs text-white/40 text-center">Completado</div>`;
+            }
+            
+            container.innerHTML += `
+                <div class="card-pedido">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <span class="text-cyan-400 font-bold text-sm">#${pedido.id_pedido || pedido.id.substring(0, 8)}</span>
+                            <p class="text-white font-bold text-sm mt-1">${pedido.cliente_nombre || 'Cliente'}</p>
+                            <p class="text-white/50 text-xs">📍 ${pedido.direccion || 'Sin dirección'}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-emerald-400 font-bold">${(pedido.total || 0).toFixed(2)}€</span>
+                            <div class="badge ${badgeClass} px-2 py-1 rounded text-xs mt-1">${badgeText}</div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl p-3 mb-3">
+                        <p class="text-white/60 text-xs">${pedido.restaurante_nombre || pedido.restaurante_id}</p>
+                        <p class="text-white text-xs mt-1 line-clamp-2">📦 ${pedido.detalle || ''}</p>
+                    </div>
+                    ${acciones}
+                    <button onclick="verDetallePedido('${pedido.id}')" class="w-full mt-2 bg-white/5 text-white/70 py-2 rounded-xl text-xs">📋 Ver detalle</button>
+                </div>
+            `;
+        }
+    }
+    
+    async function marcarEnCamino(pedidoId) {
+        await database.ref(`pedidos/${pedidoId}`).update({
+            estado: 'EN CAMINO',
+            timestamp_camino: Date.now()
+        });
+        Swal.fire({ title: '🛵 En camino', text: 'El pedido está en camino', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }
+    
+    async function marcarEntregado(pedidoId) {
+        const confirm = await Swal.fire({
+            title: '¿Entregar pedido?',
+            text: 'Confirma que el cliente recibió el pedido',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '✅ Sí, entregar',
+            background: '#0f172a', color: 'white'
+        });
+        
+        if (confirm.isConfirmed) {
+            const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
+            const pedido = snapshot.val();
+            
+            await database.ref(`pedidos/${pedidoId}`).update({
+                estado: 'ENTREGADO',
+                timestamp_entregado: Date.now()
+            });
+            
+            // Actualizar reporte del repartidor
+            const hoy = new Date().toDateString();
+            const repId = repartidorActual.nombre.replace(/ /g, '_');
+            const repRef = database.ref(`repartidores_reportes/${repId}/${hoy}`);
+            const reporteSnap = await repRef.once('value');
+            const reporte = reporteSnap.val() || { total_pedidos: 0, total_ganado: 0, pedidos: [] };
+            
+            reporte.total_pedidos++;
+            reporte.total_ganado += pedido.total || 0;
+            reporte.pedidos.push({
+                id: pedidoId,
+                total: pedido.total,
+                cliente: pedido.cliente_nombre,
+                restaurante: pedido.restaurante_nombre,
+                timestamp: Date.now()
+            });
+            
+            await repRef.set(reporte);
+            
+            Swal.fire({ title: '✅ Entregado', text: 'Pedido entregado correctamente', icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+            cargarReporteDiario();
+        }
+    }
+    
+    function verDetallePedido(pedidoId) {
+        database.ref(`pedidos/${pedidoId}`).once('value', snapshot => {
+            const p = snapshot.val();
+            Swal.fire({
+                title: `Pedido #${p.id_pedido || pedidoId.substring(0, 8)}`,
+                html: `<div class="text-left">
+                    <p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p>
+                    <p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p>
+                    <p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p>
+                    <p><strong>🏪 Restaurante:</strong> ${p.restaurante_nombre || p.restaurante_id}</p>
+                    <hr class="my-2 border-white/10">
+                    <p><strong>📦 Detalle:</strong></p>
+                    <p style="white-space: pre-wrap;">${p.detalle || ''}</p>
+                </div>`,
+                background: '#0f172a', color: 'white', confirmButtonColor: '#06b6d4'
+            });
+        });
+    }
+</script>
+</body>
+</html>

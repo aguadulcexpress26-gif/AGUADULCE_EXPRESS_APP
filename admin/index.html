@@ -713,53 +713,159 @@ async function guardarHorarios(pin) {
 }    
     // ==================== MENÚS ====================
     async function cargarMenus() {
-        await actualizarSelectsRestaurantes();
-        const select = document.getElementById('menuRestauranteSelect');
-        select.onchange = () => cargarProductos(select.value);
+    await actualizarSelectsRestaurantes();
+    const select = document.getElementById('menuRestauranteSelect');
+    select.onchange = () => cargarProductos(select.value);
+    
+    // Si ya hay un restaurante seleccionado, cargar sus productos
+    if (select.value) {
+        cargarProductos(select.value);
     }
+}
     
     async function cargarProductos(pin) {
-        if (!pin) { document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>'; return; }
-        const snapshot = await database.ref(`productos/${pin}`).once('value');
-        const productos = snapshot.val() || {};
-        const container = document.getElementById('listaProductos');
-        if (Object.keys(productos).length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>'; return; }
-        
-        container.innerHTML = '';
-        for (const [id, data] of Object.entries(productos)) {
-            container.innerHTML += `
-                <div class="card bg-slate-800 rounded-2xl p-4">
-                    <div class="flex justify-between items-start">
-                        <div><p class="font-bold text-white">${data.nombre}</p><p class="text-white/50 text-sm">${data.categoria || 'Sin categoría'}</p><p class="text-amber-400 font-bold text-xl">${(data.precio || 0).toFixed(2)}€</p></div>
-                        <div><div class="${data.disponible !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.disponible !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}</div></div>
-                    </div>
-                    <p class="text-white/50 text-sm mt-2">${data.descripcion || ''}</p>
-                    <div class="flex gap-2 mt-4">
-                        <button onclick="toggleProducto('${pin}', '${id}', ${data.disponible !== false ? false : true})" class="flex-1 ${data.disponible !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${data.disponible !== false ? '🔴 Desactivar' : '🟢 Activar'}</button>
-                        <button onclick="eliminarProducto('${pin}', '${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
-                    </div>
-                </div>
-            `;
+    if (!pin) {
+        document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>';
+        return;
+    }
+    
+    // Leer desde menu_general (donde guarda la app clientes)
+    const snapshot = await database.ref('menu_general').once('value');
+    const todosProductos = snapshot.val() || {};
+    
+    // Filtrar por restaurante
+    const productos = {};
+    for (const [id, data] of Object.entries(todosProductos)) {
+        if (data.ID_RESTAURANTE === pin) {
+            productos[id] = data;
         }
     }
     
-    async function guardarProducto() {
-        const pin = document.getElementById('prodRestaurante').value;
-        const nombre = document.getElementById('prodNombre').value;
-        const categoria = document.getElementById('prodCategoria').value;
-        const precio = parseFloat(document.getElementById('prodPrecio').value);
-        const descripcion = document.getElementById('prodDescripcion').value;
-        if (!pin || !nombre || !precio) { Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
-        
-        const id = Date.now().toString();
-        await database.ref(`productos/${pin}/${id}`).set({ nombre, categoria, precio, descripcion, disponible: true, creado_en: Date.now() });
-        cerrarModal('modalProducto');
-        cargarProductos(pin);
-        Swal.fire({ title: 'Éxito', text: 'Producto guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    const container = document.getElementById('listaProductos');
+    
+    if (Object.keys(productos).length === 0) {
+        container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>';
+        return;
     }
     
-    async function toggleProducto(pin, id, disponible) { await database.ref(`productos/${pin}/${id}/disponible`).set(disponible); cargarProductos(pin); }
-    async function eliminarProducto(pin, id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`productos/${pin}/${id}`).remove(); cargarProductos(pin); } }
+    container.innerHTML = '';
+    for (const [id, data] of Object.entries(productos)) {
+        container.innerHTML += `
+            <div class="card bg-slate-800 rounded-2xl p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="font-bold text-white">${escapeHTML(data.PLATO || data.nombre || 'Sin nombre')}</p>
+                        <p class="text-white/50 text-sm">${data.CATEGORIA || data.categoria || 'Sin categoría'}</p>
+                        <p class="text-amber-400 font-bold text-xl">${(data.PRECIO || data.precio || 0).toFixed(2)}€</p>
+                    </div>
+                    <div>
+                        <div class="${data.ACTIVO !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                            ${data.ACTIVO !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}
+                        </div>
+                    </div>
+                </div>
+                <p class="text-white/50 text-sm mt-2 line-clamp-2">${data.DESCRIPCION || data.descripcion || ''}</p>
+                <div class="flex gap-2 mt-4">
+                    <button onclick="toggleProducto('${pin}', '${id}', ${data.ACTIVO !== false ? false : true})" class="flex-1 ${data.ACTIVO !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                        ${data.ACTIVO !== false ? '🔴 Desactivar' : '🟢 Activar'}
+                    </button>
+                    <button onclick="eliminarProducto('${pin}', '${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                </div>
+            </div>
+        `;
+    }
+}
+    
+   async function guardarProducto() {
+    const pin = document.getElementById('prodRestaurante').value;
+    const nombre = document.getElementById('prodNombre').value;
+    const categoria = document.getElementById('prodCategoria').value;
+    const precio = parseFloat(document.getElementById('prodPrecio').value);
+    const descripcion = document.getElementById('prodDescripcion').value;
+    
+    if (!pin || !nombre || !precio) {
+        Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    const id = Date.now().toString();
+    
+    // Obtener el nombre del restaurante
+    const restSnapshot = await database.ref(`restaurantes/${pin}`).once('value');
+    const restaurante = restSnapshot.val();
+    const nombreRestaurante = restaurante.NOMBRE_RESTAURANTE || restaurante.nombre || pin;
+    
+    // Guardar en menu_general (donde lo espera la app clientes)
+    const productoData = {
+        ID_PLATO: id,
+        PLATO: nombre,
+        DESCRIPCION: descripcion || '',
+        PRECIO: precio,
+        CATEGORIA: categoria || 'General',
+        FOTO_PLATO: '',
+        ID_RESTAURANTE: pin,
+        NOMBRE_RESTAURANTE: nombreRestaurante,
+        ACTIVO: true,
+        creado_en: Date.now()
+    };
+    
+    await database.ref(`menu_general/${id}`).set(productoData);
+    
+    // También guardar una copia en productos/{pin} para compatibilidad
+    await database.ref(`productos/${pin}/${id}`).set({
+        nombre: nombre,
+        categoria: categoria || 'General',
+        precio: precio,
+        descripcion: descripcion,
+        disponible: true,
+        creado_en: Date.now()
+    });
+    
+    cerrarModal('modalProducto');
+    
+    // Recargar la vista de productos
+    if (document.getElementById('menuRestauranteSelect').value === pin) {
+        cargarProductos(pin);
+    }
+    
+    Swal.fire({ 
+        title: 'Éxito', 
+        text: 'Producto guardado en menu_general', 
+        icon: 'success', 
+        timer: 1500, 
+        showConfirmButton: false, 
+        background: '#0f172a', 
+        color: 'white' 
+    });
+}
+    
+    async function toggleProducto(pin, id, activo) {
+    // Actualizar en menu_general
+    await database.ref(`menu_general/${id}/ACTIVO`).set(activo);
+    // También actualizar copia en productos
+    await database.ref(`productos/${pin}/${id}/disponible`).set(activo);
+    cargarProductos(pin);
+}
+
+async function eliminarProducto(pin, id) {
+    const confirm = await Swal.fire({ 
+        title: '¿Eliminar?', 
+        text: 'Esta acción no se puede deshacer', 
+        icon: 'warning', 
+        showCancelButton: true, 
+        background: '#0f172a', 
+        color: 'white' 
+    });
+    
+    if (confirm.isConfirmed) {
+        // Eliminar de menu_general
+        await database.ref(`menu_general/${id}`).remove();
+        // Eliminar copia de productos
+        await database.ref(`productos/${pin}/${id}`).remove();
+        cargarProductos(pin);
+        Swal.fire({ title: 'Eliminado', text: 'Producto eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }
+}
     
     // ==================== PEDIDOS ====================
     function cargarPedidosAdmin() {

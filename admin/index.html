@@ -243,6 +243,7 @@
         </div>
     </div>
 </div>
+
 <div id="modalBanner" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">📢 Banner</h3>
@@ -301,10 +302,22 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
     
+    // Función para escapar HTML
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
     // ==================== VARIABLES GLOBALES ====================
     let pedidosListener = null;
+    let gruposOpciones = [];
     
-    // ==================== FUNCIÓN FALTANTE ====================
+    // ==================== FUNCIÓN PARA ACTUALIZAR SELECTS ====================
     function actualizarSelectsRestaurantes() {
         console.log("Actualizando selects de restaurantes...");
         database.ref('restaurantes').once('value', snapshot => {
@@ -313,7 +326,7 @@
             
             for (const [pin, data] of Object.entries(restaurantes)) {
                 if (isNaN(pin) && pin.length >= 4 && pin !== 'null') {
-                    optionsHtml += `<option value="${pin}">${data.nombre || pin}</option>`;
+                    optionsHtml += `<option value="${pin}">${data.NOMBRE_RESTAURANTE || data.nombre || pin}</option>`;
                 }
             }
             
@@ -378,118 +391,107 @@
     }
     
     // ==================== RESTAURANTES ====================
-  async function cargarRestaurantes() {
-    console.log("Cargando restaurantes...");
-    try {
-        const snapshot = await database.ref('restaurantes').once('value');
-        const restaurantes = snapshot.val() || {};
-        console.log("Restaurantes en Firebase:", restaurantes);
-        
-        const container = document.getElementById('listaRestaurantes');
-        
-        const restaurantesFiltrados = {};
-        for (const [key, value] of Object.entries(restaurantes)) {
-            if (isNaN(key) && key.length >= 4 && key !== 'null') {
-                restaurantesFiltrados[key] = value;
+    async function cargarRestaurantes() {
+        console.log("Cargando restaurantes...");
+        try {
+            const snapshot = await database.ref('restaurantes').once('value');
+            const restaurantes = snapshot.val() || {};
+            console.log("Restaurantes en Firebase:", restaurantes);
+            
+            const container = document.getElementById('listaRestaurantes');
+            
+            const restaurantesFiltrados = {};
+            for (const [key, value] of Object.entries(restaurantes)) {
+                if (isNaN(key) && key.length >= 4 && key !== 'null') {
+                    restaurantesFiltrados[key] = value;
+                }
             }
-        }
-        
-        if (Object.keys(restaurantesFiltrados).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
+            
+            if (Object.keys(restaurantesFiltrados).length === 0) {
+                container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
+                actualizarSelectsRestaurantes();
+                return;
+            }
+            
+            container.innerHTML = '';
+            for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
+                const fotoUrl = data.FOTO || data.foto || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
+                const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Sin nombre';
+                const id_restaurante = data.ID_RESTAURANTE || data.id_restaurante || '-';
+                const activo = data.activo !== false;
+                
+                container.innerHTML += `
+                    <div class="card bg-slate-800 rounded-2xl overflow-hidden">
+                        <div class="h-32 w-full overflow-hidden bg-slate-700">
+                            <img src="${fotoUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'" alt="${nombre}">
+                        </div>
+                        <div class="p-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <span class="text-amber-400 font-bold text-lg">${pin}</span>
+                                    <p class="font-bold text-white">${escapeHTML(nombre)}</p>
+                                    <p class="text-white/50 text-sm">ID: ${id_restaurante}</p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                                        ${activo ? 'ACTIVO' : 'INACTIVO'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 mt-4">
+                                <button onclick="toggleRestaurante('${pin}', ${!activo})" class="flex-1 ${activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                                    ${activo ? '❌ Desactivar' : '✅ Activar'}
+                                </button>
+                                <button onclick="editarRestaurante('${pin}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">✏️ Editar</button>
+                                <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
             actualizarSelectsRestaurantes();
+        } catch (error) {
+            console.error("Error cargando restaurantes:", error);
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
+    
+    async function guardarRestaurante() {
+        const pin = document.getElementById('restPin').value.toUpperCase().trim();
+        const nombre = document.getElementById('restNombre').value.trim();
+        const id_restaurante = document.getElementById('restId').value.trim();
+        const foto = document.getElementById('restFoto').value.trim();
+        
+        if (!pin || !nombre) {
+            Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
             return;
         }
         
-        container.innerHTML = '';
-        for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
-            // Priorizar FOTO (mayúsculas) que es lo que usa la app clientes
-            const fotoUrl = data.FOTO || data.foto || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
-            const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Sin nombre';
-            const id_restaurante = data.ID_RESTAURANTE || data.id_restaurante || '-';
+        try {
+            await database.ref(`restaurantes/${pin}`).set({
+                ID_RESTAURANTE: pin,
+                NOMBRE_RESTAURANTE: nombre,
+                FOTO: foto || '',
+                nombre: nombre,
+                id_restaurante: id_restaurante || pin,
+                foto: foto || '',
+                activo: true,
+                creado_en: Date.now()
+            });
             
-            container.innerHTML += `
-                <div class="card bg-slate-800 rounded-2xl overflow-hidden">
-                    <div class="h-32 w-full overflow-hidden bg-slate-700">
-                        <img src="${fotoUrl}" 
-                             class="w-full h-full object-cover" 
-                             onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'"
-                             alt="${nombre}">
-                    </div>
-                    <div class="p-4">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <span class="text-amber-400 font-bold text-lg">${pin}</span>
-                                <p class="font-bold text-white">${nombre}</p>
-                                <p class="text-white/50 text-sm">ID: ${id_restaurante}</p>
-                            </div>
-                            <div class="text-right">
-                                <div class="${data.activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                                    ${data.activo ? 'ACTIVO' : 'INACTIVO'}
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex gap-2 mt-4">
-                            <button onclick="toggleRestaurante('${pin}', ${!data.activo})" class="flex-1 ${data.activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                                ${data.activo ? '❌ Desactivar' : '✅ Activar'}
-                            </button>
-                            <button onclick="editarRestaurante('${pin}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">
-                                ✏️ Editar
-                            </button>
-                            <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">
-                                🗑️ Eliminar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
+            document.getElementById('restPin').value = '';
+            document.getElementById('restNombre').value = '';
+            document.getElementById('restId').value = '';
+            document.getElementById('restFoto').value = '';
+            
+            cerrarModal('modalRestaurante');
+            await cargarRestaurantes();
+            Swal.fire({ title: 'Éxito', text: `Restaurante "${nombre}" guardado`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            console.error("Error:", error);
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
         }
-        actualizarSelectsRestaurantes();
-    } catch (error) {
-        console.error("Error cargando restaurantes:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
     }
-}
-    
-    async function guardarRestaurante() {
-    console.log("Intentando guardar restaurante...");
-    
-    const pin = document.getElementById('restPin').value.toUpperCase().trim();
-    const nombre = document.getElementById('restNombre').value.trim();
-    const id_restaurante = document.getElementById('restId').value.trim();
-    const foto = document.getElementById('restFoto').value.trim();
-    
-    if (!pin || !nombre) {
-        Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    try {
-        await database.ref(`restaurantes/${pin}`).set({
-            ID_RESTAURANTE: pin,           // ← para app clientes
-            NOMBRE_RESTAURANTE: nombre,    // ← para app clientes
-            FOTO: foto || '',              // ← para app clientes (MAYÚSCULAS)
-            // También guardo versión minúscula por compatibilidad
-            nombre: nombre,
-            id_restaurante: id_restaurante || pin,
-            foto: foto || '',
-            activo: true,
-            creado_en: Date.now()
-        });
-        
-        document.getElementById('restPin').value = '';
-        document.getElementById('restNombre').value = '';
-        document.getElementById('restId').value = '';
-        document.getElementById('restFoto').value = '';
-        
-        cerrarModal('modalRestaurante');
-        await cargarRestaurantes();
-        
-        Swal.fire({ title: 'Éxito', text: `Restaurante "${nombre}" guardado`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    } catch (error) {
-        console.error("Error:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-    }
-}
     
     async function toggleRestaurante(pin, activo) {
         await database.ref(`restaurantes/${pin}/activo`).set(activo);
@@ -503,78 +505,58 @@
             await cargarRestaurantes();
         }
     }
-   async function editarRestaurante(pin) {
-    const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
-    const data = snapshot.val();
     
-    if (!data) {
-        Swal.fire({ title: 'Error', text: 'Restaurante no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    // Obtener la URL de la imagen (priorizar FOTO mayúscula)
-    const fotoActual = data.FOTO || data.foto || '';
-    
-    Swal.fire({
-        title: `Editar ${data.NOMBRE_RESTAURANTE || data.nombre}`,
-        html: `
-            <div class="text-left">
-                <label class="block text-sm mb-1">PIN (no editable)</label>
-                <input id="editPin" value="${pin}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3" readonly>
-                
-                <label class="block text-sm mb-1">Nombre</label>
-                <input id="editNombre" value="${data.NOMBRE_RESTAURANTE || data.nombre || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                
-                <label class="block text-sm mb-1">ID Restaurante</label>
-                <input id="editId" value="${data.ID_RESTAURANTE || data.id_restaurante || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                
-                <label class="block text-sm mb-1">URL de la imagen/logo</label>
-                <input id="editFoto" value="${fotoActual}" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                
-                <div class="mt-2 p-2 bg-slate-700/50 rounded-xl">
-                    <p class="text-xs text-white/50">Vista previa de la imagen actual:</p>
-                    <img src="${fotoActual || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'}" 
-                         class="w-32 h-32 object-cover rounded-lg mx-auto mt-2"
-                         onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+    async function editarRestaurante(pin) {
+        const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
+        const data = snapshot.val();
+        
+        if (!data) {
+            Swal.fire({ title: 'Error', text: 'Restaurante no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        const fotoActual = data.FOTO || data.foto || '';
+        
+        Swal.fire({
+            title: `Editar ${data.NOMBRE_RESTAURANTE || data.nombre}`,
+            html: `
+                <div class="text-left">
+                    <label class="block text-sm mb-1">PIN (no editable)</label>
+                    <input id="editPin" value="${pin}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3" readonly>
+                    <label class="block text-sm mb-1">Nombre</label>
+                    <input id="editNombre" value="${data.NOMBRE_RESTAURANTE || data.nombre || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">ID Restaurante</label>
+                    <input id="editId" value="${data.ID_RESTAURANTE || data.id_restaurante || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">URL de la imagen/logo</label>
+                    <input id="editFoto" value="${fotoActual}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <div class="mt-2 p-2 bg-slate-700/50 rounded-xl">
+                        <p class="text-xs text-white/50">Vista previa:</p>
+                        <img src="${fotoActual || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'}" class="w-32 h-32 object-cover rounded-lg mx-auto mt-2" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+                    </div>
                 </div>
-            </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'Guardar cambios',
-        cancelButtonText: 'Cancelar',
-        background: '#0f172a',
-        color: 'white',
-        confirmButtonColor: '#f59e0b',
-        preConfirm: () => {
-            const nombre = document.getElementById('editNombre').value;
-            const id_restaurante = document.getElementById('editId').value;
-            const foto = document.getElementById('editFoto').value;
-            
-            if (!nombre) {
-                Swal.showValidationMessage('El nombre es obligatorio');
-                return false;
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Guardar cambios',
+            background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b',
+            preConfirm: () => {
+                const nombre = document.getElementById('editNombre').value;
+                const id_restaurante = document.getElementById('editId').value;
+                const foto = document.getElementById('editFoto').value;
+                if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+                return { nombre, id_restaurante, foto };
             }
-            return { nombre, id_restaurante, foto };
-        }
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            const { nombre, id_restaurante, foto } = result.value;
-            
-            await database.ref(`restaurantes/${pin}`).update({
-                NOMBRE_RESTAURANTE: nombre,
-                ID_RESTAURANTE: id_restaurante || pin,
-                FOTO: foto || '',
-                nombre: nombre,
-                id_restaurante: id_restaurante || pin,
-                foto: foto || '',
-                actualizado_en: Date.now()
-            });
-            
-            await cargarRestaurantes();
-            Swal.fire({ title: 'Actualizado', text: 'Restaurante actualizado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-        }
-    });
-}
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                const { nombre, id_restaurante, foto } = result.value;
+                await database.ref(`restaurantes/${pin}`).update({
+                    NOMBRE_RESTAURANTE: nombre, ID_RESTAURANTE: id_restaurante || pin, FOTO: foto || '',
+                    nombre: nombre, id_restaurante: id_restaurante || pin, foto: foto || '', actualizado_en: Date.now()
+                });
+                await cargarRestaurantes();
+                Swal.fire({ title: 'Actualizado', text: 'Restaurante actualizado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+            }
+        });
+    }
     
     // ==================== HORARIOS ====================
     async function cargarHorarios() {
@@ -584,483 +566,347 @@
     }
     
     async function cargarHorariosRestaurante(pin) {
-    if (!pin) return;
-    
-    // Intentar leer desde la ruta del admin primero
-    let snapshot = await database.ref(`restaurantes/${pin}/horarios`).once('value');
-    let horarios = snapshot.val() || {};
-    
-    // Si no hay horarios en la ruta del admin, intentar leer desde horarios_restaurantes
-    if (Object.keys(horarios).length === 0) {
-        const horariosAppSnap = await database.ref(`horarios_restaurantes/${pin}`).once('value');
-        const horariosApp = horariosAppSnap.val() || {};
+        if (!pin) return;
+        let snapshot = await database.ref(`restaurantes/${pin}/horarios`).once('value');
+        let horarios = snapshot.val() || {};
         
-        // Convertir del formato de la app al formato del admin
-        const diasMap = {
-            'LUNES': 'lunes', 'MARTES': 'martes', 'MIERCOLES': 'miercoles',
-            'JUEVES': 'jueves', 'VIERNES': 'viernes', 'SABADO': 'sabado', 'DOMINGO': 'domingo'
-        };
-        
-        for (const [diaApp, data] of Object.entries(horariosApp)) {
-            const diaKey = diasMap[diaApp];
-            if (diaKey) {
-                horarios[diaKey] = {
-                    turno1_inicio: data.apertura1 !== 'CERRADO' ? data.apertura1 : '10:00',
-                    turno1_fin: data.cierre1 !== 'CERRADO' ? data.cierre1 : '15:00',
-                    turno2_inicio: data.apertura2 || '17:00',
-                    turno2_fin: data.cierre2 || '22:00',
-                    activo: data.activo !== false
-                };
-            }
-        }
-    }
-    
-    const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-    let html = '<div class="space-y-6">';
-    
-    dias.forEach(dia => {
-        const horario = horarios[dia] || { turno1_inicio: '10:00', turno1_fin: '15:00', turno2_inicio: '17:00', turno2_fin: '22:00', activo: true };
-        
-        html += `
-            <div class="border border-slate-700 rounded-xl p-4">
-                <div class="flex justify-between items-center mb-4">
-                    <span class="font-bold text-lg">${dia.charAt(0).toUpperCase() + dia.slice(1)}</span>
-                    <label class="flex items-center gap-2">
-                        <span class="text-sm">Activo</span>
-                        <input type="checkbox" id="horario_${dia}_activo" ${horario.activo ? 'checked' : ''} class="w-5 h-5">
-                    </label>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-sm text-white/50">🌅 Turno Mañana - Inicio</label>
-                        <input type="time" id="horario_${dia}_t1_inicio" value="${horario.turno1_inicio || '10:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                    </div>
-                    <div>
-                        <label class="text-sm text-white/50">🌅 Turno Mañana - Fin</label>
-                        <input type="time" id="horario_${dia}_t1_fin" value="${horario.turno1_fin || '15:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                    </div>
-                    <div>
-                        <label class="text-sm text-white/50">🌙 Turno Tarde - Inicio</label>
-                        <input type="time" id="horario_${dia}_t2_inicio" value="${horario.turno2_inicio || '17:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                    </div>
-                    <div>
-                        <label class="text-sm text-white/50">🌙 Turno Tarde - Fin</label>
-                        <input type="time" id="horario_${dia}_t2_fin" value="${horario.turno2_fin || '22:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
-    html += `<button onclick="guardarHorarios('${pin}')" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl mt-4">💾 Guardar Horarios</button></div>`;
-    document.getElementById('horariosConfig').innerHTML = html;
-}
-    
-async function guardarHorarios(pin) {
-    console.log("🔍 Buscando horarios para:", pin);
-    
-    // Verificar que el contenedor existe
-    const container = document.getElementById('horariosConfig');
-    if (!container) {
-        console.error("❌ No se encontró el contenedor horariosConfig");
-        Swal.fire({ title: 'Error', text: 'Recarga la página', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    // Buscar TODOS los inputs dentro del container
-    const todosLosInputs = container.querySelectorAll('input');
-    console.log(`📋 Encontrados ${todosLosInputs.length} inputs en el formulario`);
-    
-    if (todosLosInputs.length === 0) {
-        console.error("❌ No hay inputs en el formulario");
-        Swal.fire({ title: 'Error', text: 'Primero selecciona un restaurante', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-    const diasMap = {
-        'lunes': 'LUNES', 'martes': 'MARTES', 'miercoles': 'MIERCOLES',
-        'jueves': 'JUEVES', 'viernes': 'VIERNES', 'sabado': 'SABADO', 'domingo': 'DOMINGO'
-    };
-    
-    const horariosParaApp = {};
-    
-    for (const dia of dias) {
-        const diaMayus = diasMap[dia];
-        
-        // Buscar cada input específico por ID
-        const inputT1Inicio = document.getElementById(`horario_${dia}_t1_inicio`);
-        const inputT1Fin = document.getElementById(`horario_${dia}_t1_fin`);
-        const inputT2Inicio = document.getElementById(`horario_${dia}_t2_inicio`);
-        const inputT2Fin = document.getElementById(`horario_${dia}_t2_fin`);
-        const checkActivo = document.getElementById(`horario_${dia}_activo`);
-        
-        // Verificar si existen
-        if (!inputT1Inicio || !inputT1Fin) {
-            console.warn(`⚠️ No se encontraron inputs para ${dia}`);
-            continue;
-        }
-        
-        const t1_inicio = inputT1Inicio.value;
-        const t1_fin = inputT1Fin.value;
-        const t2_inicio = inputT2Inicio ? inputT2Inicio.value : '';
-        const t2_fin = inputT2Fin ? inputT2Fin.value : '';
-        const activo = checkActivo ? checkActivo.checked : false;
-        
-        console.log(`📅 ${diaMayus}: activo=${activo}, mañana=${t1_inicio}-${t1_fin}, tarde=${t2_inicio}-${t2_fin}`);
-        
-        if (!activo) {
-            horariosParaApp[diaMayus] = {
-                apertura1: 'CERRADO',
-                cierre1: 'CERRADO',
-                apertura2: null,
-                cierre2: null,
-                activo: false
-            };
-        } else {
-            horariosParaApp[diaMayus] = {
-                apertura1: t1_inicio || 'CERRADO',
-                cierre1: t1_fin || 'CERRADO',
-                apertura2: (t2_inicio && t2_inicio !== 'CERRADO' && t2_inicio !== '') ? t2_inicio : null,
-                cierre2: (t2_fin && t2_fin !== 'CERRADO' && t2_fin !== '') ? t2_fin : null,
-                activo: true
-            };
-        }
-    }
-    
-    try {
-        console.log("📤 Guardando en Firebase:", horariosParaApp);
-        
-        // Guardar en la ruta que usa la app clientes
-        await database.ref(`horarios_restaurantes/${pin}`).set(horariosParaApp);
-        
-        console.log("✅ Guardado exitoso");
-        
-        Swal.fire({ 
-            title: '✅ Horarios guardados', 
-            text: `Los horarios para ${pin} se guardaron correctamente.`, 
-            icon: 'success', 
-            timer: 2000, 
-            showConfirmButton: false, 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-        
-        // Verificar en Firebase
-        const verificar = await database.ref(`horarios_restaurantes/${pin}`).once('value');
-        console.log("🔍 Verificación en Firebase:", verificar.val());
-        
-    } catch (error) {
-        console.error("❌ Error guardando horarios:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-    }
-}    
-    // ==================== MENÚS ====================
-    async function cargarMenus() {
-    await actualizarSelectsRestaurantes();
-    const select = document.getElementById('menuRestauranteSelect');
-    select.onchange = () => cargarProductos(select.value);
-    
-    // Si ya hay un restaurante seleccionado, cargar sus productos
-    if (select.value) {
-        cargarProductos(select.value);
-    }
-}
-    
-    async function cargarProductos(pin) {
-    if (!pin) {
-        document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>';
-        return;
-    }
-    
-    // Leer desde menu_general
-    const snapshot = await database.ref('menu_general').once('value');
-    const todosProductos = snapshot.val() || {};
-    
-    // Filtrar por restaurante
-    const productos = [];
-    for (const [id, data] of Object.entries(todosProductos)) {
-        if (data.ID_RESTAURANTE === pin) {
-            productos.push({ id, ...data });
-        }
-    }
-    
-    const container = document.getElementById('listaProductos');
-    
-    if (productos.length === 0) {
-        container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>';
-        return;
-    }
-    
-    container.innerHTML = '';
-    for (const data of productos) {
-        const tieneExtras = data.EXTRAS && data.EXTRAS.length > 0;
-        const extrasInfo = tieneExtras ? `<div class="text-[10px] text-cyan-400 mt-1">📦 ${data.EXTRAS.length} grupo(s) de opciones</div>` : '';
-        
-        container.innerHTML += `
-            <div class="card bg-slate-800 rounded-2xl p-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <p class="font-bold text-white">${escapeHTML(data.PLATO)}</p>
-                        <p class="text-white/50 text-sm">${data.CATEGORIA || 'Sin categoría'}</p>
-                        <p class="text-amber-400 font-bold text-xl">${(data.PRECIO || 0).toFixed(2)}€</p>
-                        ${extrasInfo}
-                        ${data.SELECCION_OBLIGATORIA ? '<span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">⚠️ Selección obligatoria</span>' : ''}
-                    </div>
-                    <div>
-                        <div class="${data.ACTIVO !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                            ${data.ACTIVO !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}
-                        </div>
-                    </div>
-                </div>
-                <p class="text-white/50 text-sm mt-2 line-clamp-2">${data.DESCRIPCION || ''}</p>
-                ${data.FOTO_PLATO ? `<img src="${data.FOTO_PLATO}" class="w-16 h-16 rounded-lg object-cover mt-2" onerror="this.style.display='none'">` : ''}
-                <div class="flex gap-2 mt-4">
-                    <button onclick="toggleProducto('${pin}', '${data.id}', ${data.ACTIVO !== false ? false : true})" class="flex-1 ${data.ACTIVO !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                        ${data.ACTIVO !== false ? '🔴 Desactivar' : '🟢 Activar'}
-                    </button>
-                    <button onclick="editarProducto('${pin}', '${data.id}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">
-                        ✏️ Editar
-                    </button>
-                    <button onclick="eliminarProducto('${pin}', '${data.id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">
-                        🗑️ Eliminar
-                    </button>
-                </div>
-            </div>
-        `;
-    }
-}
-    
-   async function guardarProductoCompleto() {
-    const pin = document.getElementById('prodRestaurante').value;
-    const nombre = document.getElementById('prodNombre').value;
-    const categoria = document.getElementById('prodCategoria').value;
-    const precio = parseFloat(document.getElementById('prodPrecio').value);
-    const descripcion = document.getElementById('prodDescripcion').value;
-    const foto = document.getElementById('prodFoto').value;
-    const seleccionObligatoria = document.getElementById('prodSeleccionObligatoria').checked;
-    
-    if (!pin || !nombre || !precio) {
-        Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    // Recolectar grupos de opciones
-    const extras = recolectarGruposOpciones();
-    
-    // Obtener el nombre del restaurante
-    const restSnapshot = await database.ref(`restaurantes/${pin}`).once('value');
-    const restaurante = restSnapshot.val();
-    const nombreRestaurante = restaurante.NOMBRE_RESTAURANTE || restaurante.nombre || pin;
-    
-    const id = Date.now().toString();
-    
-    // Crear el producto con todas las opciones
-    const productoData = {
-        ID_PLATO: id,
-        PLATO: nombre,
-        DESCRIPCION: descripcion || '',
-        PRECIO: precio,
-        CATEGORIA: categoria || 'General',
-        FOTO_PLATO: foto || '',
-        ID_RESTAURANTE: pin,
-        NOMBRE_RESTAURANTE: nombreRestaurante,
-        ACTIVO: true,
-        SELECCION_OBLIGATORIA: seleccionObligatoria,
-        EXTRAS: extras,
-        creado_en: Date.now()
-    };
-    
-    try {
-        // Guardar en menu_general
-        await database.ref(`menu_general/${id}`).set(productoData);
-        
-        // También guardar en productos/{pin} para compatibilidad
-        await database.ref(`productos/${pin}/${id}`).set({
-            nombre: nombre,
-            categoria: categoria,
-            precio: precio,
-            descripcion: descripcion,
-            foto: foto,
-            disponible: true,
-            seleccion_obligatoria: seleccionObligatoria,
-            extras: extras,
-            creado_en: Date.now()
-        });
-        
-        cerrarModal('modalProducto');
-        
-        // Limpiar grupos
-        gruposOpciones = [];
-        document.getElementById('grupos-opciones-container').innerHTML = '';
-        
-        // Recargar productos
-        if (document.getElementById('menuRestauranteSelect').value === pin) {
-            cargarProductos(pin);
-        }
-        
-        Swal.fire({ 
-            title: 'Éxito', 
-            text: 'Producto guardado con todas las opciones', 
-            icon: 'success', 
-            timer: 1500, 
-            showConfirmButton: false, 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-    } catch (error) {
-        console.error("Error guardando producto:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-    }
-}
-    
-    async function toggleProducto(pin, id, activo) {
-    // Actualizar en menu_general
-    await database.ref(`menu_general/${id}/ACTIVO`).set(activo);
-    // También actualizar copia en productos
-    await database.ref(`productos/${pin}/${id}/disponible`).set(activo);
-    cargarProductos(pin);
-}
-
-async function eliminarProducto(pin, id) {
-    const confirm = await Swal.fire({ 
-        title: '¿Eliminar?', 
-        text: 'Esta acción no se puede deshacer', 
-        icon: 'warning', 
-        showCancelButton: true, 
-        background: '#0f172a', 
-        color: 'white' 
-    });
-    
-    if (confirm.isConfirmed) {
-        // Eliminar de menu_general
-        await database.ref(`menu_general/${id}`).remove();
-        // Eliminar copia de productos
-        await database.ref(`productos/${pin}/${id}`).remove();
-        cargarProductos(pin);
-        Swal.fire({ title: 'Eliminado', text: 'Producto eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    }
-}
-    // Variables globales para grupos de opciones
-let gruposOpciones = [];
-
-function agregarGrupoOpciones(grupoExistente = null) {
-    const container = document.getElementById('grupos-opciones-container');
-    const grupoId = Date.now();
-    const grupoIndex = gruposOpciones.length;
-    
-    const grupoHtml = `
-        <div id="grupo-${grupoId}" class="bg-slate-800 rounded-xl p-3 border border-slate-600">
-            <div class="flex justify-between items-center mb-2">
-                <input type="text" placeholder="Nombre del grupo (Ej: Tamaño, Extras, Salsas)" 
-                       class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" 
-                       id="grupo-nombre-${grupoId}" value="${grupoExistente?.nombre || ''}">
-                <button onclick="eliminarGrupoOpciones(${grupoId})" class="ml-2 text-red-400 text-xl">🗑️</button>
-            </div>
-            <div class="flex gap-2 mb-2">
-                <label class="flex items-center gap-1 text-xs">
-                    <input type="checkbox" id="grupo-obligatorio-${grupoId}" ${grupoExistente?.required ? 'checked' : ''}> Obligatorio
-                </label>
-                <label class="flex items-center gap-1 text-xs">
-                    <span>Máx:</span>
-                    <input type="number" id="grupo-max-${grupoId}" value="${grupoExistente?.max || 1}" class="w-12 p-1 rounded bg-slate-700 text-xs">
-                </label>
-                <label class="flex items-center gap-1 text-xs">
-                    <span>Mín:</span>
-                    <input type="number" id="grupo-min-${grupoId}" value="${grupoExistente?.min || 0}" class="w-12 p-1 rounded bg-slate-700 text-xs">
-                </label>
-            </div>
-            <div id="opciones-${grupoId}" class="space-y-2 ml-4">
-                ${(grupoExistente?.opciones || []).map((opcion, idx) => `
-                    <div class="flex gap-2 items-center">
-                        <input type="text" placeholder="Opción" value="${opcion.nombre}" 
-                               class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" 
-                               id="opcion-nombre-${grupoId}-${idx}">
-                        <input type="number" placeholder="Precio extra" value="${opcion.precio || 0}" step="0.01" 
-                               class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" 
-                               id="opcion-precio-${grupoId}-${idx}">
-                        <button onclick="eliminarOpcion(${grupoId}, ${idx})" class="text-red-400">✕</button>
-                    </div>
-                `).join('')}
-            </div>
-            <button onclick="agregarOpcion(${grupoId})" class="text-xs text-cyan-400 mt-2">+ Agregar opción</button>
-        </div>
-    `;
-    
-    container.insertAdjacentHTML('beforeend', grupoHtml);
-    
-    if (!grupoExistente) {
-        gruposOpciones.push({ id: grupoId, nombre: '', required: false, max: 1, min: 0, opciones: [] });
-    } else {
-        gruposOpciones.push({ id: grupoId, ...grupoExistente });
-    }
-}
-
-function eliminarGrupoOpciones(grupoId) {
-    document.getElementById(`grupo-${grupoId}`).remove();
-    gruposOpciones = gruposOpciones.filter(g => g.id !== grupoId);
-}
-
-function agregarOpcion(grupoId) {
-    const container = document.getElementById(`opciones-${grupoId}`);
-    const opcionId = Date.now();
-    container.insertAdjacentHTML('beforeend', `
-        <div class="flex gap-2 items-center">
-            <input type="text" placeholder="Opción" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${opcionId}">
-            <input type="number" placeholder="Precio extra" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${opcionId}">
-            <button onclick="this.parentElement.remove()" class="text-red-400">✕</button>
-        </div>
-    `);
-}
-
-function eliminarOpcion(grupoId, idx) {
-    const container = document.getElementById(`opciones-${grupoId}`);
-    const children = container.children;
-    if (children[idx]) children[idx].remove();
-}
-
-function recolectarGruposOpciones() {
-    const grupos = [];
-    
-    for (const grupo of gruposOpciones) {
-        const grupoDiv = document.getElementById(`grupo-${grupo.id}`);
-        if (!grupoDiv) continue;
-        
-        const nombre = document.getElementById(`grupo-nombre-${grupo.id}`)?.value || '';
-        const obligatorio = document.getElementById(`grupo-obligatorio-${grupo.id}`)?.checked || false;
-        const max = parseInt(document.getElementById(`grupo-max-${grupo.id}`)?.value) || 1;
-        const min = parseInt(document.getElementById(`grupo-min-${grupo.id}`)?.value) || 0;
-        
-        const opciones = [];
-        const opcionesContainer = document.getElementById(`opciones-${grupo.id}`);
-        if (opcionesContainer) {
-            const opcionDivs = opcionesContainer.children;
-            for (let i = 0; i < opcionDivs.length; i++) {
-                const div = opcionDivs[i];
-                const nombreInput = div.querySelector('input[placeholder="Opción"]');
-                const precioInput = div.querySelector('input[placeholder="Precio extra"]');
-                if (nombreInput && nombreInput.value) {
-                    opciones.push({
-                        nombre: nombreInput.value,
-                        precio: parseFloat(precioInput?.value) || 0
-                    });
+        if (Object.keys(horarios).length === 0) {
+            const horariosAppSnap = await database.ref(`horarios_restaurantes/${pin}`).once('value');
+            const horariosApp = horariosAppSnap.val() || {};
+            const diasMap = { 'LUNES': 'lunes', 'MARTES': 'martes', 'MIERCOLES': 'miercoles', 'JUEVES': 'jueves', 'VIERNES': 'viernes', 'SABADO': 'sabado', 'DOMINGO': 'domingo' };
+            for (const [diaApp, data] of Object.entries(horariosApp)) {
+                const diaKey = diasMap[diaApp];
+                if (diaKey) {
+                    horarios[diaKey] = {
+                        turno1_inicio: data.apertura1 !== 'CERRADO' ? data.apertura1 : '10:00',
+                        turno1_fin: data.cierre1 !== 'CERRADO' ? data.cierre1 : '15:00',
+                        turno2_inicio: data.apertura2 || '17:00',
+                        turno2_fin: data.cierre2 || '22:00',
+                        activo: data.activo !== false
+                    };
                 }
             }
         }
         
-        if (nombre && opciones.length > 0) {
-            grupos.push({
-                nombre: nombre,
-                required: obligatorio,
-                max: max,
-                min: min,
-                opciones: opciones
-            });
+        const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+        let html = '<div class="space-y-6">';
+        dias.forEach(dia => {
+            const horario = horarios[dia] || { turno1_inicio: '10:00', turno1_fin: '15:00', turno2_inicio: '17:00', turno2_fin: '22:00', activo: true };
+            html += `
+                <div class="border border-slate-700 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="font-bold text-lg">${dia.charAt(0).toUpperCase() + dia.slice(1)}</span>
+                        <label class="flex items-center gap-2"><span class="text-sm">Activo</span><input type="checkbox" id="horario_${dia}_activo" ${horario.activo ? 'checked' : ''} class="w-5 h-5"></label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-sm text-white/50">🌅 Mañana Inicio</label><input type="time" id="horario_${dia}_t1_inicio" value="${horario.turno1_inicio}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                        <div><label class="text-sm text-white/50">🌅 Mañana Fin</label><input type="time" id="horario_${dia}_t1_fin" value="${horario.turno1_fin}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                        <div><label class="text-sm text-white/50">🌙 Tarde Inicio</label><input type="time" id="horario_${dia}_t2_inicio" value="${horario.turno2_inicio}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                        <div><label class="text-sm text-white/50">🌙 Tarde Fin</label><input type="time" id="horario_${dia}_t2_fin" value="${horario.turno2_fin}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                    </div>
+                </div>
+            `;
+        });
+        html += `<button onclick="guardarHorarios('${pin}')" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl mt-4">💾 Guardar Horarios</button></div>`;
+        document.getElementById('horariosConfig').innerHTML = html;
+    }
+    
+    async function guardarHorarios(pin) {
+        const container = document.getElementById('horariosConfig');
+        if (!container) {
+            Swal.fire({ title: 'Error', text: 'Recarga la página', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+        const diasMap = { 'lunes': 'LUNES', 'martes': 'MARTES', 'miercoles': 'MIERCOLES', 'jueves': 'JUEVES', 'viernes': 'VIERNES', 'sabado': 'SABADO', 'domingo': 'DOMINGO' };
+        const horariosParaApp = {};
+        
+        for (const dia of dias) {
+            const diaMayus = diasMap[dia];
+            const t1_inicio = document.getElementById(`horario_${dia}_t1_inicio`)?.value || '';
+            const t1_fin = document.getElementById(`horario_${dia}_t1_fin`)?.value || '';
+            const t2_inicio = document.getElementById(`horario_${dia}_t2_inicio`)?.value || '';
+            const t2_fin = document.getElementById(`horario_${dia}_t2_fin`)?.value || '';
+            const activo = document.getElementById(`horario_${dia}_activo`)?.checked || false;
+            
+            if (!activo) {
+                horariosParaApp[diaMayus] = { apertura1: 'CERRADO', cierre1: 'CERRADO', apertura2: null, cierre2: null, activo: false };
+            } else {
+                horariosParaApp[diaMayus] = {
+                    apertura1: t1_inicio || 'CERRADO', cierre1: t1_fin || 'CERRADO',
+                    apertura2: (t2_inicio && t2_inicio !== 'CERRADO') ? t2_inicio : null,
+                    cierre2: (t2_fin && t2_fin !== 'CERRADO') ? t2_fin : null, activo: true
+                };
+            }
+        }
+        
+        try {
+            await database.ref(`horarios_restaurantes/${pin}`).set(horariosParaApp);
+            Swal.fire({ title: '✅ Horarios guardados', text: `Horarios para ${pin} guardados`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
         }
     }
     
-    return grupos;
-}
+    // ==================== MENÚS ====================
+    async function cargarMenus() {
+        await actualizarSelectsRestaurantes();
+        const select = document.getElementById('menuRestauranteSelect');
+        select.onchange = () => cargarProductos(select.value);
+        if (select.value) cargarProductos(select.value);
+    }
+    
+    async function cargarProductos(pin) {
+        if (!pin) {
+            document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>';
+            return;
+        }
+        
+        try {
+            const snapshot = await database.ref('menu_general').once('value');
+            const todosProductos = snapshot.val() || {};
+            const productos = [];
+            for (const [id, data] of Object.entries(todosProductos)) {
+                if (String(data.ID_RESTAURANTE) === String(pin)) productos.push({ id, ...data });
+            }
+            
+            const container = document.getElementById('listaProductos');
+            if (productos.length === 0) {
+                container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos para este restaurante.</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            for (const data of productos) {
+                const tieneExtras = data.EXTRAS && Array.isArray(data.EXTRAS) && data.EXTRAS.length > 0;
+                const extrasInfo = tieneExtras ? `<div class="text-[10px] text-cyan-400 mt-1">📦 ${data.EXTRAS.length} grupo(s) de opciones</div>` : '';
+                const nombrePlato = data.PLATO || data.nombre || 'Sin nombre';
+                const categoria = data.CATEGORIA || 'Sin categoría';
+                const precio = typeof data.PRECIO === 'number' ? data.PRECIO : (parseFloat(data.precio) || 0);
+                const descripcion = data.DESCRIPCION || '';
+                const foto = data.FOTO_PLATO || '';
+                const activo = data.ACTIVO !== false;
+                const seleccionObligatoria = data.SELECCION_OBLIGATORIA === true;
+                
+                container.innerHTML += `
+                    <div class="card bg-slate-800 rounded-2xl p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-bold text-white">${escapeHTML(nombrePlato)}</p>
+                                <p class="text-white/50 text-sm">${escapeHTML(categoria)}</p>
+                                <p class="text-amber-400 font-bold text-xl">${precio.toFixed(2)}€</p>
+                                ${extrasInfo}
+                                ${seleccionObligatoria ? '<span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">⚠️ Selección obligatoria</span>' : ''}
+                            </div>
+                            <div><div class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${activo ? 'DISPONIBLE' : 'NO DISPONIBLE'}</div></div>
+                        </div>
+                        <p class="text-white/50 text-sm mt-2">${escapeHTML(descripcion).substring(0, 100)}</p>
+                        ${foto ? `<img src="${foto}" class="w-16 h-16 rounded-lg object-cover mt-2" onerror="this.style.display='none'">` : ''}
+                        <div class="flex gap-2 mt-4">
+                            <button onclick="toggleProducto('${pin}', '${data.id}', ${!activo})" class="flex-1 ${activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${activo ? '🔴 Desactivar' : '🟢 Activar'}</button>
+                            <button onclick="editarProducto('${pin}', '${data.id}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">✏️ Editar</button>
+                            <button onclick="eliminarProducto('${pin}', '${data.id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error("Error cargando productos:", error);
+            document.getElementById('listaProductos').innerHTML = '<div class="text-center text-red-400 p-10">Error cargando productos</div>';
+        }
+    }
+    
+    async function guardarProductoCompleto() {
+        const pin = document.getElementById('prodRestaurante').value;
+        const nombre = document.getElementById('prodNombre').value;
+        const categoria = document.getElementById('prodCategoria').value;
+        const precio = parseFloat(document.getElementById('prodPrecio').value);
+        const descripcion = document.getElementById('prodDescripcion').value;
+        const foto = document.getElementById('prodFoto').value;
+        const seleccionObligatoria = document.getElementById('prodSeleccionObligatoria').checked;
+        
+        if (!pin || !nombre || !precio) {
+            Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        const extras = recolectarGruposOpciones();
+        const restSnapshot = await database.ref(`restaurantes/${pin}`).once('value');
+        const restaurante = restSnapshot.val();
+        const nombreRestaurante = restaurante.NOMBRE_RESTAURANTE || restaurante.nombre || pin;
+        const id = Date.now().toString();
+        
+        const productoData = {
+            ID_PLATO: id, PLATO: nombre, DESCRIPCION: descripcion || '', PRECIO: precio,
+            CATEGORIA: categoria || 'General', FOTO_PLATO: foto || '', ID_RESTAURANTE: pin,
+            NOMBRE_RESTAURANTE: nombreRestaurante, ACTIVO: true, SELECCION_OBLIGATORIA: seleccionObligatoria,
+            EXTRAS: extras, creado_en: Date.now()
+        };
+        
+        try {
+            await database.ref(`menu_general/${id}`).set(productoData);
+            await database.ref(`productos/${pin}/${id}`).set({
+                nombre, categoria, precio, descripcion, foto, disponible: true,
+                seleccion_obligatoria: seleccionObligatoria, extras, creado_en: Date.now()
+            });
+            cerrarModal('modalProducto');
+            gruposOpciones = [];
+            document.getElementById('grupos-opciones-container').innerHTML = '';
+            if (document.getElementById('menuRestauranteSelect').value === pin) cargarProductos(pin);
+            Swal.fire({ title: 'Éxito', text: 'Producto guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
+    
+    async function editarProducto(pin, id) {
+        const snapshot = await database.ref(`menu_general/${id}`).once('value');
+        const data = snapshot.val();
+        if (!data) {
+            Swal.fire({ title: 'Error', text: 'Producto no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        Swal.fire({
+            title: `Editar ${data.PLATO}`,
+            html: `
+                <div class="text-left">
+                    <label class="block text-sm mb-1">Nombre</label>
+                    <input id="editNombre" value="${escapeHTML(data.PLATO)}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">Categoría</label>
+                    <input id="editCategoria" value="${escapeHTML(data.CATEGORIA || '')}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">Precio (€)</label>
+                    <input id="editPrecio" type="number" step="0.01" value="${data.PRECIO}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">Descripción</label>
+                    <textarea id="editDescripcion" rows="2" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">${escapeHTML(data.DESCRIPCION || '')}</textarea>
+                    <label class="block text-sm mb-1">URL de la imagen</label>
+                    <input id="editFoto" value="${data.FOTO_PLATO || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <div class="flex items-center gap-2 mb-3">
+                        <input type="checkbox" id="editSeleccionObligatoria" ${data.SELECCION_OBLIGATORIA ? 'checked' : ''} class="w-5 h-5">
+                        <label>Selección obligatoria</label>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true, confirmButtonText: 'Guardar cambios', background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b',
+            preConfirm: () => ({
+                nombre: document.getElementById('editNombre').value,
+                categoria: document.getElementById('editCategoria').value,
+                precio: parseFloat(document.getElementById('editPrecio').value),
+                descripcion: document.getElementById('editDescripcion').value,
+                foto: document.getElementById('editFoto').value,
+                seleccionObligatoria: document.getElementById('editSeleccionObligatoria').checked
+            })
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                const { nombre, categoria, precio, descripcion, foto, seleccionObligatoria } = result.value;
+                await database.ref(`menu_general/${id}`).update({
+                    PLATO: nombre, CATEGORIA: categoria, PRECIO: precio, DESCRIPCION: descripcion,
+                    FOTO_PLATO: foto, SELECCION_OBLIGATORIA: seleccionObligatoria, actualizado_en: Date.now()
+                });
+                cargarProductos(pin);
+                Swal.fire({ title: 'Actualizado', text: 'Producto actualizado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+            }
+        });
+    }
+    
+    async function toggleProducto(pin, id, activo) {
+        await database.ref(`menu_general/${id}/ACTIVO`).set(activo);
+        cargarProductos(pin);
+        Swal.fire({ title: 'Actualizado', text: `Producto ${activo ? 'activado' : 'desactivado'}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }
+    
+    async function eliminarProducto(pin, id) {
+        const confirm = await Swal.fire({ title: '¿Eliminar producto?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
+        if (confirm.isConfirmed) {
+            await database.ref(`menu_general/${id}`).remove();
+            cargarProductos(pin);
+            Swal.fire({ title: 'Eliminado', text: 'Producto eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        }
+    }
+    
+    // ==================== GRUPOS DE OPCIONES ====================
+    function agregarGrupoOpciones(grupoExistente = null) {
+        const container = document.getElementById('grupos-opciones-container');
+        const grupoId = Date.now();
+        const grupoHtml = `
+            <div id="grupo-${grupoId}" class="bg-slate-800 rounded-xl p-3 border border-slate-600">
+                <div class="flex justify-between items-center mb-2">
+                    <input type="text" placeholder="Nombre del grupo (Ej: Tamaño, Extras, Salsas)" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="grupo-nombre-${grupoId}" value="${grupoExistente?.nombre || ''}">
+                    <button onclick="eliminarGrupoOpciones(${grupoId})" class="ml-2 text-red-400 text-xl">🗑️</button>
+                </div>
+                <div class="flex gap-2 mb-2">
+                    <label class="flex items-center gap-1 text-xs"><input type="checkbox" id="grupo-obligatorio-${grupoId}" ${grupoExistente?.required ? 'checked' : ''}> Obligatorio</label>
+                    <label class="flex items-center gap-1 text-xs"><span>Máx:</span><input type="number" id="grupo-max-${grupoId}" value="${grupoExistente?.max || 1}" class="w-12 p-1 rounded bg-slate-700 text-xs"></label>
+                    <label class="flex items-center gap-1 text-xs"><span>Mín:</span><input type="number" id="grupo-min-${grupoId}" value="${grupoExistente?.min || 0}" class="w-12 p-1 rounded bg-slate-700 text-xs"></label>
+                </div>
+                <div id="opciones-${grupoId}" class="space-y-2 ml-4">
+                    ${(grupoExistente?.opciones || []).map((opcion, idx) => `
+                        <div class="flex gap-2 items-center">
+                            <input type="text" placeholder="Opción" value="${opcion.nombre}" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${idx}">
+                            <input type="number" placeholder="Precio extra" value="${opcion.precio || 0}" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${idx}">
+                            <button onclick="eliminarOpcion(${grupoId}, ${idx})" class="text-red-400">✕</button>
+                        </div>
+                    `).join('')}
+                </div>
+                <button onclick="agregarOpcion(${grupoId})" class="text-xs text-cyan-400 mt-2">+ Agregar opción</button>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', grupoHtml);
+        gruposOpciones.push({ id: grupoId, nombre: grupoExistente?.nombre || '', required: grupoExistente?.required || false, max: grupoExistente?.max || 1, min: grupoExistente?.min || 0, opciones: grupoExistente?.opciones || [] });
+    }
+    
+    function eliminarGrupoOpciones(grupoId) {
+        document.getElementById(`grupo-${grupoId}`).remove();
+        gruposOpciones = gruposOpciones.filter(g => g.id !== grupoId);
+    }
+    
+    function agregarOpcion(grupoId) {
+        const container = document.getElementById(`opciones-${grupoId}`);
+        const opcionId = Date.now();
+        container.insertAdjacentHTML('beforeend', `
+            <div class="flex gap-2 items-center">
+                <input type="text" placeholder="Opción" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${opcionId}">
+                <input type="number" placeholder="Precio extra" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${opcionId}">
+                <button onclick="this.parentElement.remove()" class="text-red-400">✕</button>
+            </div>
+        `);
+    }
+    
+    function eliminarOpcion(grupoId, idx) {
+        const container = document.getElementById(`opciones-${grupoId}`);
+        const children = container.children;
+        if (children[idx]) children[idx].remove();
+    }
+    
+    function recolectarGruposOpciones() {
+        const grupos = [];
+        for (const grupo of gruposOpciones) {
+            const grupoDiv = document.getElementById(`grupo-${grupo.id}`);
+            if (!grupoDiv) continue;
+            const nombre = document.getElementById(`grupo-nombre-${grupo.id}`)?.value || '';
+            const obligatorio = document.getElementById(`grupo-obligatorio-${grupo.id}`)?.checked || false;
+            const max = parseInt(document.getElementById(`grupo-max-${grupo.id}`)?.value) || 1;
+            const min = parseInt(document.getElementById(`grupo-min-${grupo.id}`)?.value) || 0;
+            const opciones = [];
+            const opcionesContainer = document.getElementById(`opciones-${grupo.id}`);
+            if (opcionesContainer) {
+                const opcionDivs = opcionesContainer.children;
+                for (let i = 0; i < opcionDivs.length; i++) {
+                    const div = opcionDivs[i];
+                    const nombreInput = div.querySelector('input[placeholder="Opción"]');
+                    const precioInput = div.querySelector('input[placeholder="Precio extra"]');
+                    if (nombreInput && nombreInput.value) {
+                        opciones.push({ nombre: nombreInput.value, precio: parseFloat(precioInput?.value) || 0 });
+                    }
+                }
+            }
+            if (nombre && opciones.length > 0) {
+                grupos.push({ nombre, required: obligatorio, max, min, opciones });
+            }
+        }
+        return grupos;
+    }
     
     // ==================== PEDIDOS ====================
     function cargarPedidosAdmin() {

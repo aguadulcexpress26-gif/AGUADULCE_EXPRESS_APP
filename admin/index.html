@@ -456,6 +456,73 @@
             await cargarRestaurantes();
         }
     }
+    async function editarRestaurante(pin) {
+    const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
+    const data = snapshot.val();
+    
+    if (!data) {
+        Swal.fire({ title: 'Error', text: 'Restaurante no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    // Mostrar modal de edición
+    Swal.fire({
+        title: `Editar ${data.nombre}`,
+        html: `
+            <div class="text-left">
+                <label class="block text-sm mb-1">PIN (no editable)</label>
+                <input id="editPin" value="${pin}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3" readonly>
+                
+                <label class="block text-sm mb-1">Nombre</label>
+                <input id="editNombre" value="${data.nombre || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                
+                <label class="block text-sm mb-1">ID Restaurante</label>
+                <input id="editId" value="${data.id_restaurante || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                
+                <label class="block text-sm mb-1">URL de la imagen/logo</label>
+                <input id="editFoto" value="${data.foto || ''}" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                
+                <div class="mt-2 p-2 bg-slate-700/50 rounded-xl">
+                    <p class="text-xs text-white/50">Vista previa de la imagen actual:</p>
+                    <img src="${data.foto || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'}" 
+                         class="w-32 h-32 object-cover rounded-lg mx-auto mt-2"
+                         onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#f59e0b',
+        preConfirm: () => {
+            const nombre = document.getElementById('editNombre').value;
+            const id_restaurante = document.getElementById('editId').value;
+            const foto = document.getElementById('editFoto').value;
+            
+            if (!nombre) {
+                Swal.showValidationMessage('El nombre es obligatorio');
+                return false;
+            }
+            return { nombre, id_restaurante, foto };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { nombre, id_restaurante, foto } = result.value;
+            
+            await database.ref(`restaurantes/${pin}`).update({
+                nombre,
+                id_restaurante: id_restaurante || pin,
+                foto: foto || '',
+                actualizado_en: Date.now()
+            });
+            
+            await cargarRestaurantes();
+            Swal.fire({ title: 'Actualizado', text: 'Restaurante actualizado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        }
+    });
+}
     
     // ==================== HORARIOS ====================
     async function cargarHorarios() {

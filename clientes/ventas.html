@@ -104,8 +104,25 @@ function actualizarInterfazSeguimiento(data){const estado=(data.estado||'recibid
 function abrirModalTracking(){pushPantalla('tracking');document.getElementById('tracking-modal').style.display='block';setTimeout(()=>agregarFooterLegal(),100)}
 function cerrarModalTracking(){document.getElementById('tracking-modal').style.display='none'}
 function restaurarPedidoActivo(){const id=localStorage.getItem('ae_pedido_activo');if(id)database.ref('pedidos/'+id).once('value').then(snap=>{if(snap.val())iniciarSeguimientoPedido(id);else limpiarSeguimientoCompleto()})}
-async function enviarPedidoFinal(){if(procesandoPedidoActivo)return;const cliente=obtenerCliente();if(!cliente){alertaError("Registro","Debes registrarte");return}if(cesta.length===0){alertaError("Carrito vacío","No hay productos");return}const cpMatch=cliente.dir.match(/\b(\d{5})\b/);const cp=cpMatch?cpMatch[1]:null;if(!validarZona(cp))return;if(!verificarAlcoholEnCesta())return;const tieneAlcohol=cesta.some(item=>CATEGORIAS_ALCOHOL.some(cat=>(item.categoria||'').includes(cat)));if(tieneAlcohol&&!(await clienteEsMayorDeEdad())){alertaError("Verificación de edad","Debes ser mayor de 18 años.");return}const metodo=document.getElementById('metodo-pago')?.value||"Efectivo";const subtotal=cesta.reduce((acc,item)=>acc+item.total,0);const envio=2.50,usoApp=0.99,total=subtotal+envio+usoApp;const detalleTexto=cesta.map(item=>`${item.cantidad}x ${item.nombre}${item.opciones?` [${item.opciones}]`:''}`).join(" | ");let montoPaga=null;if(metodo==="Efectivo"){const montoInput=document.getElementById('monto-paga');if(montoInput&&montoInput.value){montoPaga=parseFloat(montoInput.value);if(isNaN(montoPaga))montoPaga=null}}const idPedido="AE-"+Date.now()+"-"+Math.random().toString(36).substring(2,6);const pedido={id:idPedido,cliente:cliente.nombre,telefono:cliente.telf,direccion:cliente.dir,cp:cp,items:cesta.map(item=>({nombre:item.nombre,cantidad:item.cantidad,precio_unitario:item.precio_unitario,opciones:item.opciones||"",extras_precio:item.extras_precio||0,total:item.total})),subtotal:cesta.reduce((acc,item)=>acc+(item.precio_unitario*item.cantidad),0),envio:2.50,usoApp:0.99,total:total,metodo_pago:metodo,restaurante_id:restauranteActivo.id,restaurante_nombre:restauranteActivo.nombre,estado:"recibido",huella:huellaDigitalTerminal,fecha:new Date().toISOString(),timestamp:Date.now()};if(montoPaga)pedido.monto_paga=montoPaga;procesandoPedidoActivo=true;const btnProcesar=document.getElementById('btn-procesar-orden');if(btnProcesar){btnProcesar.disabled=true;btnProcesar.innerText="PROCESANDO...";btnProcesar.style.opacity="0.5"}Swal.fire({title:'Enviando pedido...',text:'Por favor espera',allowOutsideClick:false,didOpen:()=>{Swal.showLoading()}});try{await database.ref('pedidos/'+idPedido).set(pedido);cesta=[];actualizarCestaVisual();cerrarCheckout();iniciarSeguimientoPedido(idPedido);abrirModalTracking();Swal.close()}catch(error){Swal.close();alertaError("Error",error.message||"No se pudo enviar el pedido")}finally{procesandoPedidoActivo=false;if(btnProcesar){btnProcesar.disabled=false;btnProcesar.innerText="Procesar Orden";btnProcesar.style.opacity="1"}}}
-if('serviceWorker'in navigator){navigator.serviceWorker.register('sw.js').then(reg=>console.log('✅ Service Worker registrado',reg)).catch(err=>console.error('❌ Error al registrar SW',err))}
+const pedido = {
+    id: idPedido,
+    cliente: cliente.nombre,
+    telefono: cliente.telf,
+    direccion: cliente.dir,
+    cp: cp,
+    items: cesta.map(item=>({nombre:item.nombre,cantidad:item.cantidad,precio_unitario:item.precio_unitario,opciones:item.opciones||"",extras_precio:item.extras_precio||0,total:item.total})),
+    subtotal: cesta.reduce((acc,item)=>acc+(item.precio_unitario*item.cantidad),0),
+    envio: 2.50,
+    usoApp: 0.99,
+    total: total,
+    metodo_pago: metodo,
+    restaurante_id: restauranteActivo.id_restaurante || restauranteActivo.id,  // ← LÍNEA CORREGIDA
+    restaurante_nombre: restauranteActivo.nombre,
+    estado: "recibido",
+    huella: huellaDigitalTerminal,
+    fecha: new Date().toISOString(),
+    timestamp: Date.now()
+};if('serviceWorker'in navigator){navigator.serviceWorker.register('sw.js').then(reg=>console.log('✅ Service Worker registrado',reg)).catch(err=>console.error('❌ Error al registrar SW',err))}
 async function initApp(){try{const userCredential=await firebase.auth().signInAnonymously();console.log("✅ Usuario autenticado. UID:",userCredential.user.uid);localStorage.setItem('ae_user_uid',userCredential.user.uid)}catch(error){console.error("❌ Error de autenticación:",error);alertaError("Error de conexión","No se pudo autenticar. Revisa tu conexión.");return}document.getElementById('loader').style.display='flex';try{cargarCesta();actualizarClienteUI();await cargarBaseDatos();renderHome();restaurarPedidoActivo();initAudio();setTimeout(()=>agregarFooterLegal(),500);const observer=new MutationObserver(()=>{if(!document.getElementById('legal-footer-container'))agregarFooterLegal()});const appContainer=document.getElementById('app-container');if(appContainer)observer.observe(appContainer,{childList:true,subtree:true})}catch(e){console.error("Fallo en la carga inicial:",e);alertaError("ERROR","No se pudo conectar con el servidor. Reintentando...")}finally{document.getElementById('loader').style.display='none'}}
 document.addEventListener('DOMContentLoaded',initApp);
 </script>

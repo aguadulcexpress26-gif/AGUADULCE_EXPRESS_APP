@@ -257,6 +257,31 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
     
+    // ==================== VARIABLES GLOBALES ====================
+    let pedidosListener = null;
+    
+    // ==================== FUNCIÓN FALTANTE ====================
+    function actualizarSelectsRestaurantes() {
+        console.log("Actualizando selects de restaurantes...");
+        database.ref('restaurantes').once('value', snapshot => {
+            const restaurantes = snapshot.val() || {};
+            let optionsHtml = '<option value="">Seleccionar restaurante</option>';
+            
+            for (const [pin, data] of Object.entries(restaurantes)) {
+                if (isNaN(pin) && pin.length >= 4 && pin !== 'null') {
+                    optionsHtml += `<option value="${pin}">${data.nombre || pin}</option>`;
+                }
+            }
+            
+            const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido', 'userRestaurante'];
+            selects.forEach(id => {
+                const select = document.getElementById(id);
+                if (select) select.innerHTML = optionsHtml;
+            });
+            console.log("Selects actualizados");
+        });
+    }
+    
     // ==================== AUTENTICACIÓN ====================
     function loginAdmin() {
         const email = document.getElementById('adminEmail').value;
@@ -308,177 +333,114 @@
         document.getElementById(modalId).classList.add('hidden');
     }
     
-   // ==================== RESTAURANTES - VERSIÓN CORREGIDA ====================
-async function cargarRestaurantes() {
-    console.log("Cargando restaurantes...");
-    try {
-        const snapshot = await database.ref('restaurantes').once('value');
-        const restaurantes = snapshot.val() || {};
-        console.log("Restaurantes en Firebase:", restaurantes);
-        
-        const container = document.getElementById('listaRestaurantes');
-        
-        // Filtrar solo los que son PIN válidos (no números)
-        const restaurantesFiltrados = {};
-        for (const [key, value] of Object.entries(restaurantes)) {
-            if (isNaN(key) && key.length >= 4 && key !== 'null') {
-                restaurantesFiltrados[key] = value;
+    // ==================== RESTAURANTES ====================
+    async function cargarRestaurantes() {
+        console.log("Cargando restaurantes...");
+        try {
+            const snapshot = await database.ref('restaurantes').once('value');
+            const restaurantes = snapshot.val() || {};
+            console.log("Restaurantes en Firebase:", restaurantes);
+            
+            const container = document.getElementById('listaRestaurantes');
+            
+            const restaurantesFiltrados = {};
+            for (const [key, value] of Object.entries(restaurantes)) {
+                if (isNaN(key) && key.length >= 4 && key !== 'null') {
+                    restaurantesFiltrados[key] = value;
+                }
             }
-        }
-        
-        if (Object.keys(restaurantesFiltrados).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
-            return;
-        }
-        
-        container.innerHTML = '';
-        for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
-            container.innerHTML += `
-                <div class="card bg-slate-800 rounded-2xl p-4">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <span class="text-amber-400 font-bold text-lg">${pin}</span>
-                            <p class="font-bold text-white">${data.nombre || 'Sin nombre'}</p>
-                            <p class="text-white/50 text-sm">ID: ${data.id_restaurante || '-'}</p>
-                        </div>
-                        <div class="text-right">
-                            <div class="${data.activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                                ${data.activo ? 'ACTIVO' : 'INACTIVO'}
+            
+            if (Object.keys(restaurantesFiltrados).length === 0) {
+                container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
+                actualizarSelectsRestaurantes();
+                return;
+            }
+            
+            container.innerHTML = '';
+            for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
+                container.innerHTML += `
+                    <div class="card bg-slate-800 rounded-2xl p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="text-amber-400 font-bold text-lg">${pin}</span>
+                                <p class="font-bold text-white">${data.nombre || 'Sin nombre'}</p>
+                                <p class="text-white/50 text-sm">ID: ${data.id_restaurante || '-'}</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="${data.activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                                    ${data.activo ? 'ACTIVO' : 'INACTIVO'}
+                                </div>
                             </div>
                         </div>
+                        <div class="flex gap-2 mt-4">
+                            <button onclick="toggleRestaurante('${pin}', ${!data.activo})" class="flex-1 ${data.activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                                ${data.activo ? '❌ Desactivar' : '✅ Activar'}
+                            </button>
+                            <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                        </div>
                     </div>
-                    <div class="flex gap-2 mt-4">
-                        <button onclick="toggleRestaurante('${pin}', ${!data.activo})" class="flex-1 ${data.activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                            ${data.activo ? '❌ Desactivar' : '✅ Activar'}
-                        </button>
-                        <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
-                    </div>
-                </div>
-            `;
-        }
-        actualizarSelectsRestaurantes();
-    } catch (error) {
-        console.error("Error cargando restaurantes:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-    }
-}
-
-async function guardarRestaurante() {
-    console.log("Intentando guardar restaurante...");
-    
-    const pin = document.getElementById('restPin').value.toUpperCase().trim();
-    const nombre = document.getElementById('restNombre').value.trim();
-    const id_restaurante = document.getElementById('restId').value.trim();
-    const foto = document.getElementById('restFoto').value.trim();
-    
-    console.log("Datos del formulario:", { pin, nombre, id_restaurante, foto });
-    
-    if (!pin || !nombre) {
-        Swal.fire({ 
-            title: 'Error', 
-            text: 'El PIN y el Nombre son obligatorios', 
-            icon: 'error', 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-        console.log("Validación fallida: PIN o nombre vacío");
-        return;
-    }
-    
-    if (pin.length < 4) {
-        Swal.fire({ 
-            title: 'Error', 
-            text: 'El PIN debe tener al menos 4 caracteres', 
-            icon: 'error', 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-        return;
-    }
-    
-    try {
-        const restauranteData = {
-            nombre: nombre,
-            id_restaurante: id_restaurante || pin,
-            foto: foto || '',
-            activo: true,
-            creado_en: Date.now()
-        };
-        
-        console.log("Guardando en Firebase:", `restaurantes/${pin}`, restauranteData);
-        
-        await database.ref(`restaurantes/${pin}`).set(restauranteData);
-        
-        console.log("✅ Restaurante guardado exitosamente");
-        
-        // Limpiar formulario
-        document.getElementById('restPin').value = '';
-        document.getElementById('restNombre').value = '';
-        document.getElementById('restId').value = '';
-        document.getElementById('restFoto').value = '';
-        
-        cerrarModal('modalRestaurante');
-        await cargarRestaurantes();
-        
-        Swal.fire({ 
-            title: 'Éxito', 
-            text: `Restaurante "${nombre}" guardado correctamente en Firebase`, 
-            icon: 'success', 
-            timer: 2000, 
-            showConfirmButton: false,
-            background: '#0f172a', 
-            color: 'white' 
-        });
-        
-    } catch (error) {
-        console.error("❌ Error al guardar restaurante:", error);
-        Swal.fire({ 
-            title: 'Error al guardar', 
-            text: error.message, 
-            icon: 'error', 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-    }
-}
-
-async function toggleRestaurante(pin, activo) {
-    console.log(`Cambiando restaurante ${pin} a activo=${activo}`);
-    try {
-        await database.ref(`restaurantes/${pin}/activo`).set(activo);
-        await cargarRestaurantes();
-        Swal.fire({ title: 'Actualizado', text: `Restaurante ${activo ? 'activado' : 'desactivado'}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    } catch (error) {
-        console.error("Error al cambiar estado:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-    }
-}
-
-async function eliminarRestaurante(pin) {
-    const confirm = await Swal.fire({ 
-        title: '¿Eliminar restaurante?', 
-        text: `¿Estás seguro de eliminar "${pin}"? Esta acción no se puede deshacer.`, 
-        icon: 'warning', 
-        showCancelButton: true, 
-        confirmButtonColor: '#ef4444',
-        confirmButtonText: 'Sí, eliminar',
-        background: '#0f172a', 
-        color: 'white' 
-    });
-    
-    if (confirm.isConfirmed) {
-        try {
-            await database.ref(`restaurantes/${pin}`).remove();
-            await cargarRestaurantes();
-            Swal.fire({ title: 'Eliminado', text: 'Restaurante eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+                `;
+            }
+            actualizarSelectsRestaurantes();
         } catch (error) {
-            console.error("Error al eliminar:", error);
+            console.error("Error cargando restaurantes:", error);
             Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
         }
     }
-}
     
-    // ==================== HORARIOS (2 TURNOS) ====================
+    async function guardarRestaurante() {
+        console.log("Intentando guardar restaurante...");
+        
+        const pin = document.getElementById('restPin').value.toUpperCase().trim();
+        const nombre = document.getElementById('restNombre').value.trim();
+        const id_restaurante = document.getElementById('restId').value.trim();
+        const foto = document.getElementById('restFoto').value.trim();
+        
+        console.log("Datos:", { pin, nombre, id_restaurante, foto });
+        
+        if (!pin || !nombre) {
+            Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        try {
+            await database.ref(`restaurantes/${pin}`).set({
+                nombre,
+                id_restaurante: id_restaurante || pin,
+                foto: foto || '',
+                activo: true,
+                creado_en: Date.now()
+            });
+            
+            document.getElementById('restPin').value = '';
+            document.getElementById('restNombre').value = '';
+            document.getElementById('restId').value = '';
+            document.getElementById('restFoto').value = '';
+            
+            cerrarModal('modalRestaurante');
+            await cargarRestaurantes();
+            
+            Swal.fire({ title: 'Éxito', text: `Restaurante "${nombre}" guardado`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            console.error("Error:", error);
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
+    
+    async function toggleRestaurante(pin, activo) {
+        await database.ref(`restaurantes/${pin}/activo`).set(activo);
+        await cargarRestaurantes();
+    }
+    
+    async function eliminarRestaurante(pin) {
+        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'No se puede deshacer', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', background: '#0f172a', color: 'white' });
+        if (confirm.isConfirmed) {
+            await database.ref(`restaurantes/${pin}`).remove();
+            await cargarRestaurantes();
+        }
+    }
+    
+    // ==================== HORARIOS ====================
     async function cargarHorarios() {
         await actualizarSelectsRestaurantes();
         const select = document.getElementById('horarioRestauranteSelect');
@@ -507,36 +469,22 @@ async function eliminarRestaurante(pin) {
                         </label>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-sm text-white/50">🌅 Turno Mañana - Inicio</label>
-                            <input type="time" id="horario_${diaKey}_t1_inicio" value="${horario.turno1_inicio || '10:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                        </div>
-                        <div>
-                            <label class="text-sm text-white/50">🌅 Turno Mañana - Fin</label>
-                            <input type="time" id="horario_${diaKey}_t1_fin" value="${horario.turno1_fin || '15:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                        </div>
-                        <div>
-                            <label class="text-sm text-white/50">🌙 Turno Tarde - Inicio</label>
-                            <input type="time" id="horario_${diaKey}_t2_inicio" value="${horario.turno2_inicio || '17:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                        </div>
-                        <div>
-                            <label class="text-sm text-white/50">🌙 Turno Tarde - Fin</label>
-                            <input type="time" id="horario_${diaKey}_t2_fin" value="${horario.turno2_fin || '22:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
-                        </div>
+                        <div><label class="text-sm text-white/50">🌅 Mañana Inicio</label><input type="time" id="horario_${diaKey}_t1_inicio" value="${horario.turno1_inicio}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                        <div><label class="text-sm text-white/50">🌅 Mañana Fin</label><input type="time" id="horario_${diaKey}_t1_fin" value="${horario.turno1_fin}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                        <div><label class="text-sm text-white/50">🌙 Tarde Inicio</label><input type="time" id="horario_${diaKey}_t2_inicio" value="${horario.turno2_inicio}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                        <div><label class="text-sm text-white/50">🌙 Tarde Fin</label><input type="time" id="horario_${diaKey}_t2_fin" value="${horario.turno2_fin}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
                     </div>
                 </div>
             `;
         });
         
-        html += `<button onclick="guardarHorarios('${pin}')" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl mt-4">💾 Guardar Horarios</button>`;
-        html += `</div>`;
+        html += `<button onclick="guardarHorarios('${pin}')" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl mt-4">💾 Guardar Horarios</button></div>`;
         document.getElementById('horariosConfig').innerHTML = html;
     }
     
     async function guardarHorarios(pin) {
         const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
         const horarios = {};
-        
         dias.forEach(dia => {
             horarios[dia] = {
                 turno1_inicio: document.getElementById(`horario_${dia}_t1_inicio`).value,
@@ -546,7 +494,6 @@ async function eliminarRestaurante(pin) {
                 activo: document.getElementById(`horario_${dia}_activo`).checked
             };
         });
-        
         await database.ref(`restaurantes/${pin}/horarios`).set(horarios);
         Swal.fire({ title: 'Éxito', text: 'Horarios guardados', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
@@ -559,40 +506,23 @@ async function eliminarRestaurante(pin) {
     }
     
     async function cargarProductos(pin) {
-        if (!pin) {
-            document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>';
-            return;
-        }
+        if (!pin) { document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>'; return; }
         const snapshot = await database.ref(`productos/${pin}`).once('value');
         const productos = snapshot.val() || {};
         const container = document.getElementById('listaProductos');
-        
-        if (Object.keys(productos).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>';
-            return;
-        }
+        if (Object.keys(productos).length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>'; return; }
         
         container.innerHTML = '';
         for (const [id, data] of Object.entries(productos)) {
             container.innerHTML += `
                 <div class="card bg-slate-800 rounded-2xl p-4">
                     <div class="flex justify-between items-start">
-                        <div>
-                            <p class="font-bold text-white">${data.nombre || 'Sin nombre'}</p>
-                            <p class="text-white/50 text-sm">${data.categoria || 'Sin categoría'}</p>
-                            <p class="text-amber-400 font-bold text-xl">${(data.precio || 0).toFixed(2)}€</p>
-                        </div>
-                        <div>
-                            <div class="${data.disponible !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                                ${data.disponible !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}
-                            </div>
-                        </div>
+                        <div><p class="font-bold text-white">${data.nombre}</p><p class="text-white/50 text-sm">${data.categoria || 'Sin categoría'}</p><p class="text-amber-400 font-bold text-xl">${(data.precio || 0).toFixed(2)}€</p></div>
+                        <div><div class="${data.disponible !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.disponible !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}</div></div>
                     </div>
-                    <p class="text-white/50 text-sm mt-2 line-clamp-2">${data.descripcion || ''}</p>
+                    <p class="text-white/50 text-sm mt-2">${data.descripcion || ''}</p>
                     <div class="flex gap-2 mt-4">
-                        <button onclick="toggleProducto('${pin}', '${id}', ${data.disponible !== false ? false : true})" class="flex-1 ${data.disponible !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                            ${data.disponible !== false ? '🔴 Desactivar' : '🟢 Activar'}
-                        </button>
+                        <button onclick="toggleProducto('${pin}', '${id}', ${data.disponible !== false ? false : true})" class="flex-1 ${data.disponible !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${data.disponible !== false ? '🔴 Desactivar' : '🟢 Activar'}</button>
                         <button onclick="eliminarProducto('${pin}', '${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
                     </div>
                 </div>
@@ -606,43 +536,19 @@ async function eliminarRestaurante(pin) {
         const categoria = document.getElementById('prodCategoria').value;
         const precio = parseFloat(document.getElementById('prodPrecio').value);
         const descripcion = document.getElementById('prodDescripcion').value;
-        
-        if (!pin || !nombre || !precio) {
-            Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
+        if (!pin || !nombre || !precio) { Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         
         const id = Date.now().toString();
-        await database.ref(`productos/${pin}/${id}`).set({
-            nombre,
-            categoria,
-            precio,
-            descripcion,
-            disponible: true,
-            creado_en: Date.now()
-        });
-        
+        await database.ref(`productos/${pin}/${id}`).set({ nombre, categoria, precio, descripcion, disponible: true, creado_en: Date.now() });
         cerrarModal('modalProducto');
         cargarProductos(pin);
-        Swal.fire({ title: 'Éxito', text: 'Producto guardado en Firebase', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        Swal.fire({ title: 'Éxito', text: 'Producto guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
-    async function toggleProducto(pin, id, disponible) {
-        await database.ref(`productos/${pin}/${id}/disponible`).set(disponible);
-        cargarProductos(pin);
-    }
-    
-    async function eliminarProducto(pin, id) {
-        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) {
-            await database.ref(`productos/${pin}/${id}`).remove();
-            cargarProductos(pin);
-        }
-    }
+    async function toggleProducto(pin, id, disponible) { await database.ref(`productos/${pin}/${id}/disponible`).set(disponible); cargarProductos(pin); }
+    async function eliminarProducto(pin, id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`productos/${pin}/${id}`).remove(); cargarProductos(pin); } }
     
     // ==================== PEDIDOS ====================
-    let pedidosListener = null;
-    
     function cargarPedidosAdmin() {
         if (pedidosListener) pedidosListener.off();
         const filtroEstado = document.getElementById('filtroEstadoPedido').value;
@@ -652,33 +558,24 @@ async function eliminarRestaurante(pin) {
             const pedidos = snapshot.val() || {};
             const container = document.getElementById('listaPedidosAdmin');
             let pedidosArray = [];
-            
             for (const [id, data] of Object.entries(pedidos)) {
                 if (filtroRest && data.restaurante_id !== filtroRest) continue;
                 if (filtroEstado !== 'todos' && data.estado !== filtroEstado) continue;
                 pedidosArray.push({ id, ...data });
             }
-            
             pedidosArray.sort((a, b) => (b.fecha || 0) - (a.fecha || 0));
+            if (pedidosArray.length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-10">No hay pedidos</div>'; return; }
             
             container.innerHTML = pedidosArray.map(p => `
                 <div class="bg-slate-800 rounded-2xl p-4">
                     <div class="flex justify-between items-start flex-wrap gap-2">
-                        <div>
-                            <span class="text-amber-400 font-bold">#${p.id_pedido || p.id.substring(0, 8)}</span>
-                            <p class="font-bold">${p.cliente_nombre || 'Cliente'}</p>
-                            <p class="text-white/50 text-sm">${p.restaurante_nombre || p.restaurante_id}</p>
-                        </div>
-                        <div class="text-right">
-                            <div class="font-bold text-amber-400">${(p.total || 0).toFixed(2)}€</div>
-                            <div class="px-2 py-1 rounded text-xs ${getEstadoColor(p.estado)}">${getEstadoTexto(p.estado)}</div>
-                        </div>
+                        <div><span class="text-amber-400 font-bold">#${p.id_pedido || p.id.substring(0, 8)}</span><p class="font-bold">${p.cliente_nombre || 'Cliente'}</p><p class="text-white/50 text-sm">${p.restaurante_nombre || p.restaurante_id}</p></div>
+                        <div class="text-right"><div class="font-bold text-amber-400">${(p.total || 0).toFixed(2)}€</div><div class="px-2 py-1 rounded text-xs ${getEstadoColor(p.estado)}">${getEstadoTexto(p.estado)}</div></div>
                     </div>
-                    <p class="text-white/60 text-sm mt-2 line-clamp-2">${p.detalle || ''}</p>
+                    <p class="text-white/60 text-sm mt-2">${(p.detalle || '').substring(0, 100)}...</p>
                     <div class="flex gap-2 mt-4 flex-wrap">
                         ${p.estado === 'RECIBIDO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'EN PROCESO')" class="bg-cyan-500/20 text-cyan-400 py-2 rounded-xl text-sm px-3">🔪 Cocinar</button>` : ''}
                         ${p.estado === 'EN PROCESO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'LISTO')" class="bg-emerald-500/20 text-emerald-400 py-2 rounded-xl text-sm px-3">✅ Marcar Listo</button>` : ''}
-                        ${p.estado === 'LISTO' ? `<button onclick="asignarRepartidorModal('${p.id}')" class="bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm px-3">🛵 Asignar Repartidor</button>` : ''}
                         <button onclick="verDetallePedidoAdmin('${p.id}')" class="bg-white/10 py-2 rounded-xl text-sm px-3">📋 Detalle</button>
                         <button onclick="eliminarPedido('${p.id}')" class="bg-red-600/20 text-red-400 py-2 rounded-xl text-sm px-3">🗑️ Eliminar</button>
                     </div>
@@ -689,114 +586,24 @@ async function eliminarRestaurante(pin) {
     }
     
     async function borrarTodosPedidos() {
-        const confirm = await Swal.fire({
-            title: '⚠️ ¿BORRAR TODOS LOS PEDIDOS?',
-            text: 'Esta acción es irreversible. Se eliminarán todos los pedidos de la base de datos.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, borrar todo',
-            background: '#0f172a',
-            color: 'white'
-        });
-        
-        if (confirm.isConfirmed) {
-            await database.ref('pedidos').remove();
-            Swal.fire({ title: 'Eliminado', text: 'Todos los pedidos han sido eliminados', icon: 'success', background: '#0f172a', color: 'white' });
-        }
+        const confirm = await Swal.fire({ title: '⚠️ ¿BORRAR TODOS?', text: 'Irreversible', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', background: '#0f172a', color: 'white' });
+        if (confirm.isConfirmed) { await database.ref('pedidos').remove(); Swal.fire({ title: 'Eliminado', text: 'Todos los pedidos eliminados', icon: 'success', background: '#0f172a', color: 'white' }); }
     }
     
     async function eliminarPedido(id) {
-        const confirm = await Swal.fire({
-            title: '¿Eliminar este pedido?',
-            text: 'Esta acción no se puede deshacer',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#ef4444',
-            background: '#0f172a',
-            color: 'white'
-        });
-        if (confirm.isConfirmed) {
-            await database.ref(`pedidos/${id}`).remove();
-        }
+        const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
+        if (confirm.isConfirmed) await database.ref(`pedidos/${id}`).remove();
     }
     
-    async function asignarRepartidorModal(pedidoId) {
-        const repartidores = await database.ref('repartidores').once('value');
-        const repartidoresList = repartidores.val() || {};
-        
-        let repartidoresHtml = '';
-        for (const [id, data] of Object.entries(repartidoresList)) {
-            repartidoresHtml += `<option value="${data.nombre}">${data.nombre} (${data.vehiculo || 'Sin vehículo'})</option>`;
-        }
-        
-        const { value: repartidorNombre } = await Swal.fire({
-            title: 'Asignar Repartidor',
-            html: `<select id="selectRepartidor" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">${repartidoresHtml}</select>`,
-            background: '#0f172a',
-            color: 'white',
-            showCancelButton: true,
-            confirmButtonText: 'Asignar',
-            preConfirm: () => document.getElementById('selectRepartidor').value
-        });
-        
-        if (repartidorNombre) {
-            await database.ref(`pedidos/${pedidoId}`).update({
-                repartidor_asignado: repartidorNombre,
-                estado: 'EN CAMINO',
-                timestamp_asignado: Date.now()
-            });
-            
-            // Registrar en el reporte del repartidor
-            const pedido = await database.ref(`pedidos/${pedidoId}`).once('value');
-            const data = pedido.val();
-            const hoy = new Date().toDateString();
-            
-            const repRef = database.ref(`repartidores_reportes/${repartidorNombre.replace(/ /g, '_')}/${hoy}`);
-            const repSnapshot = await repRef.once('value');
-            const reporteHoy = repSnapshot.val() || { total_pedidos: 0, total_ganado: 0, pedidos: [] };
-            
-            reporteHoy.total_pedidos++;
-            reporteHoy.total_ganado += data.total || 0;
-            reporteHoy.pedidos.push({ id: pedidoId, total: data.total, cliente: data.cliente_nombre });
-            
-            await repRef.set(reporteHoy);
-            
-            Swal.fire({ title: 'Asignado', text: `Pedido asignado a ${repartidorNombre}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-        }
-    }
+    async function actualizarEstadoPedido(id, nuevoEstado) { await database.ref(`pedidos/${id}/estado`).set(nuevoEstado); if (nuevoEstado === 'LISTO') await database.ref(`pedidos/${id}/timestamp_listo`).set(Date.now()); }
     
-    async function actualizarEstadoPedido(id, nuevoEstado) {
-        await database.ref(`pedidos/${id}/estado`).set(nuevoEstado);
-        if (nuevoEstado === 'LISTO') await database.ref(`pedidos/${id}/timestamp_listo`).set(Date.now());
-    }
-    
-    function getEstadoColor(estado) {
-        const colores = { RECIBIDO: 'bg-yellow-500/20 text-yellow-400', 'EN PROCESO': 'bg-cyan-500/20 text-cyan-400', LISTO: 'bg-emerald-500/20 text-emerald-400', 'EN CAMINO': 'bg-purple-500/20 text-purple-400', ENTREGADO: 'bg-green-500/20 text-green-400' };
-        return colores[estado] || 'bg-slate-500/20';
-    }
-    
-    function getEstadoTexto(estado) {
-        const textos = { RECIBIDO: '⏰ Pendiente', 'EN PROCESO': '🍳 En Cocina', LISTO: '✅ Listo', 'EN CAMINO': '🛵 En Camino', ENTREGADO: '🏁 Entregado' };
-        return textos[estado] || estado;
-    }
+    function getEstadoColor(estado) { const colores = { 'RECIBIDO': 'bg-yellow-500/20 text-yellow-400', 'EN PROCESO': 'bg-cyan-500/20 text-cyan-400', 'LISTO': 'bg-emerald-500/20 text-emerald-400', 'EN CAMINO': 'bg-purple-500/20 text-purple-400', 'ENTREGADO': 'bg-green-500/20 text-green-400' }; return colores[estado] || 'bg-slate-500/20'; }
+    function getEstadoTexto(estado) { const textos = { 'RECIBIDO': '⏰ Pendiente', 'EN PROCESO': '🍳 En Cocina', 'LISTO': '✅ Listo', 'EN CAMINO': '🛵 En Camino', 'ENTREGADO': '🏁 Entregado' }; return textos[estado] || estado; }
     
     function verDetallePedidoAdmin(id) {
         database.ref(`pedidos/${id}`).once('value', snapshot => {
             const p = snapshot.val();
-            Swal.fire({
-                title: `Pedido #${p.id_pedido || id.substring(0, 8)}`,
-                html: `<div class="text-left">
-                    <p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p>
-                    <p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p>
-                    <p><strong>💳 Pago:</strong> ${p.metodo_pago || 'Efectivo'}</p>
-                    <p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p>
-                    <hr class="my-2 border-white/10">
-                    <p><strong>📦 Detalle:</strong></p>
-                    <p style="white-space: pre-wrap;">${p.detalle || ''}</p>
-                </div>`,
-                background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b'
-            });
+            Swal.fire({ title: `Pedido #${p.id_pedido || id.substring(0, 8)}`, html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p><p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p><p><strong>💳 Pago:</strong> ${p.metodo_pago || 'Efectivo'}</p><p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p><hr class="my-2 border-white/10"><p><strong>📦 Detalle:</strong></p><p style="white-space: pre-wrap;">${p.detalle || ''}</p></div>`, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b' });
         });
     }
     
@@ -805,27 +612,16 @@ async function eliminarRestaurante(pin) {
         const snapshot = await database.ref('repartidores').once('value');
         const repartidores = snapshot.val() || {};
         const container = document.getElementById('listaRepartidores');
-        
         container.innerHTML = '';
         for (const [id, data] of Object.entries(repartidores)) {
             container.innerHTML += `
                 <div class="card repartidor-card bg-slate-800 rounded-2xl p-4">
                     <div class="flex justify-between items-start">
-                        <div>
-                            <p class="font-bold text-white text-lg">${data.nombre}</p>
-                            <p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p>
-                            <p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p>
-                        </div>
-                        <div>
-                            <div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                                ${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}
-                            </div>
-                        </div>
+                        <div><p class="font-bold text-white text-lg">${data.nombre}</p><p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p><p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p></div>
+                        <div><div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</div></div>
                     </div>
                     <div class="flex gap-2 mt-4">
-                        <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                            ${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}
-                        </button>
+                        <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}</button>
                         <button onclick="eliminarRepartidor('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
                     </div>
                 </div>
@@ -838,74 +634,28 @@ async function eliminarRestaurante(pin) {
         const nombre = document.getElementById('repNombre').value;
         const telefono = document.getElementById('repTelefono').value;
         const vehiculo = document.getElementById('repVehiculo').value;
-        
-        if (!nombre) {
-            Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
+        if (!nombre) { Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         const id = nombre.replace(/ /g, '_').toLowerCase();
-        await database.ref(`repartidores/${id}`).set({
-            nombre,
-            telefono,
-            vehiculo,
-            activo: true,
-            creado_en: Date.now()
-        });
-        
+        await database.ref(`repartidores/${id}`).set({ nombre, telefono, vehiculo, activo: true, creado_en: Date.now() });
         cerrarModal('modalRepartidor');
         cargarRepartidores();
         Swal.fire({ title: 'Éxito', text: 'Repartidor guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
-    async function toggleRepartidor(id, activo) {
-        await database.ref(`repartidores/${id}/activo`).set(activo);
-        cargarRepartidores();
-    }
-    
-    async function eliminarRepartidor(id) {
-        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) {
-            await database.ref(`repartidores/${id}`).remove();
-            cargarRepartidores();
-        }
-    }
+    async function toggleRepartidor(id, activo) { await database.ref(`repartidores/${id}/activo`).set(activo); cargarRepartidores(); }
+    async function eliminarRepartidor(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`repartidores/${id}`).remove(); cargarRepartidores(); } }
     
     async function cargarReporteRepartidores() {
         const hoy = new Date().toDateString();
         const snapshot = await database.ref('repartidores_reportes').once('value');
         const reportes = snapshot.val() || {};
-        const container = document.getElementById('reporteRepartidores');
-        
-        let html = '';
-        let totalGeneral = 0;
-        let pedidosGeneral = 0;
-        
+        let html = ''; let totalGeneral = 0; let pedidosGeneral = 0;
         for (const [repId, dias] of Object.entries(reportes)) {
             const hoyData = dias[hoy];
-            if (hoyData) {
-                html += `
-                    <div class="flex justify-between items-center p-3 bg-slate-700/50 rounded-xl">
-                        <span class="font-bold">${repId.replace(/_/g, ' ')}</span>
-                        <span>📦 ${hoyData.total_pedidos || 0} pedidos</span>
-                        <span class="text-amber-400">💰 ${(hoyData.total_ganado || 0).toFixed(2)}€</span>
-                    </div>
-                `;
-                totalGeneral += hoyData.total_ganado || 0;
-                pedidosGeneral += hoyData.total_pedidos || 0;
-            }
+            if (hoyData) { html += `<div class="flex justify-between items-center p-3 bg-slate-700/50 rounded-xl"><span class="font-bold">${repId.replace(/_/g, ' ')}</span><span>📦 ${hoyData.total_pedidos || 0} pedidos</span><span class="text-amber-400">💰 ${(hoyData.total_ganado || 0).toFixed(2)}€</span></div>`; totalGeneral += hoyData.total_ganado || 0; pedidosGeneral += hoyData.total_pedidos || 0; }
         }
-        
         if (!html) html = '<div class="text-center text-white/50 p-4">No hay actividad hoy</div>';
-        
-        container.innerHTML = `
-            <div class="bg-slate-700/30 rounded-xl p-3 mb-4 flex justify-between">
-                <span class="font-bold">📊 TOTAL REPARTIDORES HOY:</span>
-                <span>📦 ${pedidosGeneral} pedidos</span>
-                <span class="text-amber-400">💰 ${totalGeneral.toFixed(2)}€</span>
-            </div>
-            ${html}
-        `;
+        document.getElementById('reporteRepartidores').innerHTML = `<div class="bg-slate-700/30 rounded-xl p-3 mb-4 flex justify-between"><span class="font-bold">📊 TOTAL REPARTIDORES HOY:</span><span>📦 ${pedidosGeneral} pedidos</span><span class="text-amber-400">💰 ${totalGeneral.toFixed(2)}€</span></div>${html}`;
     }
     
     // ==================== BANNERS ====================
@@ -913,20 +663,9 @@ async function eliminarRestaurante(pin) {
         const snapshot = await database.ref('banners').once('value');
         const banners = snapshot.val() || {};
         const container = document.getElementById('listaBanners');
-        
         container.innerHTML = '';
         for (const [id, data] of Object.entries(banners)) {
-            container.innerHTML += `
-                <div class="card bg-slate-800 rounded-2xl overflow-hidden">
-                    <img src="${data.imagen}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/400x200?text=Sin+Imagen'">
-                    <div class="p-4">
-                        <p class="font-bold">${data.titulo || 'Sin título'}</p>
-                        <p class="text-white/50 text-sm">Orden: ${data.orden || 0}</p>
-                        <p class="text-white/50 text-sm">Link: ${data.link ? 'Sí' : 'No'}</p>
-                        <button onclick="eliminarBanner('${id}')" class="w-full mt-3 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
-                    </div>
-                </div>
-            `;
+            container.innerHTML += `<div class="card bg-slate-800 rounded-2xl overflow-hidden"><img src="${data.imagen}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/400x200?text=Sin+Imagen'"><div class="p-4"><p class="font-bold">${data.titulo || 'Sin título'}</p><p class="text-white/50 text-sm">Orden: ${data.orden || 0}</p><button onclick="eliminarBanner('${id}')" class="w-full mt-3 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button></div></div>`;
         }
     }
     
@@ -935,44 +674,24 @@ async function eliminarRestaurante(pin) {
         const imagen = document.getElementById('bannerImagen').value;
         const link = document.getElementById('bannerLink').value;
         const orden = parseInt(document.getElementById('bannerOrden').value) || 0;
-        
-        if (!titulo || !imagen) {
-            Swal.fire({ title: 'Error', text: 'Título e imagen son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
+        if (!titulo || !imagen) { Swal.fire({ title: 'Error', text: 'Título e imagen son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         const id = Date.now().toString();
         await database.ref(`banners/${id}`).set({ titulo, imagen, link, orden, activo: true, creado_en: Date.now() });
-        
         cerrarModal('modalBanner');
         cargarBanners();
-        Swal.fire({ title: 'Éxito', text: 'Banner guardado en Firebase', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        Swal.fire({ title: 'Éxito', text: 'Banner guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
-    async function eliminarBanner(id) {
-        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) {
-            await database.ref(`banners/${id}`).remove();
-            cargarBanners();
-        }
-    }
+    async function eliminarBanner(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`banners/${id}`).remove(); cargarBanners(); } }
     
     // ==================== USUARIOS ====================
     async function cargarUsuarios() {
         const snapshot = await database.ref('usuarios_admin').once('value');
         const usuarios = snapshot.val() || {};
         const container = document.getElementById('listaUsuarios');
-        
         container.innerHTML = '';
         for (const [id, data] of Object.entries(usuarios)) {
-            container.innerHTML += `
-                <div class="card bg-slate-800 rounded-2xl p-4">
-                    <p class="font-bold">${data.email}</p>
-                    <p class="text-white/50 text-sm">Rol: ${data.rol || 'usuario'}</p>
-                    ${data.restaurante_id ? `<p class="text-white/50 text-sm">Restaurante: ${data.restaurante_id}</p>` : ''}
-                    <button onclick="eliminarUsuario('${id}')" class="w-full mt-3 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
-                </div>
-            `;
+            container.innerHTML += `<div class="card bg-slate-800 rounded-2xl p-4"><p class="font-bold">${data.email}</p><p class="text-white/50 text-sm">Rol: ${data.rol || 'usuario'}</p>${data.restaurante_id ? `<p class="text-white/50 text-sm">Restaurante: ${data.restaurante_id}</p>` : ''}<button onclick="eliminarUsuario('${id}')" class="w-full mt-3 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button></div>`;
         }
     }
     
@@ -981,81 +700,41 @@ async function eliminarRestaurante(pin) {
         const password = document.getElementById('userPassword').value;
         const rol = document.getElementById('userRol').value;
         const restaurante_id = document.getElementById('userRestaurante').value || null;
-        
-        if (!email || !password) {
-            Swal.fire({ title: 'Error', text: 'Email y contraseña son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
+        if (!email || !password) { Swal.fire({ title: 'Error', text: 'Email y contraseña son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         const id = email.replace(/[^a-zA-Z0-9]/g, '_');
         await database.ref(`usuarios_admin/${id}`).set({ email, rol, restaurante_id, creado_en: Date.now() });
-        
         cerrarModal('modalUsuario');
         cargarUsuarios();
         Swal.fire({ title: 'Éxito', text: 'Usuario guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
-    async function eliminarUsuario(id) {
-        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) {
-            await database.ref(`usuarios_admin/${id}`).remove();
-            cargarUsuarios();
-        }
-    }
+    async function eliminarUsuario(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`usuarios_admin/${id}`).remove(); cargarUsuarios(); } }
     
     // ==================== REPORTES ====================
     async function cargarReportes() {
         const hoy = new Date().toDateString();
-        let totalVentas = 0;
-        let totalPedidos = 0;
-        let productosVendidos = 0;
-        
+        let totalVentas = 0, totalPedidos = 0, productosVendidos = 0;
         const pedidosSnap = await database.ref('pedidos').once('value');
         const pedidos = pedidosSnap.val() || {};
-        
         for (const [id, data] of Object.entries(pedidos)) {
             const fechaPedido = new Date(data.fecha).toDateString();
-            if (fechaPedido === hoy && (data.estado === 'ENTREGADO' || data.estado === 'FINALIZADO')) {
-                totalVentas += data.total || 0;
-                totalPedidos++;
-            }
-            
+            if (fechaPedido === hoy && (data.estado === 'ENTREGADO' || data.estado === 'FINALIZADO')) { totalVentas += data.total || 0; totalPedidos++; }
             if (data.detalle && (data.estado === 'ENTREGADO' || data.estado === 'FINALIZADO')) {
                 const lineas = data.detalle.split('\n');
-                lineas.forEach(linea => {
-                    const match = linea.match(/(\d+)x/);
-                    if (match) productosVendidos += parseInt(match[1]);
-                });
+                lineas.forEach(linea => { const match = linea.match(/(\d+)x/); if (match) productosVendidos += parseInt(match[1]); });
             }
         }
-        
         const repartidoresSnap = await database.ref('repartidores').once('value');
         const repartidores = repartidoresSnap.val() || {};
         let repartidoresActivos = 0;
-        for (const [id, data] of Object.entries(repartidores)) {
-            if (data.activo !== false) repartidoresActivos++;
-        }
+        for (const [id, data] of Object.entries(repartidores)) { if (data.activo !== false) repartidoresActivos++; }
         
         document.getElementById('totalVentasHoy').innerHTML = totalVentas.toFixed(2);
         document.getElementById('totalPedidosHoy').innerHTML = totalPedidos;
         document.getElementById('totalRepartidoresHoy').innerHTML = repartidoresActivos;
         document.getElementById('productosVendidosHoy').innerHTML = productosVendidos;
         
-        document.getElementById('reporteDetalle').innerHTML = `
-            <h3 class="font-bold mb-4">📋 Últimos Pedidos (Hoy)</h3>
-            <div class="space-y-2 max-h-96 overflow-y-auto">
-                ${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).slice(0, 10).map(([id, data]) => `
-                    <div class="border-b border-slate-700 pb-2">
-                        <div class="flex justify-between">
-                            <span>#${data.id_pedido || id.substring(0, 8)}</span>
-                            <span class="${data.estado === 'ENTREGADO' ? 'text-green-400' : 'text-yellow-400'}">${data.estado}</span>
-                        </div>
-                        <div class="text-sm text-white/50">${data.cliente_nombre || 'Cliente'} - ${(data.total || 0).toFixed(2)}€</div>
-                    </div>
-                `).join('')}
-                ${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).length === 0 ? '<div class="text-center text-white/50 p-4">No hay pedidos hoy</div>' : ''}
-            </div>
-        `;
+        document.getElementById('reporteDetalle').innerHTML = `<h3 class="font-bold mb-4">📋 Últimos Pedidos (Hoy)</h3><div class="space-y-2 max-h-96 overflow-y-auto">${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).slice(0, 10).map(([id, data]) => `<div class="border-b border-slate-700 pb-2"><div class="flex justify-between"><span>#${data.id_pedido || id.substring(0, 8)}</span><span class="${data.estado === 'ENTREGADO' ? 'text-green-400' : 'text-yellow-400'}">${data.estado}</span></div><div class="text-sm text-white/50">${data.cliente_nombre || 'Cliente'} - ${(data.total || 0).toFixed(2)}€</div></div>`).join('')}${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).length === 0 ? '<div class="text-center text-white/50 p-4">No hay pedidos hoy</div>' : ''}</div>`;
     }
     
     function cargarTodosLosDatos() {

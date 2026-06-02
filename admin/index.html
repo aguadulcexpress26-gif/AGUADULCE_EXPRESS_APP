@@ -20,7 +20,10 @@
         .card:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
         .modal { transition: opacity 0.3s; }
         input, select, textarea { transition: all 0.2s; }
-        input:focus, select:focus, textarea:focus { outline: none; border-color: #f59e0b; ring: 2px solid #f59e0b; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #f59e0b; }
+        .tab-btn.active { background: #f59e0b; color: #0f172a; }
+        .repartidor-card { transition: all 0.2s; }
+        .repartidor-card:hover { background: #1e293b; }
     </style>
 </head>
 <body class="bg-slate-900 text-white">
@@ -32,19 +35,20 @@
         <input type="email" id="adminEmail" placeholder="Email" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <input type="password" id="adminPassword" placeholder="Contraseña" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-4">
         <button onclick="loginAdmin()" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl hover:bg-amber-400 transition">INGRESAR</button>
-        <p class="text-center text-white/30 text-xs mt-4">Contacta al desarrollador para obtener acceso</p>
+        <p class="text-center text-white/30 text-xs mt-4">Email: admin@aguadulce.com / Pass: admin123</p>
     </div>
 </div>
 
 <div id="adminPanel" class="hidden min-h-screen flex">
     <!-- Sidebar -->
-    <div class="w-72 bg-slate-800 p-4 flex flex-col">
+    <div class="w-72 bg-slate-800 p-4 flex flex-col overflow-y-auto">
         <div class="text-amber-400 text-2xl font-black mb-8 px-3">🍔 ADMIN</div>
         <div class="flex-1">
             <div class="sidebar-item active p-3 rounded-xl mb-2" onclick="cambiarSeccion('restaurantes')">🏪 Restaurantes</div>
-            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('horarios')">⏰ Horarios</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('horarios')">⏰ Horarios (2 turnos)</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('menus')">📋 Menús</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('pedidos')">🛒 Pedidos</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('repartidores')">🛵 Repartidores</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('banners')">📢 Banners</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('usuarios')">👥 Usuarios</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('reportes')">📊 Reportes</div>
@@ -54,7 +58,8 @@
     
     <!-- Main Content -->
     <div class="flex-1 p-6 overflow-y-auto h-screen">
-        <!-- Sección Restaurantes -->
+        
+        <!-- ==================== RESTAURANTES ==================== -->
         <div id="seccion-restaurantes" class="seccion">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold">🏪 Restaurantes</h2>
@@ -63,9 +68,9 @@
             <div id="listaRestaurantes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
         
-        <!-- Sección Horarios -->
+        <!-- ==================== HORARIOS (2 TURNOS) ==================== -->
         <div id="seccion-horarios" class="seccion hidden">
-            <h2 class="text-2xl font-bold mb-6">⏰ Horarios</h2>
+            <h2 class="text-2xl font-bold mb-6">⏰ Horarios (Dos Turnos)</h2>
             <div class="bg-slate-800 rounded-2xl p-6 mb-6">
                 <label class="block mb-2">Seleccionar Restaurante</label>
                 <select id="horarioRestauranteSelect" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600"></select>
@@ -73,7 +78,7 @@
             <div id="horariosConfig" class="bg-slate-800 rounded-2xl p-6"></div>
         </div>
         
-        <!-- Sección Menús -->
+        <!-- ==================== MENÚS ==================== -->
         <div id="seccion-menus" class="seccion hidden">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold">📋 Menús</h2>
@@ -85,10 +90,10 @@
             <div id="listaProductos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
         
-        <!-- Sección Pedidos -->
+        <!-- ==================== PEDIDOS ==================== -->
         <div id="seccion-pedidos" class="seccion hidden">
             <h2 class="text-2xl font-bold mb-6">🛒 Pedidos en Tiempo Real</h2>
-            <div class="flex gap-3 mb-4">
+            <div class="flex gap-3 mb-4 flex-wrap">
                 <select id="filtroEstadoPedido" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
                     <option value="todos">Todos</option>
                     <option value="RECIBIDO">Pendientes</option>
@@ -99,20 +104,37 @@
                 <select id="filtroRestaurantePedido" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
                     <option value="">Todos los restaurantes</option>
                 </select>
+                <button onclick="borrarTodosPedidos()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold">🗑️ BORRAR TODOS LOS PEDIDOS</button>
             </div>
             <div id="listaPedidosAdmin" class="space-y-4"></div>
         </div>
         
-        <!-- Sección Banners -->
+        <!-- ==================== REPARTIDORES ==================== -->
+        <div id="seccion-repartidores" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">🛵 Repartidores</h2>
+                <button onclick="mostrarModal('modalRepartidor')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Repartidor</button>
+            </div>
+            <div id="listaRepartidores" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            <div class="mt-6 bg-slate-800 rounded-2xl p-6">
+                <h3 class="font-bold mb-4">📊 Reporte de Repartidores (Hoy)</h3>
+                <div id="reporteRepartidores" class="space-y-2"></div>
+            </div>
+        </div>
+        
+        <!-- ==================== BANNERS ==================== -->
         <div id="seccion-banners" class="seccion hidden">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold">📢 Banners Publicitarios</h2>
                 <button onclick="mostrarModal('modalBanner')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Banner</button>
             </div>
             <div id="listaBanners" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            <div class="mt-4 bg-slate-800/50 rounded-xl p-4 text-white/60 text-sm">
+                ℹ️ Los banners se muestran en la pantalla de inicio de la APP Cliente
+            </div>
         </div>
         
-        <!-- Sección Usuarios -->
+        <!-- ==================== USUARIOS ==================== -->
         <div id="seccion-usuarios" class="seccion hidden">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold">👥 Usuarios</h2>
@@ -121,20 +143,24 @@
             <div id="listaUsuarios" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
         
-        <!-- Sección Reportes -->
+        <!-- ==================== REPORTES ==================== -->
         <div id="seccion-reportes" class="seccion hidden">
             <h2 class="text-2xl font-bold mb-6">📊 Reportes</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div class="bg-slate-800 rounded-2xl p-6 text-center">
-                    <div class="text-4xl font-bold text-amber-400" id="totalVentasHoy">0</div>
+                    <div class="text-3xl font-bold text-amber-400" id="totalVentasHoy">0</div>
                     <div class="text-white/50 text-sm">Ventas Hoy (€)</div>
                 </div>
                 <div class="bg-slate-800 rounded-2xl p-6 text-center">
-                    <div class="text-4xl font-bold text-amber-400" id="totalPedidosHoy">0</div>
+                    <div class="text-3xl font-bold text-amber-400" id="totalPedidosHoy">0</div>
                     <div class="text-white/50 text-sm">Pedidos Hoy</div>
                 </div>
                 <div class="bg-slate-800 rounded-2xl p-6 text-center">
-                    <div class="text-4xl font-bold text-amber-400" id="productosMasVendidosCount">0</div>
+                    <div class="text-3xl font-bold text-amber-400" id="totalRepartidoresHoy">0</div>
+                    <div class="text-white/50 text-sm">Repartidores Activos</div>
+                </div>
+                <div class="bg-slate-800 rounded-2xl p-6 text-center">
+                    <div class="text-3xl font-bold text-amber-400" id="productosVendidosHoy">0</div>
                     <div class="text-white/50 text-sm">Productos Vendidos</div>
                 </div>
             </div>
@@ -143,14 +169,14 @@
     </div>
 </div>
 
-<!-- Modal Restaurante -->
+<!-- MODALES -->
 <div id="modalRestaurante" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">🏪 Restaurante</h3>
         <input type="text" id="restPin" placeholder="PIN (ej: AB10DE)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3 uppercase">
         <input type="text" id="restNombre" placeholder="Nombre" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <input type="text" id="restId" placeholder="ID Restaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="url" id="restFoto" placeholder="URL Foto" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="url" id="restFoto" placeholder="URL Foto (opcional)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <div class="flex gap-3">
             <button onclick="guardarRestaurante()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
             <button onclick="cerrarModal('modalRestaurante')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
@@ -158,7 +184,6 @@
     </div>
 </div>
 
-<!-- Modal Producto -->
 <div id="modalProducto" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">📋 Producto</h3>
@@ -174,7 +199,6 @@
     </div>
 </div>
 
-<!-- Modal Banner -->
 <div id="modalBanner" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">📢 Banner</h3>
@@ -189,7 +213,6 @@
     </div>
 </div>
 
-<!-- Modal Usuario -->
 <div id="modalUsuario" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">👥 Usuario</h3>
@@ -208,6 +231,19 @@
     </div>
 </div>
 
+<div id="modalRepartidor" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-4">🛵 Repartidor</h3>
+        <input type="text" id="repNombre" placeholder="Nombre completo" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="tel" id="repTelefono" placeholder="Teléfono" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="text" id="repVehiculo" placeholder="Vehículo (ej: Moto, Bici)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <div class="flex gap-3">
+            <button onclick="guardarRepartidor()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
+            <button onclick="cerrarModal('modalRepartidor')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // ==================== CONFIGURACIÓN FIREBASE ====================
     const firebaseConfig = {
@@ -221,15 +257,12 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
     
-    // ==================== AUTENTICACIÓN (SIMULADA) ====================
-    // En producción, esto debería usar Firebase Auth
-    const USUARIO_ADMIN = { email: "admin@aguadulce.com", password: "admin123" };
-    
+    // ==================== AUTENTICACIÓN ====================
     function loginAdmin() {
         const email = document.getElementById('adminEmail').value;
         const password = document.getElementById('adminPassword').value;
         
-        if (email === USUARIO_ADMIN.email && password === USUARIO_ADMIN.password) {
+        if (email === 'admin@aguadulce.com' && password === 'admin123') {
             localStorage.setItem('admin_logged', 'true');
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('adminPanel').classList.remove('hidden');
@@ -261,6 +294,7 @@
         if (seccion === 'horarios') cargarHorarios();
         if (seccion === 'menus') cargarMenus();
         if (seccion === 'pedidos') cargarPedidosAdmin();
+        if (seccion === 'repartidores') cargarRepartidores();
         if (seccion === 'banners') cargarBanners();
         if (seccion === 'usuarios') cargarUsuarios();
         if (seccion === 'reportes') cargarReportes();
@@ -274,14 +308,22 @@
         document.getElementById(modalId).classList.add('hidden');
     }
     
-    // ==================== CRUD RESTAURANTES ====================
+    // ==================== RESTAURANTES ====================
     async function cargarRestaurantes() {
         const snapshot = await database.ref('restaurantes').once('value');
         const restaurantes = snapshot.val() || {};
         const container = document.getElementById('listaRestaurantes');
         
+        // Filtrar solo los que son PIN válidos (no números)
+        const restaurantesFiltrados = {};
+        for (const [key, value] of Object.entries(restaurantes)) {
+            if (isNaN(key) && key.length >= 4) {
+                restaurantesFiltrados[key] = value;
+            }
+        }
+        
         container.innerHTML = '';
-        for (const [pin, data] of Object.entries(restaurantes)) {
+        for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
             container.innerHTML += `
                 <div class="card bg-slate-800 rounded-2xl p-4">
                     <div class="flex justify-between items-start">
@@ -291,7 +333,7 @@
                             <p class="text-white/50 text-sm">ID: ${data.id_restaurante || '-'}</p>
                         </div>
                         <div class="text-right">
-                            <div class="badge ${data.activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                            <div class="${data.activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
                                 ${data.activo ? 'ACTIVO' : 'INACTIVO'}
                             </div>
                         </div>
@@ -305,8 +347,6 @@
                 </div>
             `;
         }
-        
-        // Actualizar selects
         actualizarSelectsRestaurantes();
     }
     
@@ -331,7 +371,7 @@
         
         cerrarModal('modalRestaurante');
         cargarRestaurantes();
-        Swal.fire({ title: 'Éxito', text: 'Restaurante guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        Swal.fire({ title: 'Éxito', text: 'Restaurante guardado en Firebase', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
     async function toggleRestaurante(pin, activo) {
@@ -350,12 +390,12 @@
     function actualizarSelectsRestaurantes() {
         database.ref('restaurantes').once('value', snapshot => {
             const restaurantes = snapshot.val() || {};
-            const options = '<option value="">Seleccionar restaurante</option>';
-            let optionsHtml = options;
+            let optionsHtml = '<option value="">Seleccionar restaurante</option>';
             
             for (const [pin, data] of Object.entries(restaurantes)) {
-                const option = `<option value="${pin}">${data.nombre || pin}</option>`;
-                optionsHtml += option;
+                if (isNaN(pin) && pin.length >= 4) {
+                    optionsHtml += `<option value="${pin}">${data.nombre || pin}</option>`;
+                }
             }
             
             const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido', 'userRestaurante'];
@@ -366,7 +406,7 @@
         });
     }
     
-    // ==================== HORARIOS ====================
+    // ==================== HORARIOS (2 TURNOS) ====================
     async function cargarHorarios() {
         await actualizarSelectsRestaurantes();
         const select = document.getElementById('horarioRestauranteSelect');
@@ -379,24 +419,38 @@
         const horarios = snapshot.val() || {};
         
         const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-        let html = '<div class="space-y-4">';
+        let html = '<div class="space-y-6">';
         
         dias.forEach(dia => {
             const diaKey = dia.toLowerCase();
-            const horario = horarios[diaKey] || { inicio: '10:00', fin: '22:00', activo: true };
+            const horario = horarios[diaKey] || { turno1_inicio: '10:00', turno1_fin: '15:00', turno2_inicio: '17:00', turno2_fin: '22:00', activo: true };
+            
             html += `
                 <div class="border border-slate-700 rounded-xl p-4">
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="font-bold">${dia}</span>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="font-bold text-lg">${dia}</span>
                         <label class="flex items-center gap-2">
                             <span class="text-sm">Activo</span>
                             <input type="checkbox" id="horario_${diaKey}_activo" ${horario.activo ? 'checked' : ''} class="w-5 h-5">
                         </label>
                     </div>
-                    <div class="flex gap-3">
-                        <input type="time" id="horario_${diaKey}_inicio" value="${horario.inicio}" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600">
-                        <span class="text-white/50">a</span>
-                        <input type="time" id="horario_${diaKey}_fin" value="${horario.fin}" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm text-white/50">🌅 Turno Mañana - Inicio</label>
+                            <input type="time" id="horario_${diaKey}_t1_inicio" value="${horario.turno1_inicio || '10:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
+                        </div>
+                        <div>
+                            <label class="text-sm text-white/50">🌅 Turno Mañana - Fin</label>
+                            <input type="time" id="horario_${diaKey}_t1_fin" value="${horario.turno1_fin || '15:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
+                        </div>
+                        <div>
+                            <label class="text-sm text-white/50">🌙 Turno Tarde - Inicio</label>
+                            <input type="time" id="horario_${diaKey}_t2_inicio" value="${horario.turno2_inicio || '17:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
+                        </div>
+                        <div>
+                            <label class="text-sm text-white/50">🌙 Turno Tarde - Fin</label>
+                            <input type="time" id="horario_${diaKey}_t2_fin" value="${horario.turno2_fin || '22:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
+                        </div>
                     </div>
                 </div>
             `;
@@ -413,8 +467,10 @@
         
         dias.forEach(dia => {
             horarios[dia] = {
-                inicio: document.getElementById(`horario_${dia}_inicio`).value,
-                fin: document.getElementById(`horario_${dia}_fin`).value,
+                turno1_inicio: document.getElementById(`horario_${dia}_t1_inicio`).value,
+                turno1_fin: document.getElementById(`horario_${dia}_t1_fin`).value,
+                turno2_inicio: document.getElementById(`horario_${dia}_t2_inicio`).value,
+                turno2_fin: document.getElementById(`horario_${dia}_t2_fin`).value,
                 activo: document.getElementById(`horario_${dia}_activo`).checked
             };
         });
@@ -431,10 +487,18 @@
     }
     
     async function cargarProductos(pin) {
-        if (!pin) return;
+        if (!pin) {
+            document.getElementById('listaProductos').innerHTML = '<div class="text-center text-white/50 p-10">Selecciona un restaurante</div>';
+            return;
+        }
         const snapshot = await database.ref(`productos/${pin}`).once('value');
         const productos = snapshot.val() || {};
         const container = document.getElementById('listaProductos');
+        
+        if (Object.keys(productos).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>';
+            return;
+        }
         
         container.innerHTML = '';
         for (const [id, data] of Object.entries(productos)) {
@@ -444,10 +508,10 @@
                         <div>
                             <p class="font-bold text-white">${data.nombre || 'Sin nombre'}</p>
                             <p class="text-white/50 text-sm">${data.categoria || 'Sin categoría'}</p>
-                            <p class="text-amber-400 font-bold">${(data.precio || 0).toFixed(2)}€</p>
+                            <p class="text-amber-400 font-bold text-xl">${(data.precio || 0).toFixed(2)}€</p>
                         </div>
                         <div>
-                            <div class="badge ${data.disponible !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                            <div class="${data.disponible !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
                                 ${data.disponible !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}
                             </div>
                         </div>
@@ -488,7 +552,7 @@
         
         cerrarModal('modalProducto');
         cargarProductos(pin);
-        Swal.fire({ title: 'Éxito', text: 'Producto guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        Swal.fire({ title: 'Éxito', text: 'Producto guardado en Firebase', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
     async function toggleProducto(pin, id, disponible) {
@@ -504,12 +568,15 @@
         }
     }
     
-    // ==================== PEDIDOS ADMIN ====================
+    // ==================== PEDIDOS ====================
+    let pedidosListener = null;
+    
     function cargarPedidosAdmin() {
+        if (pedidosListener) pedidosListener.off();
         const filtroEstado = document.getElementById('filtroEstadoPedido').value;
         const filtroRest = document.getElementById('filtroRestaurantePedido').value;
         
-        database.ref('pedidos').on('value', (snapshot) => {
+        pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
             const pedidos = snapshot.val() || {};
             const container = document.getElementById('listaPedidosAdmin');
             let pedidosArray = [];
@@ -517,7 +584,6 @@
             for (const [id, data] of Object.entries(pedidos)) {
                 if (filtroRest && data.restaurante_id !== filtroRest) continue;
                 if (filtroEstado !== 'todos' && data.estado !== filtroEstado) continue;
-                
                 pedidosArray.push({ id, ...data });
             }
             
@@ -527,48 +593,127 @@
                 <div class="bg-slate-800 rounded-2xl p-4">
                     <div class="flex justify-between items-start flex-wrap gap-2">
                         <div>
-                            <span class="text-amber-400 font-bold">#${p.id_pedido || p.id}</span>
+                            <span class="text-amber-400 font-bold">#${p.id_pedido || p.id.substring(0, 8)}</span>
                             <p class="font-bold">${p.cliente_nombre || 'Cliente'}</p>
                             <p class="text-white/50 text-sm">${p.restaurante_nombre || p.restaurante_id}</p>
                         </div>
                         <div class="text-right">
                             <div class="font-bold text-amber-400">${(p.total || 0).toFixed(2)}€</div>
-                            <div class="badge px-2 py-1 rounded text-xs ${getEstadoColor(p.estado)}">${getEstadoTexto(p.estado)}</div>
+                            <div class="px-2 py-1 rounded text-xs ${getEstadoColor(p.estado)}">${getEstadoTexto(p.estado)}</div>
                         </div>
                     </div>
                     <p class="text-white/60 text-sm mt-2 line-clamp-2">${p.detalle || ''}</p>
-                    <div class="flex gap-2 mt-4">
-                        ${p.estado === 'RECIBIDO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'EN PROCESO')" class="bg-cyan-500/20 text-cyan-400 py-2 rounded-xl text-sm flex-1">🔪 Cocinar</button>` : ''}
-                        ${p.estado === 'EN PROCESO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'LISTO')" class="bg-emerald-500/20 text-emerald-400 py-2 rounded-xl text-sm flex-1">✅ Marcar Listo</button>` : ''}
-                        ${p.estado === 'LISTO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'ENTREGADO')" class="bg-green-500/20 text-green-400 py-2 rounded-xl text-sm flex-1">🏁 Entregado</button>` : ''}
-                        <button onclick="verDetallePedidoAdmin('${p.id}')" class="bg-white/10 py-2 rounded-xl text-sm flex-1">📋 Detalle</button>
+                    <div class="flex gap-2 mt-4 flex-wrap">
+                        ${p.estado === 'RECIBIDO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'EN PROCESO')" class="bg-cyan-500/20 text-cyan-400 py-2 rounded-xl text-sm px-3">🔪 Cocinar</button>` : ''}
+                        ${p.estado === 'EN PROCESO' ? `<button onclick="actualizarEstadoPedido('${p.id}', 'LISTO')" class="bg-emerald-500/20 text-emerald-400 py-2 rounded-xl text-sm px-3">✅ Marcar Listo</button>` : ''}
+                        ${p.estado === 'LISTO' ? `<button onclick="asignarRepartidorModal('${p.id}')" class="bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm px-3">🛵 Asignar Repartidor</button>` : ''}
+                        <button onclick="verDetallePedidoAdmin('${p.id}')" class="bg-white/10 py-2 rounded-xl text-sm px-3">📋 Detalle</button>
+                        <button onclick="eliminarPedido('${p.id}')" class="bg-red-600/20 text-red-400 py-2 rounded-xl text-sm px-3">🗑️ Eliminar</button>
                     </div>
+                    ${p.repartidor_asignado ? `<div class="mt-2 text-xs text-white/40">🛵 Repartidor: ${p.repartidor_asignado}</div>` : ''}
                 </div>
             `).join('');
         });
     }
     
-    function getEstadoColor(estado) {
-        const colores = { RECIBIDO: 'bg-yellow-500/20 text-yellow-400', 'EN PROCESO': 'bg-cyan-500/20 text-cyan-400', LISTO: 'bg-emerald-500/20 text-emerald-400', ENTREGADO: 'bg-green-500/20 text-green-400' };
-        return colores[estado] || 'bg-slate-500/20';
+    async function borrarTodosPedidos() {
+        const confirm = await Swal.fire({
+            title: '⚠️ ¿BORRAR TODOS LOS PEDIDOS?',
+            text: 'Esta acción es irreversible. Se eliminarán todos los pedidos de la base de datos.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Sí, borrar todo',
+            background: '#0f172a',
+            color: 'white'
+        });
+        
+        if (confirm.isConfirmed) {
+            await database.ref('pedidos').remove();
+            Swal.fire({ title: 'Eliminado', text: 'Todos los pedidos han sido eliminados', icon: 'success', background: '#0f172a', color: 'white' });
+        }
     }
     
-    function getEstadoTexto(estado) {
-        const textos = { RECIBIDO: '⏰ Pendiente', 'EN PROCESO': '🍳 En Cocina', LISTO: '✅ Listo', ENTREGADO: '🏁 Entregado' };
-        return textos[estado] || estado;
+    async function eliminarPedido(id) {
+        const confirm = await Swal.fire({
+            title: '¿Eliminar este pedido?',
+            text: 'Esta acción no se puede deshacer',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            background: '#0f172a',
+            color: 'white'
+        });
+        if (confirm.isConfirmed) {
+            await database.ref(`pedidos/${id}`).remove();
+        }
+    }
+    
+    async function asignarRepartidorModal(pedidoId) {
+        const repartidores = await database.ref('repartidores').once('value');
+        const repartidoresList = repartidores.val() || {};
+        
+        let repartidoresHtml = '';
+        for (const [id, data] of Object.entries(repartidoresList)) {
+            repartidoresHtml += `<option value="${data.nombre}">${data.nombre} (${data.vehiculo || 'Sin vehículo'})</option>`;
+        }
+        
+        const { value: repartidorNombre } = await Swal.fire({
+            title: 'Asignar Repartidor',
+            html: `<select id="selectRepartidor" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">${repartidoresHtml}</select>`,
+            background: '#0f172a',
+            color: 'white',
+            showCancelButton: true,
+            confirmButtonText: 'Asignar',
+            preConfirm: () => document.getElementById('selectRepartidor').value
+        });
+        
+        if (repartidorNombre) {
+            await database.ref(`pedidos/${pedidoId}`).update({
+                repartidor_asignado: repartidorNombre,
+                estado: 'EN CAMINO',
+                timestamp_asignado: Date.now()
+            });
+            
+            // Registrar en el reporte del repartidor
+            const pedido = await database.ref(`pedidos/${pedidoId}`).once('value');
+            const data = pedido.val();
+            const hoy = new Date().toDateString();
+            
+            const repRef = database.ref(`repartidores_reportes/${repartidorNombre.replace(/ /g, '_')}/${hoy}`);
+            const repSnapshot = await repRef.once('value');
+            const reporteHoy = repSnapshot.val() || { total_pedidos: 0, total_ganado: 0, pedidos: [] };
+            
+            reporteHoy.total_pedidos++;
+            reporteHoy.total_ganado += data.total || 0;
+            reporteHoy.pedidos.push({ id: pedidoId, total: data.total, cliente: data.cliente_nombre });
+            
+            await repRef.set(reporteHoy);
+            
+            Swal.fire({ title: 'Asignado', text: `Pedido asignado a ${repartidorNombre}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        }
     }
     
     async function actualizarEstadoPedido(id, nuevoEstado) {
         await database.ref(`pedidos/${id}/estado`).set(nuevoEstado);
         if (nuevoEstado === 'LISTO') await database.ref(`pedidos/${id}/timestamp_listo`).set(Date.now());
-        if (nuevoEstado === 'ENTREGADO') await database.ref(`pedidos/${id}/timestamp_entregado`).set(Date.now());
+    }
+    
+    function getEstadoColor(estado) {
+        const colores = { RECIBIDO: 'bg-yellow-500/20 text-yellow-400', 'EN PROCESO': 'bg-cyan-500/20 text-cyan-400', LISTO: 'bg-emerald-500/20 text-emerald-400', 'EN CAMINO': 'bg-purple-500/20 text-purple-400', ENTREGADO: 'bg-green-500/20 text-green-400' };
+        return colores[estado] || 'bg-slate-500/20';
+    }
+    
+    function getEstadoTexto(estado) {
+        const textos = { RECIBIDO: '⏰ Pendiente', 'EN PROCESO': '🍳 En Cocina', LISTO: '✅ Listo', 'EN CAMINO': '🛵 En Camino', ENTREGADO: '🏁 Entregado' };
+        return textos[estado] || estado;
     }
     
     function verDetallePedidoAdmin(id) {
         database.ref(`pedidos/${id}`).once('value', snapshot => {
             const p = snapshot.val();
             Swal.fire({
-                title: `Pedido #${p.id_pedido || id}`,
+                title: `Pedido #${p.id_pedido || id.substring(0, 8)}`,
                 html: `<div class="text-left">
                     <p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p>
                     <p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p>
@@ -581,6 +726,114 @@
                 background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b'
             });
         });
+    }
+    
+    // ==================== REPARTIDORES ====================
+    async function cargarRepartidores() {
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        const container = document.getElementById('listaRepartidores');
+        
+        container.innerHTML = '';
+        for (const [id, data] of Object.entries(repartidores)) {
+            container.innerHTML += `
+                <div class="card repartidor-card bg-slate-800 rounded-2xl p-4">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-white text-lg">${data.nombre}</p>
+                            <p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p>
+                            <p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p>
+                        </div>
+                        <div>
+                            <div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                                ${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                            ${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}
+                        </button>
+                        <button onclick="eliminarRepartidor('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                    </div>
+                </div>
+            `;
+        }
+        cargarReporteRepartidores();
+    }
+    
+    async function guardarRepartidor() {
+        const nombre = document.getElementById('repNombre').value;
+        const telefono = document.getElementById('repTelefono').value;
+        const vehiculo = document.getElementById('repVehiculo').value;
+        
+        if (!nombre) {
+            Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        const id = nombre.replace(/ /g, '_').toLowerCase();
+        await database.ref(`repartidores/${id}`).set({
+            nombre,
+            telefono,
+            vehiculo,
+            activo: true,
+            creado_en: Date.now()
+        });
+        
+        cerrarModal('modalRepartidor');
+        cargarRepartidores();
+        Swal.fire({ title: 'Éxito', text: 'Repartidor guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }
+    
+    async function toggleRepartidor(id, activo) {
+        await database.ref(`repartidores/${id}/activo`).set(activo);
+        cargarRepartidores();
+    }
+    
+    async function eliminarRepartidor(id) {
+        const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
+        if (confirm.isConfirmed) {
+            await database.ref(`repartidores/${id}`).remove();
+            cargarRepartidores();
+        }
+    }
+    
+    async function cargarReporteRepartidores() {
+        const hoy = new Date().toDateString();
+        const snapshot = await database.ref('repartidores_reportes').once('value');
+        const reportes = snapshot.val() || {};
+        const container = document.getElementById('reporteRepartidores');
+        
+        let html = '';
+        let totalGeneral = 0;
+        let pedidosGeneral = 0;
+        
+        for (const [repId, dias] of Object.entries(reportes)) {
+            const hoyData = dias[hoy];
+            if (hoyData) {
+                html += `
+                    <div class="flex justify-between items-center p-3 bg-slate-700/50 rounded-xl">
+                        <span class="font-bold">${repId.replace(/_/g, ' ')}</span>
+                        <span>📦 ${hoyData.total_pedidos || 0} pedidos</span>
+                        <span class="text-amber-400">💰 ${(hoyData.total_ganado || 0).toFixed(2)}€</span>
+                    </div>
+                `;
+                totalGeneral += hoyData.total_ganado || 0;
+                pedidosGeneral += hoyData.total_pedidos || 0;
+            }
+        }
+        
+        if (!html) html = '<div class="text-center text-white/50 p-4">No hay actividad hoy</div>';
+        
+        container.innerHTML = `
+            <div class="bg-slate-700/30 rounded-xl p-3 mb-4 flex justify-between">
+                <span class="font-bold">📊 TOTAL REPARTIDORES HOY:</span>
+                <span>📦 ${pedidosGeneral} pedidos</span>
+                <span class="text-amber-400">💰 ${totalGeneral.toFixed(2)}€</span>
+            </div>
+            ${html}
+        `;
     }
     
     // ==================== BANNERS ====================
@@ -597,6 +850,7 @@
                     <div class="p-4">
                         <p class="font-bold">${data.titulo || 'Sin título'}</p>
                         <p class="text-white/50 text-sm">Orden: ${data.orden || 0}</p>
+                        <p class="text-white/50 text-sm">Link: ${data.link ? 'Sí' : 'No'}</p>
                         <button onclick="eliminarBanner('${id}')" class="w-full mt-3 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
                     </div>
                 </div>
@@ -620,7 +874,7 @@
         
         cerrarModal('modalBanner');
         cargarBanners();
-        Swal.fire({ title: 'Éxito', text: 'Banner guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        Swal.fire({ title: 'Éxito', text: 'Banner guardado en Firebase', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
     
     async function eliminarBanner(id) {
@@ -682,10 +936,10 @@
         const hoy = new Date().toDateString();
         let totalVentas = 0;
         let totalPedidos = 0;
-        let productosCount = 0;
+        let productosVendidos = 0;
         
-        const snapshot = await database.ref('pedidos').once('value');
-        const pedidos = snapshot.val() || {};
+        const pedidosSnap = await database.ref('pedidos').once('value');
+        const pedidos = pedidosSnap.val() || {};
         
         for (const [id, data] of Object.entries(pedidos)) {
             const fechaPedido = new Date(data.fecha).toDateString();
@@ -698,27 +952,36 @@
                 const lineas = data.detalle.split('\n');
                 lineas.forEach(linea => {
                     const match = linea.match(/(\d+)x/);
-                    if (match) productosCount += parseInt(match[1]);
+                    if (match) productosVendidos += parseInt(match[1]);
                 });
             }
         }
         
+        const repartidoresSnap = await database.ref('repartidores').once('value');
+        const repartidores = repartidoresSnap.val() || {};
+        let repartidoresActivos = 0;
+        for (const [id, data] of Object.entries(repartidores)) {
+            if (data.activo !== false) repartidoresActivos++;
+        }
+        
         document.getElementById('totalVentasHoy').innerHTML = totalVentas.toFixed(2);
         document.getElementById('totalPedidosHoy').innerHTML = totalPedidos;
-        document.getElementById('productosMasVendidosCount').innerHTML = productosCount;
+        document.getElementById('totalRepartidoresHoy').innerHTML = repartidoresActivos;
+        document.getElementById('productosVendidosHoy').innerHTML = productosVendidos;
         
         document.getElementById('reporteDetalle').innerHTML = `
-            <h3 class="font-bold mb-4">📋 Últimos Pedidos</h3>
+            <h3 class="font-bold mb-4">📋 Últimos Pedidos (Hoy)</h3>
             <div class="space-y-2 max-h-96 overflow-y-auto">
-                ${Object.entries(pedidos).slice(0, 10).map(([id, data]) => `
+                ${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).slice(0, 10).map(([id, data]) => `
                     <div class="border-b border-slate-700 pb-2">
                         <div class="flex justify-between">
-                            <span>#${data.id_pedido || id}</span>
+                            <span>#${data.id_pedido || id.substring(0, 8)}</span>
                             <span class="${data.estado === 'ENTREGADO' ? 'text-green-400' : 'text-yellow-400'}">${data.estado}</span>
                         </div>
                         <div class="text-sm text-white/50">${data.cliente_nombre || 'Cliente'} - ${(data.total || 0).toFixed(2)}€</div>
                     </div>
                 `).join('')}
+                ${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).length === 0 ? '<div class="text-center text-white/50 p-4">No hay pedidos hoy</div>' : ''}
             </div>
         `;
     }
@@ -728,6 +991,7 @@
         cargarHorarios();
         cargarMenus();
         cargarPedidosAdmin();
+        cargarRepartidores();
         cargarBanners();
         cargarUsuarios();
         cargarReportes();

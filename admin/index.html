@@ -184,21 +184,65 @@
     </div>
 </div>
 
-<div id="modalProducto" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
+<div id="modalProducto" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <h3 class="text-xl font-bold mb-4">📋 Producto</h3>
+        
+        <label class="block text-sm mb-1">Restaurante</label>
         <select id="prodRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3"></select>
-        <input type="text" id="prodNombre" placeholder="Nombre" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="text" id="prodCategoria" placeholder="Categoría" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="number" id="prodPrecio" placeholder="Precio €" step="0.01" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <textarea id="prodDescripcion" placeholder="Descripción" rows="3" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3"></textarea>
-        <div class="flex gap-3">
-            <button onclick="guardarProducto()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
+        
+        <label class="block text-sm mb-1">Nombre del Plato *</label>
+        <input type="text" id="prodNombre" placeholder="Ej: Pizza Margarita" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        
+        <label class="block text-sm mb-1">Categoría</label>
+        <select id="prodCategoria" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+            <option value="Entrantes">Entrantes</option>
+            <option value="Platos principales">Platos principales</option>
+            <option value="Pizzas">Pizzas</option>
+            <option value="Hamburguesas">Hamburguesas</option>
+            <option value="Ensaladas">Ensaladas</option>
+            <option value="Postres">Postres</option>
+            <option value="Bebidas">Bebidas</option>
+            <option value="Cervezas">Cervezas</option>
+            <option value="Vinos">Vinos</option>
+            <option value="Otros">Otros</option>
+        </select>
+        
+        <label class="block text-sm mb-1">Precio (€) *</label>
+        <input type="number" id="prodPrecio" placeholder="0.00" step="0.01" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        
+        <label class="block text-sm mb-1">Descripción</label>
+        <textarea id="prodDescripcion" placeholder="Descripción del producto..." rows="2" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3"></textarea>
+        
+        <label class="block text-sm mb-1">URL de la imagen</label>
+        <input type="url" id="prodFoto" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        
+        <!-- Selección Obligatoria -->
+        <div class="bg-slate-700/50 rounded-xl p-4 mb-4">
+            <div class="flex items-center justify-between mb-3">
+                <label class="font-bold text-sm">⚠️ Selección Obligatoria</label>
+                <input type="checkbox" id="prodSeleccionObligatoria" class="w-5 h-5">
+            </div>
+            <p class="text-xs text-white/50">Si está activado, el cliente DEBE elegir al menos una opción del grupo de extras</p>
+        </div>
+        
+        <!-- Extras / Opciones -->
+        <div class="bg-slate-700/50 rounded-xl p-4 mb-4">
+            <div class="flex justify-between items-center mb-3">
+                <label class="font-bold text-sm">🍕 Extras / Opciones</label>
+                <button type="button" onclick="agregarGrupoOpciones()" class="bg-amber-500 text-black px-3 py-1 rounded-lg text-xs font-bold">➕ Agregar Grupo</button>
+            </div>
+            <div id="grupos-opciones-container" class="space-y-3">
+                <!-- Los grupos se agregarán dinámicamente aquí -->
+            </div>
+        </div>
+        
+        <div class="flex gap-3 mt-4">
+            <button onclick="guardarProductoCompleto()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar Producto</button>
             <button onclick="cerrarModal('modalProducto')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
         </div>
     </div>
 </div>
-
 <div id="modalBanner" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">📢 Banner</h3>
@@ -729,34 +773,39 @@ async function guardarHorarios(pin) {
         return;
     }
     
-    // Leer desde menu_general (donde guarda la app clientes)
+    // Leer desde menu_general
     const snapshot = await database.ref('menu_general').once('value');
     const todosProductos = snapshot.val() || {};
     
     // Filtrar por restaurante
-    const productos = {};
+    const productos = [];
     for (const [id, data] of Object.entries(todosProductos)) {
         if (data.ID_RESTAURANTE === pin) {
-            productos[id] = data;
+            productos.push({ id, ...data });
         }
     }
     
     const container = document.getElementById('listaProductos');
     
-    if (Object.keys(productos).length === 0) {
+    if (productos.length === 0) {
         container.innerHTML = '<div class="text-center text-white/50 p-10">No hay productos. Agrega uno nuevo.</div>';
         return;
     }
     
     container.innerHTML = '';
-    for (const [id, data] of Object.entries(productos)) {
+    for (const data of productos) {
+        const tieneExtras = data.EXTRAS && data.EXTRAS.length > 0;
+        const extrasInfo = tieneExtras ? `<div class="text-[10px] text-cyan-400 mt-1">📦 ${data.EXTRAS.length} grupo(s) de opciones</div>` : '';
+        
         container.innerHTML += `
             <div class="card bg-slate-800 rounded-2xl p-4">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="font-bold text-white">${escapeHTML(data.PLATO || data.nombre || 'Sin nombre')}</p>
-                        <p class="text-white/50 text-sm">${data.CATEGORIA || data.categoria || 'Sin categoría'}</p>
-                        <p class="text-amber-400 font-bold text-xl">${(data.PRECIO || data.precio || 0).toFixed(2)}€</p>
+                        <p class="font-bold text-white">${escapeHTML(data.PLATO)}</p>
+                        <p class="text-white/50 text-sm">${data.CATEGORIA || 'Sin categoría'}</p>
+                        <p class="text-amber-400 font-bold text-xl">${(data.PRECIO || 0).toFixed(2)}€</p>
+                        ${extrasInfo}
+                        ${data.SELECCION_OBLIGATORIA ? '<span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">⚠️ Selección obligatoria</span>' : ''}
                     </div>
                     <div>
                         <div class="${data.ACTIVO !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
@@ -764,79 +813,105 @@ async function guardarHorarios(pin) {
                         </div>
                     </div>
                 </div>
-                <p class="text-white/50 text-sm mt-2 line-clamp-2">${data.DESCRIPCION || data.descripcion || ''}</p>
+                <p class="text-white/50 text-sm mt-2 line-clamp-2">${data.DESCRIPCION || ''}</p>
+                ${data.FOTO_PLATO ? `<img src="${data.FOTO_PLATO}" class="w-16 h-16 rounded-lg object-cover mt-2" onerror="this.style.display='none'">` : ''}
                 <div class="flex gap-2 mt-4">
-                    <button onclick="toggleProducto('${pin}', '${id}', ${data.ACTIVO !== false ? false : true})" class="flex-1 ${data.ACTIVO !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                    <button onclick="toggleProducto('${pin}', '${data.id}', ${data.ACTIVO !== false ? false : true})" class="flex-1 ${data.ACTIVO !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
                         ${data.ACTIVO !== false ? '🔴 Desactivar' : '🟢 Activar'}
                     </button>
-                    <button onclick="eliminarProducto('${pin}', '${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                    <button onclick="editarProducto('${pin}', '${data.id}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">
+                        ✏️ Editar
+                    </button>
+                    <button onclick="eliminarProducto('${pin}', '${data.id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">
+                        🗑️ Eliminar
+                    </button>
                 </div>
             </div>
         `;
     }
 }
     
-   async function guardarProducto() {
+   async function guardarProductoCompleto() {
     const pin = document.getElementById('prodRestaurante').value;
     const nombre = document.getElementById('prodNombre').value;
     const categoria = document.getElementById('prodCategoria').value;
     const precio = parseFloat(document.getElementById('prodPrecio').value);
     const descripcion = document.getElementById('prodDescripcion').value;
+    const foto = document.getElementById('prodFoto').value;
+    const seleccionObligatoria = document.getElementById('prodSeleccionObligatoria').checked;
     
     if (!pin || !nombre || !precio) {
         Swal.fire({ title: 'Error', text: 'Nombre y precio son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
         return;
     }
     
-    const id = Date.now().toString();
+    // Recolectar grupos de opciones
+    const extras = recolectarGruposOpciones();
     
     // Obtener el nombre del restaurante
     const restSnapshot = await database.ref(`restaurantes/${pin}`).once('value');
     const restaurante = restSnapshot.val();
     const nombreRestaurante = restaurante.NOMBRE_RESTAURANTE || restaurante.nombre || pin;
     
-    // Guardar en menu_general (donde lo espera la app clientes)
+    const id = Date.now().toString();
+    
+    // Crear el producto con todas las opciones
     const productoData = {
         ID_PLATO: id,
         PLATO: nombre,
         DESCRIPCION: descripcion || '',
         PRECIO: precio,
         CATEGORIA: categoria || 'General',
-        FOTO_PLATO: '',
+        FOTO_PLATO: foto || '',
         ID_RESTAURANTE: pin,
         NOMBRE_RESTAURANTE: nombreRestaurante,
         ACTIVO: true,
+        SELECCION_OBLIGATORIA: seleccionObligatoria,
+        EXTRAS: extras,
         creado_en: Date.now()
     };
     
-    await database.ref(`menu_general/${id}`).set(productoData);
-    
-    // También guardar una copia en productos/{pin} para compatibilidad
-    await database.ref(`productos/${pin}/${id}`).set({
-        nombre: nombre,
-        categoria: categoria || 'General',
-        precio: precio,
-        descripcion: descripcion,
-        disponible: true,
-        creado_en: Date.now()
-    });
-    
-    cerrarModal('modalProducto');
-    
-    // Recargar la vista de productos
-    if (document.getElementById('menuRestauranteSelect').value === pin) {
-        cargarProductos(pin);
+    try {
+        // Guardar en menu_general
+        await database.ref(`menu_general/${id}`).set(productoData);
+        
+        // También guardar en productos/{pin} para compatibilidad
+        await database.ref(`productos/${pin}/${id}`).set({
+            nombre: nombre,
+            categoria: categoria,
+            precio: precio,
+            descripcion: descripcion,
+            foto: foto,
+            disponible: true,
+            seleccion_obligatoria: seleccionObligatoria,
+            extras: extras,
+            creado_en: Date.now()
+        });
+        
+        cerrarModal('modalProducto');
+        
+        // Limpiar grupos
+        gruposOpciones = [];
+        document.getElementById('grupos-opciones-container').innerHTML = '';
+        
+        // Recargar productos
+        if (document.getElementById('menuRestauranteSelect').value === pin) {
+            cargarProductos(pin);
+        }
+        
+        Swal.fire({ 
+            title: 'Éxito', 
+            text: 'Producto guardado con todas las opciones', 
+            icon: 'success', 
+            timer: 1500, 
+            showConfirmButton: false, 
+            background: '#0f172a', 
+            color: 'white' 
+        });
+    } catch (error) {
+        console.error("Error guardando producto:", error);
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
     }
-    
-    Swal.fire({ 
-        title: 'Éxito', 
-        text: 'Producto guardado en menu_general', 
-        icon: 'success', 
-        timer: 1500, 
-        showConfirmButton: false, 
-        background: '#0f172a', 
-        color: 'white' 
-    });
 }
     
     async function toggleProducto(pin, id, activo) {
@@ -865,6 +940,126 @@ async function eliminarProducto(pin, id) {
         cargarProductos(pin);
         Swal.fire({ title: 'Eliminado', text: 'Producto eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
+}
+    // Variables globales para grupos de opciones
+let gruposOpciones = [];
+
+function agregarGrupoOpciones(grupoExistente = null) {
+    const container = document.getElementById('grupos-opciones-container');
+    const grupoId = Date.now();
+    const grupoIndex = gruposOpciones.length;
+    
+    const grupoHtml = `
+        <div id="grupo-${grupoId}" class="bg-slate-800 rounded-xl p-3 border border-slate-600">
+            <div class="flex justify-between items-center mb-2">
+                <input type="text" placeholder="Nombre del grupo (Ej: Tamaño, Extras, Salsas)" 
+                       class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" 
+                       id="grupo-nombre-${grupoId}" value="${grupoExistente?.nombre || ''}">
+                <button onclick="eliminarGrupoOpciones(${grupoId})" class="ml-2 text-red-400 text-xl">🗑️</button>
+            </div>
+            <div class="flex gap-2 mb-2">
+                <label class="flex items-center gap-1 text-xs">
+                    <input type="checkbox" id="grupo-obligatorio-${grupoId}" ${grupoExistente?.required ? 'checked' : ''}> Obligatorio
+                </label>
+                <label class="flex items-center gap-1 text-xs">
+                    <span>Máx:</span>
+                    <input type="number" id="grupo-max-${grupoId}" value="${grupoExistente?.max || 1}" class="w-12 p-1 rounded bg-slate-700 text-xs">
+                </label>
+                <label class="flex items-center gap-1 text-xs">
+                    <span>Mín:</span>
+                    <input type="number" id="grupo-min-${grupoId}" value="${grupoExistente?.min || 0}" class="w-12 p-1 rounded bg-slate-700 text-xs">
+                </label>
+            </div>
+            <div id="opciones-${grupoId}" class="space-y-2 ml-4">
+                ${(grupoExistente?.opciones || []).map((opcion, idx) => `
+                    <div class="flex gap-2 items-center">
+                        <input type="text" placeholder="Opción" value="${opcion.nombre}" 
+                               class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" 
+                               id="opcion-nombre-${grupoId}-${idx}">
+                        <input type="number" placeholder="Precio extra" value="${opcion.precio || 0}" step="0.01" 
+                               class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" 
+                               id="opcion-precio-${grupoId}-${idx}">
+                        <button onclick="eliminarOpcion(${grupoId}, ${idx})" class="text-red-400">✕</button>
+                    </div>
+                `).join('')}
+            </div>
+            <button onclick="agregarOpcion(${grupoId})" class="text-xs text-cyan-400 mt-2">+ Agregar opción</button>
+        </div>
+    `;
+    
+    container.insertAdjacentHTML('beforeend', grupoHtml);
+    
+    if (!grupoExistente) {
+        gruposOpciones.push({ id: grupoId, nombre: '', required: false, max: 1, min: 0, opciones: [] });
+    } else {
+        gruposOpciones.push({ id: grupoId, ...grupoExistente });
+    }
+}
+
+function eliminarGrupoOpciones(grupoId) {
+    document.getElementById(`grupo-${grupoId}`).remove();
+    gruposOpciones = gruposOpciones.filter(g => g.id !== grupoId);
+}
+
+function agregarOpcion(grupoId) {
+    const container = document.getElementById(`opciones-${grupoId}`);
+    const opcionId = Date.now();
+    container.insertAdjacentHTML('beforeend', `
+        <div class="flex gap-2 items-center">
+            <input type="text" placeholder="Opción" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${opcionId}">
+            <input type="number" placeholder="Precio extra" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${opcionId}">
+            <button onclick="this.parentElement.remove()" class="text-red-400">✕</button>
+        </div>
+    `);
+}
+
+function eliminarOpcion(grupoId, idx) {
+    const container = document.getElementById(`opciones-${grupoId}`);
+    const children = container.children;
+    if (children[idx]) children[idx].remove();
+}
+
+function recolectarGruposOpciones() {
+    const grupos = [];
+    
+    for (const grupo of gruposOpciones) {
+        const grupoDiv = document.getElementById(`grupo-${grupo.id}`);
+        if (!grupoDiv) continue;
+        
+        const nombre = document.getElementById(`grupo-nombre-${grupo.id}`)?.value || '';
+        const obligatorio = document.getElementById(`grupo-obligatorio-${grupo.id}`)?.checked || false;
+        const max = parseInt(document.getElementById(`grupo-max-${grupo.id}`)?.value) || 1;
+        const min = parseInt(document.getElementById(`grupo-min-${grupo.id}`)?.value) || 0;
+        
+        const opciones = [];
+        const opcionesContainer = document.getElementById(`opciones-${grupo.id}`);
+        if (opcionesContainer) {
+            const opcionDivs = opcionesContainer.children;
+            for (let i = 0; i < opcionDivs.length; i++) {
+                const div = opcionDivs[i];
+                const nombreInput = div.querySelector('input[placeholder="Opción"]');
+                const precioInput = div.querySelector('input[placeholder="Precio extra"]');
+                if (nombreInput && nombreInput.value) {
+                    opciones.push({
+                        nombre: nombreInput.value,
+                        precio: parseFloat(precioInput?.value) || 0
+                    });
+                }
+            }
+        }
+        
+        if (nombre && opciones.length > 0) {
+            grupos.push({
+                nombre: nombre,
+                required: obligatorio,
+                max: max,
+                min: min,
+                opciones: opciones
+            });
+        }
+    }
+    
+    return grupos;
 }
     
     // ==================== PEDIDOS ====================

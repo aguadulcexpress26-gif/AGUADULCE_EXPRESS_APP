@@ -540,56 +540,177 @@
     }
     
     async function cargarHorariosRestaurante(pin) {
-        if (!pin) return;
-        const snapshot = await database.ref(`restaurantes/${pin}/horarios`).once('value');
-        const horarios = snapshot.val() || {};
+    if (!pin) return;
+    
+    // Intentar leer desde la ruta del admin primero
+    let snapshot = await database.ref(`restaurantes/${pin}/horarios`).once('value');
+    let horarios = snapshot.val() || {};
+    
+    // Si no hay horarios en la ruta del admin, intentar leer desde horarios_restaurantes
+    if (Object.keys(horarios).length === 0) {
+        const horariosAppSnap = await database.ref(`horarios_restaurantes/${pin}`).once('value');
+        const horariosApp = horariosAppSnap.val() || {};
         
-        const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-        let html = '<div class="space-y-6">';
+        // Convertir del formato de la app al formato del admin
+        const diasMap = {
+            'LUNES': 'lunes', 'MARTES': 'martes', 'MIERCOLES': 'miercoles',
+            'JUEVES': 'jueves', 'VIERNES': 'viernes', 'SABADO': 'sabado', 'DOMINGO': 'domingo'
+        };
         
-        dias.forEach(dia => {
-            const diaKey = dia.toLowerCase();
-            const horario = horarios[diaKey] || { turno1_inicio: '10:00', turno1_fin: '15:00', turno2_inicio: '17:00', turno2_fin: '22:00', activo: true };
-            
-            html += `
-                <div class="border border-slate-700 rounded-xl p-4">
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="font-bold text-lg">${dia}</span>
-                        <label class="flex items-center gap-2">
-                            <span class="text-sm">Activo</span>
-                            <input type="checkbox" id="horario_${diaKey}_activo" ${horario.activo ? 'checked' : ''} class="w-5 h-5">
-                        </label>
+        for (const [diaApp, data] of Object.entries(horariosApp)) {
+            const diaKey = diasMap[diaApp];
+            if (diaKey) {
+                horarios[diaKey] = {
+                    turno1_inicio: data.apertura1 !== 'CERRADO' ? data.apertura1 : '10:00',
+                    turno1_fin: data.cierre1 !== 'CERRADO' ? data.cierre1 : '15:00',
+                    turno2_inicio: data.apertura2 || '17:00',
+                    turno2_fin: data.cierre2 || '22:00',
+                    activo: data.activo !== false
+                };
+            }
+        }
+    }
+    
+    const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+    let html = '<div class="space-y-6">';
+    
+    dias.forEach(dia => {
+        const horario = horarios[dia] || { turno1_inicio: '10:00', turno1_fin: '15:00', turno2_inicio: '17:00', turno2_fin: '22:00', activo: true };
+        
+        html += `
+            <div class="border border-slate-700 rounded-xl p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="font-bold text-lg">${dia.charAt(0).toUpperCase() + dia.slice(1)}</span>
+                    <label class="flex items-center gap-2">
+                        <span class="text-sm">Activo</span>
+                        <input type="checkbox" id="horario_${dia}_activo" ${horario.activo ? 'checked' : ''} class="w-5 h-5">
+                    </label>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-sm text-white/50">🌅 Turno Mañana - Inicio</label>
+                        <input type="time" id="horario_${dia}_t1_inicio" value="${horario.turno1_inicio || '10:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><label class="text-sm text-white/50">🌅 Mañana Inicio</label><input type="time" id="horario_${diaKey}_t1_inicio" value="${horario.turno1_inicio}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
-                        <div><label class="text-sm text-white/50">🌅 Mañana Fin</label><input type="time" id="horario_${diaKey}_t1_fin" value="${horario.turno1_fin}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
-                        <div><label class="text-sm text-white/50">🌙 Tarde Inicio</label><input type="time" id="horario_${diaKey}_t2_inicio" value="${horario.turno2_inicio}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
-                        <div><label class="text-sm text-white/50">🌙 Tarde Fin</label><input type="time" id="horario_${diaKey}_t2_fin" value="${horario.turno2_fin}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600"></div>
+                    <div>
+                        <label class="text-sm text-white/50">🌅 Turno Mañana - Fin</label>
+                        <input type="time" id="horario_${dia}_t1_fin" value="${horario.turno1_fin || '15:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="text-sm text-white/50">🌙 Turno Tarde - Inicio</label>
+                        <input type="time" id="horario_${dia}_t2_inicio" value="${horario.turno2_inicio || '17:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="text-sm text-white/50">🌙 Turno Tarde - Fin</label>
+                        <input type="time" id="horario_${dia}_t2_fin" value="${horario.turno2_fin || '22:00'}" class="w-full p-2 rounded-lg bg-slate-700 border border-slate-600">
                     </div>
                 </div>
-            `;
+            </div>
+        `;
+    });
+    
+    html += `<button onclick="guardarHorarios('${pin}')" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl mt-4">💾 Guardar Horarios</button></div>`;
+    document.getElementById('horariosConfig').innerHTML = html;
+}
+    
+async function guardarHorarios(pin) {
+    console.log("🔍 Buscando horarios para:", pin);
+    
+    // Verificar que el contenedor existe
+    const container = document.getElementById('horariosConfig');
+    if (!container) {
+        console.error("❌ No se encontró el contenedor horariosConfig");
+        Swal.fire({ title: 'Error', text: 'Recarga la página', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    // Buscar TODOS los inputs dentro del container
+    const todosLosInputs = container.querySelectorAll('input');
+    console.log(`📋 Encontrados ${todosLosInputs.length} inputs en el formulario`);
+    
+    if (todosLosInputs.length === 0) {
+        console.error("❌ No hay inputs en el formulario");
+        Swal.fire({ title: 'Error', text: 'Primero selecciona un restaurante', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+    const diasMap = {
+        'lunes': 'LUNES', 'martes': 'MARTES', 'miercoles': 'MIERCOLES',
+        'jueves': 'JUEVES', 'viernes': 'VIERNES', 'sabado': 'SABADO', 'domingo': 'DOMINGO'
+    };
+    
+    const horariosParaApp = {};
+    
+    for (const dia of dias) {
+        const diaMayus = diasMap[dia];
+        
+        // Buscar cada input específico por ID
+        const inputT1Inicio = document.getElementById(`horario_${dia}_t1_inicio`);
+        const inputT1Fin = document.getElementById(`horario_${dia}_t1_fin`);
+        const inputT2Inicio = document.getElementById(`horario_${dia}_t2_inicio`);
+        const inputT2Fin = document.getElementById(`horario_${dia}_t2_fin`);
+        const checkActivo = document.getElementById(`horario_${dia}_activo`);
+        
+        // Verificar si existen
+        if (!inputT1Inicio || !inputT1Fin) {
+            console.warn(`⚠️ No se encontraron inputs para ${dia}`);
+            continue;
+        }
+        
+        const t1_inicio = inputT1Inicio.value;
+        const t1_fin = inputT1Fin.value;
+        const t2_inicio = inputT2Inicio ? inputT2Inicio.value : '';
+        const t2_fin = inputT2Fin ? inputT2Fin.value : '';
+        const activo = checkActivo ? checkActivo.checked : false;
+        
+        console.log(`📅 ${diaMayus}: activo=${activo}, mañana=${t1_inicio}-${t1_fin}, tarde=${t2_inicio}-${t2_fin}`);
+        
+        if (!activo) {
+            horariosParaApp[diaMayus] = {
+                apertura1: 'CERRADO',
+                cierre1: 'CERRADO',
+                apertura2: null,
+                cierre2: null,
+                activo: false
+            };
+        } else {
+            horariosParaApp[diaMayus] = {
+                apertura1: t1_inicio || 'CERRADO',
+                cierre1: t1_fin || 'CERRADO',
+                apertura2: (t2_inicio && t2_inicio !== 'CERRADO' && t2_inicio !== '') ? t2_inicio : null,
+                cierre2: (t2_fin && t2_fin !== 'CERRADO' && t2_fin !== '') ? t2_fin : null,
+                activo: true
+            };
+        }
+    }
+    
+    try {
+        console.log("📤 Guardando en Firebase:", horariosParaApp);
+        
+        // Guardar en la ruta que usa la app clientes
+        await database.ref(`horarios_restaurantes/${pin}`).set(horariosParaApp);
+        
+        console.log("✅ Guardado exitoso");
+        
+        Swal.fire({ 
+            title: '✅ Horarios guardados', 
+            text: `Los horarios para ${pin} se guardaron correctamente.`, 
+            icon: 'success', 
+            timer: 2000, 
+            showConfirmButton: false, 
+            background: '#0f172a', 
+            color: 'white' 
         });
         
-        html += `<button onclick="guardarHorarios('${pin}')" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl mt-4">💾 Guardar Horarios</button></div>`;
-        document.getElementById('horariosConfig').innerHTML = html;
+        // Verificar en Firebase
+        const verificar = await database.ref(`horarios_restaurantes/${pin}`).once('value');
+        console.log("🔍 Verificación en Firebase:", verificar.val());
+        
+    } catch (error) {
+        console.error("❌ Error guardando horarios:", error);
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
     }
-    
-    async function guardarHorarios(pin) {
-        const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-        const horarios = {};
-        dias.forEach(dia => {
-            horarios[dia] = {
-                turno1_inicio: document.getElementById(`horario_${dia}_t1_inicio`).value,
-                turno1_fin: document.getElementById(`horario_${dia}_t1_fin`).value,
-                turno2_inicio: document.getElementById(`horario_${dia}_t2_inicio`).value,
-                turno2_fin: document.getElementById(`horario_${dia}_t2_fin`).value,
-                activo: document.getElementById(`horario_${dia}_activo`).checked
-            };
-        });
-        await database.ref(`restaurantes/${pin}/horarios`).set(horarios);
-        Swal.fire({ title: 'Éxito', text: 'Horarios guardados', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    }
-    
+}    
     // ==================== MENÚS ====================
     async function cargarMenus() {
         await actualizarSelectsRestaurantes();

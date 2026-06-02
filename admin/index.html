@@ -334,32 +334,43 @@
     }
     
     // ==================== RESTAURANTES ====================
-    async function cargarRestaurantes() {
-        console.log("Cargando restaurantes...");
-        try {
-            const snapshot = await database.ref('restaurantes').once('value');
-            const restaurantes = snapshot.val() || {};
-            console.log("Restaurantes en Firebase:", restaurantes);
-            
-            const container = document.getElementById('listaRestaurantes');
-            
-            const restaurantesFiltrados = {};
-            for (const [key, value] of Object.entries(restaurantes)) {
-                if (isNaN(key) && key.length >= 4 && key !== 'null') {
-                    restaurantesFiltrados[key] = value;
-                }
+   async function cargarRestaurantes() {
+    console.log("Cargando restaurantes...");
+    try {
+        const snapshot = await database.ref('restaurantes').once('value');
+        const restaurantes = snapshot.val() || {};
+        console.log("Restaurantes en Firebase:", restaurantes);
+        
+        const container = document.getElementById('listaRestaurantes');
+        
+        const restaurantesFiltrados = {};
+        for (const [key, value] of Object.entries(restaurantes)) {
+            if (isNaN(key) && key.length >= 4 && key !== 'null') {
+                restaurantesFiltrados[key] = value;
             }
+        }
+        
+        if (Object.keys(restaurantesFiltrados).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
+            actualizarSelectsRestaurantes();
+            return;
+        }
+        
+        container.innerHTML = '';
+        for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
+            // Determinar la URL de la imagen (si no tiene, usar imagen por defecto)
+            const fotoUrl = data.foto && data.foto !== '' ? data.foto : 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
             
-            if (Object.keys(restaurantesFiltrados).length === 0) {
-                container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
-                actualizarSelectsRestaurantes();
-                return;
-            }
-            
-            container.innerHTML = '';
-            for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
-                container.innerHTML += `
-                    <div class="card bg-slate-800 rounded-2xl p-4">
+            container.innerHTML += `
+                <div class="card bg-slate-800 rounded-2xl overflow-hidden">
+                    <!-- Imagen del restaurante -->
+                    <div class="h-32 w-full overflow-hidden bg-slate-700">
+                        <img src="${fotoUrl}" 
+                             class="w-full h-full object-cover" 
+                             onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'"
+                             alt="${data.nombre || 'Restaurante'}">
+                    </div>
+                    <div class="p-4">
                         <div class="flex justify-between items-start">
                             <div>
                                 <span class="text-amber-400 font-bold text-lg">${pin}</span>
@@ -376,17 +387,23 @@
                             <button onclick="toggleRestaurante('${pin}', ${!data.activo})" class="flex-1 ${data.activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
                                 ${data.activo ? '❌ Desactivar' : '✅ Activar'}
                             </button>
-                            <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
+                            <button onclick="editarRestaurante('${pin}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">
+                                ✏️ Editar
+                            </button>
+                            <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">
+                                🗑️ Eliminar
+                            </button>
                         </div>
                     </div>
-                `;
-            }
-            actualizarSelectsRestaurantes();
-        } catch (error) {
-            console.error("Error cargando restaurantes:", error);
-            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+                </div>
+            `;
         }
+        actualizarSelectsRestaurantes();
+    } catch (error) {
+        console.error("Error cargando restaurantes:", error);
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
     }
+}
     
     async function guardarRestaurante() {
         console.log("Intentando guardar restaurante...");

@@ -24,6 +24,10 @@
         .tab-btn.active { background: #f59e0b; color: #0f172a; }
         .repartidor-card { transition: all 0.2s; }
         .repartidor-card:hover { background: #1e293b; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        th { background: rgba(255,255,255,0.05); font-weight: bold; }
+        tr:hover { background: rgba(255,255,255,0.03); }
     </style>
 </head>
 <body class="bg-slate-900 text-white">
@@ -52,6 +56,7 @@
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('banners')">📢 Banners</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('usuarios')">👥 Usuarios</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('reportes')">📊 Reportes</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('contable')">💰 Contable / Facturación</div>
         </div>
         <button onclick="logoutAdmin()" class="bg-red-600/20 text-red-400 p-3 rounded-xl hover:bg-red-600/30 transition">🚪 Cerrar Sesión</button>
     </div>
@@ -166,6 +171,67 @@
             </div>
             <div id="reporteDetalle" class="bg-slate-800 rounded-2xl p-6"></div>
         </div>
+
+        <!-- ==================== CONTABLE / FACTURACIÓN ==================== -->
+        <div id="seccion-contable" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">💰 Contabilidad y Facturación</h2>
+                <div class="flex gap-3">
+                    <select id="periodoReporte" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
+                        <option value="diario">Diario</option>
+                        <option value="semanal">Semanal</option>
+                        <option value="quincenal">Quincenal</option>
+                        <option value="mensual">Mensual</option>
+                    </select>
+                    <button onclick="generarReporteContable()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold">📊 Generar Reporte</button>
+                    <button onclick="exportarReporteExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">📎 Exportar Excel</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="resumenContable">
+                <div class="bg-slate-800 rounded-2xl p-4 text-center">
+                    <p class="text-white/50 text-xs">💰 Ventas Totales</p>
+                    <p class="text-2xl font-bold text-cyan-400" id="totalVentasContable">0.00€</p>
+                </div>
+                <div class="bg-slate-800 rounded-2xl p-4 text-center">
+                    <p class="text-white/50 text-xs">🏪 Comisiones (15%)</p>
+                    <p class="text-2xl font-bold text-yellow-400" id="totalComisiones">0.00€</p>
+                </div>
+                <div class="bg-slate-800 rounded-2xl p-4 text-center">
+                    <p class="text-white/50 text-xs">📢 Descuentos</p>
+                    <p class="text-2xl font-bold text-red-400" id="totalDescuentos">0.00€</p>
+                </div>
+                <div class="bg-slate-800 rounded-2xl p-4 text-center">
+                    <p class="text-white/50 text-xs">💵 A Liquidar</p>
+                    <p class="text-2xl font-bold text-emerald-400" id="totalLiquidar">0.00€</p>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-lg mb-4">📋 Detalle por Restaurante</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="border-b border-white/10">
+                            <tr>
+                                <th class="text-left p-2">Restaurante</th>
+                                <th class="text-right p-2">Ventas</th>
+                                <th class="text-right p-2">Comisión</th>
+                                <th class="text-right p-2">Descuentos</th>
+                                <th class="text-right p-2">A Liquidar</th>
+                                <th class="text-center p-2">Estado</th>
+                                <th class="text-center p-2">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaReporteContable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mt-6 bg-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-lg mb-4">📜 Historial de Liquidaciones</h3>
+                <div id="historialLiquidaciones" class="space-y-2 max-h-64 overflow-y-auto"></div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -187,13 +253,10 @@
 <div id="modalProducto" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <h3 class="text-xl font-bold mb-4">📋 Producto</h3>
-        
         <label class="block text-sm mb-1">Restaurante</label>
         <select id="prodRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3"></select>
-        
         <label class="block text-sm mb-1">Nombre del Plato *</label>
         <input type="text" id="prodNombre" placeholder="Ej: Pizza Margarita" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        
         <label class="block text-sm mb-1">Categoría</label>
         <select id="prodCategoria" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
             <option value="Entrantes">Entrantes</option>
@@ -207,17 +270,12 @@
             <option value="Vinos">Vinos</option>
             <option value="Otros">Otros</option>
         </select>
-        
         <label class="block text-sm mb-1">Precio (€) *</label>
         <input type="number" id="prodPrecio" placeholder="0.00" step="0.01" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        
         <label class="block text-sm mb-1">Descripción</label>
         <textarea id="prodDescripcion" placeholder="Descripción del producto..." rows="2" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3"></textarea>
-        
         <label class="block text-sm mb-1">URL de la imagen</label>
         <input type="url" id="prodFoto" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        
-        <!-- Selección Obligatoria -->
         <div class="bg-slate-700/50 rounded-xl p-4 mb-4">
             <div class="flex items-center justify-between mb-3">
                 <label class="font-bold text-sm">⚠️ Selección Obligatoria</label>
@@ -225,18 +283,13 @@
             </div>
             <p class="text-xs text-white/50">Si está activado, el cliente DEBE elegir al menos una opción del grupo de extras</p>
         </div>
-        
-        <!-- Extras / Opciones -->
         <div class="bg-slate-700/50 rounded-xl p-4 mb-4">
             <div class="flex justify-between items-center mb-3">
                 <label class="font-bold text-sm">🍕 Extras / Opciones</label>
                 <button type="button" onclick="agregarGrupoOpciones()" class="bg-amber-500 text-black px-3 py-1 rounded-lg text-xs font-bold">➕ Agregar Grupo</button>
             </div>
-            <div id="grupos-opciones-container" class="space-y-3">
-                <!-- Los grupos se agregarán dinámicamente aquí -->
-            </div>
+            <div id="grupos-opciones-container" class="space-y-3"></div>
         </div>
-        
         <div class="flex gap-3 mt-4">
             <button onclick="guardarProductoCompleto()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar Producto</button>
             <button onclick="cerrarModal('modalProducto')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
@@ -276,19 +329,39 @@
     </div>
 </div>
 
-<<div id="modalRepartidor" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+<div id="modalRepartidor" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">🛵 Repartidor</h3>
         <input type="text" id="repNombre" placeholder="Nombre completo" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="text" id="repTelefono" placeholder="Teléfono" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="tel" id="repTelefono" placeholder="Teléfono" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <input type="text" id="repVehiculo" placeholder="Vehículo (ej: Moto, Bici)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        
-        <!-- NUEVO CAMPO: CONTRASEÑA -->
         <input type="text" id="repPassword" placeholder="Contraseña (dejar en blanco para autogenerar)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        
         <div class="flex gap-3">
             <button onclick="guardarRepartidor()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
             <button onclick="cerrarModal('modalRepartidor')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modalLiquidar" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-lg">
+        <h3 class="text-xl font-bold mb-4">💵 Liquidar Restaurante</h3>
+        <div id="liquidarInfo" class="bg-slate-700/50 rounded-xl p-4 mb-4"></div>
+        <div class="mb-4">
+            <label class="block text-sm mb-1">Método de pago</label>
+            <select id="metodoPagoLiquidacion" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                <option value="Transferencia">Transferencia Bancaria</option>
+                <option value="Efectivo">Efectivo</option>
+                <option value="Cheque">Cheque</option>
+            </select>
+        </div>
+        <div class="mb-4">
+            <label class="block text-sm mb-1">Comprobante (URL o referencia)</label>
+            <input type="text" id="comprobanteUrl" placeholder="Nº transferencia / referencia" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+        </div>
+        <div class="flex gap-3">
+            <button onclick="confirmarLiquidacion()" class="flex-1 bg-emerald-600 text-white py-2 rounded-xl font-bold">✅ Confirmar Pago</button>
+            <button onclick="cerrarModal('modalLiquidar')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
         </div>
     </div>
 </div>
@@ -306,7 +379,7 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
     
-    // Función para escapar HTML
+    // ==================== FUNCIONES UTILITARIAS ====================
     function escapeHTML(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -320,28 +393,6 @@
     // ==================== VARIABLES GLOBALES ====================
     let pedidosListener = null;
     let gruposOpciones = [];
-    
-    // ==================== FUNCIÓN PARA ACTUALIZAR SELECTS ====================
-    function actualizarSelectsRestaurantes() {
-        console.log("Actualizando selects de restaurantes...");
-        database.ref('restaurantes').once('value', snapshot => {
-            const restaurantes = snapshot.val() || {};
-            let optionsHtml = '<option value="">Seleccionar restaurante</option>';
-            
-            for (const [pin, data] of Object.entries(restaurantes)) {
-                if (isNaN(pin) && pin.length >= 4 && pin !== 'null') {
-                    optionsHtml += `<option value="${pin}">${data.NOMBRE_RESTAURANTE || data.nombre || pin}</option>`;
-                }
-            }
-            
-            const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido', 'userRestaurante'];
-            selects.forEach(id => {
-                const select = document.getElementById(id);
-                if (select) select.innerHTML = optionsHtml;
-            });
-            console.log("Selects actualizados");
-        });
-    }
     
     // ==================== AUTENTICACIÓN ====================
     function loginAdmin() {
@@ -384,6 +435,7 @@
         if (seccion === 'banners') cargarBanners();
         if (seccion === 'usuarios') cargarUsuarios();
         if (seccion === 'reportes') cargarReportes();
+        if (seccion === 'contable') generarReporteContable();
     }
     
     function mostrarModal(modalId) {
@@ -394,136 +446,121 @@
         document.getElementById(modalId).classList.add('hidden');
     }
     
-    // ==================== RESTAURANTES ====================
-    async function cargarRestaurantes() {
-        console.log("Cargando restaurantes...");
-        try {
-            const snapshot = await database.ref('restaurantes').once('value');
+    // ==================== ACTUALIZAR SELECTS ====================
+    function actualizarSelectsRestaurantes() {
+        database.ref('restaurantes').once('value', snapshot => {
             const restaurantes = snapshot.val() || {};
-            console.log("Restaurantes en Firebase:", restaurantes);
+            let optionsHtml = '<option value="">Seleccionar restaurante</option>';
             
-            const container = document.getElementById('listaRestaurantes');
-            
-            const restaurantesFiltrados = {};
-            for (const [key, value] of Object.entries(restaurantes)) {
-                if (isNaN(key) && key.length >= 4 && key !== 'null') {
-                    restaurantesFiltrados[key] = value;
+            for (const [pin, data] of Object.entries(restaurantes)) {
+                if (isNaN(pin) && pin.length >= 4 && pin !== 'null') {
+                    optionsHtml += `<option value="${pin}">${data.NOMBRE_RESTAURANTE || data.nombre || pin}</option>`;
                 }
             }
             
-            if (Object.keys(restaurantesFiltrados).length === 0) {
-                container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
-                actualizarSelectsRestaurantes();
-                return;
+            const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido', 'userRestaurante'];
+            selects.forEach(id => {
+                const select = document.getElementById(id);
+                if (select) select.innerHTML = optionsHtml;
+            });
+        });
+    }
+    
+    // ==================== RESTAURANTES ====================
+    async function cargarRestaurantes() {
+        const snapshot = await database.ref('restaurantes').once('value');
+        const restaurantes = snapshot.val() || {};
+        const container = document.getElementById('listaRestaurantes');
+        
+        const restaurantesFiltrados = {};
+        for (const [key, value] of Object.entries(restaurantes)) {
+            if (isNaN(key) && key.length >= 4 && key !== 'null') {
+                restaurantesFiltrados[key] = value;
             }
+        }
+        
+        if (Object.keys(restaurantesFiltrados).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes. Crea uno nuevo.</div>';
+            actualizarSelectsRestaurantes();
+            return;
+        }
+        
+        container.innerHTML = '';
+        for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
+            const fotoUrl = data.FOTO || data.foto || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
+            const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Sin nombre';
+            const id_restaurante = data.ID_RESTAURANTE || data.id_restaurante || '-';
+            const activo = data.activo !== false;
             
-            container.innerHTML = '';
-            for (const [pin, data] of Object.entries(restaurantesFiltrados)) {
-                const fotoUrl = data.FOTO || data.foto || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
-                const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Sin nombre';
-                const id_restaurante = data.ID_RESTAURANTE || data.id_restaurante || '-';
-                const activo = data.activo !== false;
-                
-                container.innerHTML += `
-                    <div class="card bg-slate-800 rounded-2xl overflow-hidden">
-                        <div class="h-32 w-full overflow-hidden bg-slate-700">
-                            <img src="${fotoUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'" alt="${nombre}">
+            container.innerHTML += `
+                <div class="card bg-slate-800 rounded-2xl overflow-hidden">
+                    <div class="h-32 w-full overflow-hidden bg-slate-700">
+                        <img src="${fotoUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'" alt="${nombre}">
+                    </div>
+                    <div class="p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="text-amber-400 font-bold text-lg">${pin}</span>
+                                <p class="font-bold text-white">${escapeHTML(nombre)}</p>
+                                <p class="text-white/50 text-sm">ID: ${id_restaurante}</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
+                                    ${activo ? 'ACTIVO' : 'INACTIVO'}
+                                </div>
+                            </div>
                         </div>
-                        <div class="p-4">
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <span class="text-amber-400 font-bold text-lg">${pin}</span>
-                                    <p class="font-bold text-white">${escapeHTML(nombre)}</p>
-                                    <p class="text-white/50 text-sm">ID: ${id_restaurante}</p>
-                                </div>
-                                <div class="text-right">
-                                    <div class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                                        ${activo ? 'ACTIVO' : 'INACTIVO'}
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex gap-2 mt-4">
-                                <button onclick="toggleRestaurante('${pin}', ${!activo})" class="flex-1 ${activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                                    ${activo ? '❌ Desactivar' : '✅ Activar'}
-                                </button>
-                                <button onclick="editarRestaurante('${pin}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">✏️ Editar</button>
-                                <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
-                            </div>
+                        <div class="flex gap-2 mt-4">
+                            <button onclick="toggleRestaurante('${pin}', ${!activo})" class="flex-1 ${activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
+                                ${activo ? '❌ Desactivar' : '✅ Activar'}
+                            </button>
+                            <button onclick="editarRestaurante('${pin}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">✏️ Editar</button>
+                            <button onclick="eliminarRestaurante('${pin}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
                         </div>
                     </div>
-                `;
-            }
-            actualizarSelectsRestaurantes();
-        } catch (error) {
-            console.error("Error cargando restaurantes:", error);
-            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+                </div>
+            `;
         }
+        actualizarSelectsRestaurantes();
     }
     
     async function guardarRestaurante() {
-    console.log("Intentando guardar restaurante...");
-    
-    const pin = document.getElementById('restPin').value.toUpperCase().trim();
-    const nombre = document.getElementById('restNombre').value.trim();
-    let id_restaurante = document.getElementById('restId').value.trim();
-    const foto = document.getElementById('restFoto').value.trim();
-    
-    if (!pin || !nombre) {
-        Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
+        const pin = document.getElementById('restPin').value.toUpperCase().trim();
+        const nombre = document.getElementById('restNombre').value.trim();
+        let id_restaurante = document.getElementById('restId').value.trim();
+        const foto = document.getElementById('restFoto').value.trim();
+        
+        if (!pin || !nombre) {
+            Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        if (!id_restaurante) id_restaurante = pin;
+        
+        try {
+            await database.ref(`restaurantes/${pin}`).set({
+                ID_RESTAURANTE: id_restaurante,
+                NOMBRE_RESTAURANTE: nombre,
+                FOTO: foto || '',
+                nombre: nombre,
+                id_restaurante: id_restaurante,
+                foto: foto || '',
+                activo: true,
+                creado_en: Date.now()
+            });
+            
+            document.getElementById('restPin').value = '';
+            document.getElementById('restNombre').value = '';
+            document.getElementById('restId').value = '';
+            document.getElementById('restFoto').value = '';
+            
+            cerrarModal('modalRestaurante');
+            await cargarRestaurantes();
+            Swal.fire({ title: 'Éxito', text: `Restaurante "${nombre}" guardado`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
     }
-    
-    // 🔥 IMPORTANTE: Si no se proporciona ID_RESTAURANTE, usar el PIN
-    // Pero se recomienda usar un ID diferente al PIN para evitar confusiones
-    if (!id_restaurante) {
-        id_restaurante = pin;
-        Swal.fire({ 
-            title: '⚠️ Atención', 
-            text: 'No se proporcionó ID_RESTAURANTE. Se usará el mismo PIN. Esto puede causar problemas de compatibilidad.', 
-            icon: 'warning', 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-    }
-    
-    try {
-        await database.ref(`restaurantes/${pin}`).set({
-            // 🔥 CLAVE: ID_RESTAURANTE diferente del PIN (para que coincida con los productos)
-            ID_RESTAURANTE: id_restaurante,
-            NOMBRE_RESTAURANTE: nombre,
-            FOTO: foto || '',
-            // También guardo versión minúscula por compatibilidad
-            nombre: nombre,
-            id_restaurante: id_restaurante,
-            foto: foto || '',
-            activo: true,
-            creado_en: Date.now()
-        });
-        
-        // Limpiar formulario
-        document.getElementById('restPin').value = '';
-        document.getElementById('restNombre').value = '';
-        document.getElementById('restId').value = '';
-        document.getElementById('restFoto').value = '';
-        
-        cerrarModal('modalRestaurante');
-        await cargarRestaurantes();
-        
-        Swal.fire({ 
-            title: '✅ Restaurante guardado', 
-            html: `PIN: <strong>${pin}</strong><br>ID_RESTAURANTE: <strong>${id_restaurante}</strong><br>Nombre: <strong>${nombre}</strong>`, 
-            icon: 'success', 
-            timer: 3000, 
-            showConfirmButton: false,
-            background: '#0f172a', 
-            color: 'white' 
-        });
-        
-    } catch (error) {
-        console.error("Error:", error);
-        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-    }
-}
     
     async function toggleRestaurante(pin, activo) {
         await database.ref(`restaurantes/${pin}/activo`).set(activo);
@@ -539,80 +576,53 @@
     }
     
     async function editarRestaurante(pin) {
-    const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
-    const data = snapshot.val();
-    
-    if (!data) {
-        Swal.fire({ title: 'Error', text: 'Restaurante no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    const fotoActual = data.FOTO || data.foto || '';
-    
-    Swal.fire({
-        title: `Editar ${data.NOMBRE_RESTAURANTE || data.nombre}`,
-        html: `
-            <div class="text-left">
-                <label class="block text-sm mb-1">PIN (no editable)</label>
-                <input id="editPin" value="${pin}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3" readonly>
-                
-                <label class="block text-sm mb-1">Nombre</label>
-                <input id="editNombre" value="${data.NOMBRE_RESTAURANTE || data.nombre || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                
-                <label class="block text-sm mb-1">ID_RESTAURANTE (Importante)</label>
-                <input id="editId" value="${data.ID_RESTAURANTE || data.id_restaurante || pin}" placeholder="Ej: 6G4L1V" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                
-                <label class="block text-sm mb-1">URL de la imagen/logo</label>
-                <input id="editFoto" value="${fotoActual}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                
-                <div class="mt-2 p-2 bg-slate-700/50 rounded-xl">
-                    <p class="text-xs text-white/50">Vista previa de la imagen actual:</p>
-                    <img src="${fotoActual || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'}" 
-                         class="w-32 h-32 object-cover rounded-lg mx-auto mt-2"
-                         onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+        const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
+        const data = snapshot.val();
+        
+        if (!data) {
+            Swal.fire({ title: 'Error', text: 'Restaurante no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
+            return;
+        }
+        
+        const fotoActual = data.FOTO || data.foto || '';
+        
+        Swal.fire({
+            title: `Editar ${data.NOMBRE_RESTAURANTE || data.nombre}`,
+            html: `
+                <div class="text-left">
+                    <label class="block text-sm mb-1">PIN (no editable)</label>
+                    <input id="editPin" value="${pin}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3" readonly>
+                    <label class="block text-sm mb-1">Nombre</label>
+                    <input id="editNombre" value="${data.NOMBRE_RESTAURANTE || data.nombre || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">ID_RESTAURANTE</label>
+                    <input id="editId" value="${data.ID_RESTAURANTE || data.id_restaurante || pin}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <label class="block text-sm mb-1">URL de la imagen</label>
+                    <input id="editFoto" value="${fotoActual}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+                    <div class="mt-2 p-2 bg-slate-700/50 rounded-xl">
+                        <img src="${fotoActual || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'}" class="w-32 h-32 object-cover rounded-lg mx-auto" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+                    </div>
                 </div>
-            </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'Guardar cambios',
-        cancelButtonText: 'Cancelar',
-        background: '#0f172a',
-        color: 'white',
-        confirmButtonColor: '#f59e0b',
-        preConfirm: () => {
-            const nombre = document.getElementById('editNombre').value;
-            const id_restaurante = document.getElementById('editId').value;
-            const foto = document.getElementById('editFoto').value;
-            
-            if (!nombre) {
-                Swal.showValidationMessage('El nombre es obligatorio');
-                return false;
+            `,
+            showCancelButton: true, confirmButtonText: 'Guardar', background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b',
+            preConfirm: () => {
+                const nombre = document.getElementById('editNombre').value;
+                const id_restaurante = document.getElementById('editId').value;
+                const foto = document.getElementById('editFoto').value;
+                if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+                return { nombre, id_restaurante, foto };
             }
-            if (!id_restaurante) {
-                Swal.showValidationMessage('El ID_RESTAURANTE es obligatorio');
-                return false;
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                const { nombre, id_restaurante, foto } = result.value;
+                await database.ref(`restaurantes/${pin}`).update({
+                    NOMBRE_RESTAURANTE: nombre, ID_RESTAURANTE: id_restaurante, FOTO: foto || '',
+                    nombre: nombre, id_restaurante: id_restaurante, foto: foto || '', actualizado_en: Date.now()
+                });
+                await cargarRestaurantes();
+                Swal.fire({ title: 'Actualizado', text: 'Restaurante actualizado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
             }
-            return { nombre, id_restaurante, foto };
-        }
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            const { nombre, id_restaurante, foto } = result.value;
-            
-            await database.ref(`restaurantes/${pin}`).update({
-                NOMBRE_RESTAURANTE: nombre,
-                ID_RESTAURANTE: id_restaurante,
-                FOTO: foto || '',
-                nombre: nombre,
-                id_restaurante: id_restaurante,
-                foto: foto || '',
-                actualizado_en: Date.now()
-            });
-            
-            await cargarRestaurantes();
-            Swal.fire({ title: '✅ Actualizado', text: 'Restaurante actualizado correctamente', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-        }
-    });
-}
+        });
+    }
     
     // ==================== HORARIOS ====================
     async function cargarHorarios() {
@@ -668,12 +678,6 @@
     }
     
     async function guardarHorarios(pin) {
-        const container = document.getElementById('horariosConfig');
-        if (!container) {
-            Swal.fire({ title: 'Error', text: 'Recarga la página', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
         const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
         const diasMap = { 'lunes': 'LUNES', 'martes': 'MARTES', 'miercoles': 'MIERCOLES', 'jueves': 'JUEVES', 'viernes': 'VIERNES', 'sabado': 'SABADO', 'domingo': 'DOMINGO' };
         const horariosParaApp = {};
@@ -737,30 +741,22 @@
             for (const data of productos) {
                 const tieneExtras = data.EXTRAS && Array.isArray(data.EXTRAS) && data.EXTRAS.length > 0;
                 const extrasInfo = tieneExtras ? `<div class="text-[10px] text-cyan-400 mt-1">📦 ${data.EXTRAS.length} grupo(s) de opciones</div>` : '';
-                const nombrePlato = data.PLATO || data.nombre || 'Sin nombre';
-                const categoria = data.CATEGORIA || 'Sin categoría';
-                const precio = typeof data.PRECIO === 'number' ? data.PRECIO : (parseFloat(data.precio) || 0);
-                const descripcion = data.DESCRIPCION || '';
-                const foto = data.FOTO_PLATO || '';
-                const activo = data.ACTIVO !== false;
-                const seleccionObligatoria = data.SELECCION_OBLIGATORIA === true;
-                
                 container.innerHTML += `
                     <div class="card bg-slate-800 rounded-2xl p-4">
                         <div class="flex justify-between items-start">
                             <div>
-                                <p class="font-bold text-white">${escapeHTML(nombrePlato)}</p>
-                                <p class="text-white/50 text-sm">${escapeHTML(categoria)}</p>
-                                <p class="text-amber-400 font-bold text-xl">${precio.toFixed(2)}€</p>
+                                <p class="font-bold text-white">${escapeHTML(data.PLATO || data.nombre)}</p>
+                                <p class="text-white/50 text-sm">${escapeHTML(data.CATEGORIA)}</p>
+                                <p class="text-amber-400 font-bold text-xl">${(data.PRECIO || 0).toFixed(2)}€</p>
                                 ${extrasInfo}
-                                ${seleccionObligatoria ? '<span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">⚠️ Selección obligatoria</span>' : ''}
+                                ${data.SELECCION_OBLIGATORIA ? '<span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">⚠️ Selección obligatoria</span>' : ''}
                             </div>
-                            <div><div class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${activo ? 'DISPONIBLE' : 'NO DISPONIBLE'}</div></div>
+                            <div><div class="${data.ACTIVO !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.ACTIVO !== false ? 'DISPONIBLE' : 'NO DISPONIBLE'}</div></div>
                         </div>
-                        <p class="text-white/50 text-sm mt-2">${escapeHTML(descripcion).substring(0, 100)}</p>
-                        ${foto ? `<img src="${foto}" class="w-16 h-16 rounded-lg object-cover mt-2" onerror="this.style.display='none'">` : ''}
+                        <p class="text-white/50 text-sm mt-2">${escapeHTML(data.DESCRIPCION || '').substring(0, 100)}</p>
+                        ${data.FOTO_PLATO ? `<img src="${data.FOTO_PLATO}" class="w-16 h-16 rounded-lg object-cover mt-2" onerror="this.style.display='none'">` : ''}
                         <div class="flex gap-2 mt-4">
-                            <button onclick="toggleProducto('${pin}', '${data.id}', ${!activo})" class="flex-1 ${activo ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${activo ? '🔴 Desactivar' : '🟢 Activar'}</button>
+                            <button onclick="toggleProducto('${pin}', '${data.id}', ${data.ACTIVO !== false ? false : true})" class="flex-1 ${data.ACTIVO !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${data.ACTIVO !== false ? '🔴 Desactivar' : '🟢 Activar'}</button>
                             <button onclick="editarProducto('${pin}', '${data.id}')" class="flex-1 bg-amber-500/20 text-amber-400 py-2 rounded-xl text-sm">✏️ Editar</button>
                             <button onclick="eliminarProducto('${pin}', '${data.id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
                         </div>
@@ -768,7 +764,6 @@
                 `;
             }
         } catch (error) {
-            console.error("Error cargando productos:", error);
             document.getElementById('listaProductos').innerHTML = '<div class="text-center text-red-400 p-10">Error cargando productos</div>';
         }
     }
@@ -790,22 +785,19 @@
         const extras = recolectarGruposOpciones();
         const restSnapshot = await database.ref(`restaurantes/${pin}`).once('value');
         const restaurante = restSnapshot.val();
-        const nombreRestaurante = restaurante.NOMBRE_RESTAURANTE || restaurante.nombre || pin;
+        const idRestaurante = restaurante?.ID_RESTAURANTE || restaurante?.id_restaurante || pin;
+        const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || pin;
         const id = Date.now().toString();
         
         const productoData = {
             ID_PLATO: id, PLATO: nombre, DESCRIPCION: descripcion || '', PRECIO: precio,
-            CATEGORIA: categoria || 'General', FOTO_PLATO: foto || '', ID_RESTAURANTE: pin,
+            CATEGORIA: categoria || 'General', FOTO_PLATO: foto || '', ID_RESTAURANTE: idRestaurante,
             NOMBRE_RESTAURANTE: nombreRestaurante, ACTIVO: true, SELECCION_OBLIGATORIA: seleccionObligatoria,
             EXTRAS: extras, creado_en: Date.now()
         };
         
         try {
             await database.ref(`menu_general/${id}`).set(productoData);
-            await database.ref(`productos/${pin}/${id}`).set({
-                nombre, categoria, precio, descripcion, foto, disponible: true,
-                seleccion_obligatoria: seleccionObligatoria, extras, creado_en: Date.now()
-            });
             cerrarModal('modalProducto');
             gruposOpciones = [];
             document.getElementById('grupos-opciones-container').innerHTML = '';
@@ -819,150 +811,51 @@
     async function editarProducto(pin, id) {
         const snapshot = await database.ref(`menu_general/${id}`).once('value');
         const data = snapshot.val();
-        if (!data) {
-            Swal.fire({ title: 'Error', text: 'Producto no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
+        if (!data) { Swal.fire({ title: 'Error', text: 'Producto no encontrado', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         
         Swal.fire({
             title: `Editar ${data.PLATO}`,
-            html: `
-                <div class="text-left">
-                    <label class="block text-sm mb-1">Nombre</label>
-                    <input id="editNombre" value="${escapeHTML(data.PLATO)}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                    <label class="block text-sm mb-1">Categoría</label>
-                    <input id="editCategoria" value="${escapeHTML(data.CATEGORIA || '')}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                    <label class="block text-sm mb-1">Precio (€)</label>
-                    <input id="editPrecio" type="number" step="0.01" value="${data.PRECIO}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                    <label class="block text-sm mb-1">Descripción</label>
-                    <textarea id="editDescripcion" rows="2" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">${escapeHTML(data.DESCRIPCION || '')}</textarea>
-                    <label class="block text-sm mb-1">URL de la imagen</label>
-                    <input id="editFoto" value="${data.FOTO_PLATO || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-                    <div class="flex items-center gap-2 mb-3">
-                        <input type="checkbox" id="editSeleccionObligatoria" ${data.SELECCION_OBLIGATORIA ? 'checked' : ''} class="w-5 h-5">
-                        <label>Selección obligatoria</label>
-                    </div>
-                </div>
-            `,
-            showCancelButton: true, confirmButtonText: 'Guardar cambios', background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b',
-            preConfirm: () => ({
-                nombre: document.getElementById('editNombre').value,
-                categoria: document.getElementById('editCategoria').value,
-                precio: parseFloat(document.getElementById('editPrecio').value),
-                descripcion: document.getElementById('editDescripcion').value,
-                foto: document.getElementById('editFoto').value,
-                seleccionObligatoria: document.getElementById('editSeleccionObligatoria').checked
-            })
+            html: `<div class="text-left"><label class="block text-sm mb-1">Nombre</label><input id="editNombre" value="${escapeHTML(data.PLATO)}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+            <label class="block text-sm mb-1">Categoría</label><input id="editCategoria" value="${escapeHTML(data.CATEGORIA || '')}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+            <label class="block text-sm mb-1">Precio (€)</label><input id="editPrecio" type="number" step="0.01" value="${data.PRECIO}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+            <label class="block text-sm mb-1">Descripción</label><textarea id="editDescripcion" rows="2" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">${escapeHTML(data.DESCRIPCION || '')}</textarea>
+            <label class="block text-sm mb-1">URL de la imagen</label><input id="editFoto" value="${data.FOTO_PLATO || ''}" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+            <div class="flex items-center gap-2 mb-3"><input type="checkbox" id="editSeleccionObligatoria" ${data.SELECCION_OBLIGATORIA ? 'checked' : ''} class="w-5 h-5"><label>Selección obligatoria</label></div></div>`,
+            showCancelButton: true, confirmButtonText: 'Guardar', background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b',
+            preConfirm: () => ({ nombre: document.getElementById('editNombre').value, categoria: document.getElementById('editCategoria').value, precio: parseFloat(document.getElementById('editPrecio').value), descripcion: document.getElementById('editDescripcion').value, foto: document.getElementById('editFoto').value, seleccionObligatoria: document.getElementById('editSeleccionObligatoria').checked })
         }).then(async (result) => {
             if (result.isConfirmed) {
                 const { nombre, categoria, precio, descripcion, foto, seleccionObligatoria } = result.value;
-                await database.ref(`menu_general/${id}`).update({
-                    PLATO: nombre, CATEGORIA: categoria, PRECIO: precio, DESCRIPCION: descripcion,
-                    FOTO_PLATO: foto, SELECCION_OBLIGATORIA: seleccionObligatoria, actualizado_en: Date.now()
-                });
+                await database.ref(`menu_general/${id}`).update({ PLATO: nombre, CATEGORIA: categoria, PRECIO: precio, DESCRIPCION: descripcion, FOTO_PLATO: foto, SELECCION_OBLIGATORIA: seleccionObligatoria, actualizado_en: Date.now() });
                 cargarProductos(pin);
                 Swal.fire({ title: 'Actualizado', text: 'Producto actualizado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
             }
         });
     }
     
-    async function toggleProducto(pin, id, activo) {
-        await database.ref(`menu_general/${id}/ACTIVO`).set(activo);
-        cargarProductos(pin);
-        Swal.fire({ title: 'Actualizado', text: `Producto ${activo ? 'activado' : 'desactivado'}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    }
+    async function toggleProducto(pin, id, activo) { await database.ref(`menu_general/${id}/ACTIVO`).set(activo); cargarProductos(pin); }
+    async function eliminarProducto(pin, id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`menu_general/${id}`).remove(); cargarProductos(pin); } }
     
-    async function eliminarProducto(pin, id) {
-        const confirm = await Swal.fire({ title: '¿Eliminar producto?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) {
-            await database.ref(`menu_general/${id}`).remove();
-            cargarProductos(pin);
-            Swal.fire({ title: 'Eliminado', text: 'Producto eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-        }
-    }
-    
-    // ==================== GRUPOS DE OPCIONES ====================
+    // ==================== GRUPOS OPCIONES ====================
     function agregarGrupoOpciones(grupoExistente = null) {
         const container = document.getElementById('grupos-opciones-container');
         const grupoId = Date.now();
-        const grupoHtml = `
-            <div id="grupo-${grupoId}" class="bg-slate-800 rounded-xl p-3 border border-slate-600">
-                <div class="flex justify-between items-center mb-2">
-                    <input type="text" placeholder="Nombre del grupo (Ej: Tamaño, Extras, Salsas)" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="grupo-nombre-${grupoId}" value="${grupoExistente?.nombre || ''}">
-                    <button onclick="eliminarGrupoOpciones(${grupoId})" class="ml-2 text-red-400 text-xl">🗑️</button>
-                </div>
-                <div class="flex gap-2 mb-2">
-                    <label class="flex items-center gap-1 text-xs"><input type="checkbox" id="grupo-obligatorio-${grupoId}" ${grupoExistente?.required ? 'checked' : ''}> Obligatorio</label>
-                    <label class="flex items-center gap-1 text-xs"><span>Máx:</span><input type="number" id="grupo-max-${grupoId}" value="${grupoExistente?.max || 1}" class="w-12 p-1 rounded bg-slate-700 text-xs"></label>
-                    <label class="flex items-center gap-1 text-xs"><span>Mín:</span><input type="number" id="grupo-min-${grupoId}" value="${grupoExistente?.min || 0}" class="w-12 p-1 rounded bg-slate-700 text-xs"></label>
-                </div>
-                <div id="opciones-${grupoId}" class="space-y-2 ml-4">
-                    ${(grupoExistente?.opciones || []).map((opcion, idx) => `
-                        <div class="flex gap-2 items-center">
-                            <input type="text" placeholder="Opción" value="${opcion.nombre}" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${idx}">
-                            <input type="number" placeholder="Precio extra" value="${opcion.precio || 0}" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${idx}">
-                            <button onclick="eliminarOpcion(${grupoId}, ${idx})" class="text-red-400">✕</button>
-                        </div>
-                    `).join('')}
-                </div>
-                <button onclick="agregarOpcion(${grupoId})" class="text-xs text-cyan-400 mt-2">+ Agregar opción</button>
-            </div>
-        `;
+        const grupoHtml = `<div id="grupo-${grupoId}" class="bg-slate-800 rounded-xl p-3 border border-slate-600">
+            <div class="flex justify-between items-center mb-2"><input type="text" placeholder="Nombre del grupo" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="grupo-nombre-${grupoId}" value="${grupoExistente?.nombre || ''}"><button onclick="eliminarGrupoOpciones(${grupoId})" class="ml-2 text-red-400 text-xl">🗑️</button></div>
+            <div class="flex gap-2 mb-2"><label class="flex items-center gap-1 text-xs"><input type="checkbox" id="grupo-obligatorio-${grupoId}" ${grupoExistente?.required ? 'checked' : ''}> Obligatorio</label>
+            <label class="flex items-center gap-1 text-xs"><span>Máx:</span><input type="number" id="grupo-max-${grupoId}" value="${grupoExistente?.max || 1}" class="w-12 p-1 rounded bg-slate-700 text-xs"></label>
+            <label class="flex items-center gap-1 text-xs"><span>Mín:</span><input type="number" id="grupo-min-${grupoId}" value="${grupoExistente?.min || 0}" class="w-12 p-1 rounded bg-slate-700 text-xs"></label></div>
+            <div id="opciones-${grupoId}" class="space-y-2 ml-4">${(grupoExistente?.opciones || []).map((opcion, idx) => `<div class="flex gap-2 items-center"><input type="text" placeholder="Opción" value="${opcion.nombre}" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${idx}"><input type="number" placeholder="Precio extra" value="${opcion.precio || 0}" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${idx}"><button onclick="eliminarOpcion(${grupoId}, ${idx})" class="text-red-400">✕</button></div>`).join('')}</div>
+            <button onclick="agregarOpcion(${grupoId})" class="text-xs text-cyan-400 mt-2">+ Agregar opción</button>
+        </div>`;
         container.insertAdjacentHTML('beforeend', grupoHtml);
         gruposOpciones.push({ id: grupoId, nombre: grupoExistente?.nombre || '', required: grupoExistente?.required || false, max: grupoExistente?.max || 1, min: grupoExistente?.min || 0, opciones: grupoExistente?.opciones || [] });
     }
     
-    function eliminarGrupoOpciones(grupoId) {
-        document.getElementById(`grupo-${grupoId}`).remove();
-        gruposOpciones = gruposOpciones.filter(g => g.id !== grupoId);
-    }
-    
-    function agregarOpcion(grupoId) {
-        const container = document.getElementById(`opciones-${grupoId}`);
-        const opcionId = Date.now();
-        container.insertAdjacentHTML('beforeend', `
-            <div class="flex gap-2 items-center">
-                <input type="text" placeholder="Opción" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${opcionId}">
-                <input type="number" placeholder="Precio extra" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${opcionId}">
-                <button onclick="this.parentElement.remove()" class="text-red-400">✕</button>
-            </div>
-        `);
-    }
-    
-    function eliminarOpcion(grupoId, idx) {
-        const container = document.getElementById(`opciones-${grupoId}`);
-        const children = container.children;
-        if (children[idx]) children[idx].remove();
-    }
-    
-    function recolectarGruposOpciones() {
-        const grupos = [];
-        for (const grupo of gruposOpciones) {
-            const grupoDiv = document.getElementById(`grupo-${grupo.id}`);
-            if (!grupoDiv) continue;
-            const nombre = document.getElementById(`grupo-nombre-${grupo.id}`)?.value || '';
-            const obligatorio = document.getElementById(`grupo-obligatorio-${grupo.id}`)?.checked || false;
-            const max = parseInt(document.getElementById(`grupo-max-${grupo.id}`)?.value) || 1;
-            const min = parseInt(document.getElementById(`grupo-min-${grupo.id}`)?.value) || 0;
-            const opciones = [];
-            const opcionesContainer = document.getElementById(`opciones-${grupo.id}`);
-            if (opcionesContainer) {
-                const opcionDivs = opcionesContainer.children;
-                for (let i = 0; i < opcionDivs.length; i++) {
-                    const div = opcionDivs[i];
-                    const nombreInput = div.querySelector('input[placeholder="Opción"]');
-                    const precioInput = div.querySelector('input[placeholder="Precio extra"]');
-                    if (nombreInput && nombreInput.value) {
-                        opciones.push({ nombre: nombreInput.value, precio: parseFloat(precioInput?.value) || 0 });
-                    }
-                }
-            }
-            if (nombre && opciones.length > 0) {
-                grupos.push({ nombre, required: obligatorio, max, min, opciones });
-            }
-        }
-        return grupos;
-    }
+    function eliminarGrupoOpciones(grupoId) { document.getElementById(`grupo-${grupoId}`).remove(); gruposOpciones = gruposOpciones.filter(g => g.id !== grupoId); }
+    function agregarOpcion(grupoId) { const container = document.getElementById(`opciones-${grupoId}`); const opcionId = Date.now(); container.insertAdjacentHTML('beforeend', `<div class="flex gap-2 items-center"><input type="text" placeholder="Opción" class="flex-1 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-nombre-${grupoId}-${opcionId}"><input type="number" placeholder="Precio extra" step="0.01" class="w-24 p-2 rounded-lg bg-slate-700 border border-slate-600 text-sm" id="opcion-precio-${grupoId}-${opcionId}"><button onclick="this.parentElement.remove()" class="text-red-400">✕</button></div>`); }
+    function eliminarOpcion(grupoId, idx) { const container = document.getElementById(`opciones-${grupoId}`); const children = container.children; if (children[idx]) children[idx].remove(); }
+    function recolectarGruposOpciones() { const grupos = []; for (const grupo of gruposOpciones) { const nombre = document.getElementById(`grupo-nombre-${grupo.id}`)?.value || ''; const obligatorio = document.getElementById(`grupo-obligatorio-${grupo.id}`)?.checked || false; const max = parseInt(document.getElementById(`grupo-max-${grupo.id}`)?.value) || 1; const min = parseInt(document.getElementById(`grupo-min-${grupo.id}`)?.value) || 0; const opciones = []; const opcionesContainer = document.getElementById(`opciones-${grupo.id}`); if (opcionesContainer) { const opcionDivs = opcionesContainer.children; for (let i = 0; i < opcionDivs.length; i++) { const div = opcionDivs[i]; const nombreInput = div.querySelector('input[placeholder="Opción"]'); const precioInput = div.querySelector('input[placeholder="Precio extra"]'); if (nombreInput && nombreInput.value) { opciones.push({ nombre: nombreInput.value, precio: parseFloat(precioInput?.value) || 0 }); } } } if (nombre && opciones.length > 0) { grupos.push({ nombre, required: obligatorio, max, min, opciones }); } } return grupos; }
     
     // ==================== PEDIDOS ====================
     function cargarPedidosAdmin() {
@@ -1001,101 +894,49 @@
         });
     }
     
-    async function borrarTodosPedidos() {
-        const confirm = await Swal.fire({ title: '⚠️ ¿BORRAR TODOS?', text: 'Irreversible', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) { await database.ref('pedidos').remove(); Swal.fire({ title: 'Eliminado', text: 'Todos los pedidos eliminados', icon: 'success', background: '#0f172a', color: 'white' }); }
-    }
-    
-    async function eliminarPedido(id) {
-        const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
-        if (confirm.isConfirmed) await database.ref(`pedidos/${id}`).remove();
-    }
-    
+    async function borrarTodosPedidos() { const confirm = await Swal.fire({ title: '⚠️ ¿BORRAR TODOS?', text: 'Irreversible', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref('pedidos').remove(); Swal.fire({ title: 'Eliminado', text: 'Todos los pedidos eliminados', icon: 'success', background: '#0f172a', color: 'white' }); } }
+    async function eliminarPedido(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) await database.ref(`pedidos/${id}`).remove(); }
     async function actualizarEstadoPedido(id, nuevoEstado) { await database.ref(`pedidos/${id}/estado`).set(nuevoEstado); if (nuevoEstado === 'LISTO') await database.ref(`pedidos/${id}/timestamp_listo`).set(Date.now()); }
-    
     function getEstadoColor(estado) { const colores = { 'RECIBIDO': 'bg-yellow-500/20 text-yellow-400', 'EN PROCESO': 'bg-cyan-500/20 text-cyan-400', 'LISTO': 'bg-emerald-500/20 text-emerald-400', 'EN CAMINO': 'bg-purple-500/20 text-purple-400', 'ENTREGADO': 'bg-green-500/20 text-green-400' }; return colores[estado] || 'bg-slate-500/20'; }
     function getEstadoTexto(estado) { const textos = { 'RECIBIDO': '⏰ Pendiente', 'EN PROCESO': '🍳 En Cocina', 'LISTO': '✅ Listo', 'EN CAMINO': '🛵 En Camino', 'ENTREGADO': '🏁 Entregado' }; return textos[estado] || estado; }
-    
-    function verDetallePedidoAdmin(id) {
-        database.ref(`pedidos/${id}`).once('value', snapshot => {
-            const p = snapshot.val();
-            Swal.fire({ title: `Pedido #${p.id_pedido || id.substring(0, 8)}`, html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p><p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p><p><strong>💳 Pago:</strong> ${p.metodo_pago || 'Efectivo'}</p><p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p><hr class="my-2 border-white/10"><p><strong>📦 Detalle:</strong></p><p style="white-space: pre-wrap;">${p.detalle || ''}</p></div>`, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b' });
-        });
-    }
+    function verDetallePedidoAdmin(id) { database.ref(`pedidos/${id}`).once('value', snapshot => { const p = snapshot.val(); Swal.fire({ title: `Pedido #${p.id_pedido || id.substring(0, 8)}`, html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p><p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p><p><strong>💳 Pago:</strong> ${p.metodo_pago || 'Efectivo'}</p><p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p><hr class="my-2 border-white/10"><p><strong>📦 Detalle:</strong></p><p style="white-space: pre-wrap;">${p.detalle || ''}</p></div>`, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b' }); }); }
     
     // ==================== REPARTIDORES ====================
-   async function cargarRepartidores() {
-    const snapshot = await database.ref('repartidores').once('value');
-    const repartidores = snapshot.val() || {};
-    const container = document.getElementById('listaRepartidores');
-    
-    container.innerHTML = '';
-    for (const [id, data] of Object.entries(repartidores)) {
-        container.innerHTML += `
-            <div class="card repartidor-card bg-slate-800 rounded-2xl p-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <p class="font-bold text-white text-lg">${escapeHTML(data.nombre)}</p>
-                        <p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p>
-                        <p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p>
-                        <p class="text-cyan-400 text-xs mt-1">🔑 Contraseña: ${data.password || 'No definida'}</p>
+    async function cargarRepartidores() {
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        const container = document.getElementById('listaRepartidores');
+        container.innerHTML = '';
+        for (const [id, data] of Object.entries(repartidores)) {
+            container.innerHTML += `
+                <div class="card repartidor-card bg-slate-800 rounded-2xl p-4">
+                    <div class="flex justify-between items-start">
+                        <div><p class="font-bold text-white text-lg">${data.nombre}</p><p class="text-white/50 text-sm">📞 ${data.telefono || 'Sin teléfono'}</p><p class="text-white/50 text-sm">🛵 ${data.vehiculo || 'Sin vehículo'}</p><p class="text-cyan-400 text-xs">🔑 Contraseña: ${data.password || 'No definida'}</p></div>
+                        <div><div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</div></div>
                     </div>
-                    <div>
-                        <div class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">
-                            ${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}
-                        </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}</button>
+                        <button onclick="eliminarRepartidor('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
                     </div>
                 </div>
-                <div class="flex gap-2 mt-4">
-                    <button onclick="toggleRepartidor('${id}', ${data.activo !== false ? false : true})" class="flex-1 ${data.activo !== false ? 'bg-red-600/20 text-red-400' : 'bg-green-600/20 text-green-400'} py-2 rounded-xl text-sm">
-                        ${data.activo !== false ? '❌ Desactivar' : '✅ Activar'}
-                    </button>
-                    <button onclick="eliminarRepartidor('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button>
-                </div>
-            </div>
-        `;
+            `;
+        }
+        cargarReporteRepartidores();
     }
-    cargarReporteRepartidores();
-}
     
     async function guardarRepartidor() {
-    const nombre = document.getElementById('repNombre').value.trim();
-    const telefono = document.getElementById('repTelefono').value.trim();
-    const vehiculo = document.getElementById('repVehiculo').value.trim();
-    let password = document.getElementById('repPassword').value.trim();
-    
-    if (!nombre) {
-        Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
+        const nombre = document.getElementById('repNombre').value.trim();
+        const telefono = document.getElementById('repTelefono').value.trim();
+        const vehiculo = document.getElementById('repVehiculo').value.trim();
+        let password = document.getElementById('repPassword').value.trim();
+        if (!nombre) { Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+        if (!password) password = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const id = nombre.replace(/ /g, '_').toLowerCase();
+        await database.ref(`repartidores/${id}`).set({ nombre, telefono, vehiculo, password, activo: true, creado_en: Date.now() });
+        cerrarModal('modalRepartidor');
+        cargarRepartidores();
+        Swal.fire({ title: '✅ Repartidor creado', html: `Nombre: ${nombre}<br>🔑 Contraseña: <strong>${password}</strong>`, icon: 'success', background: '#0f172a', color: 'white' });
     }
-    
-    // Si no se proporcionó contraseña, generar una automática
-    if (!password) {
-        password = Math.random().toString(36).substring(2, 8).toUpperCase();
-    }
-    
-    const id = nombre.replace(/ /g, '_').toLowerCase();
-    
-    await database.ref(`repartidores/${id}`).set({
-        nombre: nombre,
-        telefono: telefono || '',
-        vehiculo: vehiculo || '',
-        password: password,
-        activo: true,
-        creado_en: Date.now()
-    });
-    
-    cerrarModal('modalRepartidor');
-    cargarRepartidores();
-    
-    Swal.fire({ 
-        title: '✅ Repartidor creado', 
-        html: `Nombre: ${nombre}<br>🔑 Contraseña: <strong>${password}</strong>`, 
-        icon: 'success', 
-        background: '#0f172a', 
-        color: 'white' 
-    });
-}
     
     async function toggleRepartidor(id, activo) { await database.ref(`repartidores/${id}/activo`).set(activo); cargarRepartidores(); }
     async function eliminarRepartidor(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`repartidores/${id}`).remove(); cargarRepartidores(); } }
@@ -1192,16 +1033,171 @@
         document.getElementById('reporteDetalle').innerHTML = `<h3 class="font-bold mb-4">📋 Últimos Pedidos (Hoy)</h3><div class="space-y-2 max-h-96 overflow-y-auto">${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).slice(0, 10).map(([id, data]) => `<div class="border-b border-slate-700 pb-2"><div class="flex justify-between"><span>#${data.id_pedido || id.substring(0, 8)}</span><span class="${data.estado === 'ENTREGADO' ? 'text-green-400' : 'text-yellow-400'}">${data.estado}</span></div><div class="text-sm text-white/50">${data.cliente_nombre || 'Cliente'} - ${(data.total || 0).toFixed(2)}€</div></div>`).join('')}${Object.entries(pedidos).filter(([id, data]) => new Date(data.fecha).toDateString() === hoy).length === 0 ? '<div class="text-center text-white/50 p-4">No hay pedidos hoy</div>' : ''}</div>`;
     }
     
+    // ==================== CONTABLE / FACTURACIÓN ====================
+    const comisionesPorDefecto = {
+        "AB10DE": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "PI20KE": { comision: 12, descuento_fijo: 0, cargo_publicidad: 0 },
+        "RH30ME": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "LS40CU": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "PERU50": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "LIMA60": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "PE70DU": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "MIFA80": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "LP90BR": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "KAI100": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 },
+        "DRI110": { comision: 15, descuento_fijo: 0, cargo_publicidad: 0 }
+    };
+    
+    async function generarReporteContable() {
+        const periodo = document.getElementById('periodoReporte').value;
+        const fechaFin = new Date();
+        let fechaInicio = new Date();
+        
+        switch(periodo) {
+            case 'diario': fechaInicio.setDate(fechaFin.getDate() - 1); break;
+            case 'semanal': fechaInicio.setDate(fechaFin.getDate() - 7); break;
+            case 'quincenal': fechaInicio.setDate(fechaFin.getDate() - 15); break;
+            case 'mensual': fechaInicio.setMonth(fechaFin.getMonth() - 1); break;
+        }
+        
+        Swal.fire({ title: 'Generando reporte...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        
+        try {
+            const pedidosSnap = await database.ref('pedidos').once('value');
+            const pedidos = pedidosSnap.val() || {};
+            const restaurantesSnap = await database.ref('restaurantes').once('value');
+            const restaurantes = restaurantesSnap.val() || {};
+            
+            const resultados = {};
+            let totalVentasGlobal = 0, totalComisionesGlobal = 0, totalDescuentosGlobal = 0, totalLiquidarGlobal = 0;
+            
+            for (const [idPedido, data] of Object.entries(pedidos)) {
+                const fechaPedido = new Date(data.fecha);
+                if (fechaPedido >= fechaInicio && fechaPedido <= fechaFin && data.estado === 'ENTREGADO') {
+                    const restId = data.restaurante_id;
+                    if (!resultados[restId]) {
+                        const configRest = comisionesPorDefecto[restId] || comisionesPorDefecto["AB10DE"];
+                        const restData = restaurantes[restId] || {};
+                        resultados[restId] = {
+                            nombre: restData.NOMBRE_RESTAURANTE || data.restaurante_nombre || restId,
+                            ventas: 0, comisiones: 0, descuentos: 0, liquidar: 0,
+                            config: configRest
+                        };
+                    }
+                    const venta = data.total || 0;
+                    const comision = venta * (resultados[restId].config.comision / 100);
+                    const descuento = resultados[restId].config.descuento_fijo;
+                    const liquidar = venta - comision - descuento;
+                    
+                    resultados[restId].ventas += venta;
+                    resultados[restId].comisiones += comision;
+                    resultados[restId].descuentos += descuento;
+                    resultados[restId].liquidar += liquidar;
+                    
+                    totalVentasGlobal += venta;
+                    totalComisionesGlobal += comision;
+                    totalDescuentosGlobal += descuento;
+                    totalLiquidarGlobal += liquidar;
+                }
+            }
+            
+            document.getElementById('totalVentasContable').innerHTML = totalVentasGlobal.toFixed(2) + '€';
+            document.getElementById('totalComisiones').innerHTML = totalComisionesGlobal.toFixed(2) + '€';
+            document.getElementById('totalDescuentos').innerHTML = totalDescuentosGlobal.toFixed(2) + '€';
+            document.getElementById('totalLiquidar').innerHTML = totalLiquidarGlobal.toFixed(2) + '€';
+            
+            const tbody = document.getElementById('tablaReporteContable');
+            tbody.innerHTML = '';
+            
+            for (const [restId, data] of Object.entries(resultados)) {
+                const liquidacionSnap = await database.ref('liquidaciones').orderByChild('restaurante_id').equalTo(restId).once('value');
+                let estado = 'Pendiente', estadoClass = 'bg-yellow-500/20 text-yellow-400';
+                liquidacionSnap.forEach(snap => {
+                    const liq = snap.val();
+                    if (liq.periodo_inicio === fechaInicio.toISOString() && liq.periodo_fin === fechaFin.toISOString()) {
+                        estado = liq.estado === 'pagado' ? 'Liquidado' : 'En proceso';
+                        estadoClass = liq.estado === 'pagado' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400';
+                    }
+                });
+                
+                tbody.innerHTML += `<tr class="border-b border-white/10 hover:bg-white/5"><td class="p-2 font-bold">${data.nombre}<td class="text-right p-2">${data.ventas.toFixed(2)}€<td class="text-right p-2 text-yellow-400">-${data.comisiones.toFixed(2)}€<td class="text-right p-2 text-red-400">-${data.descuentos.toFixed(2)}€<td class="text-right p-2 font-bold text-emerald-400">${data.liquidar.toFixed(2)}€<td class="text-center p-2"><span class="px-2 py-1 rounded text-xs ${estadoClass}">${estado}</span><td class="text-center p-2"><button onclick="liquidarRestaurante('${restId}', ${data.liquidar.toFixed(2)}, '${data.nombre}', '${fechaInicio.toISOString()}', '${fechaFin.toISOString()}')" class="bg-emerald-600/20 text-emerald-400 px-3 py-1 rounded text-xs" ${estado === 'Liquidado' ? 'disabled' : ''}>💵 Liquidar</button> <button onclick="generarFacturaRestaurante('${restId}', '${data.nombre}', ${data.ventas}, ${data.comisiones}, ${data.descuentos}, ${data.liquidar})" class="bg-cyan-600/20 text-cyan-400 px-3 py-1 rounded text-xs">📄 Factura</button></td></tr>`;
+            }
+            
+            await cargarHistorialLiquidaciones();
+            Swal.close();
+        } catch (error) {
+            Swal.close();
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
+    
+    async function cargarHistorialLiquidaciones() {
+        const snapshot = await database.ref('liquidaciones').orderByChild('fecha_pago').once('value');
+        const liquidaciones = snapshot.val() || {};
+        const container = document.getElementById('historialLiquidaciones');
+        if (Object.keys(liquidaciones).length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-4">No hay liquidaciones registradas</div>'; return; }
+        
+        let html = '';
+        const sorted = Object.entries(liquidaciones).sort((a, b) => b[1].fecha_pago - a[1].fecha_pago);
+        for (const [id, data] of sorted.slice(0, 20)) {
+            html += `<div class="bg-slate-700/30 rounded-xl p-3 flex justify-between items-center"><div><p class="font-bold">${data.restaurante_nombre}</p><p class="text-xs text-white/50">${new Date(data.periodo_inicio).toLocaleDateString()} - ${new Date(data.periodo_fin).toLocaleDateString()}</p></div><div class="text-right"><p class="text-emerald-400 font-bold">${data.total_liquidar.toFixed(2)}€</p><p class="text-xs ${data.estado === 'pagado' ? 'text-green-400' : 'text-yellow-400'}">${data.estado}</p></div><button onclick="verDetalleLiquidacion('${id}')" class="bg-white/10 px-3 py-1 rounded text-xs">Ver</button></div>`;
+        }
+        container.innerHTML = html;
+    }
+    
+    function verDetalleLiquidacion(id) {
+        database.ref(`liquidaciones/${id}`).once('value', snapshot => {
+            const data = snapshot.val();
+            Swal.fire({ title: 'Detalle Liquidación', html: `<div class="text-left"><p><strong>Restaurante:</strong> ${data.restaurante_nombre}</p><p><strong>Período:</strong> ${new Date(data.periodo_inicio).toLocaleDateString()} - ${new Date(data.periodo_fin).toLocaleDateString()}</p><p><strong>Monto liquidado:</strong> ${data.total_liquidar.toFixed(2)}€</p><p><strong>Método de pago:</strong> ${data.metodo_pago}</p><p><strong>Comprobante:</strong> ${data.comprobante || 'N/A'}</p><p><strong>Fecha de pago:</strong> ${new Date(data.fecha_pago).toLocaleString()}</p></div>`, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b' });
+        });
+    }
+    
+    function liquidarRestaurante(restId, monto, nombre, inicio, fin) {
+        document.getElementById('liquidarInfo').innerHTML = `<p><strong>Restaurante:</strong> ${nombre}</p><p><strong>Período:</strong> ${new Date(inicio).toLocaleDateString()} - ${new Date(fin).toLocaleDateString()}</p><p><strong>Monto a liquidar:</strong> <span class="text-emerald-400 font-bold text-xl">${monto}€</span></p>`;
+        document.getElementById('modalLiquidar').dataset.restId = restId;
+        document.getElementById('modalLiquidar').dataset.monto = monto;
+        document.getElementById('modalLiquidar').dataset.nombre = nombre;
+        document.getElementById('modalLiquidar').dataset.inicio = inicio;
+        document.getElementById('modalLiquidar').dataset.fin = fin;
+        mostrarModal('modalLiquidar');
+    }
+    
+    async function confirmarLiquidacion() {
+        const modal = document.getElementById('modalLiquidar');
+        const restId = modal.dataset.restId, monto = parseFloat(modal.dataset.monto), nombre = modal.dataset.nombre, inicio = modal.dataset.inicio, fin = modal.dataset.fin;
+        const metodoPago = document.getElementById('metodoPagoLiquidacion').value, comprobante = document.getElementById('comprobanteUrl').value;
+        const liquidacion = { restaurante_id: restId, restaurante_nombre: nombre, periodo_inicio: inicio, periodo_fin: fin, total_liquidar: monto, metodo_pago: metodoPago, comprobante: comprobante, estado: 'pagado', fecha_pago: Date.now() };
+        await database.ref(`liquidaciones/${Date.now()}`).set(liquidacion);
+        cerrarModal('modalLiquidar');
+        Swal.fire({ title: '✅ Liquidación registrada', text: `Se ha liquidado ${monto}€ a ${nombre}`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        generarReporteContable();
+    }
+    
+    function generarFacturaRestaurante(restId, nombre, ventas, comisiones, descuentos, liquidar) {
+        const numeroFactura = `F-${Date.now()}-${restId}`;
+        const contenidoFactura = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura ${numeroFactura}</title><style>body{font-family:Arial;padding:40px}.factura{max-width:800px;margin:0 auto;border:1px solid #ddd;padding:20px}.header{text-align:center;border-bottom:2px solid #06b6d4;padding-bottom:20px;margin-bottom:20px}.logo{font-size:24px;font-weight:bold;color:#06b6d4}</style></head><body><div class="factura"><div class="header"><div class="logo">AGUADULCE EXPRESS</div><p>Factura de Liquidación</p></div><p><strong>Factura N°:</strong> ${numeroFactura}</p><p><strong>Fecha:</strong> ${new Date().toLocaleDateString()}</p><p><strong>Restaurante:</strong> ${nombre}</p><table border="1" style="width:100%;border-collapse:collapse;margin:20px 0"><thead><tr><th>Concepto</th><th>Importe</th></tr></thead><tbody><tr><td>Total Ventas del período</td><td>${ventas.toFixed(2)}€</td></tr><tr><td>Comisión Plataforma (${comisionesPorDefecto[restId]?.comision || 15}%)</td><td>-${comisiones.toFixed(2)}€</td></tr><tr><td>Descuentos aplicados</td><td>-${descuentos.toFixed(2)}€</td></tr><tr style="font-weight:bold"><td>TOTAL A LIQUIDAR</td><td>${liquidar.toFixed(2)}€</td></tr></tbody></table><div class="footer"><p>Esta factura es un comprobante de liquidación de ventas del período indicado.</p><p>Aguadulce Express - Comida a domicilio</p></div></div><script>window.print();<\/script></body></html>`;
+        const ventana = window.open('', '_blank');
+        ventana.document.write(contenidoFactura);
+        ventana.document.close();
+    }
+    
+    function exportarReporteExcel() {
+        const tabla = document.getElementById('tablaReporteContable');
+        if (!tabla) return;
+        let html = '<table border="1"><tr><th>Restaurante</th><th>Ventas</th><th>Comisión</th><th>Descuentos</th><th>A Liquidar</th><th>Estado</th></tr>';
+        const rows = tabla.querySelectorAll('tr');
+        rows.forEach(row => { html += '<tr>'; const cells = row.querySelectorAll('td'); cells.forEach(cell => html += `<td>${cell.innerText}</td>`); html += '</tr>'; });
+        html += '</table>';
+        const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `reporte_contable_${new Date().toISOString().split('T')[0]}.xls`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
+    
     function cargarTodosLosDatos() {
-        cargarRestaurantes();
-        cargarHorarios();
-        cargarMenus();
-        cargarPedidosAdmin();
-        cargarRepartidores();
-        cargarBanners();
-        cargarUsuarios();
-        cargarReportes();
-        actualizarSelectsRestaurantes();
+        cargarRestaurantes(); cargarHorarios(); cargarMenus(); cargarPedidosAdmin(); cargarRepartidores(); cargarBanners(); cargarUsuarios(); cargarReportes(); actualizarSelectsRestaurantes();
     }
 </script>
 </body>

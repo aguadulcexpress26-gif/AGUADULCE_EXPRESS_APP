@@ -122,7 +122,12 @@ if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);const database=f
 let db={menu:[],restaurantes:[],anuncios:[],legal:"",config:{},horariosPorDia:{}};let cesta=[];let restauranteActivo={id:null,nombre:"",foto:""};let itemActual={data:null,cantidad:1,precioBase:0,precioOpciones:0,opcionesSeleccionadas:{},obligatorioOk:true};let pantallaStack=['home'];let navegando=false;let trackingListenerRef=null;let alarmaInterval=null;let audioElement=null;let procesandoPedidoActivo=false;let clienteActual=null;
 const ZONAS_PERMITIDAS=['04720'];const HORARIO_ALCOHOL={activo:true,horaFin:22,mensaje:"🍺 La venta de bebidas alcohólicas solo está permitida hasta las 22:00."};const CATEGORIAS_ALCOHOL=['Cervezas','Licores','Vinos','Bebidas alcohólicas','Alcohol','Cerveza','Vino','Licor'];
 
-// ==================== AUTENTICACIÓN ====================
+// ==================== FUNCIÓN PARA SANITIZAR EMAIL ====================
+function sanitizarEmail(email) {
+    if (!email) return '';
+    return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_');
+}
+    // ==================== AUTENTICACIÓN ====================
 async function loginCliente() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
@@ -285,6 +290,12 @@ function actualizarInterfazSeguimiento(data){const estado=(data.estado||'recibid
 function abrirModalTracking(){pushPantalla('tracking');document.getElementById('tracking-modal').style.display='block';setTimeout(()=>agregarFooterLegal(),100)}
 function cerrarModalTracking(){document.getElementById('tracking-modal').style.display='none'}
 function restaurarPedidoActivo(){const id=localStorage.getItem('ae_pedido_activo');if(id)database.ref('pedidos/'+id).once('value').then(snap=>{if(snap.val())iniciarSeguimientoPedido(id);else limpiarSeguimientoCompleto()})}
+// Función para sanitizar email (eliminar caracteres no permitidos en rutas de Firebase)
+function sanitizarEmail(email) {
+    if (!email) return '';
+    return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_');
+}
+
 async function enviarPedidoFinal(){
     if(procesandoPedidoActivo) return;
     
@@ -295,10 +306,13 @@ async function enviarPedidoFinal(){
         return; 
     }
     
-    // ==================== VERIFICAR LISTA NEGRA ====================
+    // ==================== VERIFICAR LISTA NEGRA (CON EMAIL SANITIZADO) ====================
     try {
-        const clienteEmail = cliente.email;
-        const morosoSnap = await database.ref(`clientes_morosos/${clienteEmail}`).once('value');
+        const emailOriginal = cliente.email;
+        const emailSanitizado = sanitizarEmail(emailOriginal);
+        console.log("Verificando lista negra para:", emailOriginal, "->", emailSanitizado);
+        
+        const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
         const moroso = morosoSnap.val();
         
         if (moroso && moroso.activo === true) {
@@ -308,8 +322,8 @@ async function enviarPedidoFinal(){
         }
     } catch(error) {
         console.error("Error verificando lista negra:", error);
-        alertaError("Error", "No se pudo verificar el estado de tu cuenta. Intenta de nuevo.");
-        return;
+        // No bloqueamos el pedido por error de verificación, solo mostramos aviso
+        console.log("⚠️ Continuando con el pedido sin verificación de lista negra");
     }
     // ==================== FIN VERIFICACIÓN ====================
     

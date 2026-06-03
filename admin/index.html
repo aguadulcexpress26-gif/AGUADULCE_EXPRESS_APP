@@ -354,75 +354,81 @@
     
     // ==================== CLIENTES / LISTA NEGRA ====================
     async function cargarClientes() {
-        const pedidosSnap = await database.ref('pedidos').once('value');
-        const pedidos = pedidosSnap.val() || {};
-        const morososSnap = await database.ref('clientes_morosos').once('value');
-        const morosos = morososSnap.val() || {};
+    console.log("🔄 Cargando clientes...");
+    
+    try {
         const clientesSnap = await database.ref('clientes').once('value');
-        const clientesRegistrados = clientesSnap.val() || {};
+        const clientes = clientesSnap.val() || {};
         
-        const clientesMap = {};
-        
-        // Agrupar por email (identificador único)
-        for (const [id, data] of Object.entries(pedidos)) {
-            const email = data.cliente_email;
-            if (!email) continue;
-            
-            if (!clientesMap[email]) {
-                clientesMap[email] = {
-                    uid: data.cliente_uid || '',
-                    nombre: data.cliente_nombre || 'Anónimo',
-                    email: email,
-                    telefono: data.cliente_telefono || '',
-                    total_pedidos: 0,
-                    pedidos_rechazados: 0,
-                    deuda: 0,
-                    moroso: morosos[email]?.activo || false,
-                    motivo_moroso: morosos[email]?.motivo || ''
-                };
-            }
-            
-            clientesMap[email].total_pedidos++;
-            if (data.estado === 'RECHAZADO') {
-                clientesMap[email].pedidos_rechazados++;
-                clientesMap[email].deuda += data.total || 0;
-            }
-        }
-        
-        document.getElementById('totalClientes').innerText = Object.keys(clientesMap).length;
-        document.getElementById('totalMorosos').innerText = Object.keys(morosos).length;
-        
-        let deudaTotal = 0;
-        for (const data of Object.values(clientesMap)) deudaTotal += data.deuda;
-        document.getElementById('totalDeuda').innerHTML = deudaTotal.toFixed(2) + '€';
+        console.log("Clientes encontrados:", Object.keys(clientes).length);
         
         const tbody = document.getElementById('tablaClientes');
+        if (!tbody) {
+            console.error("No se encontró la tabla de clientes");
+            return;
+        }
+        
         tbody.innerHTML = '';
         
-        for (const [email, data] of Object.entries(clientesMap)) {
+        let totalClientes = 0;
+        let totalMorosos = 0;
+        let deudaTotal = 0;
+        
+        for (const [uid, data] of Object.entries(clientes)) {
+            // Saltar entradas vacías o corruptas
+            if (!data.nombre && !data.email) continue;
+            
+            totalClientes++;
+            
+            // Verificar si está en lista negra
+            const morosoSnap = await database.ref(`clientes_morosos/${data.email}`).once('value');
+            const esMoroso = morosoSnap.val()?.activo === true;
+            if (esMoroso) totalMorosos++;
+            
+            // Calcular deuda (desde pedidos rechazados)
+            const pedidosSnap = await database.ref('pedidos').once('value');
+            const pedidos = pedidosSnap.val() || {};
+            let deuda = 0;
+            for (const [id, pedido] of Object.entries(pedidos)) {
+                if (pedido.cliente_email === data.email && pedido.estado === 'RECHAZADO') {
+                    deuda += pedido.total || 0;
+                }
+            }
+            deudaTotal += deuda;
+            
             tbody.innerHTML += `
                 <tr class="border-b border-white/10 hover:bg-white/5">
-                    <td class="p-2">${escapeHTML(data.nombre)}</td>
-                    <td class="p-2">${escapeHTML(data.email)}</td>
+                    <td class="p-2">${escapeHTML(data.nombre || '-')}</td>
+                    <td class="p-2">${escapeHTML(data.email || '-')}</td>
                     <td class="p-2">${data.telefono || '-'}</td>
-                    <td class="text-center p-2">${data.total_pedidos}</td>
-                    <td class="text-center p-2 text-yellow-400">${data.deuda.toFixed(2)}€</td>
+                    <td class="text-center p-2">-</td>
+                    <td class="text-center p-2 ${deuda > 0 ? 'text-yellow-400' : ''}">${deuda.toFixed(2)}€</td>
                     <td class="text-center p-2">
-                        <span class="px-2 py-1 rounded text-xs ${data.moroso ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
-                            ${data.moroso ? 'BLOQUEADO' : 'ACTIVO'}
+                        <span class="px-2 py-1 rounded text-xs ${esMoroso ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
+                            ${esMoroso ? 'BLOQUEADO' : 'ACTIVO'}
                         </span>
                     </td>
                     <td class="text-center p-2">
-                        ${!data.moroso ? 
-                            `<button onclick="bloquearCliente('${data.email}', '${escapeHTML(data.nombre)}', ${data.deuda})" class="bg-red-600/20 text-red-400 px-2 py-1 rounded text-xs">⛔ Bloquear</button>` : 
+                        ${!esMoroso ? 
+                            `<button onclick="bloquearCliente('${data.email}', '${escapeHTML(data.nombre)}', ${deuda})" class="bg-red-600/20 text-red-400 px-2 py-1 rounded text-xs">⛔ Bloquear</button>` : 
                             `<button onclick="desbloquearCliente('${data.email}')" class="bg-green-600/20 text-green-400 px-2 py-1 rounded text-xs">🔓 Desbloquear</button>`
                         }
                         <button onclick="verHistorialCliente('${data.email}')" class="bg-cyan-600/20 text-cyan-400 px-2 py-1 rounded text-xs ml-1">📋 Historial</button>
-                     </td>
+                    </td>
                 </tr>
             `;
         }
+        
+        document.getElementById('totalClientes').innerText = totalClientes;
+        document.getElementById('totalMorosos').innerText = totalMorosos;
+        document.getElementById('totalDeuda').innerHTML = deudaTotal.toFixed(2) + '€';
+        
+        console.log("✅ Clientes cargados:", totalClientes);
+        
+    } catch (error) {
+        console.error("Error cargando clientes:", error);
     }
+}
     
     async function agregarMoroso() {
         const email = document.getElementById('morosoEmail').value.trim();

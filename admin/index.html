@@ -127,126 +127,7 @@
                 <div id="reporteRepartidores" class="space-y-2"></div>
             </div>
         </div>
-
-        // ==================== ASIGNACIÓN AUTOMÁTICA INTELIGENTE ====================
-
-// Configuración
-const MAX_PEDIDOS_POR_REPARTIDOR = 2;
-const TIEMPO_MAXIMO_SEGUNDO_PEDIDO = 15; // minutos
-
-// Función principal de asignación automática
-async function asignacionAutomatica() {
-    console.log("🔄 Ejecutando asignación automática...");
-    
-    try {
-        // 1. Obtener todos los pedidos LISTOS sin repartidor
-        const pedidosSnap = await database.ref('pedidos').once('value');
-        const pedidos = pedidosSnap.val() || {};
         
-        const pedidosSinAsignar = [];
-        for (const [id, data] of Object.entries(pedidos)) {
-            if (data.estado === 'LISTO' && !data.repartidor_asignado) {
-                pedidosSinAsignar.push({ id, ...data });
-            }
-        }
-        
-        if (pedidosSinAsignar.length === 0) {
-            console.log("📭 No hay pedidos LISTO sin asignar");
-            return;
-        }
-        
-        console.log(`📦 ${pedidosSinAsignar.length} pedido(s) sin asignar`);
-        
-        // 2. Obtener repartidores activos con sus pedidos actuales
-        const repartidoresSnap = await database.ref('repartidores').once('value');
-        const repartidores = repartidoresSnap.val() || {};
-        
-        // Calcular carga de trabajo de cada repartidor
-        const repartidoresActivos = [];
-        for (const [id, data] of Object.entries(repartidores)) {
-            if (data.activo === false) continue;
-            
-            // Obtener pedidos activos de este repartidor
-            const pedidosActivos = [];
-            for (const [pedId, pedData] of Object.entries(pedidos)) {
-                if (pedData.repartidor_asignado === data.nombre && 
-                    pedData.estado !== 'ENTREGADO' && 
-                    pedData.estado !== 'RECHAZADO') {
-                    pedidosActivos.push({
-                        id: pedId,
-                        estado: pedData.estado,
-                        tiempo_coccion: pedData.tiempo_coccion || 0,
-                        timestamp_listo: pedData.timestamp_listo
-                    });
-                }
-            }
-            
-            repartidoresActivos.push({
-                id: id,
-                nombre: data.nombre,
-                pedidos_activos: pedidosActivos,
-                cantidad_activos: pedidosActivos.length,
-                puede_recibir_mas: pedidosActivos.length < MAX_PEDIDOS_POR_REPARTIDOR
-            });
-        }
-        
-        // Ordenar repartidores por carga de trabajo (menos pedidos primero)
-        repartidoresActivos.sort((a, b) => a.cantidad_activos - b.cantidad_activos);
-        
-        console.log("📊 Carga de repartidores:", repartidoresActivos.map(r => 
-            `${r.nombre}: ${r.cantidad_activos} pedido(s) - Puede recibir: ${r.puede_recibir_mas}`
-        ));
-        
-        // 3. Asignar pedidos
-        for (const pedido of pedidosSinAsignar) {
-            let asignado = false;
-            
-            // Buscar repartidor adecuado
-            for (const rep of repartidoresActivos) {
-                if (!rep.puede_recibir_mas) continue;
-                
-                // Verificar si puede recibir un segundo pedido (regla de tiempo)
-                if (rep.cantidad_activos === 1) {
-                    const primerPedido = rep.pedidos_activos[0];
-                    // Si el primer pedido está EN CAMINO, verificar tiempo de cocción
-                    if (primerPedido.estado === 'EN CAMINO' || primerPedido.estado === 'LISTO') {
-                        const tiempoCoccion = pedido.tiempo_coccion || 15;
-                        if (tiempoCoccion > TIEMPO_MAXIMO_SEGUNDO_PEDIDO) {
-                            console.log(`⏱️ ${rep.nombre} no puede recibir ${pedido.id} (tiempo cocción ${tiempoCoccion}min > ${TIEMPO_MAXIMO_SEGUNDO_PEDIDO}min)`);
-                            continue;
-                        }
-                    }
-                }
-                
-                // Asignar pedido
-                await database.ref(`pedidos/${pedido.id}`).update({
-                    repartidor_asignado: rep.nombre,
-                    timestamp_asignado: Date.now()
-                });
-                
-                console.log(`✅ Pedido ${pedido.id} asignado a ${rep.nombre}`);
-                asignado = true;
-                rep.cantidad_activos++;
-                rep.puede_recibir_mas = rep.cantidad_activos < MAX_PEDIDOS_POR_REPARTIDOR;
-                break;
-            }
-            
-            if (!asignado) {
-                console.log(`⚠️ No hay repartidores disponibles para el pedido ${pedido.id}`);
-            }
-        }
-        
-    } catch (error) {
-        console.error("Error en asignación automática:", error);
-    }
-}
-
-// Iniciar asignación automática cada 15 segundos
-setInterval(asignacionAutomatica, 15000);
-
-// También ejecutar al cargar
-setTimeout(asignacionAutomatica, 5000);
-                    
         <!-- ==================== BANNERS ==================== -->
         <div id="seccion-banners" class="seccion hidden">
             <div class="flex justify-between items-center mb-6">
@@ -526,7 +407,6 @@ setTimeout(asignacionAutomatica, 5000);
         });
     }
     
-    // 🔥 FUNCIÓN PARA SANITIZAR EMAIL (quita puntos y caracteres especiales)
     function sanitizarEmail(email) {
         if (!email) return '';
         return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_');
@@ -582,7 +462,7 @@ setTimeout(asignacionAutomatica, 5000);
         if (seccion === 'contable') generarReporteContable();
     }
     
-    // ==================== CLIENTES / LISTA NEGRA ====================
+    // ==================== CLIENTES ====================
     async function cargarClientes() {
         console.log("🔄 Cargando clientes...");
         try {
@@ -612,16 +492,9 @@ setTimeout(asignacionAutomatica, 5000);
                         <td class="p-2">${escapeHTML(data.email || '-')}</td>
                         <td class="p-2">${data.telefono || '-'}</td>
                         <td class="text-center p-2 ${deuda > 0 ? 'text-yellow-400' : ''}">${deuda.toFixed(2)}€</td>
+                        <td class="text-center p-2"><span class="px-2 py-1 rounded text-xs ${esMoroso ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">${esMoroso ? 'BLOQUEADO' : 'ACTIVO'}</span></td>
                         <td class="text-center p-2">
-                            <span class="px-2 py-1 rounded text-xs ${esMoroso ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
-                                ${esMoroso ? 'BLOQUEADO' : 'ACTIVO'}
-                            </span>
-                        </td>
-                        <td class="text-center p-2">
-                            ${!esMoroso ? 
-                                `<button onclick="bloquearCliente('${data.email}', '${escapeHTML(data.nombre)}', 0)" class="bg-red-600/20 text-red-400 px-2 py-1 rounded text-xs">⛔ Bloquear</button>` : 
-                                `<button onclick="desbloquearCliente('${data.email}')" class="bg-green-600/20 text-green-400 px-2 py-1 rounded text-xs">🔓 Desbloquear</button>`
-                            }
+                            ${!esMoroso ? `<button onclick="bloquearCliente('${data.email}', '${escapeHTML(data.nombre)}', 0)" class="bg-red-600/20 text-red-400 px-2 py-1 rounded text-xs">⛔ Bloquear</button>` : `<button onclick="desbloquearCliente('${data.email}')" class="bg-green-600/20 text-green-400 px-2 py-1 rounded text-xs">🔓 Desbloquear</button>`}
                         </td>
                     </tr>
                 `;
@@ -638,50 +511,27 @@ setTimeout(asignacionAutomatica, 5000);
         const email = document.getElementById('morosoEmail').value.trim();
         const nombre = document.getElementById('morosoNombre').value.trim();
         const deuda = parseFloat(document.getElementById('morosoDeuda').value) || 0;
-        const motivo = document.getElementById('morosoMotivo').value.trim() || 'Sin motivo especificado';
-        
-        if (!email) {
-            Swal.fire({ title: 'Error', text: 'El email es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
+        const motivo = document.getElementById('morosoMotivo').value.trim() || 'Sin motivo';
+        if (!email) { Swal.fire({ title: 'Error', text: 'El email es obligatorio', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         const emailSanitizado = sanitizarEmail(email);
-        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
-            email_original: email,
-            email: emailSanitizado,
-            nombre: nombre || email.split('@')[0],
-            motivo: motivo,
-            deuda: deuda,
-            fecha: Date.now(),
-            activo: true
-        });
-        
+        await database.ref(`clientes_morosos/${emailSanitizado}`).set({ email_original: email, email: emailSanitizado, nombre: nombre || email.split('@')[0], motivo: motivo, deuda: deuda, fecha: Date.now(), activo: true });
         cerrarModal('modalAgregarMoroso');
         cargarClientes();
         Swal.fire({ title: '✅ Cliente bloqueado', text: `${nombre || email} ha sido agregado a la lista negra`, icon: 'success', background: '#0f172a', color: 'white' });
     }
     
     async function bloquearCliente(email, nombre, deuda) {
-        const confirm = await Swal.fire({
-            title: '¿Bloquear cliente?', text: `¿Estás seguro de bloquear a ${nombre}?`,
-            icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, bloquear', background: '#0f172a', color: 'white'
-        });
+        const confirm = await Swal.fire({ title: '¿Bloquear cliente?', text: `¿Estás seguro de bloquear a ${nombre}?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, bloquear', background: '#0f172a', color: 'white' });
         if (confirm.isConfirmed) {
             const emailSanitizado = sanitizarEmail(email);
-            await database.ref(`clientes_morosos/${emailSanitizado}`).set({
-                email_original: email, email: emailSanitizado, nombre: nombre,
-                motivo: 'Cliente con deuda pendiente', deuda: deuda, fecha: Date.now(), activo: true
-            });
+            await database.ref(`clientes_morosos/${emailSanitizado}`).set({ email_original: email, email: emailSanitizado, nombre: nombre, motivo: 'Cliente con deuda pendiente', deuda: deuda, fecha: Date.now(), activo: true });
             cargarClientes();
             Swal.fire({ title: '✅ Cliente bloqueado', text: `${nombre} no podrá hacer pedidos`, icon: 'success', background: '#0f172a', color: 'white' });
         }
     }
     
     async function desbloquearCliente(email) {
-        const confirm = await Swal.fire({
-            title: '¿Desbloquear cliente?', text: 'El cliente podrá volver a hacer pedidos',
-            icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, desbloquear', background: '#0f172a', color: 'white'
-        });
+        const confirm = await Swal.fire({ title: '¿Desbloquear cliente?', text: 'El cliente podrá volver a hacer pedidos', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, desbloquear', background: '#0f172a', color: 'white' });
         if (confirm.isConfirmed) {
             const emailSanitizado = sanitizarEmail(email);
             await database.ref(`clientes_morosos/${emailSanitizado}`).remove();
@@ -701,9 +551,7 @@ setTimeout(asignacionAutomatica, 5000);
         }
         historial.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
         let html = '<div class="max-h-96 overflow-y-auto">';
-        historial.forEach(p => {
-            html += `<div class="border-b border-white/10 p-2"><div class="flex justify-between"><span class="font-bold">#${p.id.substring(0, 8)}</span><span>${p.fecha}</span></div><div>${p.restaurante} - ${p.total.toFixed(2)}€</div><div class="text-xs ${p.estado === 'ENTREGADO' ? 'text-green-400' : p.estado === 'RECHAZADO' ? 'text-red-400' : 'text-yellow-400'}">${p.estado}</div></div>`;
-        });
+        historial.forEach(p => { html += `<div class="border-b border-white/10 p-2"><div class="flex justify-between"><span class="font-bold">#${p.id.substring(0, 8)}</span><span>${p.fecha}</span></div><div>${p.restaurante} - ${p.total.toFixed(2)}€</div><div class="text-xs ${p.estado === 'ENTREGADO' ? 'text-green-400' : p.estado === 'RECHAZADO' ? 'text-red-400' : 'text-yellow-400'}">${p.estado}</div></div>`; });
         html += '</div>';
         Swal.fire({ title: `Historial de ${email}`, html: html, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b', width: '95%', maxWidth: '500px' });
     }
@@ -751,16 +599,10 @@ setTimeout(asignacionAutomatica, 5000);
         const nombre = document.getElementById('restNombre').value.trim();
         let id_restaurante = document.getElementById('restId').value.trim();
         const foto = document.getElementById('restFoto').value.trim();
-        if (!pin || !nombre) {
-            Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
+        if (!pin || !nombre) { Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
         if (!id_restaurante) id_restaurante = pin;
         try {
-            await database.ref(`restaurantes/${pin}`).set({
-                ID_RESTAURANTE: id_restaurante, NOMBRE_RESTAURANTE: nombre, FOTO: foto || '',
-                nombre: nombre, id_restaurante: id_restaurante, foto: foto || '', activo: true, creado_en: Date.now()
-            });
+            await database.ref(`restaurantes/${pin}`).set({ ID_RESTAURANTE: id_restaurante, NOMBRE_RESTAURANTE: nombre, FOTO: foto || '', nombre: nombre, id_restaurante: id_restaurante, foto: foto || '', activo: true, creado_en: Date.now() });
             document.getElementById('restPin').value = '';
             document.getElementById('restNombre').value = '';
             document.getElementById('restId').value = '';
@@ -768,9 +610,7 @@ setTimeout(asignacionAutomatica, 5000);
             cerrarModal('modalRestaurante');
             await cargarRestaurantes();
             Swal.fire({ title: 'Éxito', text: `Restaurante "${nombre}" guardado`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
-        } catch (error) {
-            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
-        }
+        } catch (error) { Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' }); }
     }
     
     async function toggleRestaurante(pin, activo) { await database.ref(`restaurantes/${pin}/activo`).set(activo); await cargarRestaurantes(); }
@@ -830,37 +670,13 @@ setTimeout(asignacionAutomatica, 5000);
         const telefono = document.getElementById('repTelefono').value.trim();
         const vehiculo = document.getElementById('repVehiculo').value.trim();
         let password = document.getElementById('repPassword').value.trim();
-        
-        if (!nombre) {
-            Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
-            return;
-        }
-        
-        if (!password) {
-            password = Math.random().toString(36).substring(2, 8).toUpperCase();
-        }
-        
+        if (!nombre) { Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+        if (!password) password = Math.random().toString(36).substring(2, 8).toUpperCase();
         const id = nombre.replace(/ /g, '_').toLowerCase();
-        
-        await database.ref(`repartidores/${id}`).set({
-            nombre: nombre,
-            telefono: telefono || '',
-            vehiculo: vehiculo || '',
-            password: password,
-            activo: true,
-            creado_en: Date.now()
-        });
-        
+        await database.ref(`repartidores/${id}`).set({ nombre, telefono: telefono || '', vehiculo: vehiculo || '', password, activo: true, creado_en: Date.now() });
         cerrarModal('modalRepartidor');
         cargarRepartidores();
-        
-        Swal.fire({ 
-            title: '✅ Repartidor creado', 
-            html: `Nombre: ${nombre}<br>🔑 Contraseña: <strong>${password}</strong>`, 
-            icon: 'success', 
-            background: '#0f172a', 
-            color: 'white' 
-        });
+        Swal.fire({ title: '✅ Repartidor creado', html: `Nombre: ${nombre}<br>🔑 Contraseña: <strong>${password}</strong>`, icon: 'success', background: '#0f172a', color: 'white' });
     }
     
     async function toggleRepartidor(id, activo) { await database.ref(`repartidores/${id}/activo`).set(activo); cargarRepartidores(); }
@@ -877,7 +693,69 @@ setTimeout(asignacionAutomatica, 5000);
     
     async function cargarReportes() { /* mantener tu código existente */ }
     
-    // Contabilidad (simplificada)
+    // ==================== ASIGNACIÓN AUTOMÁTICA INTELIGENTE ====================
+    const MAX_PEDIDOS_POR_REPARTIDOR = 2;
+    const TIEMPO_MAXIMO_SEGUNDO_PEDIDO = 15;
+    
+    async function asignacionAutomatica() {
+        console.log("🔄 Ejecutando asignación automática...");
+        try {
+            const pedidosSnap = await database.ref('pedidos').once('value');
+            const pedidos = pedidosSnap.val() || {};
+            const pedidosSinAsignar = [];
+            for (const [id, data] of Object.entries(pedidos)) {
+                if (data.estado === 'LISTO' && !data.repartidor_asignado) {
+                    pedidosSinAsignar.push({ id, ...data });
+                }
+            }
+            if (pedidosSinAsignar.length === 0) { console.log("📭 No hay pedidos LISTO sin asignar"); return; }
+            console.log(`📦 ${pedidosSinAsignar.length} pedido(s) sin asignar`);
+            
+            const repartidoresSnap = await database.ref('repartidores').once('value');
+            const repartidores = repartidoresSnap.val() || {};
+            const repartidoresActivos = [];
+            for (const [id, data] of Object.entries(repartidores)) {
+                if (data.activo === false) continue;
+                const pedidosActivos = [];
+                for (const [pedId, pedData] of Object.entries(pedidos)) {
+                    if (pedData.repartidor_asignado === data.nombre && pedData.estado !== 'ENTREGADO' && pedData.estado !== 'RECHAZADO') {
+                        pedidosActivos.push({ id: pedId, estado: pedData.estado, tiempo_coccion: pedData.tiempo_coccion || 0 });
+                    }
+                }
+                repartidoresActivos.push({ id, nombre: data.nombre, pedidos_activos: pedidosActivos, cantidad_activos: pedidosActivos.length, puede_recibir_mas: pedidosActivos.length < MAX_PEDIDOS_POR_REPARTIDOR });
+            }
+            repartidoresActivos.sort((a, b) => a.cantidad_activos - b.cantidad_activos);
+            
+            for (const pedido of pedidosSinAsignar) {
+                let asignado = false;
+                for (const rep of repartidoresActivos) {
+                    if (!rep.puede_recibir_mas) continue;
+                    if (rep.cantidad_activos === 1) {
+                        const primerPedido = rep.pedidos_activos[0];
+                        if (primerPedido && (primerPedido.estado === 'EN CAMINO' || primerPedido.estado === 'LISTO')) {
+                            const tiempoCoccion = pedido.tiempo_coccion || 15;
+                            if (tiempoCoccion > TIEMPO_MAXIMO_SEGUNDO_PEDIDO) {
+                                console.log(`⏱️ ${rep.nombre} no puede recibir ${pedido.id} (tiempo cocción ${tiempoCoccion}min > ${TIEMPO_MAXIMO_SEGUNDO_PEDIDO}min)`);
+                                continue;
+                            }
+                        }
+                    }
+                    await database.ref(`pedidos/${pedido.id}`).update({ repartidor_asignado: rep.nombre, timestamp_asignado: Date.now() });
+                    console.log(`✅ Pedido ${pedido.id} asignado a ${rep.nombre}`);
+                    asignado = true;
+                    rep.cantidad_activos++;
+                    rep.puede_recibir_mas = rep.cantidad_activos < MAX_PEDIDOS_POR_REPARTIDOR;
+                    break;
+                }
+                if (!asignado) console.log(`⚠️ No hay repartidores disponibles para el pedido ${pedido.id}`);
+            }
+        } catch (error) { console.error("Error en asignación automática:", error); }
+    }
+    
+    setInterval(asignacionAutomatica, 15000);
+    setTimeout(asignacionAutomatica, 5000);
+    
+    // ==================== CONTABLE ====================
     async function generarReporteContable() { /* mantener tu código existente */ }
     async function cargarHistorialLiquidaciones() { /* mantener tu código existente */ }
     function liquidarRestaurante(restId, monto, nombre, inicio, fin) { /* mantener tu código existente */ }

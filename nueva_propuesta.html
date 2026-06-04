@@ -1004,33 +1004,79 @@ function actualizarInterfazSeguimiento(data) {
         }
     }
     
-    // Si es cancelado, mostrar mensaje especial
-    // Dentro de actualizarInterfazSeguimiento, en la parte donde manejas CANCELADO_POR_AUSENCIA:
-if (estado === 'CANCELADO_POR_AUSENCIA') {
-    const deuda = data.deuda_generada || data.total || 0;
+       // Si es cancelado, mostrar mensaje especial
+    if (estado === 'CANCELADO_POR_AUSENCIA') {
+        const deuda = data.deuda_generada || data.total || 0;
+        mostrarCancelacionConContacto(data.id || data.id_pedido, deuda);
+        document.getElementById('tracking-progress').style.width = '100%';
+        document.getElementById('tracking-estado').innerText = 'CANCELADO';
+        document.getElementById('tracking-emoji').innerText = '❌';
+        document.getElementById('tracking-info').innerHTML = `
+            <div style="text-align:center; color: #ef4444;">
+                <p style="font-size:18px;">❌ PEDIDO CANCELADO</p>
+                <p>Motivo: No se presentó a recibir el pedido</p>
+                <p>Deuda generada: ${deuda.toFixed(2)}€</p>
+                <hr style="margin:15px 0; border-color:#ef4444;">
+                <p style="color:#f97316;">📞 Tu cuenta ha sido bloqueada</p>
+                <p>Para resolver tu situación, contacta con soporte:</p>
+                <p>📧 soporte@aguadulceexpress.com</p>
+                <p>📞 +34 123 456 789</p>
+                <button onclick="window.location.href='mailto:soporte@aguadulceexpress.com'" class="mt-3 bg-cyan-500 text-black px-4 py-2 rounded-xl text-sm font-bold">📧 Contactar soporte</button>
+            </div>
+        `;
+        return;
+    }
     
-    // Llamar a la función de cancelación
-    mostrarCancelacionConContacto(data.id || data.id_pedido, deuda);
+    // 🔥 NUEVO: Si es entregado, mostrar mensaje de éxito y volver al home
+    if (estado === 'ENTREGADO') {
+        if (alarmaInterval) clearInterval(alarmaInterval);
+        
+        // Mostrar mensaje de éxito
+        Swal.fire({
+            title: '🎉 ¡Pedido Entregado!',
+            html: `
+                <div class="text-center">
+                    <div class="text-6xl mb-3">🍕</div>
+                    <p class="text-lg font-bold">¡Gracias por confiar en nosotros!</p>
+                    <p class="text-sm mt-2">Esperamos que disfrutes tu pedido.</p>
+                    <p class="text-xs text-cyan-400 mt-3">✨ Aguadulce Express - Siempre contigo ✨</p>
+                </div>
+            `,
+            icon: 'success',
+            background: '#020617',
+            color: 'white',
+            confirmButtonColor: '#06b6d4',
+            confirmButtonText: 'Volver al inicio',
+            timer: 5000,
+            timerProgressBar: true,
+            allowOutsideClick: false
+        }).then(() => {
+            // Limpiar seguimiento
+            if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+            if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+            if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+            
+            localStorage.removeItem('ae_pedido_activo');
+            localStorage.removeItem('ae_tracking_id');
+            
+            document.getElementById('tracking-modal').style.display = 'none';
+            document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+            
+            while (pantallaStack.length > 1) pantallaStack.pop();
+            renderHome();
+        });
+        return;
+    }
     
-    // Actualizar UI
-    document.getElementById('tracking-progress').style.width = '100%';
-    document.getElementById('tracking-estado').innerText = 'CANCELADO';
-    document.getElementById('tracking-emoji').innerText = '❌';
-    
+    // Información normal (para estados que no son cancelado ni entregado)
     document.getElementById('tracking-info').innerHTML = `
-        <div style="text-align:center; color: #ef4444;">
-            <p style="font-size:18px;">❌ PEDIDO CANCELADO</p>
-            <p>Motivo: No se presentó a recibir el pedido</p>
-            <p>Deuda generada: ${deuda.toFixed(2)}€</p>
-            <hr style="margin:15px 0; border-color:#ef4444;">
-            <p style="color:#f97316;">📞 Tu cuenta ha sido bloqueada</p>
-            <p>Para resolver tu situación, contacta con soporte:</p>
-            <p>📧 soporte@aguadulceexpress.com</p>
-            <p>📞 +34 123 456 789</p>
-            <button onclick="window.location.href='mailto:soporte@aguadulceexpress.com'" class="mt-3 bg-cyan-500 text-black px-4 py-2 rounded-xl text-sm font-bold">📧 Contactar soporte</button>
+        <div style="display:grid; gap:8px;">
+            <div><span style="color:#06b6d4;">📋 Pedido:</span> ${escapeHTML(data.id_pedido || data.id || '---')}</div>
+            <div><span style="color:#06b6d4;">👤 Cliente:</span> ${escapeHTML(data.cliente_nombre || '---')}</div>
+            <div><span style="color:#06b6d4;">💰 Total:</span> ${(data.total || 0).toFixed(2)}€</div>
+            <div><span style="color:#06b6d4;">📦 Estado:</span> ${config.txt}</div>
         </div>
     `;
-    return;
 }
     
     // Información normal

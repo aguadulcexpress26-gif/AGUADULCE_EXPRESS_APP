@@ -98,23 +98,18 @@
             </div>
         </div>
 
-        <!-- Tabs: En Curso / Historial -->
         <div class="tab">
             <button id="tab-activos" class="active" onclick="cambiarTab('activos')">📋 En Curso</button>
             <button id="tab-historial" onclick="cambiarTab('historial')">📜 Historial</button>
         </div>
 
-        <!-- Lista de pedidos activos -->
         <div id="listaActivos" class="tab-content active space-y-3"></div>
-        
-        <!-- Lista de historial (entregados/cancelados) -->
         <div id="listaHistorial" class="tab-content space-y-3"></div>
-        
         <div id="noPedidosMsg" class="text-center text-slate-400 p-10 hidden">📭 No hay pedidos</div>
     </div>
 </div>
 
-<!-- Modales (Capas) -->
+<!-- Modales -->
 <div id="modalDetalle" class="modal-capa">
     <div class="modal-header"><button onclick="cerrarModal('modalDetalle')">←</button><h2 class="font-bold text-lg">📋 Detalle del Pedido</h2></div>
     <div class="modal-body" id="detalleContent"><div class="loading">Cargando...</div></div>
@@ -131,13 +126,56 @@
 </div>
 
 <div id="modalEspera" class="modal-capa">
-    <div class="modal-header"><button onclick="cerrarModal('modalEspera')">←</button><h2 class="font-bold text-lg">⏰ Esperando al Cliente</h2></div>
-    <div class="modal-body" id="esperaContent"></div>
+    <div class="modal-header"><button onclick="cerrarModal('modalEspera')">←</button><h2 class="font-bold text-lg">🔔 Entrega del Pedido</h2></div>
+    <div class="modal-body" id="esperaContent">
+        <div class="text-center py-4">
+            <div class="text-6xl mb-4">🔔</div>
+            <p class="text-slate-700 font-medium mb-2">Estás en la puerta del cliente</p>
+            
+            <div class="bg-slate-50 rounded-xl p-4 mb-4">
+                <p class="text-slate-500 text-xs font-bold mb-3">📱 NOTIFICAR AL CLIENTE</p>
+                <div class="flex flex-col gap-2">
+                    <button onclick="enviarMensajePredefinido('ya_llegue')" class="bg-blue-500 text-white py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2">📍 "Ya llegué, estoy en la puerta"</button>
+                    <button onclick="enviarMensajePredefinido('esperando')" class="bg-blue-500 text-white py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2">⏰ "Estoy esperando, ¿puedes salir?"</button>
+                    <button onclick="enviarMensajePredefinido('timbre')" class="bg-blue-500 text-white py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2">🔔 "He llamado al timbre"</button>
+                    <button onclick="llamarClienteDesdeModal()" class="bg-emerald-500 text-white py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2">📞 Llamar al cliente</button>
+                </div>
+            </div>
+            
+            <div id="contadorContainer" class="hidden">
+                <div class="bg-red-50 rounded-xl p-4 mb-4 border border-red-200">
+                    <p class="text-red-600 text-xs font-bold mb-2">⏰ ESPERANDO AL CLIENTE</p>
+                    <div class="timer-grande" id="contadorAusencia">6:00</div>
+                    <p class="text-slate-500 text-xs mt-2">Tiempo restante antes de cancelación</p>
+                </div>
+            </div>
+            
+            <div id="accionesEntrega" class="hidden">
+                <button onclick="entregarPedidoModal()" class="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold mb-2">💰 Cobrar y Entregar</button>
+                <button id="btnCancelarAusencia" onclick="cancelarPorAusenciaModal()" class="w-full bg-red-500 text-white py-3 rounded-xl font-bold hidden">⏰ Cancelar por ausencia</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div id="modalCobro" class="modal-capa">
     <div class="modal-header"><button onclick="cerrarModal('modalCobro')">←</button><h2 class="font-bold text-lg">💰 Cobro del Pedido</h2></div>
-    <div class="modal-body" id="cobroContent"></div>
+    <div class="modal-body" id="cobroContent">
+        <div class="text-center py-4">
+            <div class="text-6xl mb-4">💵</div>
+            <p class="text-slate-500 mb-4">Total a cobrar</p>
+            <div class="text-4xl font-bold text-emerald-600" id="montoCobrar">0.00€</div>
+            <div class="mt-6">
+                <label class="block text-slate-600 text-sm mb-2">💵 ¿Con cuánto paga?</label>
+                <input type="number" id="montoRecibido" step="0.01" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-center text-xl font-bold" placeholder="0.00">
+                <p id="cambioCalculado" class="text-sm mt-2 text-slate-500"></p>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="confirmarCobro()" class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold">✅ Confirmar Entrega</button>
+                <button onclick="cerrarModal('modalCobro')" class="flex-1 bg-slate-200 text-slate-700 py-3 rounded-xl font-bold">Cancelar</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="menu-flotante">
@@ -164,6 +202,13 @@
     let temporizadorAusencia = null;
     let tabActual = 'activos';
     let intervalosContador = {};
+    let avisoEnviado = false;
+    
+    const mensajesPredefinidos = {
+        'ya_llegue': '📍 ¡Hola! Soy tu repartidor de Aguadulce Express. Ya llegué a tu dirección, estoy en la puerta.',
+        'esperando': '⏰ ¡Hola! Soy tu repartidor. Estoy esperando en la puerta. ¿Puedes salir a recibir tu pedido?',
+        'timbre': '🔔 ¡Hola! He llamado al timbre. Por favor, sal a recibir tu pedido de Aguadulce Express.'
+    };
     
     function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
     function sanitizarEmail(email) { if (!email) return ''; return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_'); }
@@ -178,7 +223,6 @@
         document.getElementById('tab-historial').classList.toggle('active', tab === 'historial');
     }
     
-    // ==================== LOGIN ====================
     async function loginRepartidor() {
         const nombre = document.getElementById('repartidorNombre').value.trim();
         const password = document.getElementById('repartidorPass').value;
@@ -219,7 +263,6 @@
         cargarReporteDiario();
     }
     
-    // ==================== ESCUCHAR PEDIDOS ====================
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();
         pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
@@ -257,7 +300,6 @@
         document.getElementById('totalGanadoHoy').innerHTML = reporte?.total_ganado?.toFixed(2) || '0.00';
     }
     
-    // ==================== RENDERIZAR PEDIDOS ACTIVOS ====================
     function renderizarActivos(pedidos) {
         const container = document.getElementById('listaActivos');
         const noPedidosMsg = document.getElementById('noPedidosMsg');
@@ -271,21 +313,13 @@
             let colorBorder = '#3b82f6';
             let botones = '';
             
-            // Contador de tiempo de cocción (si el pedido está en preparación)
             let tiempoHtml = '';
             if (p.tiempo_coccion && p.temporizador_activo && estado !== 'EN_REPARTO' && estado !== 'EN_PUERTA') {
                 const restante = p.tiempo_restante || p.tiempo_coccion;
-                tiempoHtml = `
-                    <div class="contador-coccion">
-                        <div class="label">⏱️ TIEMPO DE PREPARACIÓN</div>
-                        <div class="tiempo" id="timer-${p.id}">${restante} min</div>
-                        <div class="label">tiempo restante</div>
-                    </div>
-                `;
+                tiempoHtml = `<div class="contador-coccion"><div class="label">⏱️ TIEMPO DE PREPARACIÓN</div><div class="tiempo" id="timer-${p.id}">${restante} min</div><div class="label">tiempo restante</div></div>`;
                 iniciarContadorTiempo(p.id, restante);
             }
             
-            // Productos (mostrar lista)
             let productosHtml = '';
             if (p.items && p.items.length) {
                 productosHtml = `<div class="bg-slate-50 rounded-xl p-2 my-2"><p class="text-slate-500 text-xs font-bold mb-1">📦 PRODUCTOS</p>${p.items.map(item => `<div class="producto-item text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span>${(item.total || item.precio_unitario * item.cantidad).toFixed(2)}€</span></div>`).join('')}</div>`;
@@ -348,13 +382,11 @@
         }
     }
     
-    // ==================== CONTADOR REGRESIVO DE TIEMPO ====================
     function iniciarContadorTiempo(pedidoId, minutosRestantes) {
         if (intervalosContador[pedidoId]) clearInterval(intervalosContador[pedidoId]);
         let restante = minutosRestantes;
         const timerElement = document.getElementById(`timer-${pedidoId}`);
         if (!timerElement) return;
-        
         const interval = setInterval(async () => {
             const snap = await database.ref(`pedidos/${pedidoId}/tiempo_restante`).once('value');
             restante = snap.val();
@@ -362,12 +394,6 @@
                 clearInterval(interval);
                 delete intervalosContador[pedidoId];
                 if (timerElement) timerElement.innerText = '0 min';
-                // Notificar que el pedido está listo
-                const pedido = await database.ref(`pedidos/${pedidoId}`).once('value');
-                const data = pedido.val();
-                if (data && data.repartidor_asignado === repartidorActual.nombre && (data.estado === 'COCCIÓN' || data.estado === 'EN PROCESO')) {
-                    Swal.fire({ title: '🍽️ Pedido listo', text: 'El pedido ya está listo para recoger', icon: 'info', background: '#fff', color: '#1e293b', timer: 3000, showConfirmButton: false });
-                }
             } else {
                 if (timerElement) timerElement.innerText = `${restante} min`;
             }
@@ -375,7 +401,6 @@
         intervalosContador[pedidoId] = interval;
     }
     
-    // ==================== ACCIONES ====================
     async function verDetalleCompleto(pedidoId) {
         const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
         pedidoActual = snapshot.val();
@@ -454,23 +479,49 @@
     async function abrirModalEspera(pedidoId) {
         const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
         pedidoActual = snapshot.val();
-        document.getElementById('montoCobrar').innerText = `${(pedidoActual.total || 0).toFixed(2)}€`;
-        document.getElementById('contadorAusencia').innerHTML = '6:00';
+        document.getElementById('montoCobrar').innerHTML = `${(pedidoActual.total || 0).toFixed(2)}€`;
         window.pedidoActualId = pedidoId;
+        avisoEnviado = false;
+        document.getElementById('contadorContainer').classList.add('hidden');
+        document.getElementById('accionesEntrega').classList.add('hidden');
+        document.getElementById('btnCancelarAusencia').classList.add('hidden');
+        if (temporizadorAusencia) clearInterval(temporizadorAusencia);
         abrirModal('modalEspera');
+    }
+    
+    async function enviarMensajePredefinido(tipo) {
+        if (avisoEnviado) {
+            Swal.fire({ title: 'Aviso ya enviado', text: 'Ya notificaste al cliente. Esperando respuesta.', icon: 'info', background: '#fff', color: '#1e293b' });
+            return;
+        }
+        const mensaje = mensajesPredefinidos[tipo];
+        const pedidoId = window.pedidoActualId;
+        await database.ref(`mensajes/${pedidoId}`).push({
+            emisor: 'repartidor',
+            texto: mensaje,
+            tipo: 'aviso_llegada',
+            timestamp: Date.now(),
+            leido: false
+        });
+        avisoEnviado = true;
+        document.getElementById('contadorContainer').classList.remove('hidden');
+        document.getElementById('accionesEntrega').classList.remove('hidden');
         iniciarContadorAusencia(pedidoId);
+        Swal.fire({ title: '✅ Cliente notificado', text: 'Se ha iniciado el tiempo de espera. Tienes 6 minutos.', icon: 'success', timer: 2000, showConfirmButton: false, background: '#fff', color: '#1e293b' });
     }
     
     function iniciarContadorAusencia(pedidoId) {
         if (temporizadorAusencia) clearInterval(temporizadorAusencia);
         let tiempo = 360;
         const timerElement = document.getElementById('contadorAusencia');
+        const btnCancelar = document.getElementById('btnCancelarAusencia');
         temporizadorAusencia = setInterval(() => {
             if (document.getElementById('modalEspera').style.display !== 'flex') { clearInterval(temporizadorAusencia); return; }
             tiempo--;
             if (tiempo <= 0) {
                 clearInterval(temporizadorAusencia);
-                cancelarPorAusenciaModal();
+                if (btnCancelar) btnCancelar.classList.remove('hidden');
+                Swal.fire({ title: '⏰ Tiempo agotado', text: 'El cliente no respondió. Puedes cancelar el pedido.', icon: 'warning', background: '#fff', color: '#1e293b' });
             } else {
                 const minutos = Math.floor(tiempo / 60);
                 const segundos = tiempo % 60;
@@ -479,7 +530,7 @@
         }, 1000);
     }
     
-    function llamarClienteDesdeModal() { 
+    function llamarClienteDesdeModal() {
         if (pedidoActual?.cliente_telefono) {
             window.location.href = `tel:${pedidoActual.cliente_telefono}`;
         } else {
@@ -487,43 +538,27 @@
         }
     }
     
-    function enviarMensajeClienteModal() { 
-        Swal.fire({ title: '💬 Mensaje', text: 'Función de mensajería disponible próximamente', icon: 'info', background: '#fff', color: '#1e293b' });
-    }
-    
-    function entregarPedidoModal() { 
-        cerrarModal('modalEspera'); 
+    function entregarPedidoModal() {
+        if (!avisoEnviado) {
+            Swal.fire({ title: '⚠️ Debes avisar al cliente primero', text: 'Antes de cobrar, debes notificar al cliente usando uno de los mensajes predefinidos.', icon: 'warning', background: '#fff', color: '#1e293b' });
+            return;
+        }
+        cerrarModal('modalEspera');
         if (temporizadorAusencia) clearInterval(temporizadorAusencia);
-        abrirModal('modalCobro'); 
+        abrirModal('modalCobro');
     }
     
     function cancelarPorAusenciaModal() {
-        Swal.fire({ 
-            title: '¿Cancelar pedido?', 
-            text: 'El cliente no se presentó', 
-            icon: 'warning', 
-            showCancelButton: true, 
-            confirmButtonText: 'Sí, cancelar',
-            background: '#fff', 
-            color: '#1e293b' 
-        }).then(async result => {
+        if (!avisoEnviado) {
+            Swal.fire({ title: '⚠️ No puedes cancelar aún', text: 'Debes esperar a que se agote el tiempo de espera (6 minutos) o avisar al cliente primero.', icon: 'warning', background: '#fff', color: '#1e293b' });
+            return;
+        }
+        Swal.fire({ title: '¿Cancelar pedido?', text: 'El cliente no se presentó después del aviso y tiempo de espera.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar', background: '#fff', color: '#1e293b' }).then(async result => {
             if (result.isConfirmed) {
                 const deuda = pedidoActual.total || 0;
                 const emailSanitizado = sanitizarEmail(pedidoActual.cliente_email);
-                await database.ref(`clientes_morosos/${emailSanitizado}`).set({ 
-                    email_original: pedidoActual.cliente_email, 
-                    nombre: pedidoActual.cliente_nombre, 
-                    motivo: 'No se presentó a recibir el pedido', 
-                    deuda: deuda, 
-                    fecha: Date.now(), 
-                    activo: true 
-                });
-                await database.ref(`pedidos/${window.pedidoActualId}`).update({ 
-                    estado: 'CANCELADO_POR_AUSENCIA', 
-                    motivo_cancelacion: 'Cliente ausente', 
-                    deuda_generada: deuda, 
-                    timestamp_cancelacion: Date.now() 
-                });
+                await database.ref(`clientes_morosos/${emailSanitizado}`).set({ email_original: pedidoActual.cliente_email, nombre: pedidoActual.cliente_nombre, motivo: 'No se presentó a recibir el pedido (notificado previamente)', deuda: deuda, fecha: Date.now(), activo: true });
+                await database.ref(`pedidos/${window.pedidoActualId}`).update({ estado: 'CANCELADO_POR_AUSENCIA', motivo_cancelacion: 'Cliente ausente después de aviso y tiempo de espera', deuda_generada: deuda, timestamp_cancelacion: Date.now() });
                 if (temporizadorAusencia) clearInterval(temporizadorAusencia);
                 cerrarModal('modalEspera');
                 Swal.fire({ title: '❌ Cancelado', text: `Deuda registrada: ${deuda.toFixed(2)}€`, icon: 'error', background: '#fff', color: '#1e293b' });
@@ -534,12 +569,7 @@
     function confirmarCobro() {
         const montoRecibido = parseFloat(document.getElementById('montoRecibido')?.value) || pedidoActual.total;
         const cambio = montoRecibido - pedidoActual.total;
-        database.ref(`pedidos/${window.pedidoActualId}`).update({ 
-            estado: 'ENTREGADO', 
-            monto_recibido: montoRecibido, 
-            cambio_entregado: cambio >= 0 ? cambio : 0, 
-            timestamp_entregado: Date.now() 
-        });
+        database.ref(`pedidos/${window.pedidoActualId}`).update({ estado: 'ENTREGADO', monto_recibido: montoRecibido, cambio_entregado: cambio >= 0 ? cambio : 0, timestamp_entregado: Date.now() });
         cerrarModal('modalCobro');
         Swal.fire({ title: '✅ Entregado', text: 'Pedido completado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#fff', color: '#1e293b' });
     }
@@ -554,7 +584,6 @@
         }
     }
     
-    // Inicializar eventos del modal de cobro
     document.getElementById('montoRecibido')?.addEventListener('input', function() {
         const montoTotal = pedidoActual?.total || 0;
         const recibido = parseFloat(this.value) || 0;

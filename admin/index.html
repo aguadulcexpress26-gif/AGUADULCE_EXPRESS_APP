@@ -127,7 +127,126 @@
                 <div id="reporteRepartidores" class="space-y-2"></div>
             </div>
         </div>
+
+        // ==================== ASIGNACIÓN AUTOMÁTICA INTELIGENTE ====================
+
+// Configuración
+const MAX_PEDIDOS_POR_REPARTIDOR = 2;
+const TIEMPO_MAXIMO_SEGUNDO_PEDIDO = 15; // minutos
+
+// Función principal de asignación automática
+async function asignacionAutomatica() {
+    console.log("🔄 Ejecutando asignación automática...");
+    
+    try {
+        // 1. Obtener todos los pedidos LISTOS sin repartidor
+        const pedidosSnap = await database.ref('pedidos').once('value');
+        const pedidos = pedidosSnap.val() || {};
         
+        const pedidosSinAsignar = [];
+        for (const [id, data] of Object.entries(pedidos)) {
+            if (data.estado === 'LISTO' && !data.repartidor_asignado) {
+                pedidosSinAsignar.push({ id, ...data });
+            }
+        }
+        
+        if (pedidosSinAsignar.length === 0) {
+            console.log("📭 No hay pedidos LISTO sin asignar");
+            return;
+        }
+        
+        console.log(`📦 ${pedidosSinAsignar.length} pedido(s) sin asignar`);
+        
+        // 2. Obtener repartidores activos con sus pedidos actuales
+        const repartidoresSnap = await database.ref('repartidores').once('value');
+        const repartidores = repartidoresSnap.val() || {};
+        
+        // Calcular carga de trabajo de cada repartidor
+        const repartidoresActivos = [];
+        for (const [id, data] of Object.entries(repartidores)) {
+            if (data.activo === false) continue;
+            
+            // Obtener pedidos activos de este repartidor
+            const pedidosActivos = [];
+            for (const [pedId, pedData] of Object.entries(pedidos)) {
+                if (pedData.repartidor_asignado === data.nombre && 
+                    pedData.estado !== 'ENTREGADO' && 
+                    pedData.estado !== 'RECHAZADO') {
+                    pedidosActivos.push({
+                        id: pedId,
+                        estado: pedData.estado,
+                        tiempo_coccion: pedData.tiempo_coccion || 0,
+                        timestamp_listo: pedData.timestamp_listo
+                    });
+                }
+            }
+            
+            repartidoresActivos.push({
+                id: id,
+                nombre: data.nombre,
+                pedidos_activos: pedidosActivos,
+                cantidad_activos: pedidosActivos.length,
+                puede_recibir_mas: pedidosActivos.length < MAX_PEDIDOS_POR_REPARTIDOR
+            });
+        }
+        
+        // Ordenar repartidores por carga de trabajo (menos pedidos primero)
+        repartidoresActivos.sort((a, b) => a.cantidad_activos - b.cantidad_activos);
+        
+        console.log("📊 Carga de repartidores:", repartidoresActivos.map(r => 
+            `${r.nombre}: ${r.cantidad_activos} pedido(s) - Puede recibir: ${r.puede_recibir_mas}`
+        ));
+        
+        // 3. Asignar pedidos
+        for (const pedido of pedidosSinAsignar) {
+            let asignado = false;
+            
+            // Buscar repartidor adecuado
+            for (const rep of repartidoresActivos) {
+                if (!rep.puede_recibir_mas) continue;
+                
+                // Verificar si puede recibir un segundo pedido (regla de tiempo)
+                if (rep.cantidad_activos === 1) {
+                    const primerPedido = rep.pedidos_activos[0];
+                    // Si el primer pedido está EN CAMINO, verificar tiempo de cocción
+                    if (primerPedido.estado === 'EN CAMINO' || primerPedido.estado === 'LISTO') {
+                        const tiempoCoccion = pedido.tiempo_coccion || 15;
+                        if (tiempoCoccion > TIEMPO_MAXIMO_SEGUNDO_PEDIDO) {
+                            console.log(`⏱️ ${rep.nombre} no puede recibir ${pedido.id} (tiempo cocción ${tiempoCoccion}min > ${TIEMPO_MAXIMO_SEGUNDO_PEDIDO}min)`);
+                            continue;
+                        }
+                    }
+                }
+                
+                // Asignar pedido
+                await database.ref(`pedidos/${pedido.id}`).update({
+                    repartidor_asignado: rep.nombre,
+                    timestamp_asignado: Date.now()
+                });
+                
+                console.log(`✅ Pedido ${pedido.id} asignado a ${rep.nombre}`);
+                asignado = true;
+                rep.cantidad_activos++;
+                rep.puede_recibir_mas = rep.cantidad_activos < MAX_PEDIDOS_POR_REPARTIDOR;
+                break;
+            }
+            
+            if (!asignado) {
+                console.log(`⚠️ No hay repartidores disponibles para el pedido ${pedido.id}`);
+            }
+        }
+        
+    } catch (error) {
+        console.error("Error en asignación automática:", error);
+    }
+}
+
+// Iniciar asignación automática cada 15 segundos
+setInterval(asignacionAutomatica, 15000);
+
+// También ejecutar al cargar
+setTimeout(asignacionAutomatica, 5000);
+                    
         <!-- ==================== BANNERS ==================== -->
         <div id="seccion-banners" class="seccion hidden">
             <div class="flex justify-between items-center mb-6">

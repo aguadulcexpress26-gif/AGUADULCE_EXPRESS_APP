@@ -255,9 +255,47 @@
     }
     
     async function marcarEnCamino(pedidoId) {
-        await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN CAMINO', timestamp_camino: Date.now() });
-        Swal.fire({ title: '🛵 En camino', text: 'El pedido está en camino', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    await database.ref(`pedidos/${pedidoId}`).update({ 
+        estado: 'EN CAMINO', 
+        timestamp_camino: Date.now() 
+    });
+    Swal.fire({ title: '🛵 En camino', text: 'El pedido está en camino', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+}
+
+async function marcarEntregado(pedidoId) {
+    const confirm = await Swal.fire({
+        title: '✅ ¿Entregar pedido?',
+        text: 'Confirma que el cliente recibió el pedido',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '✅ Sí, entregar',
+        background: '#0f172a', color: 'white'
+    });
+    
+    if (confirm.isConfirmed) {
+        const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = snapshot.val();
+        
+        await database.ref(`pedidos/${pedidoId}`).update({ 
+            estado: 'ENTREGADO', 
+            timestamp_entregado: Date.now() 
+        });
+        
+        // Actualizar reporte del repartidor
+        const hoy = new Date().toDateString();
+        const repId = repartidorActual.nombre.replace(/ /g, '_');
+        const repRef = database.ref(`repartidores_reportes/${repId}/${hoy}`);
+        const reporteSnap = await repRef.once('value');
+        const reporte = reporteSnap.val() || { total_pedidos: 0, total_ganado: 0 };
+        
+        reporte.total_pedidos++;
+        reporte.total_ganado += pedido.total || 0;
+        await repRef.set(reporte);
+        
+        Swal.fire({ title: '✅ Entregado', text: 'Pedido entregado correctamente', icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        cargarReporteDiario();
     }
+}
     
     async function marcarEntregado(pedidoId) {
         const confirm = await Swal.fire({

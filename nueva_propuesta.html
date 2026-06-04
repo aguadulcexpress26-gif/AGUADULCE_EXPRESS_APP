@@ -976,50 +976,61 @@ function iniciarSeguimientoPedido(idPedido) {
     return true;
 }
 function actualizarInterfazSeguimiento(data) {
-    const estado = (data.estado || 'recibido').toLowerCase();
+    const estado = (data.estado || '').toUpperCase();
+    
+    // Mapeo de estados CORREGIDO para que coincida con repartidor
     const cfg = {
-        'recibido': { w: '15%', txt: 'RECIBIDO', msg: '✅ Recibido', emoji: '📥', paso: 1 },
-        'en proceso': { w: '45%', txt: 'EN PROCESO', msg: '👨‍🍳 Preparando', emoji: '🍳', paso: 2 },
-        'listo': { w: '75%', txt: 'LISTO', msg: '✅ Listo', emoji: '📦', paso: 2 },
-        'en camino': { w: '80%', txt: 'EN CAMINO', msg: '🛵 Repartidor en camino', emoji: '🛵', paso: 3 },
-        'llegó': { w: '95%', txt: '¡LLEGÓ!', msg: '📍 En tu puerta', emoji: '🔔', paso: 3 },
-        'entregado': { w: '100%', txt: 'ENTREGADO', msg: '🎉 Entregado', emoji: '✅', paso: 4 }
-    }[estado] || { w: '15%', txt: 'RECIBIDO', msg: '✅ Recibido', emoji: '📥', paso: 1 };
+        'RECIBIDO': { w: '15%', txt: 'RECIBIDO', msg: '✅ Pedido recibido', emoji: '📥', paso: 1 },
+        'COCCIÓN': { w: '35%', txt: 'PREPARANDO', msg: '👨‍🍳 El restaurante está preparando tu pedido', emoji: '🍳', paso: 2 },
+        'LISTO': { w: '50%', txt: 'LISTO', msg: '📦 Pedido listo, repartidor en camino', emoji: '📦', paso: 2 },
+        'EN_REPARTO': { w: '70%', txt: 'EN CAMINO', msg: '🛵 Tu pedido está en camino', emoji: '🛵', paso: 3 },
+        'EN_PUERTA': { w: '85%', txt: '¡LLEGÓ!', msg: '🔔 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
+        'ENTREGADO': { w: '100%', txt: 'ENTREGADO', msg: '🎉 Pedido entregado. ¡Gracias!', emoji: '✅', paso: 4 },
+        'CANCELADO_POR_AUSENCIA': { w: '100%', txt: 'CANCELADO', msg: '❌ Pedido cancelado por ausencia', emoji: '❌', paso: 0 }
+    };
     
-    document.getElementById('tracking-progress').style.width = cfg.w;
-    document.getElementById('tracking-estado').innerText = cfg.txt;
-    document.getElementById('tracking-mensaje').innerText = cfg.msg;
-    document.getElementById('tracking-emoji').innerText = cfg.emoji;
+    const config = cfg[estado] || cfg['RECIBIDO'];
     
+    document.getElementById('tracking-progress').style.width = config.w;
+    document.getElementById('tracking-estado').innerText = config.txt;
+    document.getElementById('tracking-mensaje').innerText = config.msg;
+    document.getElementById('tracking-emoji').innerText = config.emoji;
+    
+    // Actualizar pasos
     for (let i = 1; i <= 4; i++) {
-        document.getElementById(`step-${i}`).classList.toggle('active', i <= cfg.paso);
-    }
-    
-    const nombreCliente = data.cliente_nombre || data.cliente || data.clienteNombre || '---';
-    document.getElementById('tracking-info').innerHTML = `<div style="display:grid; gap:8px;"><div><span style="color:#06b6d4;">📋 Pedido:</span> ${escapeHTML(data.id || data.idPedido || '---')}</div><div><span style="color:#06b6d4;">👤 Cliente:</span> ${escapeHTML(nombreCliente)}</div><div><span style="color:#06b6d4;">💰 Total:</span> ${data.total ? euros(parseFloat(data.total)) : '---'}</div></div>`;
-    
-    if (estado === 'llegó') {
-        if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
-        const audio = initAudio();
-        audio.play().catch(e => console.log);
-        if (alarmaInterval) clearInterval(alarmaInterval);
-        alarmaInterval = setInterval(() => { if (document.visibilityState === 'visible') audio.play().catch(() => { }); }, 10000);
-        Swal.fire({ title: '🔔 ¡Tu pedido está llegando!', text: 'El repartidor está cerca.', icon: 'info', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', timer: 5000 });
-    }
-    
-    // 🔥 NUEVO: Limpiar listener de mensajes cuando el pedido termina
-    if (estado === 'entregado' || estado === 'cancelado_por_ausencia') {
-        if (window.mensajesListenerRef) {
-            window.mensajesListenerRef.off();
-            window.mensajesListenerRef = null;
+        const stepElement = document.getElementById(`step-${i}`);
+        if (stepElement) {
+            stepElement.classList.toggle('active', i <= config.paso);
         }
     }
     
-    if (estado === 'entregado') {
-        if (alarmaInterval) clearInterval(alarmaInterval);
-        limpiarSeguimientoCompleto();
-        Swal.fire({ title: '🎉 ¡Pedido entregado!', text: 'Gracias por usar Aguadulce Express', icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4' }).then(() => { location.reload(); });
+    // Si es cancelado, mostrar mensaje especial
+    if (estado === 'CANCELADO_POR_AUSENCIA') {
+        const deuda = data.deuda_generada || data.total || 0;
+        document.getElementById('tracking-info').innerHTML = `
+            <div style="text-align:center; color: #ef4444;">
+                <p style="font-size:18px;">❌ PEDIDO CANCELADO</p>
+                <p>Motivo: No se presentó a recibir el pedido</p>
+                <p>Deuda generada: ${deuda.toFixed(2)}€</p>
+                <hr style="margin:15px 0; border-color:#ef4444;">
+                <p style="color:#f97316;">📞 Tu cuenta ha sido bloqueada</p>
+                <p>Para resolver tu situación, contacta con soporte:</p>
+                <p>📧 soporte@aguadulceexpress.com</p>
+                <p>📞 +34 123 456 789</p>
+            </div>
+        `;
+        return;
     }
+    
+    // Información normal
+    document.getElementById('tracking-info').innerHTML = `
+        <div style="display:grid; gap:8px;">
+            <div><span style="color:#06b6d4;">📋 Pedido:</span> ${escapeHTML(data.id_pedido || data.id || '---')}</div>
+            <div><span style="color:#06b6d4;">👤 Cliente:</span> ${escapeHTML(data.cliente_nombre || '---')}</div>
+            <div><span style="color:#06b6d4;">💰 Total:</span> ${(data.total || 0).toFixed(2)}€</div>
+            <div><span style="color:#06b6d4;">📦 Estado:</span> ${config.txt}</div>
+        </div>
+    `;
 }
     // ==================== MOSTRAR MENSAJES DEL REPARTIDOR ====================
 function mostrarMensajeRepartidor(mensaje) {
@@ -1266,6 +1277,38 @@ iniciarSeguimientoPedido = function(idPedido) {
     }
     return resultado;
 };
+    async function notificarCancelacionAlCliente(pedidoId, deuda) {
+    const mensaje = `❌ Tu pedido ha sido CANCELADO por ausencia. Se ha generado una deuda de ${deuda.toFixed(2)}€. Tu cuenta ha sido bloqueada. Contacta con soporte: soporte@aguadulceexpress.com o +34 123 456 789 para regularizar tu situación.`;
+    
+    await database.ref(`mensajes/${pedidoId}`).push({
+        emisor: 'sistema',
+        texto: mensaje,
+        tipo: 'cancelacion',
+        timestamp: Date.now(),
+        leido: false
+    });
+    
+    // También mostrar en el modal si está abierto
+    mostrarMensajeSistema(mensaje);
+}
+
+function mostrarMensajeSistema(mensaje) {
+    const container = document.getElementById('mensajes-repartidor');
+    if (container) {
+        const mensajeHtml = `
+            <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-red-400 text-xl">⚠️</span>
+                    <div class="flex-1">
+                        <p class="text-red-400 text-xs font-bold">SISTEMA</p>
+                        <p class="text-white text-sm">${escapeHTML(mensaje)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('afterbegin', mensajeHtml);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', initApp);
 </script>

@@ -1208,6 +1208,64 @@ async function initApp() {
     } catch (e) { console.error("Fallo en la carga inicial:", e); alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); }
     finally { document.getElementById('loader').style.display = 'none'; }
 }
+    // ==================== LISTENER GLOBAL DE MENSAJES ====================
+let mensajesGlobalListener = null;
+
+function iniciarEscuchaMensajesGlobal() {
+    const pedidoId = localStorage.getItem('ae_pedido_activo');
+    if (!pedidoId) return;
+    
+    if (mensajesGlobalListener) mensajesGlobalListener.off();
+    mensajesGlobalListener = database.ref('mensajes/' + pedidoId);
+    mensajesGlobalListener.on('child_added', (snap) => {
+        const mensaje = snap.val();
+        if (mensaje && mensaje.emisor === 'repartidor') {
+            mostrarMensajeRepartidor(mensaje);
+            
+            // Notificación emergente si el modal está cerrado
+            const modal = document.getElementById('tracking-modal');
+            if (modal && modal.style.display !== 'flex') {
+                Swal.fire({
+                    title: '📱 Mensaje del repartidor',
+                    text: mensaje.texto.length > 80 ? mensaje.texto.substring(0, 80) + '...' : mensaje.texto,
+                    icon: 'info',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 5000,
+                    background: '#06b6d4',
+                    color: 'white'
+                });
+            }
+        }
+    });
+}
+
+// Modificar restaurarPedidoActivo para iniciar el listener global
+const restaurarPedidoActivoOriginal = restaurarPedidoActivo;
+restaurarPedidoActivo = function() { 
+    const id = localStorage.getItem('ae_pedido_activo'); 
+    if (id) {
+        database.ref('pedidos/' + id).once('value').then(snap => { 
+            if (snap.val()) {
+                iniciarSeguimientoPedido(id);
+                iniciarEscuchaMensajesGlobal();
+            } else { 
+                limpiarSeguimientoCompleto(); 
+            } 
+        });
+    }
+};
+
+// Modificar iniciarSeguimientoPedido para activar el listener global
+const iniciarSeguimientoPedidoOriginal = iniciarSeguimientoPedido;
+iniciarSeguimientoPedido = function(idPedido) {
+    const resultado = iniciarSeguimientoPedidoOriginal(idPedido);
+    if (resultado) {
+        iniciarEscuchaMensajesGlobal();
+    }
+    return resultado;
+};
 
 document.addEventListener('DOMContentLoaded', initApp);
 </script>

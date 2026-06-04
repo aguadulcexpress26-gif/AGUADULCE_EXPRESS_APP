@@ -995,25 +995,22 @@ function restaurarPedidoActivo() { const id = localStorage.getItem('ae_pedido_ac
 
 // ==================== ENVIAR PEDIDO CON LISTA NEGRA ====================
 async function enviarPedidoFinal() {
-   const pedido = {
-    id: idPedido,
-    id_pedido: idPedido,  // ← IMPORTANTE: para seguimiento
-    cliente_nombre: cliente.nombre,  // ← para mostrar en seguimiento
-    cliente: cliente.nombre,         // ← por si usa este campo
-    cliente_telefono: cliente.telefono,
-    cliente_email: cliente.email,
-    direccion: cliente.direccion_completa,
-    // ... resto de campos
-};
+    if (procesandoPedidoActivo) return;
     
-    // ==================== VERIFICAR LISTA NEGRA (CON EMAIL SANITIZADO) ====================
+    const cliente = obtenerCliente();
+    if (!cliente || !cliente.uid) {
+        alertaError("Registro", "Debes registrarte para hacer pedidos");
+        mostrarModal('modal-login');
+        return;
+    }
+    
+    // ==================== VERIFICAR LISTA NEGRA ====================
     try {
-        const emailOriginal = cliente.email;
-        const emailSanitizado = sanitizarEmail(emailOriginal);
+        const emailSanitizado = sanitizarEmail(cliente.email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
         const moroso = morosoSnap.val();
         if (moroso && moroso.activo === true) {
-            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nContacta con soporte para más información.`);
+            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nContacta con soporte.`);
             return;
         }
     } catch (error) { console.error("Error verificando lista negra:", error); }
@@ -1022,30 +1019,82 @@ async function enviarPedidoFinal() {
     if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
     if (!validarZona(cliente.cp)) return;
     if (!verificarAlcoholEnCesta()) return;
+    
     const tieneAlcohol = cesta.some(item => CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)));
-    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) { alertaError("Verificación de edad", "Debes ser mayor de 18 años."); return; }
+    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) { 
+        alertaError("Verificación de edad", "Debes ser mayor de 18 años."); 
+        return; 
+    }
+    
     const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
     const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
     const envio = 2.50, usoApp = 0.99, total = subtotal + envio + usoApp;
+    
     let montoPaga = null;
     if (metodo === "Efectivo") {
         const montoInput = document.getElementById('monto-paga');
-        if (montoInput && montoInput.value) { montoPaga = parseFloat(montoInput.value); if (isNaN(montoPaga)) montoPaga = null; }
+        if (montoInput && montoInput.value) { 
+            montoPaga = parseFloat(montoInput.value); 
+            if (isNaN(montoPaga)) montoPaga = null; 
+        }
     }
+    
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    
+    // 🔥 SOLO UNA DECLARACIÓN DE pedido (eliminé la primera)
     const pedido = {
-        id: idPedido, cliente_nombre: cliente.nombre, cliente_telefono: cliente.telefono, cliente_email: cliente.email,
-        direccion: cliente.direccion_completa, cp: cliente.cp,
-        items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
-        subtotal: cesta.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0), envio: envio, usoApp: usoApp, total: total,
-        metodo_pago: metodo, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre,
-        estado: "RECIBIDO", huella: huellaDigitalTerminal, fecha: Date.now(), timestamp: Date.now()
+        id: idPedido,
+        id_pedido: idPedido,
+        cliente_nombre: cliente.nombre,
+        cliente: cliente.nombre,
+        cliente_telefono: cliente.telefono,
+        cliente_email: cliente.email,
+        direccion: cliente.direccion_completa,
+        direccion_detalle: {
+            calle: cliente.calle,
+            edificio: cliente.edificio,
+            puerta: cliente.puerta,
+            instrucciones: cliente.instrucciones
+        },
+        cp: cliente.cp,
+        items: cesta.map(item => ({ 
+            nombre: item.nombre, 
+            cantidad: item.cantidad, 
+            precio_unitario: item.precio_unitario, 
+            opciones: item.opciones || "", 
+            extras_precio: item.extras_precio || 0, 
+            total: item.total 
+        })),
+        subtotal: cesta.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0),
+        envio: envio,
+        usoApp: usoApp,
+        total: total,
+        metodo_pago: metodo,
+        restaurante_id: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre,
+        estado: "RECIBIDO",
+        huella: huellaDigitalTerminal,
+        fecha: Date.now(),
+        timestamp: Date.now()
     };
+    
     if (montoPaga) pedido.monto_paga = montoPaga;
+    
     procesandoPedidoActivo = true;
     const btnProcesar = document.getElementById('btn-procesar-orden');
-    if (btnProcesar) { btnProcesar.disabled = true; btnProcesar.innerText = "PROCESANDO..."; btnProcesar.style.opacity = "0.5"; }
-    Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    if (btnProcesar) { 
+        btnProcesar.disabled = true; 
+        btnProcesar.innerText = "PROCESANDO..."; 
+        btnProcesar.style.opacity = "0.5"; 
+    }
+    
+    Swal.fire({ 
+        title: 'Enviando pedido...', 
+        text: 'Por favor espera', 
+        allowOutsideClick: false, 
+        didOpen: () => { Swal.showLoading(); } 
+    });
+    
     try {
         await database.ref('pedidos/' + idPedido).set(pedido);
         cesta = [];
@@ -1054,8 +1103,17 @@ async function enviarPedidoFinal() {
         iniciarSeguimientoPedido(idPedido);
         abrirModalTracking();
         Swal.close();
-    } catch (error) { Swal.close(); alertaError("Error", error.message || "No se pudo enviar el pedido"); }
-    finally { procesandoPedidoActivo = false; if (btnProcesar) { btnProcesar.disabled = false; btnProcesar.innerText = "Procesar Orden"; btnProcesar.style.opacity = "1"; } }
+    } catch (error) { 
+        Swal.close(); 
+        alertaError("Error", error.message || "No se pudo enviar el pedido"); 
+    } finally { 
+        procesandoPedidoActivo = false; 
+        if (btnProcesar) { 
+            btnProcesar.disabled = false; 
+            btnProcesar.innerText = "Procesar Orden"; 
+            btnProcesar.style.opacity = "1"; 
+        } 
+    }
 }
 
 // ==================== SERVICE WORKER ====================

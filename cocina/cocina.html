@@ -19,6 +19,7 @@
         .badge-pendiente { background: rgba(245,158,11,0.2); color: #f59e0b; }
         .badge-coccion { background: rgba(6,182,212,0.2); color: #06b6d4; }
         .badge-listo { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .badge-historial { background: rgba(100,116,139,0.2); color: #94a3b8; }
         .banner-img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
         .banner-container { position: relative; height: 220px; overflow: hidden; }
         .overlay-gradient { background: linear-gradient(to top, rgba(2,6,23,0.5) 0%, transparent 35%, transparent 100%); }
@@ -27,6 +28,10 @@
         .tiempo-btn { transition: all 0.1s; cursor: pointer; }
         .tiempo-btn:active { transform: scale(0.95); }
         .tiempo-btn.seleccionado { background-color: #22c55e !important; color: white !important; }
+        .grid-4cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+        @media (max-width: 1024px) { .grid-4cols { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 640px) { .grid-4cols { grid-template-columns: 1fr; } }
+        .historial-card { background: #0f172a; border: 1px solid #334155; border-radius: 20px; padding: 16px; margin-bottom: 12px; opacity: 0.85; }
     </style>
 </head>
 <body>
@@ -56,33 +61,47 @@
                 <h1 id="restauranteNombre" class="text-2xl font-black text-white drop-shadow-lg mt-1">CARGANDO...</h1>
             </div>
             <div class="flex items-center gap-3">
+                <button onclick="cambiarTab('activos')" id="tabActivosBtn" class="bg-cyan-500/20 text-cyan-400 px-3 py-2 rounded-xl text-sm font-bold">📋 ACTIVOS</button>
+                <button onclick="cambiarTab('historial')" id="tabHistorialBtn" class="bg-white/10 text-white/60 px-3 py-2 rounded-xl text-sm font-bold">📜 HISTORIAL</button>
                 <button onclick="cerrarSesion()" class="bg-white/10 backdrop-blur-sm p-2 rounded-xl hover:bg-white/20 transition-all">🚪 SALIR</button>
             </div>
         </div>
     </div>
 
-    <div class="p-4 flex flex-wrap justify-between items-center gap-3 border-b border-white/10">
-        <div class="flex gap-3 flex-wrap">
-            <div class="badge-pendiente px-3 py-1 rounded-full text-xs font-bold">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
-            <div class="badge-coccion px-3 py-1 rounded-full text-xs font-bold">🍳 EN COCINA: <span id="totalCoccion">0</span></div>
-            <div class="badge-listo px-3 py-1 rounded-full text-xs font-bold">✅ LISTOS: <span id="totalListos">0</span></div>
+    <!-- Sección de Activos (3 columnas) -->
+    <div id="seccionActivos" class="p-4">
+        <div class="flex flex-wrap justify-between items-center gap-3 border-b border-white/10 pb-4 mb-4">
+            <div class="flex gap-3 flex-wrap">
+                <div class="badge-pendiente px-3 py-1 rounded-full text-xs font-bold">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
+                <div class="badge-coccion px-3 py-1 rounded-full text-xs font-bold">🍳 EN COCINA: <span id="totalCoccion">0</span></div>
+                <div class="badge-listo px-3 py-1 rounded-full text-xs font-bold">✅ LISTOS: <span id="totalListos">0</span></div>
+            </div>
+            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
         </div>
-        <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
+                <h3 class="text-amber-400 font-bold text-sm uppercase mb-3">⏰ PENDIENTES</h3>
+                <div id="listaPendientes" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+            </div>
+            <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
+                <h3 class="text-cyan-400 font-bold text-sm uppercase mb-3">🍳 EN COCCIÓN</h3>
+                <div id="listaCoccion" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+            </div>
+            <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
+                <h3 class="text-emerald-400 font-bold text-sm uppercase mb-3">✅ LISTOS</h3>
+                <div id="listaListos" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+            </div>
+        </div>
     </div>
 
-    <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
-            <h3 class="text-amber-400 font-bold text-sm uppercase mb-3">⏰ PENDIENTES</h3>
-            <div id="listaPendientes" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
+    <!-- Sección de Historial (oculta por defecto) -->
+    <div id="seccionHistorial" class="hidden p-4">
+        <div class="flex justify-between items-center mb-4 pb-3 border-b border-white/10">
+            <h3 class="text-white/70 font-bold text-sm uppercase">📜 HISTORIAL DE PEDIDOS</h3>
+            <div class="badge-historial px-3 py-1 rounded-full text-xs font-bold">📊 TOTAL: <span id="totalHistorial">0</span></div>
         </div>
-        <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
-            <h3 class="text-cyan-400 font-bold text-sm uppercase mb-3">🍳 EN COCCIÓN</h3>
-            <div id="listaCoccion" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
-        </div>
-        <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
-            <h3 class="text-emerald-400 font-bold text-sm uppercase mb-3">✅ LISTOS</h3>
-            <div id="listaListos" class="space-y-3 max-h-[65vh] overflow-y-auto"></div>
-        </div>
+        <div id="listaHistorial" class="space-y-3 max-h-[70vh] overflow-y-auto"></div>
     </div>
 </div>
 
@@ -106,6 +125,7 @@
     let audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     audioNotif.volume = 0.8;
     let intervalosTemporizador = {};
+    let tabActual = 'activos';
     
     // ==================== VALIDACIÓN PIN ====================
     async function verificarPIN() {
@@ -158,12 +178,35 @@
         iniciarEscuchaPedidos();
     }
     
+    function cambiarTab(tab) {
+        tabActual = tab;
+        const seccionActivos = document.getElementById('seccionActivos');
+        const seccionHistorial = document.getElementById('seccionHistorial');
+        const tabActivosBtn = document.getElementById('tabActivosBtn');
+        const tabHistorialBtn = document.getElementById('tabHistorialBtn');
+        
+        if (tab === 'activos') {
+            seccionActivos.classList.remove('hidden');
+            seccionHistorial.classList.add('hidden');
+            tabActivosBtn.classList.add('bg-cyan-500/20', 'text-cyan-400');
+            tabActivosBtn.classList.remove('bg-white/10', 'text-white/60');
+            tabHistorialBtn.classList.remove('bg-cyan-500/20', 'text-cyan-400');
+            tabHistorialBtn.classList.add('bg-white/10', 'text-white/60');
+        } else {
+            seccionActivos.classList.add('hidden');
+            seccionHistorial.classList.remove('hidden');
+            tabHistorialBtn.classList.add('bg-cyan-500/20', 'text-cyan-400');
+            tabHistorialBtn.classList.remove('bg-white/10', 'text-white/60');
+            tabActivosBtn.classList.remove('bg-cyan-500/20', 'text-cyan-400');
+            tabActivosBtn.classList.add('bg-white/10', 'text-white/60');
+        }
+    }
+    
     function cerrarSesion() {
         if (pedidosListener) {
             try { pedidosListener.off(); } catch(e) {}
             pedidosListener = null;
         }
-        // Limpiar todos los intervalos
         for (const id in intervalosTemporizador) {
             clearInterval(intervalosTemporizador[id]);
         }
@@ -197,14 +240,16 @@
             const pendientes = [];
             const coccion = [];
             const listos = [];
+            const historial = [];
             
             for (const [id, data] of Object.entries(todosPedidos)) {
                 const coincide = (data.restaurante_id === restauranteActual.id_restaurante) || 
+                                (data.restaurante_pin === restauranteActual.pin) ||
                                 (data.restaurante_id === restauranteActual.pin);
                 
                 if (!coincide) continue;
                 
-                const estado = (data.estado || 'PENDIENTE').toUpperCase();
+                const estado = (data.estado || '').toUpperCase();
                 
                 if (estado === 'PENDIENTE' || estado === 'RECIBIDO') {
                     pendientes.push({ id, ...data });
@@ -212,16 +257,20 @@
                     coccion.push({ id, ...data });
                 } else if (estado === 'LISTO') {
                     listos.push({ id, ...data });
+                } else if (estado === 'ENTREGADO' || estado === 'CANCELADO_POR_AUSENCIA' || estado === 'RECHAZADO') {
+                    historial.push({ id, ...data });
                 }
             }
             
             document.getElementById('totalPendientes').innerText = pendientes.length;
             document.getElementById('totalCoccion').innerText = coccion.length;
             document.getElementById('totalListos').innerText = listos.length;
+            document.getElementById('totalHistorial').innerText = historial.length;
             
             renderizarPendientes(pendientes);
             renderizarCoccion(coccion);
             renderizarListos(listos);
+            renderizarHistorial(historial);
             
             if (sonidosActivados && pendientes.length > 0) {
                 audioNotif.play().catch(e => console.log);
@@ -293,7 +342,7 @@
                     
                     <div class="bg-slate-800/30 rounded-xl p-2 my-2">
                         <p class="text-white/60 text-xs">⏱️ Tiempo estimado: <span class="text-cyan-400 font-bold">${tiempoSel} min</span></p>
-                        ${p.temporizador_activo ? `<p class="text-cyan-400 text-xs mt-1">🕐 Restante: ${tiempoRestante} min</p>` : ''}
+                        ${p.temporizador_activo ? `<p class="text-cyan-400 text-xs mt-1">🕐 Restante: <span id="timer-${p.id}">${tiempoRestante}</span> min</p>` : ''}
                     </div>
                     
                     <div class="flex flex-wrap gap-2 mt-3">
@@ -338,6 +387,46 @@
         }
     }
     
+    // ==================== RENDERIZAR HISTORIAL (NUEVA FUNCIÓN) ====================
+    function renderizarHistorial(pedidos) {
+        const container = document.getElementById('listaHistorial');
+        if (!container) return;
+        
+        if (pedidos.length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">📜 No hay pedidos en el historial</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        for (const p of pedidos) {
+            const esEntregado = p.estado === 'ENTREGADO';
+            const estadoTexto = esEntregado ? '✅ Entregado' : (p.estado === 'CANCELADO_POR_AUSENCIA' ? '❌ Cancelado por ausencia' : '❌ Rechazado');
+            const estadoColor = esEntregado ? 'text-emerald-400' : 'text-red-400';
+            const borderColor = esEntregado ? 'border-emerald-400' : 'border-red-400';
+            
+            container.innerHTML += `
+                <div class="historial-card border-l-4 ${borderColor}">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="${estadoColor} font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
+                            <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
+                            <div class="px-2 py-0.5 rounded text-xs mt-1 ${estadoColor}">${estadoTexto}</div>
+                        </div>
+                    </div>
+                    ${p.estado === 'CANCELADO_POR_AUSENCIA' ? `<p class="text-red-400 text-xs mt-2">⚠️ Motivo: Cliente no se presentó</p>` : ''}
+                    ${p.motivo_rechazo ? `<p class="text-red-400 text-xs mt-2">⚠️ ${escapeHTML(p.motivo_rechazo)}</p>` : ''}
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 Ver detalle</button>
+                        ${esEntregado ? `<button onclick="imprimirTicket('${p.id}')" class="bg-amber-600/80 text-white px-3 py-2 rounded-xl text-xs">🖨️ Imprimir</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
     // ==================== ACCIONES DE PEDIDOS ====================
     async function aceptarPedido(id) {
         await database.ref(`pedidos/${id}`).update({
@@ -368,15 +457,13 @@
         }
     }
     
-    // ==================== ASIGNAR TIEMPO E INICIAR TEMPORIZADOR (TODO EN UNO) ====================
+    // ==================== ASIGNAR TIEMPO E INICIAR TEMPORIZADOR ====================
     async function asignarTiempo(id, minutos, btn) {
-        // 1. Remover selección de otros botones en el mismo pedido
         const parent = btn.parentElement;
         const buttons = parent.querySelectorAll('.tiempo-btn');
         buttons.forEach(b => b.classList.remove('seleccionado', 'bg-green-600', 'text-white'));
         btn.classList.add('seleccionado', 'bg-green-600', 'text-white');
         
-        // 2. Guardar tiempo en Firebase
         await database.ref(`pedidos/${id}`).update({
             tiempo_coccion: minutos,
             temporizador_activo: true,
@@ -384,7 +471,6 @@
             timestamp_inicio_coccion: Date.now()
         });
         
-        // 3. Mostrar confirmación
         Swal.fire({ 
             title: `⏱️ Cocción iniciada`, 
             text: `${minutos} minutos`, 
@@ -395,16 +481,13 @@
             color: 'white' 
         });
         
-        // 4. Limpiar intervalo anterior si existe
         if (intervalosTemporizador[id]) {
             clearInterval(intervalosTemporizador[id]);
         }
         
-        // 5. Iniciar nueva cuenta regresiva
         iniciarTemporizador(id, minutos);
     }
     
-    // ==================== INICIAR TEMPORIZADOR (CUENTA REGRESIVA) ====================
     function iniciarTemporizador(id, minutos) {
         let tiempoRestante = minutos;
         
@@ -412,7 +495,6 @@
             tiempoRestante--;
             
             if (tiempoRestante <= 0) {
-                // Temporizador terminado
                 clearInterval(interval);
                 delete intervalosTemporizador[id];
                 await database.ref(`pedidos/${id}`).update({
@@ -420,7 +502,6 @@
                     temporizador_activo: false
                 });
                 
-                // Notificar al repartidor que el pedido está listo
                 const pedido = await database.ref(`pedidos/${id}`).once('value');
                 const data = pedido.val();
                 if (data.repartidor_asignado) {
@@ -431,10 +512,11 @@
                     });
                 }
             } else {
-                // Actualizar tiempo restante en Firebase
                 await database.ref(`pedidos/${id}/tiempo_restante`).set(tiempoRestante);
+                const timerElement = document.getElementById(`timer-${id}`);
+                if (timerElement) timerElement.innerText = tiempoRestante;
             }
-        }, 60000); // 60,000 ms = 1 minuto
+        }, 60000);
         
         intervalosTemporizador[id] = interval;
     }
@@ -455,7 +537,6 @@
                 timestamp_listo: Date.now()
             });
             
-            // Limpiar temporizador
             if (intervalosTemporizador[id]) {
                 clearInterval(intervalosTemporizador[id]);
                 delete intervalosTemporizador[id];
@@ -572,19 +653,20 @@
             return m;
         });
     }
+    
     function actualizarTemporizadoresUI() {
-    for (const [id, interval] of Object.entries(intervalosTemporizador)) {
-        database.ref(`pedidos/${id}/tiempo_restante`).once('value').then(snap => {
-            const restante = snap.val();
-            const timerElement = document.getElementById(`timer-${id}`);
-            if (timerElement && restante !== null) {
-                timerElement.innerText = restante;
-            }
-        });
+        for (const id in intervalosTemporizador) {
+            database.ref(`pedidos/${id}/tiempo_restante`).once('value').then(snap => {
+                const restante = snap.val();
+                const timerElement = document.getElementById(`timer-${id}`);
+                if (timerElement && restante !== null) {
+                    timerElement.innerText = restante;
+                }
+            });
+        }
     }
-}
-// Ejecutar cada 5 segundos para actualizar UI
-setInterval(actualizarTemporizadoresUI, 5000);
+    
+    setInterval(actualizarTemporizadoresUI, 5000);
 </script>
 </body>
 </html>

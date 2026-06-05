@@ -530,11 +530,21 @@ async function cargarBaseDatos() {
     try {
         console.log("🔄 Cargando datos desde Firebase...");
         const restaurantesSnap = await database.ref('restaurantes').once('value');
-        db.restaurantes = restaurantesSnap.val() ? Object.values(restaurantesSnap.val()) : [];
+        const restaurantesRaw = restaurantesSnap.val() || {};
+        
+        // 🔥 CORREGIDO: Preservar el orden_manual y el pin como propiedad
+        db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
+            pin: pin,
+            ...data,
+            orden_manual: data.orden_manual !== undefined ? data.orden_manual : 9999
+        }));
+        
         console.log("✅ Restaurantes:", db.restaurantes.length);
+        
         const menuSnap = await database.ref('menu_general').once('value');
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         console.log("✅ Menú:", db.menu.length);
+        
         const horariosSnap = await database.ref('horarios_restaurantes').once('value');
         const horariosRaw = horariosSnap.val();
         db.horariosPorDia = {};
@@ -544,6 +554,7 @@ async function cargarBaseDatos() {
             }
         }
         console.log("✅ Horarios:", Object.keys(db.horariosPorDia).length);
+        
         const configSnap = await database.ref('config').once('value');
         const configData = configSnap.val();
         if (configData && Array.isArray(configData) && configData[0]) {
@@ -557,6 +568,7 @@ async function cargarBaseDatos() {
             const appLogo = document.getElementById('app-logo');
             if (appLogo && db.config.LOGO_URL) { appLogo.src = db.config.LOGO_URL; }
         }
+        
         const anunciosSnap = await database.ref('anuncios').once('value');
         const anunciosData = anunciosSnap.val();
         if (anunciosData && Array.isArray(anunciosData)) {

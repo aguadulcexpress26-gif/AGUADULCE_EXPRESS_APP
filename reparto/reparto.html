@@ -191,25 +191,26 @@
         document.getElementById('gananciaMes').innerText = gananciaMes.toFixed(2) + '€';
     }
     
-    async function loginRepartidor() {
-        const nombre = document.getElementById('repartidorNombre').value.trim();
-        const password = document.getElementById('repartidorPass').value;
-        const snapshot = await database.ref('repartidores').once('value');
-        const repartidores = snapshot.val() || {};
-        let encontrado = null;
-        for (const [id, data] of Object.entries(repartidores)) {
-            if (data.nombre === nombre && data.password === password && data.activo !== false) { encontrado = { id, ...data }; break; }
-        }
-        if (encontrado) {
-            repartidorActual = encontrado;
-            localStorage.setItem('repartidor_actual', JSON.stringify(repartidorActual));
-            document.getElementById('loginScreen').classList.add('hidden');
-            document.getElementById('dashboardPanel').classList.remove('hidden');
-            document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
-            iniciarEscuchaPedidos();
-            iniciarNotificaciones();
-        } else Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
+   async function loginRepartidor() {
+    const nombre = document.getElementById('repartidorNombre').value.trim();
+    const password = document.getElementById('repartidorPass').value;
+    const snapshot = await database.ref('repartidores').once('value');
+    const repartidores = snapshot.val() || {};
+    let encontrado = null;
+    for (const [id, data] of Object.entries(repartidores)) {
+        if (data.nombre === nombre && data.password === password && data.activo !== false) { encontrado = { id, ...data }; break; }
     }
+    if (encontrado) {
+        repartidorActual = encontrado;
+        localStorage.setItem('repartidor_actual', JSON.stringify(repartidorActual));
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('dashboardPanel').classList.remove('hidden');
+        document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+        iniciarEscuchaPedidos();
+        // No esperar a que se activen las notificaciones para no bloquear
+        iniciarNotificaciones().catch(e => console.log('Notificaciones:', e));
+    } else Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
+}
     
     function logoutRepartidor() { if (pedidosListener && pedidosListener.off) pedidosListener.off(); localStorage.removeItem('repartidor_actual'); location.reload(); }
     
@@ -223,33 +224,48 @@
     }
     
     async function iniciarNotificaciones() {
-        if (!firebase.messaging) return;
-        try {
-            // Inicializar Google Auth
-            if (typeof gapi !== 'undefined') {
-                await new Promise((resolve) => {
-                    gapi.load('auth2', () => {
-                        gapi.auth2.init({ client_id: CLIENT_ID });
-                        resolve();
-                    });
-                });
+    if (!firebase.messaging) {
+        console.log('❌ Firebase Messaging no disponible');
+        return;
+    }
+    
+    try {
+        // Solicitar permiso de notificaciones
+        const permission = await Notification.requestPermission();
+        console.log('📱 Permiso de notificaciones:', permission);
+        
+        if (permission === 'granted') {
+            // Registrar el Service Worker de FCM
+            let registration;
+            try {
+                registration = await navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js');
+                console.log('✅ Service Worker FCM registrado');
+            } catch(e) {
+                console.log('❌ Error registrando SW:', e);
+                return;
             }
             
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                messaging = firebase.messaging();
-                const registration = await navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js');
-                const token = await messaging.getToken({
-                    vapidKey: VAPID_KEY,
-                    serviceWorkerRegistration: registration
-                });
-                if (token) {
-                    await database.ref(`repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`).set(token);
-                    console.log('✅ Notificaciones push activadas');
-                }
+            // Obtener token FCM
+            messaging = firebase.messaging();
+            const token = await messaging.getToken({
+                vapidKey: VAPID_KEY,
+                serviceWorkerRegistration: registration
+            });
+            
+            if (token) {
+                // Guardar token en Firebase
+                const repRef = `repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`;
+                await database.ref(repRef).set(token);
+                console.log('✅ Token FCM guardado en Firebase');
+                console.log('📱 Token:', token.substring(0, 50) + '...');
+            } else {
+                console.log('❌ No se obtuvo token FCM');
             }
-        } catch(e) { console.log('Notificaciones no disponibles:', e); }
+        }
+    } catch(e) {
+        console.log('❌ Error en notificaciones:', e.message);
     }
+}
     
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();

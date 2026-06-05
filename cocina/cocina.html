@@ -310,19 +310,85 @@
         }
     }
     
-    function renderizarHistorial(pedidos) {
-        const container = document.getElementById('listaHistorial');
-        if (!container) return;
-        if (pedidos.length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-10">📜 No hay pedidos en el historial</div>'; return; }
-        container.innerHTML = '';
-        for (const p of pedidos) {
+   function renderizarHistorial(pedidos) {
+    const container = document.getElementById('listaHistorial');
+    if (!container) return;
+    
+    if (pedidos.length === 0) {
+        container.innerHTML = '<div class="text-center text-white/50 p-10">📜 No hay pedidos en el historial</div>';
+        return;
+    }
+    
+    // 🔥 Agrupar pedidos por fecha (YYYY-MM-DD)
+    const agrupados = {};
+    
+    for (const p of pedidos) {
+        const fecha = new Date(p.fecha || p.timestamp_entregado || p.timestamp_rechazo || p.timestamp_cancelacion || 0);
+        const fechaKey = fecha.toISOString().split('T')[0]; // "2026-06-05"
+        const fechaDisplay = fecha.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        if (!agrupados[fechaKey]) {
+            agrupados[fechaKey] = {
+                display: fechaDisplay,
+                pedidos: []
+            };
+        }
+        agrupados[fechaKey].pedidos.push(p);
+    }
+    
+    // Ordenar fechas de más reciente a más antigua
+    const fechasOrdenadas = Object.keys(agrupados).sort().reverse();
+    
+    container.innerHTML = '';
+    
+    for (const fechaKey of fechasOrdenadas) {
+        const grupo = agrupados[fechaKey];
+        
+        // Encabezado de fecha
+        container.innerHTML += `
+            <div class="sticky top-0 bg-slate-900/90 backdrop-blur-sm rounded-xl p-2 mb-2 z-10">
+                <p class="text-cyan-400 text-xs font-bold uppercase flex items-center gap-2">
+                    📅 ${grupo.display}
+                    <span class="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full text-[10px]">${grupo.pedidos.length} pedidos</span>
+                </p>
+            </div>
+        `;
+        
+        // Mostrar pedidos de esa fecha
+        for (const p of grupo.pedidos) {
             const esEntregado = p.estado === 'ENTREGADO';
             const estadoTexto = esEntregado ? '✅ Entregado' : (p.estado === 'CANCELADO_POR_AUSENCIA' ? '❌ Cancelado por ausencia' : '❌ Rechazado');
             const estadoColor = esEntregado ? 'text-emerald-400' : 'text-red-400';
             const borderColor = esEntregado ? 'border-emerald-400' : 'border-red-400';
-            container.innerHTML += `<div class="historial-card border-l-4 ${borderColor}"><div class="flex justify-between items-start"><div><span class="${estadoColor} font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span><p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p></div><div class="text-right"><span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span><div class="px-2 py-0.5 rounded text-xs mt-1 ${estadoColor}">${estadoTexto}</div></div></div>${p.estado === 'CANCELADO_POR_AUSENCIA' ? `<p class="text-red-400 text-xs mt-2">⚠️ Motivo: Cliente no se presentó</p>` : ''}${p.motivo_rechazo ? `<p class="text-red-400 text-xs mt-2">⚠️ ${escapeHTML(p.motivo_rechazo)}</p>` : ''}<div class="flex gap-2 mt-3"><button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 Ver detalle</button>${esEntregado ? `<button onclick="imprimirTicket('${p.id}')" class="bg-amber-600/80 text-white px-3 py-2 rounded-xl text-xs">🖨️ Imprimir</button>` : ''}</div></div>`;
+            
+            // Formatear hora
+            const horaPedido = new Date(p.fecha || p.timestamp_entregado || p.timestamp_rechazo || 0);
+            const horaStr = horaPedido.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            
+            container.innerHTML += `
+                <div class="historial-card border-l-4 ${borderColor} ml-2 mb-2">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="${estadoColor} font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
+                            <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
+                            <p class="text-white/40 text-[10px] mt-0.5">🕐 ${horaStr}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
+                            <div class="px-2 py-0.5 rounded text-xs mt-1 ${estadoColor}">${estadoTexto}</div>
+                        </div>
+                    </div>
+                    ${p.estado === 'CANCELADO_POR_AUSENCIA' ? `<p class="text-red-400 text-xs mt-2">⚠️ Motivo: Cliente no se presentó</p>` : ''}
+                    ${p.motivo_rechazo ? `<p class="text-red-400 text-xs mt-2">⚠️ ${escapeHTML(p.motivo_rechazo)}</p>` : ''}
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 Ver detalle</button>
+                        ${esEntregado ? `<button onclick="imprimirTicket('${p.id}')" class="bg-amber-600/80 text-white px-3 py-2 rounded-xl text-xs">🖨️ Imprimir</button>` : ''}
+                    </div>
+                </div>
+            `;
         }
     }
+}
     
     async function aceptarPedido(id) {
         const repartidoresSnap = await database.ref('repartidores').once('value');

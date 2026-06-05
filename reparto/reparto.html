@@ -217,20 +217,29 @@
         iniciarNotificaciones();
     }
     
-    async function iniciarNotificaciones() {
-        if (!firebase.messaging) return;
-        try {
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                messaging = firebase.messaging();
-                const token = await messaging.getToken({ vapidKey: VAPID_KEY });
-                if (token) {
-                    await database.ref(`repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`).set(token);
-                    console.log('✅ Notificaciones push activadas');
-                }
+   async function iniciarNotificaciones() {
+    if (!firebase.messaging) return;
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            messaging = firebase.messaging();
+            
+            // 🔥 REGISTRAR EL SW EN LA RUTA CORRECTA DENTRO DE LA CARPETA
+            const registration = await navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js');
+            
+            // Usar el registration para Firebase
+            const token = await messaging.getToken({
+                vapidKey: VAPID_KEY,
+                serviceWorkerRegistration: registration
+            });
+            
+            if (token) {
+                await database.ref(`repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`).set(token);
+                console.log('✅ Notificaciones push activadas');
             }
-        } catch(e) { console.log('Notificaciones no disponibles:', e); }
-    }
+        }
+    } catch(e) { console.log('Notificaciones no disponibles:', e); }
+}
     
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();

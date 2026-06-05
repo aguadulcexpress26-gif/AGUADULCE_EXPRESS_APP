@@ -457,20 +457,117 @@
         if (select && select.value) cargarHorariosRestaurante(select.value);
     }
     
-    async function cargarHorariosRestaurante(pin) {
-        if (!pin) { document.getElementById('horariosConfig').innerHTML = '<p class="text-white/50">Selecciona un restaurante</p>'; return; }
-        const snapshot = await database.ref(`restaurantes/${pin}/horarios`).once('value');
-        const horarios = snapshot.val() || {};
-        const html = `<h3 class="font-bold mb-4">Horarios - ${pin}</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 class="font-bold text-amber-400 mb-3">🌞 Turno Mañana</h4><label class="block text-sm mb-1">Lunes a Viernes</label><input type="text" id="turno1LV" value="${horarios.turno1?.LV || '09:00-15:00'}" class="w-full p-2 rounded bg-slate-700 mb-2"><label class="block text-sm mb-1">Sábados</label><input type="text" id="turno1Sab" value="${horarios.turno1?.Sab || '10:00-14:00'}" class="w-full p-2 rounded bg-slate-700 mb-2"><label class="block text-sm mb-1">Domingos</label><input type="text" id="turno1Dom" value="${horarios.turno1?.Dom || 'Cerrado'}" class="w-full p-2 rounded bg-slate-700"></div><div><h4 class="font-bold text-amber-400 mb-3">🌙 Turno Noche</h4><label class="block text-sm mb-1">Lunes a Viernes</label><input type="text" id="turno2LV" value="${horarios.turno2?.LV || '19:00-23:00'}" class="w-full p-2 rounded bg-slate-700 mb-2"><label class="block text-sm mb-1">Sábados</label><input type="text" id="turno2Sab" value="${horarios.turno2?.Sab || '19:00-23:30'}" class="w-full p-2 rounded bg-slate-700 mb-2"><label class="block text-sm mb-1">Domingos</label><input type="text" id="turno2Dom" value="${horarios.turno2?.Dom || 'Cerrado'}" class="w-full p-2 rounded bg-slate-700"></div></div><button onclick="guardarHorarios('${pin}')" class="mt-6 bg-amber-500 text-black px-6 py-2 rounded-xl font-bold">💾 Guardar Horarios</button>`;
-        document.getElementById('horariosConfig').innerHTML = html;
+   async function cargarHorariosRestaurante(pin) {
+    if (!pin) { 
+        document.getElementById('horariosConfig').innerHTML = '<p class="text-white/50">Selecciona un restaurante</p>'; 
+        return; 
     }
     
-    async function guardarHorarios(pin) {
-        const horarios = { turno1: { LV: document.getElementById('turno1LV')?.value || '09:00-15:00', Sab: document.getElementById('turno1Sab')?.value || '10:00-14:00', Dom: document.getElementById('turno1Dom')?.value || 'Cerrado' }, turno2: { LV: document.getElementById('turno2LV')?.value || '19:00-23:00', Sab: document.getElementById('turno2Sab')?.value || '19:00-23:30', Dom: document.getElementById('turno2Dom')?.value || 'Cerrado' } };
-        await database.ref(`restaurantes/${pin}/horarios`).set(horarios);
-        Swal.fire({ title: '✅ Horarios guardados', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    const snapshot = await database.ref(`restaurantes/${pin}/horarios_dias`).once('value');
+    const horarios = snapshot.val() || {};
+    
+    const dias = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
+    const diasEsp = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    
+    let html = `<h3 class="font-bold mb-4 text-cyan-400">📅 Horarios semanales - ${pin}</h3>
+                <div class="space-y-4 max-h-[70vh] overflow-y-auto pr-2">`;
+    
+    for (let i = 0; i < dias.length; i++) {
+        const dia = dias[i];
+        const diaEsp = diasEsp[i];
+        const horarioDia = horarios[dia] || { activo: true, apertura1: '09:00', cierre1: '15:00', apertura2: '19:00', cierre2: '23:00', dia_libre: false };
+        
+        html += `
+            <div class="bg-slate-700/30 rounded-xl p-4 border border-white/10">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="font-bold text-white">📌 ${diaEsp}</h4>
+                    <div class="flex gap-3">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" id="dia_libre_${dia}" class="w-4 h-4 accent-red-500" ${horarioDia.dia_libre ? 'checked' : ''} onchange="toggleDiaLibre('${pin}', '${dia}', this.checked)">
+                            <span class="text-xs text-white/70">🔴 Día libre</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" id="dia_activo_${dia}" class="w-4 h-4 accent-green-500" ${horarioDia.activo !== false ? 'checked' : ''} onchange="toggleDiaActivo('${pin}', '${dia}', this.checked)">
+                            <span class="text-xs text-white/70">✅ Activo</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="horarios_container_${dia}" class="${horarioDia.dia_libre ? 'opacity-50 pointer-events-none' : ''}">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-slate-800/50 rounded-xl p-3">
+                            <p class="text-amber-400 text-xs font-bold mb-2">🌞 TURNO MAÑANA</p>
+                            <div class="flex gap-2">
+                                <input type="time" id="apertura1_${dia}" value="${horarioDia.apertura1 || '09:00'}" class="w-full p-2 rounded bg-slate-700 text-white text-sm" ${horarioDia.dia_libre ? 'disabled' : ''}>
+                                <span class="text-white/50">a</span>
+                                <input type="time" id="cierre1_${dia}" value="${horarioDia.cierre1 || '15:00'}" class="w-full p-2 rounded bg-slate-700 text-white text-sm" ${horarioDia.dia_libre ? 'disabled' : ''}>
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-xl p-3">
+                            <p class="text-cyan-400 text-xs font-bold mb-2">🌙 TURNO NOCHE</p>
+                            <div class="flex gap-2">
+                                <input type="time" id="apertura2_${dia}" value="${horarioDia.apertura2 || '19:00'}" class="w-full p-2 rounded bg-slate-700 text-white text-sm" ${horarioDia.dia_libre ? 'disabled' : ''}>
+                                <span class="text-white/50">a</span>
+                                <input type="time" id="cierre2_${dia}" value="${horarioDia.cierre2 || '23:00'}" class="w-full p-2 rounded bg-slate-700 text-white text-sm" ${horarioDia.dia_libre ? 'disabled' : ''}>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
+    html += `<div class="mt-6 flex gap-3"><button onclick="guardarHorariosCompletos('${pin}')" class="flex-1 bg-amber-500 text-black py-3 rounded-xl font-bold">💾 GUARDAR TODOS LOS HORARIOS</button></div>`;
+    document.getElementById('horariosConfig').innerHTML = html;
+}
+
+function toggleDiaLibre(pin, dia, esLibre) {
+    const container = document.getElementById(`horarios_container_${dia}`);
+    const inputs = container.querySelectorAll('input');
+    if (esLibre) {
+        container.classList.add('opacity-50', 'pointer-events-none');
+        inputs.forEach(input => input.disabled = true);
+    } else {
+        container.classList.remove('opacity-50', 'pointer-events-none');
+        inputs.forEach(input => input.disabled = false);
+    }
+}
+
+function toggleDiaActivo(pin, dia, activo) {
+    console.log(`Día ${dia} activo: ${activo}`);
+}
+
+async function guardarHorariosCompletos(pin) {
+    const dias = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
+    const horarios = {};
+    
+    for (const dia of dias) {
+        const diaLibre = document.getElementById(`dia_libre_${dia}`)?.checked || false;
+        const activo = document.getElementById(`dia_activo_${dia}`)?.checked !== false;
+        
+        if (diaLibre) {
+            horarios[dia] = {
+                activo: activo,
+                dia_libre: true,
+                apertura1: 'CERRADO',
+                cierre1: '',
+                apertura2: 'CERRADO',
+                cierre2: ''
+            };
+        } else {
+            horarios[dia] = {
+                activo: activo,
+                dia_libre: false,
+                apertura1: document.getElementById(`apertura1_${dia}`)?.value || '09:00',
+                cierre1: document.getElementById(`cierre1_${dia}`)?.value || '15:00',
+                apertura2: document.getElementById(`apertura2_${dia}`)?.value || '19:00',
+                cierre2: document.getElementById(`cierre2_${dia}`)?.value || '23:00'
+            };
+        }
+    }
+    
+    await database.ref(`restaurantes/${pin}/horarios_dias`).set(horarios);
+    Swal.fire({ title: '✅ Horarios guardados', text: 'Los horarios se han actualizado correctamente', icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
+}    
     // ==================== MENÚS ====================
     async function cargarMenus() { 
         await actualizarSelectsRestaurantes(); 

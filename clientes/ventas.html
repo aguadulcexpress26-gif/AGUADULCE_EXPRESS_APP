@@ -346,21 +346,54 @@ async function clienteEsMayorDeEdad() {
 }
 
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
-    if (restaurant.DIA_LIBRE === 'SI' || restaurant.ESTADO === 'LIBRE') return { abierto: false, horario: "📅 Día libre" };
-    const horariosRest = db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
-    if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
+    // Primero verificar si tiene horarios por día
+    const horariosRest = restaurant.horarios_dias || db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
+    
+    if (!horariosRest) {
+        return { abierto: false, horario: "Horario no disponible" };
+    }
+    
     const ahora = new Date();
     const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
-    const horarioHoy = horariosRest[diasSemana[ahora.getDay()]];
-    if (!horarioHoy || horarioHoy.apertura1 === 'CERRADO') return { abierto: false, horario: "Cerrado hoy" };
+    const hoy = diasSemana[ahora.getDay()];
+    const horarioHoy = horariosRest[hoy];
+    
+    if (!horarioHoy || horarioHoy.dia_libre === true) {
+        return { abierto: false, horario: "📅 Día libre / Cerrado" };
+    }
+    
+    if (horarioHoy.activo === false) {
+        return { abierto: false, horario: "🚫 Temporalmente cerrado" };
+    }
+    
     const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
-    function conv(h) { if (!h || h === 'CERRADO') return null; let [hh, mm] = h.split(':'); return parseInt(hh) + parseInt(mm) / 60; }
-    const a1 = conv(horarioHoy.apertura1), c1 = conv(horarioHoy.cierre1);
-    const a2 = conv(horarioHoy.apertura2), c2 = conv(horarioHoy.cierre2);
-    let abierto = (a1 !== null && c1 !== null && horaActual >= a1 && horaActual < c1) || (a2 !== null && c2 !== null && horaActual >= a2 && horaActual < c2);
-    let horario = `${horarioHoy.apertura1 || ''}-${horarioHoy.cierre1 || ''}`;
-    if (a2) horario += ` / ${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
-    return { abierto, horario: horario || "Consultar horario" };
+    
+    function conv(h) {
+        if (!h || h === 'CERRADO') return null;
+        let [hh, mm] = h.split(':');
+        return parseInt(hh) + parseInt(mm) / 60;
+    }
+    
+    const a1 = conv(horarioHoy.apertura1);
+    const c1 = conv(horarioHoy.cierre1);
+    const a2 = conv(horarioHoy.apertura2);
+    const c2 = conv(horarioHoy.cierre2);
+    
+    let abierto = false;
+    let horarioTexto = '';
+    
+    if (a1 !== null && c1 !== null) {
+        abierto = abierto || (horaActual >= a1 && horaActual < c1);
+        horarioTexto += `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
+    }
+    
+    if (a2 !== null && c2 !== null) {
+        abierto = abierto || (horaActual >= a2 && horaActual < c2);
+        if (horarioTexto) horarioTexto += ` / `;
+        horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
+    }
+    
+    return { abierto, horario: horarioTexto || "Consultar horario" };
 }
 
 function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }

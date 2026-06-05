@@ -13,15 +13,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AE Reparto">
     
-    <!-- Google OAuth para FCM -->
-    <meta name="google-signin-client_id" content="153627815909-inuobgarqjbemt30bjjqpk6qgrjqubs.app.s.googleusercontent.com">
-    <script src="https://apis.google.com/js/platform.js" async defer></script>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -119,19 +115,17 @@
     };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
-    let messaging = null;
+    const auth = firebase.auth();
     
     let repartidorActual = null, pedidosListener = null, pedidoActual = null, temporizadorAusencia = null, avisoEnviado = false;
     let intervalosContador = {};
+    let pedidosIdsPrevios = new Set();
     
     const mensajesPredefinidos = {
         'ya_llegue': '📍 ¡Hola! Ya llegué a tu dirección, estoy en la puerta.',
         'esperando': '⏰ ¡Hola! Estoy esperando en la puerta. ¿Puedes salir?',
         'timbre': '🔔 ¡Hola! He llamado al timbre. Por favor, sal a recibir tu pedido.'
     };
-    
-    const VAPID_KEY = 'BH4IAMeS7LHkDjOt84N-7mG985aTyHpYXx845HqKCnT8oGyxbaJ9pT98IgfslMsrFTJW3jHpvik0mrY263nlFRY';
-    const CLIENT_ID = '153627815909-inuobgarqjbemt30bjjqpk6qgrjqubs.app.s.googleusercontent.com';
     
     function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
     function sanitizarEmail(email) { return email ? email.replace(/\./g, '_') : ''; }
@@ -191,92 +185,111 @@
         document.getElementById('gananciaMes').innerText = gananciaMes.toFixed(2) + '€';
     }
     
-   async function loginRepartidor() {
-    const nombre = document.getElementById('repartidorNombre').value.trim();
-    const password = document.getElementById('repartidorPass').value;
-    const snapshot = await database.ref('repartidores').once('value');
-    const repartidores = snapshot.val() || {};
-    let encontrado = null;
-    for (const [id, data] of Object.entries(repartidores)) {
-        if (data.nombre === nombre && data.password === password && data.activo !== false) { encontrado = { id, ...data }; break; }
+    // ==================== NOTIFICACIONES SIMPLIFICADAS ====================
+    async function iniciarNotificaciones() {
+        try {
+            if (Notification.permission !== 'granted') {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    console.log('❌ Permiso de notificaciones denegado');
+                    return false;
+                }
+            }
+            
+            const registration = await navigator.serviceWorker.ready;
+            console.log('✅ Service Worker listo para notificaciones');
+            
+            if (registration.active) {
+                registration.active.postMessage({
+                    type: 'NOTIFICACION_PEDIDO',
+                    titulo: '✅ Notificaciones activadas',
+                    cuerpo: 'Recibirás alertas de nuevos pedidos asignados',
+                    pedidoId: 'test'
+                });
+            }
+            return true;
+        } catch (error) {
+            console.error('❌ Error al iniciar notificaciones:', error);
+            return false;
+        }
     }
-    if (encontrado) {
-        repartidorActual = encontrado;
-        localStorage.setItem('repartidor_actual', JSON.stringify(repartidorActual));
-        document.getElementById('loginScreen').classList.add('hidden');
-        document.getElementById('dashboardPanel').classList.remove('hidden');
-        document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
-        iniciarEscuchaPedidos();
-        // No esperar a que se activen las notificaciones para no bloquear
-        iniciarNotificaciones().catch(e => console.log('Notificaciones:', e));
-    } else Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
-}
     
-    function logoutRepartidor() { if (pedidosListener && pedidosListener.off) pedidosListener.off(); localStorage.removeItem('repartidor_actual'); location.reload(); }
+    async function loginRepartidor() {
+        const nombre = document.getElementById('repartidorNombre').value.trim();
+        const password = document.getElementById('repartidorPass').value;
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        let encontrado = null;
+        for (const [id, data] of Object.entries(repartidores)) {
+            if (data.nombre === nombre && data.password === password && data.activo !== false) { encontrado = { id, ...data }; break; }
+        }
+        if (encontrado) {
+            repartidorActual = encontrado;
+            localStorage.setItem('repartidor_actual', JSON.stringify(repartidorActual));
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardPanel').classList.remove('hidden');
+            document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+            await auth.signInAnonymously();
+            iniciarEscuchaPedidos();
+            iniciarNotificaciones();
+        } else Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
+    }
+    
+    function logoutRepartidor() { 
+        if (pedidosListener && pedidosListener.off) pedidosListener.off(); 
+        localStorage.removeItem('repartidor_actual'); 
+        location.reload(); 
+    }
     
     if (localStorage.getItem('repartidor_actual')) {
         repartidorActual = JSON.parse(localStorage.getItem('repartidor_actual'));
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.remove('hidden');
         document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+        auth.signInAnonymously();
         iniciarEscuchaPedidos();
         iniciarNotificaciones();
     }
     
-    async function iniciarNotificaciones() {
-    if (!firebase.messaging) {
-        console.log('❌ Firebase Messaging no disponible');
-        return;
-    }
-    
-    try {
-        // Solicitar permiso de notificaciones
-        const permission = await Notification.requestPermission();
-        console.log('📱 Permiso de notificaciones:', permission);
-        
-        if (permission === 'granted') {
-            // Registrar el Service Worker de FCM
-            let registration;
-            try {
-                registration = await navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js');
-                console.log('✅ Service Worker FCM registrado');
-            } catch(e) {
-                console.log('❌ Error registrando SW:', e);
-                return;
-            }
-            
-            // Obtener token FCM
-            messaging = firebase.messaging();
-            const token = await messaging.getToken({
-                vapidKey: VAPID_KEY,
-                serviceWorkerRegistration: registration
-            });
-            
-            if (token) {
-                // Guardar token en Firebase
-                const repRef = `repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`;
-                await database.ref(repRef).set(token);
-                console.log('✅ Token FCM guardado en Firebase');
-                console.log('📱 Token:', token.substring(0, 50) + '...');
-            } else {
-                console.log('❌ No se obtuvo token FCM');
-            }
-        }
-    } catch(e) {
-        console.log('❌ Error en notificaciones:', e.message);
-    }
-}
-    
+    // ==================== ESCUCHA DE PEDIDOS CON NOTIFICACIONES ====================
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();
+        
         pedidosListener = database.ref('pedidos').on('value', async (snapshot) => {
             const todosPedidos = snapshot.val() || {};
             const activos = [], historial = [];
+            const nuevosPedidosIds = new Set();
+            
             for (const [id, data] of Object.entries(todosPedidos)) {
                 if (data.repartidor_asignado !== repartidorActual.nombre) continue;
-                if (data.estado === 'ENTREGADO' || data.estado === 'CANCELADO_POR_AUSENCIA') historial.push({ id, ...data });
-                else activos.push({ id, ...data });
+                nuevosPedidosIds.add(id);
+                if (data.estado === 'ENTREGADO' || data.estado === 'CANCELADO_POR_AUSENCIA') {
+                    historial.push({ id, ...data });
+                } else {
+                    activos.push({ id, ...data });
+                }
             }
+            
+            // Detectar nuevos pedidos y enviar notificación
+            const nuevosIds = [...nuevosPedidosIds].filter(id => !pedidosIdsPrevios.has(id));
+            if (nuevosIds.length > 0) {
+                const registration = await navigator.serviceWorker.ready;
+                for (const nuevoId of nuevosIds) {
+                    const pedido = todosPedidos[nuevoId];
+                    if (pedido && registration && registration.active) {
+                        registration.active.postMessage({
+                            type: 'NOTIFICACION_PEDIDO',
+                            titulo: '🛵 Nuevo pedido asignado',
+                            cuerpo: `Cliente: ${pedido.cliente_nombre} - Total: ${pedido.total}€`,
+                            pedidoId: nuevoId,
+                            total: pedido.total
+                        });
+                        console.log('🔔 Notificación enviada para pedido:', nuevoId);
+                    }
+                }
+            }
+            pedidosIdsPrevios = nuevosPedidosIds;
+            
             activos.sort((a,b) => (b.fecha||0)-(a.fecha||0));
             historial.sort((a,b) => (b.fecha||0)-(a.fecha||0));
             renderizarActivos(activos);
@@ -451,68 +464,20 @@
         entregarPedido(pedidoId); 
     }
     
-    // ==================== FUNCIÓN ENTREGAR PEDIDO CORREGIDA ====================
     async function entregarPedido(pedidoId) {
-        // Obtener el pedido actual nuevamente para asegurar el total
         const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
         const pedido = snapshot.val();
-        
         if (!pedido) {
             Swal.fire({ title: 'Error', text: 'No se encontró el pedido', icon: 'error' });
             return;
         }
-        
         const total = pedido.total || 0;
-        
         if (!avisoEnviado && pedido.estado === 'EN_PUERTA') {
-            const confirm = await Swal.fire({ 
-                title: '⚠️ Aviso no enviado', 
-                text: '¿Quieres enviar aviso al cliente antes de cobrar?', 
-                icon: 'question', 
-                showCancelButton: true, 
-                confirmButtonText: 'Sí, enviar aviso', 
-                cancelButtonText: 'Cobrar sin aviso' 
-            });
-            if (confirm.isConfirmed) { 
-                abrirOpcionesEntrega(pedidoId); 
-                return; 
-            }
+            const confirm = await Swal.fire({ title: '⚠️ Aviso no enviado', text: '¿Quieres enviar aviso al cliente antes de cobrar?', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, enviar aviso', cancelButtonText: 'Cobrar sin aviso' });
+            if (confirm.isConfirmed) { abrirOpcionesEntrega(pedidoId); return; }
         }
-        
-        const { value: monto } = await Swal.fire({ 
-            title: '💰 Cobro', 
-            html: `<p>Total a cobrar: <strong style="font-size:24px;">${total.toFixed(2)}€</strong></p>
-                   <input type="number" id="montoRecibido" step="0.01" class="w-full p-3 rounded-xl border mt-3" placeholder="¿Con cuánto paga?" value="${total}">`, 
-            confirmButtonText: 'Confirmar entrega', 
-            showCancelButton: true,
-            cancelButtonText: 'Cancelar',
-            preConfirm: () => {
-                const recibido = parseFloat(document.getElementById('montoRecibido').value);
-                if (isNaN(recibido)) {
-                    Swal.showValidationMessage('Ingresa un monto válido');
-                    return false;
-                }
-                return { recibido: recibido };
-            }
-        });
-        
-        if (monto) { 
-            const cambio = monto.recibido - total;
-            await database.ref(`pedidos/${pedidoId}`).update({ 
-                estado: 'ENTREGADO', 
-                monto_recibido: monto.recibido, 
-                cambio_entregado: cambio >= 0 ? cambio : 0,
-                timestamp_entregado: Date.now()
-            });
-            cerrarModalOpciones();
-            Swal.fire({ 
-                title: '✅ Pedido Entregado', 
-                html: `<p>Total: ${total.toFixed(2)}€</p>${cambio >= 0 ? `<p>Cambio: ${cambio.toFixed(2)}€</p>` : '<p>Pago exacto</p>'}`,
-                icon: 'success', 
-                timer: 2500,
-                showConfirmButton: false
-            });
-        }
+        const { value: monto } = await Swal.fire({ title: '💰 Cobro', html: `<p>Total a cobrar: <strong style="font-size:24px;">${total.toFixed(2)}€</strong></p><input type="number" id="montoRecibido" step="0.01" class="w-full p-3 rounded-xl border mt-3" placeholder="¿Con cuánto paga?" value="${total}">`, confirmButtonText: 'Confirmar entrega', showCancelButton: true, cancelButtonText: 'Cancelar', preConfirm: () => { const recibido = parseFloat(document.getElementById('montoRecibido').value); if (isNaN(recibido)) { Swal.showValidationMessage('Ingresa un monto válido'); return false; } return { recibido: recibido }; } });
+        if (monto) { const cambio = monto.recibido - total; await database.ref(`pedidos/${pedidoId}`).update({ estado: 'ENTREGADO', monto_recibido: monto.recibido, cambio_entregado: cambio >= 0 ? cambio : 0, timestamp_entregado: Date.now() }); cerrarModalOpciones(); Swal.fire({ title: '✅ Pedido Entregado', html: `<p>Total: ${total.toFixed(2)}€</p>${cambio >= 0 ? `<p>Cambio: ${cambio.toFixed(2)}€</p>` : '<p>Pago exacto</p>'}`, icon: 'success', timer: 2500, showConfirmButton: false }); }
     }
     
     async function cancelarPorAusencia(pedidoId) {
@@ -531,7 +496,7 @@
     function llamarCliente(pedidoId) { database.ref(`pedidos/${pedidoId}`).once('value', snap => { const p = snap.val(); if(p?.cliente_telefono) window.location.href = `tel:${p.cliente_telefono}`; else Swal.fire({ title: 'Info', text: 'Número no disponible', icon: 'info' }); }); }
     async function verDetalleCompleto(pedidoId) { const snap = await database.ref(`pedidos/${pedidoId}`).once('value'); const p = snap.val(); Swal.fire({ title: `Pedido #${p.id_pedido || pedidoId.substring(0,8)}`, html: `<div class="text-left"><p><strong>Cliente:</strong> ${escapeHTML(p.cliente_nombre)}</p><p><strong>Dirección:</strong> ${escapeHTML(p.direccion)}</p><p><strong>Total:</strong> ${(p.total||0).toFixed(2)}€</p><p><strong>Productos:</strong></p><p>${p.items?.map(i => `${i.cantidad}x ${i.nombre}`).join('<br>') || p.detalle}</p></div>`, width: '90%' }); }
     
-    // ==================== REGISTRO SERVICE WORKER PARA PWA ====================
+    // Registro Service Worker para PWA
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw-reparto.js')
             .then(reg => console.log('✅ Service Worker PWA registrado', reg))

@@ -25,6 +25,9 @@
         .tiempo-btn:active { transform: scale(0.95); }
         .tiempo-btn.seleccionado { background-color: #22c55e !important; color: white !important; }
         .historial-card { background: #0f172a; border: 1px solid #334155; border-radius: 20px; padding: 16px; margin-bottom: 12px; opacity: 0.85; }
+        .card-venta { background: linear-gradient(135deg, #0f172a 0%, #0a0f1a 100%); border: 1px solid #1e293b; border-radius: 16px; padding: 8px 16px; min-width: 140px; text-align: center; }
+        .card-venta .label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .card-venta .monto { font-size: 20px; font-weight: 800; }
     </style>
 </head>
 <body>
@@ -60,14 +63,28 @@
     </div>
 
     <div id="seccionActivos" class="p-4">
+        <!-- BARRA SUPERIOR CON CAJONES DE VENTAS Y SONIDO -->
         <div class="flex flex-wrap justify-between items-center gap-3 border-b border-white/10 pb-4 mb-4">
             <div class="flex gap-3 flex-wrap">
                 <div class="badge-pendiente px-3 py-1 rounded-full text-xs font-bold">📥 PENDIENTES: <span id="totalPendientes">0</span></div>
                 <div class="badge-coccion px-3 py-1 rounded-full text-xs font-bold">🍳 EN COCINA: <span id="totalCoccion">0</span></div>
                 <div class="badge-listo px-3 py-1 rounded-full text-xs font-bold">✅ LISTOS: <span id="totalListos">0</span></div>
             </div>
-            <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full">🔊 ACTIVAR SONIDO</button>
+            
+            <!-- 🔥 NUEVOS CAJONES DE VENTAS -->
+            <div class="flex gap-3 items-center">
+                <div class="card-venta">
+                    <p class="label text-emerald-400">💰 VENTAS HOY</p>
+                    <p class="monto text-emerald-400" id="ventasHoy">0.00€</p>
+                </div>
+                <div class="card-venta">
+                    <p class="label text-cyan-400">📊 VENTAS SEMANA</p>
+                    <p class="monto text-cyan-400" id="ventasSemana">0.00€</p>
+                </div>
+                <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
+            </div>
         </div>
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div class="bg-black/30 rounded-2xl p-4 border border-white/5 min-h-[500px]">
                 <h3 class="text-amber-400 font-bold text-sm uppercase mb-3">⏰ PENDIENTES</h3>
@@ -107,6 +124,55 @@
     let restauranteActual = null, pedidosListener = null, sonidosActivados = false, audioNotif = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'), intervalosTemporizador = {};
     
     function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
+    
+    // ==================== FUNCIONES DE VENTAS ====================
+    function getInicioSemana() {
+        const hoy = new Date();
+        const dia = hoy.getDay();
+        const diff = (dia === 0 ? 6 : dia - 1);
+        const lunes = new Date(hoy);
+        lunes.setDate(hoy.getDate() - diff);
+        lunes.setHours(0, 0, 0, 0);
+        return lunes;
+    }
+    
+    function getFinSemana() {
+        const domingo = new Date(getInicioSemana());
+        domingo.setDate(domingo.getDate() + 6);
+        domingo.setHours(23, 59, 59, 999);
+        return domingo;
+    }
+    
+    async function calcularVentas(pedidos) {
+        const hoyInicio = new Date(); hoyInicio.setHours(0, 0, 0, 0);
+        const semanaInicio = getInicioSemana();
+        const semanaFin = getFinSemana();
+        
+        let ventasHoy = 0;
+        let ventasSemana = 0;
+        
+        for (const p of pedidos) {
+            // Solo pedidos ENTREGADOS o CANCELADOS (el restaurante preparó y debe cobrar)
+            const estadoValido = p.estado === 'ENTREGADO' || p.estado === 'CANCELADO_POR_AUSENCIA';
+            if (!estadoValido) continue;
+            
+            const fechaPedido = new Date(p.fecha || p.timestamp_entregado || p.timestamp_cancelacion || 0);
+            const subtotalPedido = p.subtotal || (p.total ? p.total - (p.envio || 2.50) - (p.usoApp || 0.99) : p.total || 0);
+            
+            // Ventas Hoy
+            if (fechaPedido >= hoyInicio) {
+                ventasHoy += subtotalPedido;
+            }
+            
+            // Ventas Semana
+            if (fechaPedido >= semanaInicio && fechaPedido <= semanaFin) {
+                ventasSemana += subtotalPedido;
+            }
+        }
+        
+        document.getElementById('ventasHoy').innerText = ventasHoy.toFixed(2) + '€';
+        document.getElementById('ventasSemana').innerText = ventasSemana.toFixed(2) + '€';
+    }
     
     async function verificarPIN() {
         const pin = document.getElementById('pinInput').value.toUpperCase().trim();
@@ -173,7 +239,7 @@
     
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();
-        pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
+        pedidosListener = database.ref('pedidos').on('value', async (snapshot) => {
             const todosPedidos = snapshot.val() || {};
             const pendientes = [], coccion = [], listos = [], historial = [];
             for (const [id, data] of Object.entries(todosPedidos)) {
@@ -189,10 +255,16 @@
             document.getElementById('totalCoccion').innerText = coccion.length;
             document.getElementById('totalListos').innerText = listos.length;
             document.getElementById('totalHistorial').innerText = historial.length;
+            
             renderizarPendientes(pendientes);
             renderizarCoccion(coccion);
             renderizarListos(listos);
             renderizarHistorial(historial);
+            
+            // 🔥 Calcular ventas con todos los pedidos (pendientes + coccion + listos + historial)
+            const todosPedidosRestaurante = [...pendientes, ...coccion, ...listos, ...historial];
+            await calcularVentas(todosPedidosRestaurante);
+            
             if (sonidosActivados && pendientes.length > 0) audioNotif.play().catch(e => console.log);
         });
     }
@@ -252,7 +324,6 @@
         }
     }
     
-    // ==================== ACCIONES CORREGIDAS ====================
     async function aceptarPedido(id) {
         const repartidoresSnap = await database.ref('repartidores').once('value');
         const repartidores = repartidoresSnap.val() || {};

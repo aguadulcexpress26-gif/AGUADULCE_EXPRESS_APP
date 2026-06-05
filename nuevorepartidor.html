@@ -8,15 +8,17 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f0f4f8; color: #1e293b; }
         .card { background: white; border-radius: 24px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; }
-        .btn-primary { background: #3b82f6; color: white; font-weight: 700; padding: 14px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
-        .btn-success { background: #22c55e; color: white; font-weight: 700; padding: 14px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
-        .btn-danger { background: #ef4444; color: white; font-weight: 700; padding: 14px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
-        .btn-warning { background: #f97316; color: white; font-weight: 700; padding: 14px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
+        .btn-primary { background: #3b82f6; color: white; font-weight: 700; padding: 12px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
+        .btn-success { background: #22c55e; color: white; font-weight: 700; padding: 12px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
+        .btn-danger { background: #ef4444; color: white; font-weight: 700; padding: 12px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
+        .btn-warning { background: #f97316; color: white; font-weight: 700; padding: 12px; border-radius: 60px; width: 100%; border: none; cursor: pointer; }
+        .btn-secondary { background: #64748b; color: white; font-weight: 600; padding: 10px; border-radius: 40px; width: 100%; border: none; cursor: pointer; }
         .badge { display: inline-block; padding: 4px 12px; border-radius: 50px; font-size: 11px; font-weight: 700; }
         .badge-blue { background: #dbeafe; color: #1d4ed8; }
         .badge-green { background: #dcfce7; color: #15803d; }
@@ -31,9 +33,16 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .contador-coccion { background: #dbeafe; border-radius: 12px; padding: 10px; text-align: center; margin: 10px 0; }
-        .contador-coccion .tiempo { font-size: 24px; font-weight: 800; color: #1d4ed8; }
-        .boton-opciones { background: #64748b; color: white; padding: 12px; border-radius: 12px; font-size: 14px; font-weight: 600; width: 100%; border: none; cursor: pointer; margin-top: 10px; }
-        .contador-ausencia { background: #fee2e2; border: 2px solid #ef4444; border-radius: 16px; padding: 15px; margin-top: 15px; text-align: center; }
+        .contador-coccion .tiempo { font-size: 28px; font-weight: 800; color: #1d4ed8; font-family: monospace; }
+        .stats-card { background: white; border-radius: 16px; padding: 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        .stats-card .label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+        .stats-card .value { font-size: 16px; font-weight: 800; }
+        .grid-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+        .boton-accion { flex: 1; padding: 10px; border-radius: 40px; font-weight: 600; font-size: 13px; text-align: center; cursor: pointer; border: none; }
+        .boton-recoger { background: #8b5cf6; color: white; }
+        .boton-llegue { background: #f97316; color: white; }
+        .boton-entregar { background: #22c55e; color: white; }
+        .boton-secundario { background: #e2e8f0; color: #475569; }
     </style>
 </head>
 <body>
@@ -55,15 +64,26 @@
     <div class="bg-white border-b border-slate-200 p-4 sticky top-0 z-10">
         <div class="flex justify-between items-center">
             <div><h1 class="text-xl font-black">🛵 Repartidor</h1><p id="repartidorNombreDisplay" class="text-slate-500 text-xs"></p></div>
-            <button onclick="logoutRepartidor()" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-full text-sm">🚪 Salir</button>
+            <div class="flex gap-2">
+                <button onclick="abrirAsistencia()" class="bg-red-100 text-red-600 px-3 py-2 rounded-full text-xs font-medium">🆘 Asistencia</button>
+                <button onclick="logoutRepartidor()" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-full text-sm">🚪 Salir</button>
+            </div>
         </div>
     </div>
     <div class="p-4">
+        <!-- Estadísticas de ganancias -->
+        <div class="grid-stats">
+            <div class="stats-card"><div class="label">💰 HOY</div><div class="value text-emerald-600" id="gananciaHoy">0.00€</div></div>
+            <div class="stats-card"><div class="label">📊 SEMANA</div><div class="value text-cyan-600" id="gananciaSemana">0.00€</div></div>
+            <div class="stats-card"><div class="label">📅 MES</div><div class="value text-purple-600" id="gananciaMes">0.00€</div></div>
+        </div>
+        
         <div class="grid grid-cols-3 gap-3 mb-6">
             <div class="bg-white rounded-xl p-3 text-center shadow-sm"><div class="text-[10px] text-slate-400">📦 Por Recoger</div><div class="text-2xl font-bold text-blue-600" id="totalPorRecoger">0</div></div>
             <div class="bg-white rounded-xl p-3 text-center shadow-sm"><div class="text-[10px] text-slate-400">🛵 En Camino</div><div class="text-2xl font-bold text-purple-600" id="totalEnCamino">0</div></div>
-            <div class="bg-white rounded-xl p-3 text-center shadow-sm"><div class="text-[10px] text-slate-400">💰 Ganancias Hoy</div><div class="text-2xl font-bold text-emerald-600" id="totalGanadoHoy">0</div></div>
+            <div class="bg-white rounded-xl p-3 text-center shadow-sm"><div class="text-[10px] text-slate-400">⏱️ En Puerta</div><div class="text-2xl font-bold text-orange-600" id="totalEnPuerta">0</div></div>
         </div>
+        
         <div class="tab"><button id="tab-activos" class="active" onclick="cambiarTab('activos')">📋 En Curso</button><button id="tab-historial" onclick="cambiarTab('historial')">📜 Historial</button></div>
         <div id="listaActivos" class="tab-content active space-y-3"></div>
         <div id="listaHistorial" class="tab-content space-y-3"></div>
@@ -82,11 +102,15 @@
         databaseURL: "https://aguadulce-notificaciones-default-rtdb.firebaseio.com",
         projectId: "aguadulce-notificaciones",
         storageBucket: "aguadulce-notificaciones.firebasestorage.app",
+        messagingSenderId: "940283725281",
+        appId: "1:940283725281:web:3b388d2e7f362a99d2bea0"
     };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
+    let messaging = null;
     
     let repartidorActual = null, pedidosListener = null, pedidoActual = null, temporizadorAusencia = null, avisoEnviado = false;
+    let intervalosContador = {};
     
     const mensajesPredefinidos = {
         'ya_llegue': '📍 ¡Hola! Ya llegué a tu dirección, estoy en la puerta.',
@@ -102,6 +126,59 @@
         document.getElementById('listaHistorial').classList.toggle('active', tab === 'historial');
         document.getElementById('tab-activos').classList.toggle('active', tab === 'activos');
         document.getElementById('tab-historial').classList.toggle('active', tab === 'historial');
+    }
+    
+    function abrirAsistencia() {
+        Swal.fire({
+            title: '🆘 Asistencia Repartidor',
+            html: `<div class="text-left"><p class="text-slate-600">¿Tienes algún problema con tu entrega?</p><hr class="my-3"><p class="font-bold">📞 Contacta con soporte:</p><p class="text-cyan-600">📞 643 261 881 (solo llamadas)</p><p class="text-cyan-600">✉️ soporteaguadulcexpress26@gmail.com</p></div>`,
+            icon: 'info',
+            confirmButtonText: '📞 Llamar',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar'
+        }).then(result => {
+            if (result.isConfirmed) window.location.href = 'tel:643261881';
+        });
+    }
+    
+    // ==================== GANANCIAS ====================
+    function getInicioSemana() {
+        const hoy = new Date();
+        const dia = hoy.getDay();
+        const diff = (dia === 0 ? 6 : dia - 1);
+        const lunes = new Date(hoy);
+        lunes.setDate(hoy.getDate() - diff);
+        lunes.setHours(0, 0, 0, 0);
+        return lunes;
+    }
+    
+    function getInicioMes() {
+        const inicio = new Date();
+        inicio.setDate(1);
+        inicio.setHours(0, 0, 0, 0);
+        return inicio;
+    }
+    
+    async function calcularGanancias(pedidos) {
+        const hoyInicio = new Date(); hoyInicio.setHours(0, 0, 0, 0);
+        const semanaInicio = getInicioSemana();
+        const mesInicio = getInicioMes();
+        
+        let gananciaHoy = 0, gananciaSemana = 0, gananciaMes = 0;
+        
+        for (const p of pedidos) {
+            if (p.estado !== 'ENTREGADO') continue;
+            const fecha = new Date(p.timestamp_entregado || p.fecha || 0);
+            const monto = p.total || 0;
+            
+            if (fecha >= hoyInicio) gananciaHoy += monto;
+            if (fecha >= semanaInicio) gananciaSemana += monto;
+            if (fecha >= mesInicio) gananciaMes += monto;
+        }
+        
+        document.getElementById('gananciaHoy').innerText = gananciaHoy.toFixed(2) + '€';
+        document.getElementById('gananciaSemana').innerText = gananciaSemana.toFixed(2) + '€';
+        document.getElementById('gananciaMes').innerText = gananciaMes.toFixed(2) + '€';
     }
     
     async function loginRepartidor() {
@@ -120,6 +197,7 @@
             document.getElementById('dashboardPanel').classList.remove('hidden');
             document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
             iniciarEscuchaPedidos();
+            iniciarNotificaciones();
         } else Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
     }
     
@@ -131,11 +209,28 @@
         document.getElementById('dashboardPanel').classList.remove('hidden');
         document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
         iniciarEscuchaPedidos();
+        iniciarNotificaciones();
+    }
+    
+    // ==================== NOTIFICACIONES PUSH (PREPARADO) ====================
+    async function iniciarNotificaciones() {
+        if (!firebase.messaging || !('Notification' in window)) return;
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                messaging = firebase.messaging();
+                const token = await messaging.getToken({ vapidKey: 'TU_VAPID_KEY_AQUI' });
+                if (token) {
+                    await database.ref(`repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`).set(token);
+                    console.log('✅ Notificaciones activadas');
+                }
+            }
+        } catch(e) { console.log('Notificaciones no disponibles:', e); }
     }
     
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();
-        pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
+        pedidosListener = database.ref('pedidos').on('value', async (snapshot) => {
             const todosPedidos = snapshot.val() || {};
             const activos = [], historial = [];
             for (const [id, data] of Object.entries(todosPedidos)) {
@@ -148,93 +243,147 @@
             renderizarActivos(activos);
             renderizarHistorial(historial);
             actualizarContadores(activos);
+            await calcularGanancias(historial);
         });
     }
     
     function actualizarContadores(pedidos) {
         const porRecoger = pedidos.filter(p => p.estado === 'LISTO' || p.estado === 'COCCIÓN').length;
         const enCamino = pedidos.filter(p => p.estado === 'EN_REPARTO').length;
+        const enPuerta = pedidos.filter(p => p.estado === 'EN_PUERTA').length;
         document.getElementById('totalPorRecoger').innerText = porRecoger;
         document.getElementById('totalEnCamino').innerText = enCamino;
+        document.getElementById('totalEnPuerta').innerText = enPuerta;
+    }
+    
+    // ==================== CONTADOR REGRESIVO ====================
+    function iniciarContadorRegresivo(pedidoId, minutos) {
+        if (intervalosContador[pedidoId]) clearInterval(intervalosContador[pedidoId]);
+        let tiempoRestante = minutos;
+        const timerElement = document.getElementById(`timer-${pedidoId}`);
+        
+        const interval = setInterval(async () => {
+            tiempoRestante--;
+            if (tiempoRestante <= 0) {
+                clearInterval(interval);
+                delete intervalosContador[pedidoId];
+                if (timerElement) timerElement.innerText = '0:00';
+            } else {
+                const mins = Math.floor(tiempoRestante / 60);
+                const segs = tiempoRestante % 60;
+                if (timerElement) timerElement.innerText = `${mins}:${segs.toString().padStart(2, '0')}`;
+                await database.ref(`pedidos/${pedidoId}/tiempo_restante`).set(tiempoRestante);
+            }
+        }, 60000);
+        intervalosContador[pedidoId] = interval;
     }
     
     function renderizarActivos(pedidos) {
         const container = document.getElementById('listaActivos');
         if (pedidos.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-10">📭 No hay pedidos activos</div>'; return; }
         container.innerHTML = '';
+        
         for (const p of pedidos) {
             const estado = p.estado || '';
             let badgeClass = 'badge-blue', badgeText = '📦 Por recoger', colorBorder = '#3b82f6';
-            
-            if (estado === 'COCCIÓN') { badgeClass = 'badge-orange'; badgeText = '⏱️ En preparación'; colorBorder = '#f97316'; }
-            else if (estado === 'LISTO') { badgeClass = 'badge-blue'; badgeText = '📦 Por recoger'; colorBorder = '#3b82f6'; }
-            else if (estado === 'EN_REPARTO') { badgeClass = 'badge-purple'; badgeText = '🛵 En reparto'; colorBorder = '#8b5cf6'; }
-            else if (estado === 'EN_PUERTA') { badgeClass = 'badge-orange'; badgeText = '🔔 En la puerta'; colorBorder = '#f97316'; }
-            
             let tiempoHtml = '';
-            if (p.tiempo_restante && estado === 'COCCIÓN') {
-                tiempoHtml = `<div class="contador-coccion"><div class="tiempo" id="timer-${p.id}">${p.tiempo_restante} min</div><div class="text-xs">tiempo restante</div></div>`;
-                iniciarContadorTiempo(p.id, p.tiempo_restante);
+            let botonesHtml = '';
+            
+            if (estado === 'COCCIÓN') {
+                badgeClass = 'badge-orange'; badgeText = '⏱️ En preparación'; colorBorder = '#f97316';
+                const tiempoRestante = p.tiempo_restante !== undefined ? p.tiempo_restante : (p.tiempo_coccion || 15);
+                tiempoHtml = `<div class="contador-coccion"><div class="tiempo" id="timer-${p.id}">${Math.floor(tiempoRestante/60)}:${(tiempoRestante%60).toString().padStart(2,'0')}</div><div class="text-xs">tiempo restante</div></div>`;
+                iniciarContadorRegresivo(p.id, tiempoRestante);
+                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button><button disabled class="boton-secundario boton-accion opacity-50">⏳ Esperando</button></div>`;
+            }
+            else if (estado === 'LISTO') {
+                badgeClass = 'badge-blue'; badgeText = '📦 Por recoger'; colorBorder = '#3b82f6';
+                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button><button onclick="marcarRecogido('${p.id}')" class="boton-recoger boton-accion">🛵 Recoger</button></div>`;
+            }
+            else if (estado === 'EN_REPARTO') {
+                badgeClass = 'badge-purple'; badgeText = '🛵 En reparto'; colorBorder = '#8b5cf6';
+                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button><button onclick="marcarLlegado('${p.id}')" class="boton-llegue boton-accion">📍 Llegué</button></div>`;
+            }
+            else if (estado === 'EN_PUERTA') {
+                badgeClass = 'badge-orange'; badgeText = '🔔 En la puerta'; colorBorder = '#f97316';
+                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirOpcionesEntrega('${p.id}')" class="btn-warning boton-accion">🔧 Opciones</button><button onclick="entregarPedidoDirecto('${p.id}')" class="boton-entregar boton-accion">💰 Cobrar</button></div>`;
             }
             
-            container.innerHTML += `
-                <div class="card" style="border-left: 4px solid ${colorBorder};">
-                    <div class="flex justify-between items-start">
-                        <div><span class="text-blue-600 font-bold text-sm">#${p.id_pedido || p.id.substring(0,8)}</span><p class="font-bold">${escapeHTML(p.cliente_nombre)}</p><p class="text-slate-500 text-xs">${escapeHTML(p.direccion || 'Sin dirección')}</p></div>
-                        <div class="text-right"><span class="text-emerald-600 font-bold">${(p.total||0).toFixed(2)}€</span><div class="badge ${badgeClass} mt-1">${badgeText}</div></div>
-                    </div>
-                    ${tiempoHtml}
-                    <button onclick="abrirOpciones('${p.id}')" class="boton-opciones">🔧 Opciones</button>
-                </div>
-            `;
+            container.innerHTML += `<div class="card" style="border-left: 4px solid ${colorBorder};">
+                <div class="flex justify-between items-start"><div><span class="text-blue-600 font-bold text-sm">#${p.id_pedido || p.id.substring(0,8)}</span><p class="font-bold">${escapeHTML(p.cliente_nombre)}</p><p class="text-slate-500 text-xs">${escapeHTML(p.direccion || 'Sin dirección')}</p></div><div class="text-right"><span class="text-emerald-600 font-bold">${(p.total||0).toFixed(2)}€</span><div class="badge ${badgeClass} mt-1">${badgeText}</div></div></div>
+                ${tiempoHtml}
+                ${botonesHtml}
+                <button onclick="abrirOpciones('${p.id}')" class="w-full mt-2 bg-slate-100 text-slate-600 py-2 rounded-xl text-xs font-medium">🔧 Más opciones</button>
+            </div>`;
         }
     }
     
     function renderizarHistorial(pedidos) {
         const container = document.getElementById('listaHistorial');
-        if (pedidos.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-10">📭 No hay pedidos</div>'; return; }
-        container.innerHTML = '';
+        if (pedidos.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-10">📭 No hay pedidos en el historial</div>'; return; }
+        
+        const agrupados = {};
         for (const p of pedidos) {
-            const estado = p.estado === 'ENTREGADO' ? '✅ Entregado' : '❌ Cancelado';
-            container.innerHTML += `<div class="card bg-slate-50"><div class="flex justify-between"><div><span class="font-bold text-sm">#${p.id_pedido || p.id.substring(0,8)}</span><p class="text-sm">${escapeHTML(p.cliente_nombre)}</p></div><div class="text-right"><span class="font-bold">${(p.total||0).toFixed(2)}€</span><div class="badge badge-green mt-1">${estado}</div></div></div></div>`;
+            const fecha = new Date(p.timestamp_entregado || p.timestamp_cancelacion || p.fecha || 0);
+            const fechaKey = fecha.toISOString().split('T')[0];
+            const fechaDisplay = fecha.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            if (!agrupados[fechaKey]) agrupados[fechaKey] = { display: fechaDisplay, pedidos: [] };
+            agrupados[fechaKey].pedidos.push(p);
+        }
+        
+        const fechasOrdenadas = Object.keys(agrupados).sort().reverse();
+        container.innerHTML = '';
+        
+        for (const fechaKey of fechasOrdenadas) {
+            const grupo = agrupados[fechaKey];
+            container.innerHTML += `<div class="sticky top-0 bg-white/90 backdrop-blur-sm rounded-xl p-2 mb-2 z-10"><p class="text-cyan-600 text-xs font-bold uppercase flex items-center gap-2">📅 ${grupo.display}<span class="bg-cyan-100 text-cyan-600 px-2 py-0.5 rounded-full text-[10px]">${grupo.pedidos.length} pedidos</span></p></div>`;
+            for (const p of grupo.pedidos) {
+                const estado = p.estado === 'ENTREGADO' ? '✅ Entregado' : '❌ Cancelado';
+                const hora = new Date(p.timestamp_entregado || p.timestamp_cancelacion || p.fecha || 0).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                container.innerHTML += `<div class="card bg-slate-50 ml-2 mb-2"><div class="flex justify-between"><div><span class="font-bold text-sm">#${p.id_pedido || p.id.substring(0,8)}</span><p class="text-sm">${escapeHTML(p.cliente_nombre)}</p><p class="text-slate-400 text-[10px]">🕐 ${hora}</p></div><div class="text-right"><span class="font-bold text-emerald-600">${(p.total||0).toFixed(2)}€</span><div class="badge badge-green mt-1">${estado}</div></div></div><button onclick="verDetalleCompleto('${p.id}')" class="w-full mt-2 bg-slate-200 text-slate-700 py-2 rounded-xl text-sm">📋 Ver detalle</button></div>`;
+            }
         }
     }
-    
-    function iniciarContadorTiempo(pedidoId, minutos) { }
     
     async function abrirOpciones(pedidoId) {
         const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
         pedidoActual = snapshot.val();
         if (!pedidoActual) return;
-        avisoEnviado = pedidoActual.aviso_enviado === true;
-        window.pedidoActualId = pedidoId;
         const estado = pedidoActual.estado || '';
         const contenido = document.getElementById('opcionesContent');
         
         let html = `<div class="bg-slate-50 rounded-xl p-4 mb-4"><p><strong>Cliente:</strong> ${escapeHTML(pedidoActual.cliente_nombre)}</p><p><strong>Total:</strong> ${(pedidoActual.total||0).toFixed(2)}€</p><p><strong>Dirección:</strong> ${escapeHTML(pedidoActual.direccion)}</p><p><strong>Teléfono:</strong> ${pedidoActual.cliente_telefono || 'No disponible'}</p></div>`;
         
-        if (estado === 'COCCIÓN') {
-            html += `<div class="space-y-3"><button onclick="verDetalleCompleto('${pedidoId}')" class="btn-secondary w-full">📋 Ver detalle</button><button onclick="abrirGPS('${pedidoId}')" class="btn-primary w-full">🗺️ GPS al restaurante</button><button onclick="cerrarModalOpciones()" class="btn-secondary w-full">⏳ Esperando preparación</button></div>`;
-        } else if (estado === 'LISTO') {
-            html += `<div class="space-y-3"><button onclick="verDetalleCompleto('${pedidoId}')" class="btn-secondary w-full">📋 Ver detalle</button><button onclick="abrirGPS('${pedidoId}')" class="btn-primary w-full">🗺️ GPS al restaurante</button><button onclick="marcarRecogido('${pedidoId}')" class="btn-success w-full">🛵 Recoger pedido</button></div>`;
-        } else if (estado === 'EN_REPARTO') {
-            html += `<div class="space-y-3"><button onclick="verDetalleCompleto('${pedidoId}')" class="btn-secondary w-full">📋 Ver detalle</button><button onclick="abrirGPS('${pedidoId}')" class="btn-primary w-full">🗺️ GPS al cliente</button><button onclick="marcarLlegado('${pedidoId}')" class="btn-warning w-full">📍 Llegué a la dirección</button></div>`;
-        } else if (estado === 'EN_PUERTA') {
-            html += `<div class="space-y-3"><button onclick="verDetalleCompleto('${pedidoId}')" class="btn-secondary w-full">📋 Ver detalle</button><button onclick="llamarCliente('${pedidoId}')" class="btn-primary w-full">📞 Llamar al cliente</button>`;
-            if (!avisoEnviado) {
-                html += `<div class="bg-blue-50 rounded-xl p-3"><p class="font-bold mb-2">📱 Enviar aviso al cliente:</p><button onclick="enviarMensajeCliente('${pedidoId}', 'ya_llegue')" class="w-full bg-blue-500 text-white py-2 rounded-xl mb-2">📍 "Ya llegué, estoy en la puerta"</button><button onclick="enviarMensajeCliente('${pedidoId}', 'esperando')" class="w-full bg-blue-500 text-white py-2 rounded-xl mb-2">⏰ "Estoy esperando, ¿puedes salir?"</button><button onclick="enviarMensajeCliente('${pedidoId}', 'timbre')" class="w-full bg-blue-500 text-white py-2 rounded-xl">🔔 "He llamado al timbre"</button></div>`;
-            } else {
-                html += `<div class="bg-green-100 rounded-xl p-3 text-center"><p class="text-green-600">✅ Aviso enviado al cliente</p></div>`;
-                html += `<div class="contador-ausencia"><p class="text-red-600 font-bold">⏰ Esperando al cliente...</p><div class="timer-grande" id="contadorTiempo">6:00</div><button id="btnCancelarAusencia" onclick="cancelarPorAusencia('${pedidoId}')" class="w-full bg-red-500 text-white py-2 rounded-xl font-bold mt-3 hidden">❌ Cancelar por ausencia</button></div>`;
-            }
-            if (!avisoEnviado) html += `<button class="btn-success w-full mt-2" disabled style="opacity:0.5">💰 Cobrar (requiere aviso)</button>`;
-            else html += `<button onclick="entregarPedido('${pedidoId}')" class="btn-success w-full mt-2">💰 Cobrar y Entregar</button>`;
-            html += `</div>`;
+        if (estado === 'EN_PUERTA') {
+            html += `<div class="space-y-3"><button onclick="llamarCliente('${pedidoId}')" class="btn-primary w-full">📞 Llamar al cliente</button><button onclick="iniciarAusencia('${pedidoId}')" class="btn-danger w-full">⏰ Cliente ausente</button><button onclick="abrirAsistencia()" class="btn-secondary w-full">🆘 Asistencia</button></div>`;
+        } else {
+            html += `<div class="space-y-3"><button onclick="llamarCliente('${pedidoId}')" class="btn-primary w-full">📞 Llamar al cliente</button><button onclick="abrirAsistencia()" class="btn-secondary w-full">🆘 Asistencia</button></div>`;
         }
         
         contenido.innerHTML = html;
         document.getElementById('modalOpciones').style.display = 'flex';
-        if (avisoEnviado && estado === 'EN_PUERTA') iniciarContadorAusencia(pedidoId);
+    }
+    
+    async function abrirOpcionesEntrega(pedidoId) {
+        const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
+        pedidoActual = snapshot.val();
+        window.pedidoActualId = pedidoId;
+        avisoEnviado = pedidoActual.aviso_enviado === true;
+        const contenido = document.getElementById('opcionesContent');
+        
+        let html = `<div class="bg-slate-50 rounded-xl p-4 mb-4"><p><strong>Cliente:</strong> ${escapeHTML(pedidoActual.cliente_nombre)}</p><p><strong>Total:</strong> ${(pedidoActual.total||0).toFixed(2)}€</p><p><strong>Dirección:</strong> ${escapeHTML(pedidoActual.direccion)}</p></div>`;
+        
+        if (!avisoEnviado) {
+            html += `<div class="bg-blue-50 rounded-xl p-3 mb-3"><p class="font-bold mb-2">📱 Enviar aviso al cliente:</p><button onclick="enviarMensajeCliente('${pedidoId}', 'ya_llegue')" class="w-full bg-blue-500 text-white py-2 rounded-xl mb-2">📍 "Ya llegué, estoy en la puerta"</button><button onclick="enviarMensajeCliente('${pedidoId}', 'esperando')" class="w-full bg-blue-500 text-white py-2 rounded-xl mb-2">⏰ "Estoy esperando, ¿puedes salir?"</button><button onclick="enviarMensajeCliente('${pedidoId}', 'timbre')" class="w-full bg-blue-500 text-white py-2 rounded-xl">🔔 "He llamado al timbre"</button></div>`;
+        } else {
+            html += `<div class="bg-green-100 rounded-xl p-3 text-center mb-3"><p class="text-green-600">✅ Aviso enviado al cliente</p></div>`;
+            html += `<div class="contador-ausencia"><p class="text-red-600 font-bold">⏰ Esperando al cliente...</p><div class="timer-grande" id="contadorTiempo">6:00</div><button id="btnCancelarAusencia" onclick="cancelarPorAusencia('${pedidoId}')" class="w-full bg-red-500 text-white py-2 rounded-xl font-bold mt-3 hidden">❌ Cancelar por ausencia</button></div>`;
+        }
+        
+        html += `<button onclick="entregarPedido('${pedidoId}')" class="btn-success w-full mt-3">💰 Cobrar y Entregar</button><button onclick="abrirAsistencia()" class="btn-secondary w-full mt-2">🆘 Asistencia</button>`;
+        contenido.innerHTML = html;
+        document.getElementById('modalOpciones').style.display = 'flex';
+        if (avisoEnviado) iniciarContadorAusencia(pedidoId);
     }
     
     function iniciarContadorAusencia(pedidoId) {
@@ -250,19 +399,33 @@
         }, 1000);
     }
     
+    async function iniciarAusencia(pedidoId) {
+        const confirm = await Swal.fire({ title: '⚠️ Cliente ausente', text: '¿El cliente no responde? Podrás cancelar el pedido después de 6 minutos.', icon: 'warning', confirmButtonText: 'Iniciar espera', background: '#fff' });
+        if (confirm.isConfirmed) {
+            await database.ref(`pedidos/${pedidoId}`).update({ aviso_enviado: true, timestamp_aviso: Date.now() });
+            avisoEnviado = true;
+            Swal.fire({ title: '⏰ Espera iniciada', text: 'Tienes 6 minutos. Si el cliente no aparece, podrás cancelar.', icon: 'info', timer: 2000 });
+            abrirOpcionesEntrega(pedidoId);
+        }
+    }
+    
     async function enviarMensajeCliente(pedidoId, tipo) {
         await database.ref(`mensajes/${pedidoId}`).push({ emisor: 'repartidor', texto: mensajesPredefinidos[tipo], timestamp: Date.now() });
         await database.ref(`pedidos/${pedidoId}`).update({ aviso_enviado: true, timestamp_aviso: Date.now() });
         avisoEnviado = true;
         Swal.fire({ title: '✅ Aviso enviado', text: 'El cliente ha sido notificado', icon: 'success', timer: 1500 });
-        setTimeout(() => abrirOpciones(pedidoId), 500);
+        abrirOpcionesEntrega(pedidoId);
     }
     
-    async function marcarRecogido(pedidoId) { await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN_REPARTO', timestamp_recogido: Date.now() }); cerrarModalOpciones(); Swal.fire({ title: '🛵 En reparto', text: 'Pedido en camino', icon: 'success', timer: 1500 }); }
-    async function marcarLlegado(pedidoId) { await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN_PUERTA', timestamp_llegada: Date.now() }); cerrarModalOpciones(); Swal.fire({ title: '📍 Llegaste', text: 'Estás en la puerta', icon: 'success', timer: 1500 }); }
+    async function marcarRecogido(pedidoId) { await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN_REPARTO', timestamp_recogido: Date.now() }); Swal.fire({ title: '🛵 En reparto', text: 'Pedido en camino', icon: 'success', timer: 1500 }); }
+    async function marcarLlegado(pedidoId) { await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN_PUERTA', timestamp_llegada: Date.now() }); Swal.fire({ title: '📍 Llegaste', text: 'Estás en la puerta', icon: 'success', timer: 1500 }); }
+    async function entregarPedidoDirecto(pedidoId) { entregarPedido(pedidoId); }
     
     async function entregarPedido(pedidoId) {
-        if (!avisoEnviado) { Swal.fire({ title: '⚠️ Requisito', text: 'Debes enviar el aviso al cliente antes de cobrar.', icon: 'warning' }); return; }
+        if (!avisoEnviado && pedidoActual?.estado === 'EN_PUERTA') {
+            const confirm = await Swal.fire({ title: '⚠️ Aviso no enviado', text: '¿Quieres enviar aviso al cliente antes de cobrar?', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, enviar aviso', cancelButtonText: 'Cobrar sin aviso' });
+            if (confirm.isConfirmed) { abrirOpcionesEntrega(pedidoId); return; }
+        }
         const total = pedidoActual?.total || 0;
         const { value: monto } = await Swal.fire({ title: '💰 Cobro', html: `<p>Total: <strong>${total.toFixed(2)}€</strong></p><input type="number" id="montoRecibido" step="0.01" class="w-full p-3 rounded-xl border" placeholder="¿Con cuánto paga?">`, confirmButtonText: 'Confirmar', showCancelButton: true, preConfirm: () => ({ recibido: parseFloat(document.getElementById('montoRecibido').value) || total }) });
         if (monto) { const cambio = monto.recibido - total; await database.ref(`pedidos/${pedidoId}`).update({ estado: 'ENTREGADO', monto_recibido: monto.recibido, cambio_entregado: cambio >=0 ? cambio : 0, timestamp_entregado: Date.now() }); cerrarModalOpciones(); Swal.fire({ title: '✅ Entregado', icon: 'success', timer: 2000 }); }

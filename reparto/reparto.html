@@ -13,6 +13,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AE Reparto">
     
+    <!-- Google OAuth para FCM -->
+    <meta name="google-signin-client_id" content="153627815909-inuobgarqjbemt30bjjqpk6qgrjqubs.app.s.googleusercontent.com">
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -127,6 +131,7 @@
     };
     
     const VAPID_KEY = 'BH4IAMeS7LHkDjOt84N-7mG985aTyHpYXx845HqKCnT8oGyxbaJ9pT98IgfslMsrFTJW3jHpvik0mrY263nlFRY';
+    const CLIENT_ID = '153627815909-inuobgarqjbemt30bjjqpk6qgrjqubs.app.s.googleusercontent.com';
     
     function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
     function sanitizarEmail(email) { return email ? email.replace(/\./g, '_') : ''; }
@@ -217,29 +222,34 @@
         iniciarNotificaciones();
     }
     
-   async function iniciarNotificaciones() {
-    if (!firebase.messaging) return;
-    try {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            messaging = firebase.messaging();
-            
-            // 🔥 REGISTRAR EL SW EN LA RUTA CORRECTA DENTRO DE LA CARPETA
-            const registration = await navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js');
-            
-            // Usar el registration para Firebase
-            const token = await messaging.getToken({
-                vapidKey: VAPID_KEY,
-                serviceWorkerRegistration: registration
-            });
-            
-            if (token) {
-                await database.ref(`repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`).set(token);
-                console.log('✅ Notificaciones push activadas');
+    async function iniciarNotificaciones() {
+        if (!firebase.messaging) return;
+        try {
+            // Inicializar Google Auth
+            if (typeof gapi !== 'undefined') {
+                await new Promise((resolve) => {
+                    gapi.load('auth2', () => {
+                        gapi.auth2.init({ client_id: CLIENT_ID });
+                        resolve();
+                    });
+                });
             }
-        }
-    } catch(e) { console.log('Notificaciones no disponibles:', e); }
-}
+            
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                messaging = firebase.messaging();
+                const registration = await navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js');
+                const token = await messaging.getToken({
+                    vapidKey: VAPID_KEY,
+                    serviceWorkerRegistration: registration
+                });
+                if (token) {
+                    await database.ref(`repartidores_tokens/${repartidorActual.nombre.replace(/ /g, '_')}`).set(token);
+                    console.log('✅ Notificaciones push activadas');
+                }
+            }
+        } catch(e) { console.log('Notificaciones no disponibles:', e); }
+    }
     
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();
@@ -418,16 +428,75 @@
     
     async function marcarRecogido(pedidoId) { await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN_REPARTO', timestamp_recogido: Date.now() }); Swal.fire({ title: '🛵 En reparto', text: 'Pedido en camino', icon: 'success', timer: 1500 }); }
     async function marcarLlegado(pedidoId) { await database.ref(`pedidos/${pedidoId}`).update({ estado: 'EN_PUERTA', timestamp_llegada: Date.now() }); Swal.fire({ title: '📍 Llegaste', text: 'Estás en la puerta', icon: 'success', timer: 1500 }); }
-    async function entregarPedidoDirecto(pedidoId) { entregarPedido(pedidoId); }
     
+    async function entregarPedidoDirecto(pedidoId) { 
+        const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
+        pedidoActual = snapshot.val();
+        entregarPedido(pedidoId); 
+    }
+    
+    // ==================== FUNCIÓN ENTREGAR PEDIDO CORREGIDA ====================
     async function entregarPedido(pedidoId) {
-        if (!avisoEnviado && pedidoActual?.estado === 'EN_PUERTA') {
-            const confirm = await Swal.fire({ title: '⚠️ Aviso no enviado', text: '¿Quieres enviar aviso al cliente antes de cobrar?', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, enviar aviso', cancelButtonText: 'Cobrar sin aviso' });
-            if (confirm.isConfirmed) { abrirOpcionesEntrega(pedidoId); return; }
+        // Obtener el pedido actual nuevamente para asegurar el total
+        const snapshot = await database.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = snapshot.val();
+        
+        if (!pedido) {
+            Swal.fire({ title: 'Error', text: 'No se encontró el pedido', icon: 'error' });
+            return;
         }
-        const total = pedidoActual?.total || 0;
-        const { value: monto } = await Swal.fire({ title: '💰 Cobro', html: `<p>Total: <strong>${total.toFixed(2)}€</strong></p><input type="number" id="montoRecibido" step="0.01" class="w-full p-3 rounded-xl border" placeholder="¿Con cuánto paga?">`, confirmButtonText: 'Confirmar', showCancelButton: true, preConfirm: () => ({ recibido: parseFloat(document.getElementById('montoRecibido').value) || total }) });
-        if (monto) { const cambio = monto.recibido - total; await database.ref(`pedidos/${pedidoId}`).update({ estado: 'ENTREGADO', monto_recibido: monto.recibido, cambio_entregado: cambio >=0 ? cambio : 0, timestamp_entregado: Date.now() }); cerrarModalOpciones(); Swal.fire({ title: '✅ Entregado', icon: 'success', timer: 2000 }); }
+        
+        const total = pedido.total || 0;
+        
+        if (!avisoEnviado && pedido.estado === 'EN_PUERTA') {
+            const confirm = await Swal.fire({ 
+                title: '⚠️ Aviso no enviado', 
+                text: '¿Quieres enviar aviso al cliente antes de cobrar?', 
+                icon: 'question', 
+                showCancelButton: true, 
+                confirmButtonText: 'Sí, enviar aviso', 
+                cancelButtonText: 'Cobrar sin aviso' 
+            });
+            if (confirm.isConfirmed) { 
+                abrirOpcionesEntrega(pedidoId); 
+                return; 
+            }
+        }
+        
+        const { value: monto } = await Swal.fire({ 
+            title: '💰 Cobro', 
+            html: `<p>Total a cobrar: <strong style="font-size:24px;">${total.toFixed(2)}€</strong></p>
+                   <input type="number" id="montoRecibido" step="0.01" class="w-full p-3 rounded-xl border mt-3" placeholder="¿Con cuánto paga?" value="${total}">`, 
+            confirmButtonText: 'Confirmar entrega', 
+            showCancelButton: true,
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const recibido = parseFloat(document.getElementById('montoRecibido').value);
+                if (isNaN(recibido)) {
+                    Swal.showValidationMessage('Ingresa un monto válido');
+                    return false;
+                }
+                return { recibido: recibido };
+            }
+        });
+        
+        if (monto) { 
+            const cambio = monto.recibido - total;
+            await database.ref(`pedidos/${pedidoId}`).update({ 
+                estado: 'ENTREGADO', 
+                monto_recibido: monto.recibido, 
+                cambio_entregado: cambio >= 0 ? cambio : 0,
+                timestamp_entregado: Date.now()
+            });
+            cerrarModalOpciones();
+            Swal.fire({ 
+                title: '✅ Pedido Entregado', 
+                html: `<p>Total: ${total.toFixed(2)}€</p>${cambio >= 0 ? `<p>Cambio: ${cambio.toFixed(2)}€</p>` : '<p>Pago exacto</p>'}`,
+                icon: 'success', 
+                timer: 2500,
+                showConfirmButton: false
+            });
+        }
     }
     
     async function cancelarPorAusencia(pedidoId) {

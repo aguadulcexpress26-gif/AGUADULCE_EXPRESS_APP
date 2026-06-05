@@ -569,10 +569,10 @@ async function cargarBaseDatos() {
         db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
             pin: pin,
             ...data,
-            orden_manual: data.orden_manual !== undefined ? data.orden_manual : 9999
+            orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999
         }));
         
-        // 🔥 ORDENAR RESTAURANTES por orden_manual (menor número primero)
+        // 🔥 ORDENAR RESTAURANTES POR orden_manual (menor número primero)
         db.restaurantes.sort((a, b) => {
             const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999;
             const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999;
@@ -582,7 +582,7 @@ async function cargarBaseDatos() {
             return nombreA.localeCompare(nombreB);
         });
         
-        console.log("✅ Restaurantes:", db.restaurantes.length);
+        console.log("✅ Restaurantes cargados y ordenados:", db.restaurantes.map(r => `${r.orden_manual} - ${r.NOMBRE_RESTAURANTE || r.nombre}`));
         
         const menuSnap = await database.ref('menu_general').once('value');
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
@@ -623,21 +623,14 @@ async function cargarBaseDatos() {
         console.log("🎉 Carga completa!");
     } catch (error) { console.error("❌ Error:", error); throw error; }
 }
-
 function renderHome() {
     const app = document.getElementById("app-container");
     if (!app) return;
-    let html = `<div id="banner-container" class="mb-4"></div><p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
     
-    // Ordenar restaurantes por orden_manual (si existe) y luego por nombre
-    const restaurantesOrdenados = [...db.restaurantes].sort((a, b) => {
-        const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999;
-        const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999;
-        if (ordenA !== ordenB) return ordenA - ordenB;
-        const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase();
-        const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase();
-        return nombreA.localeCompare(nombreB);
-    });
+    // Los restaurantes ya vienen ordenados de cargarBaseDatos, pero por si acaso
+    const restaurantesOrdenados = [...db.restaurantes];
+    
+    let html = `<div id="banner-container" class="mb-4"></div><p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
     
     restaurantesOrdenados.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);

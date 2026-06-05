@@ -1,31 +1,43 @@
-// sw-reparto.js - Service Worker específico para reparto
-const CACHE_NAME = 'aguadulce-reparto-v1';
-
-const urlsToCache = [
-  '/AGUADULCE_EXPRESS_APP/reparto/reparto.html',
-  '/AGUADULCE_EXPRESS_APP/reparto/manifest-reparto.json'
-];
+// sw-reparto.js - Service Worker para notificaciones y PWA
+const CACHE_NAME = 'aguadulce-reparto-v2';
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache).catch(err => console.warn(err)))
-  );
+  console.log('📦 Service Worker instalado');
   self.skipWaiting();
 });
 
-self.addEventListener('fetch', event => {
-  if (event.request.url.includes('script.google.com')) return;
-  event.respondWith(
-    caches.match(event.request).then(response => response || fetch(event.request))
-  );
+self.addEventListener('activate', event => {
+  console.log('✅ Service Worker activado');
+  event.waitUntil(clients.claim());
 });
 
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.map(key => key !== CACHE_NAME && caches.delete(key))
-    ))
-  );
-  self.clients.claim();
+// Escuchar mensajes desde la app (reparto.html)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'NOTIFICACION_PEDIDO') {
+    const { titulo, cuerpo, pedidoId, total } = event.data;
+    
+    self.registration.showNotification(titulo, {
+      body: cuerpo,
+      icon: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
+      badge: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
+      vibrate: [200, 100, 200],
+      requireInteraction: true,
+      data: {
+        url: `/AGUADULCE_EXPRESS_APP/reparto/reparto.html?pedidoId=${pedidoId}`,
+        pedidoId: pedidoId
+      },
+      actions: [
+        { action: 'ver', title: '📋 Ver pedido' },
+        { action: 'cerrar', title: '❌ Cerrar' }
+      ]
+    });
+  }
+});
+
+// Al hacer clic en la notificación
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  if (event.action === 'ver') {
+    event.waitUntil(clients.openWindow(event.notification.data.url));
+  }
 });

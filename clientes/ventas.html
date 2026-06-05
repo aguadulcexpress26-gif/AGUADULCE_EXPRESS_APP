@@ -346,10 +346,16 @@ async function clienteEsMayorDeEdad() {
 }
 
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
-    // Primero verificar si tiene horarios por día
-    const horariosRest = restaurant.horarios_dias || db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
+    // Buscar horarios en horarios_dias (nuevo sistema)
+    let horariosRest = restaurant.horarios_dias;
+    
+    // Si no existe, intentar cargar desde db (por si acaso)
+    if (!horariosRest && restaurant.ID_RESTAURANTE) {
+        horariosRest = db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
+    }
     
     if (!horariosRest) {
+        console.warn("Sin horarios para:", restaurant.NOMBRE_RESTAURANTE);
         return { abierto: false, horario: "Horario no disponible" };
     }
     
@@ -358,12 +364,18 @@ function estaRestauranteAbiertoConDiaLibre(restaurant) {
     const hoy = diasSemana[ahora.getDay()];
     const horarioHoy = horariosRest[hoy];
     
-    if (!horarioHoy || horarioHoy.dia_libre === true) {
-        return { abierto: false, horario: "📅 Día libre / Cerrado" };
+    if (!horarioHoy) {
+        return { abierto: false, horario: "Horario no configurado" };
     }
     
+    // Día libre
+    if (horarioHoy.dia_libre === true) {
+        return { abierto: false, horario: "📅 Día libre" };
+    }
+    
+    // Temporalmente cerrado
     if (horarioHoy.activo === false) {
-        return { abierto: false, horario: "🚫 Temporalmente cerrado" };
+        return { abierto: false, horario: "🚫 Cerrado hoy" };
     }
     
     const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
@@ -382,18 +394,28 @@ function estaRestauranteAbiertoConDiaLibre(restaurant) {
     let abierto = false;
     let horarioTexto = '';
     
+    // Verificar turno mañana
     if (a1 !== null && c1 !== null) {
-        abierto = abierto || (horaActual >= a1 && horaActual < c1);
+        if (horaActual >= a1 && horaActual < c1) abierto = true;
         horarioTexto += `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
     }
     
+    // Verificar turno tarde/noche
     if (a2 !== null && c2 !== null) {
-        abierto = abierto || (horaActual >= a2 && horaActual < c2);
+        if (horaActual >= a2 && horaActual < c2) abierto = true;
         if (horarioTexto) horarioTexto += ` / `;
         horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
     }
     
-    return { abierto, horario: horarioTexto || "Consultar horario" };
+    // Si no hay ningún turno configurado
+    if (!horarioTexto) {
+        return { abierto: false, horario: "Sin horario" };
+    }
+    
+    return { 
+        abierto: abierto, 
+        horario: abierto ? "ABIERTO" : `🕒 ${horarioTexto}`
+    };
 }
 
 function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
@@ -565,10 +587,11 @@ async function cargarBaseDatos() {
         const restaurantesSnap = await database.ref('restaurantes').once('value');
         const restaurantesRaw = restaurantesSnap.val() || {};
         
-        // Cargar restaurantes con orden_manual
+        // Cargar restaurantes con orden_manual y horarios_dias
         db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
             pin: pin,
             ...data,
+            horarios_dias: data.horarios_dias || null,  // 🔥 AGREGAR ESTA LÍNEA
             orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999
         }));
         
@@ -596,7 +619,7 @@ async function cargarBaseDatos() {
                 db.horariosPorDia[idRest] = horariosDias;
             }
         }
-        console.log("✅ Horarios:", Object.keys(db.horariosPorDia).length);
+        console.log("✅ Horarios antiguos:", Object.keys(db.horariosPorDia).length);
         
         const configSnap = await database.ref('config').once('value');
         const configData = configSnap.val();

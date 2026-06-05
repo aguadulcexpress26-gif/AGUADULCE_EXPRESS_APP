@@ -16,12 +16,19 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'NOTIFICACION_PEDIDO') {
     const { titulo, cuerpo, pedidoId, total } = event.data;
     
+    // Verificar si hay permiso antes de mostrar
+    if (Notification.permission !== 'granted') {
+      console.log('⚠️ No hay permiso para mostrar notificación');
+      return;
+    }
+    
     self.registration.showNotification(titulo, {
       body: cuerpo,
       icon: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
       badge: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
       vibrate: [200, 100, 200],
       requireInteraction: true,
+      silent: false,
       data: {
         url: `/AGUADULCE_EXPRESS_APP/reparto/reparto.html?pedidoId=${pedidoId}`,
         pedidoId: pedidoId
@@ -30,7 +37,7 @@ self.addEventListener('message', (event) => {
         { action: 'ver', title: '📋 Ver pedido' },
         { action: 'cerrar', title: '❌ Cerrar' }
       ]
-    });
+    }).catch(e => console.log('Error mostrando notificación:', e));
   }
 });
 

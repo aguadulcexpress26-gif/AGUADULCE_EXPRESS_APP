@@ -185,26 +185,71 @@
     }
     
     async function verificarPIN() {
-        const pin = document.getElementById('pinInput').value.toUpperCase().trim();
-        if (!pin) { Swal.fire({ title: 'Error', text: 'Ingrese un PIN', icon: 'error', background: '#0f172a', color: 'white' }); return; }
-        const btn = event.currentTarget;
-        btn.disabled = true;
-        btn.innerText = '🔄 VERIFICANDO...';
-        try {
-            const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
-            const restaurante = snapshot.val();
-            if (restaurante && restaurante.activo === true) {
-                restauranteActual = { pin: pin, nombre: restaurante.NOMBRE_RESTAURANTE || restaurante.nombre, id_restaurante: restaurante.ID_RESTAURANTE || restaurante.id_restaurante || pin, foto: restaurante.FOTO || restaurante.foto || '' };
-                localStorage.setItem('restaurante_cocina', JSON.stringify(restauranteActual));
-                Swal.fire({ title: '✅ ACCESO PERMITIDO', text: `Bienvenido ${restauranteActual.nombre}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-                iniciarApp();
-            } else {
-                Swal.fire({ title: '❌ CLAVE INCORRECTA', text: 'PIN inválido o restaurante inactivo', icon: 'error', background: '#0f172a', color: 'white' });
-                document.getElementById('pinInput').value = '';
-            }
-        } catch (error) { Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' }); }
-        finally { btn.disabled = false; btn.innerText = 'Ingresar'; }
+    const pin = document.getElementById('pinInput').value.toUpperCase().trim();
+    if (!pin) {
+        Swal.fire({ title: 'Error', text: 'Ingrese un PIN', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
     }
+    
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    btn.innerText = '🔄 VERIFICANDO...';
+    
+    try {
+        // 🔥 PRIMERO: Buscar en usuarios_admin (nuevo sistema)
+        let restaurante = null;
+        let usuario = null;
+        
+        const userSnap = await database.ref(`usuarios_admin/${pin}`).once('value');
+        usuario = userSnap.val();
+        
+        if (usuario && usuario.rol === 'cocina') {
+            // Buscar restaurante por ID_RESTAURANTE
+            const restSnap = await database.ref(`restaurantes/${usuario.restaurante_id}`).once('value');
+            restaurante = restSnap.val();
+            
+            if (restaurante && restaurante.activo === true) {
+                restauranteActual = {
+                    pin: pin,
+                    nombre: restaurante.NOMBRE_RESTAURANTE || restaurante.nombre,
+                    id_restaurante: usuario.restaurante_id,
+                    foto: restaurante.FOTO || restaurante.foto || ''
+                };
+            }
+        }
+        
+        // 🔥 SEGUNDO: Si no funciona, buscar directamente en restaurantes (sistema antiguo)
+        if (!restauranteActual) {
+            const restSnap = await database.ref(`restaurantes/${pin}`).once('value');
+            const restData = restSnap.val();
+            
+            if (restData && restData.activo === true) {
+                restauranteActual = {
+                    pin: pin,
+                    nombre: restData.NOMBRE_RESTAURANTE || restData.nombre,
+                    id_restaurante: restData.ID_RESTAURANTE || restData.id_restaurante || pin,
+                    foto: restData.FOTO || restData.foto || ''
+                };
+            }
+        }
+        
+        if (restauranteActual) {
+            localStorage.setItem('restaurante_cocina', JSON.stringify(restauranteActual));
+            
+            Swal.fire({ title: '✅ ACCESO PERMITIDO', text: `Bienvenido ${restauranteActual.nombre}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+            
+            iniciarApp();
+        } else {
+            Swal.fire({ title: '❌ CLAVE INCORRECTA', text: 'PIN inválido o restaurante inactivo', icon: 'error', background: '#0f172a', color: 'white' });
+            document.getElementById('pinInput').value = '';
+        }
+    } catch (error) {
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Ingresar';
+    }
+}
     
     function iniciarApp() {
         document.getElementById('loginScreen').classList.add('hidden');

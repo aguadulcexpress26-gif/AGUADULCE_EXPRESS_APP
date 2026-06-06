@@ -345,22 +345,66 @@ async function clienteEsMayorDeEdad() {
     return false;
 }
 
+// ==================== FUNCIÓN CORREGIDA DE HORARIOS ====================
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
-    if (restaurant.DIA_LIBRE === 'SI' || restaurant.ESTADO === 'LIBRE') return { abierto: false, horario: "📅 Día libre" };
-    const horariosRest = db.horariosPorDia?.[restaurant.ID_RESTAURANTE];
-    if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
+    const horariosRest = restaurant.horarios_dias;
+    
+    if (!horariosRest) {
+        return { abierto: false, horario: "Horario no disponible" };
+    }
+    
     const ahora = new Date();
     const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
-    const horarioHoy = horariosRest[diasSemana[ahora.getDay()]];
-    if (!horarioHoy || horarioHoy.apertura1 === 'CERRADO') return { abierto: false, horario: "Cerrado hoy" };
+    const hoy = diasSemana[ahora.getDay()];
+    const horarioHoy = horariosRest[hoy];
+    
+    if (!horarioHoy) {
+        return { abierto: false, horario: "Horario no configurado" };
+    }
+    
+    if (horarioHoy.dia_libre === true) {
+        return { abierto: false, horario: "📅 Día libre" };
+    }
+    
+    if (horarioHoy.activo === false) {
+        return { abierto: false, horario: "🚫 Cerrado hoy" };
+    }
+    
     const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
-    function conv(h) { if (!h || h === 'CERRADO') return null; let [hh, mm] = h.split(':'); return parseInt(hh) + parseInt(mm) / 60; }
-    const a1 = conv(horarioHoy.apertura1), c1 = conv(horarioHoy.cierre1);
-    const a2 = conv(horarioHoy.apertura2), c2 = conv(horarioHoy.cierre2);
-    let abierto = (a1 !== null && c1 !== null && horaActual >= a1 && horaActual < c1) || (a2 !== null && c2 !== null && horaActual >= a2 && horaActual < c2);
-    let horario = `${horarioHoy.apertura1 || ''}-${horarioHoy.cierre1 || ''}`;
-    if (a2) horario += ` / ${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
-    return { abierto, horario: horario || "Consultar horario" };
+    
+    function conv(h) {
+        if (!h || h === 'CERRADO') return null;
+        let [hh, mm] = h.split(':');
+        return parseInt(hh) + parseInt(mm) / 60;
+    }
+    
+    const a1 = conv(horarioHoy.apertura1);
+    const c1 = conv(horarioHoy.cierre1);
+    const a2 = conv(horarioHoy.apertura2);
+    const c2 = conv(horarioHoy.cierre2);
+    
+    let abierto = false;
+    let horarioTexto = '';
+    
+    if (a1 !== null && c1 !== null) {
+        if (horaActual >= a1 && horaActual < c1) abierto = true;
+        horarioTexto = `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
+    }
+    
+    if (a2 !== null && c2 !== null) {
+        if (horaActual >= a2 && horaActual < c2) abierto = true;
+        if (horarioTexto) horarioTexto += ` / `;
+        horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
+    }
+    
+    if (!horarioTexto) {
+        return { abierto: false, horario: "Sin horario" };
+    }
+    
+    return { 
+        abierto: abierto, 
+        horario: abierto ? "ABIERTO" : `🕒 ${horarioTexto}`
+    };
 }
 
 function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
@@ -530,11 +574,30 @@ async function cargarBaseDatos() {
     try {
         console.log("🔄 Cargando datos desde Firebase...");
         const restaurantesSnap = await database.ref('restaurantes').once('value');
-        db.restaurantes = restaurantesSnap.val() ? Object.values(restaurantesSnap.val()) : [];
-        console.log("✅ Restaurantes:", db.restaurantes.length);
+        const restaurantesRaw = restaurantesSnap.val() || {};
+        
+        db.restaurantes = Object.entries(restaurantesRaw).map(([id, data]) => ({
+            id: id,
+            ...data,
+            horarios_dias: data.horarios_dias || null,
+            orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999
+        }));
+        
+        db.restaurantes.sort((a, b) => {
+            const ordenA = a.orden_manual;
+            const ordenB = b.orden_manual;
+            if (ordenA !== ordenB) return ordenA - ordenB;
+            const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase();
+            const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase();
+            return nombreA.localeCompare(nombreB);
+        });
+        
+        console.log("✅ Restaurantes ordenados:", db.restaurantes.map(r => `${r.orden_manual} - ${r.NOMBRE_RESTAURANTE || r.nombre}`));
+        
         const menuSnap = await database.ref('menu_general').once('value');
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         console.log("✅ Menú:", db.menu.length);
+        
         const horariosSnap = await database.ref('horarios_restaurantes').once('value');
         const horariosRaw = horariosSnap.val();
         db.horariosPorDia = {};
@@ -543,7 +606,8 @@ async function cargarBaseDatos() {
                 db.horariosPorDia[idRest] = horariosDias;
             }
         }
-        console.log("✅ Horarios:", Object.keys(db.horariosPorDia).length);
+        console.log("✅ Horarios antiguos:", Object.keys(db.horariosPorDia).length);
+        
         const configSnap = await database.ref('config').once('value');
         const configData = configSnap.val();
         if (configData && Array.isArray(configData) && configData[0]) {
@@ -557,6 +621,7 @@ async function cargarBaseDatos() {
             const appLogo = document.getElementById('app-logo');
             if (appLogo && db.config.LOGO_URL) { appLogo.src = db.config.LOGO_URL; }
         }
+        
         const anunciosSnap = await database.ref('anuncios').once('value');
         const anunciosData = anunciosSnap.val();
         if (anunciosData && Array.isArray(anunciosData)) {
@@ -572,8 +637,12 @@ async function cargarBaseDatos() {
 function renderHome() {
     const app = document.getElementById("app-container");
     if (!app) return;
+    
+    const restaurantesOrdenados = [...db.restaurantes];
+    
     let html = `<div id="banner-container" class="mb-4"></div><p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
-    db.restaurantes.forEach(rest => {
+    
+    restaurantesOrdenados.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
         html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${rest.FOTO}','${rest.ESTADO}')"` : ''}>
                     <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-100">
@@ -605,7 +674,7 @@ async function cargarBanners() {
 }
 
 function abrirRestaurante(id, nombre, foto, estado) {
-    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE == id);
+    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === id);
     if (restaurante) {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(restaurante);
         if (!abierto) { alertaInfo("RESTAURANTE CERRADO", horario); return; }
@@ -1104,20 +1173,16 @@ Gracias por tu comprensión.`;
     
     await database.ref(`mensajes/${pedidoId}`).push({ emisor: 'sistema', texto: mensaje, tipo: 'cancelacion', timestamp: Date.now(), leido: false });
     
-    // 🔥 CERRAR EL MODAL DE SEGUIMIENTO PRIMERO
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     
-    // Limpiar listeners
     if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
     if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
     if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
     
-    // Limpiar localStorage
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
     
-    // Mostrar alerta de cancelación (ahora sí, sin modal de fondo)
     Swal.fire({
         title: '❌ Pedido Cancelado',
         html: `<div class="text-left">
@@ -1143,7 +1208,6 @@ Gracias por tu comprensión.`;
         if (result.dismiss === Swal.DismissReason.cancel) {
             window.location.href = 'mailto:soporteaguadulcexpress26@gmail.com';
         }
-        // 🔥 Volver al home después de aceptar
         while (pantallaStack.length > 1) pantallaStack.pop();
         renderHome();
     });
@@ -1164,6 +1228,16 @@ async function initApp() {
         cargarCesta();
         actualizarClienteUI();
         await cargarBaseDatos();
+        
+        db.restaurantes.sort((a, b) => {
+            const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999;
+            const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999;
+            if (ordenA !== ordenB) return ordenA - ordenB;
+            const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase();
+            const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase();
+            return nombreA.localeCompare(nombreB);
+        });
+        
         renderHome();
         restaurarPedidoActivo();
         initAudio();
@@ -1174,7 +1248,6 @@ async function initApp() {
     } catch (e) { console.error("Fallo en la carga inicial:", e); alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); }
     finally { document.getElementById('loader').style.display = 'none'; }
 }
-
 document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>

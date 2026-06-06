@@ -573,18 +573,18 @@ function cerrarModal(modalId) { document.getElementById(modalId).style.display =
 async function cargarBaseDatos() {
     try {
         console.log("🔄 Cargando datos desde Firebase...");
+        
+        // ==================== RESTAURANTES ====================
         const restaurantesSnap = await database.ref('restaurantes').once('value');
         const restaurantesRaw = restaurantesSnap.val() || {};
         
-        // Cargar restaurantes con orden_manual y horarios_dias
         db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
             pin: pin,
             ...data,
-            horarios_dias: data.horarios_dias || null,  // 🔥 AGREGAR ESTA LÍNEA
+            horarios_dias: data.horarios_dias || null,
             orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999
         }));
         
-        // 🔥 ORDENAR RESTAURANTES POR orden_manual
         db.restaurantes.sort((a, b) => {
             const ordenA = a.orden_manual;
             const ordenB = b.orden_manual;
@@ -594,12 +594,14 @@ async function cargarBaseDatos() {
             return nombreA.localeCompare(nombreB);
         });
         
-        console.log("✅ Restaurantes ordenados:", db.restaurantes.map(r => `${r.orden_manual} - ${r.NOMBRE_RESTAURANTE || r.nombre}`));
+        console.log("✅ Restaurantes ordenados:", db.restaurantes.length);
         
+        // ==================== MENÚ ====================
         const menuSnap = await database.ref('menu_general').once('value');
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         console.log("✅ Menú:", db.menu.length);
         
+        // ==================== HORARIOS RESPALDO ====================
         const horariosSnap = await database.ref('horarios_restaurantes').once('value');
         const horariosRaw = horariosSnap.val();
         db.horariosPorDia = {};
@@ -608,32 +610,70 @@ async function cargarBaseDatos() {
                 db.horariosPorDia[idRest] = horariosDias;
             }
         }
-        console.log("✅ Horarios antiguos:", Object.keys(db.horariosPorDia).length);
         
-        const configSnap = await database.ref('config').once('value');
-        const configData = configSnap.val();
-        if (configData && Array.isArray(configData) && configData[0]) {
-            db.config = configData[0];
-            const headerBg = document.getElementById('header-bg');
-            if (headerBg && db.config.FONDO_CABECERA) {
-                headerBg.style.backgroundImage = `url(${db.config.FONDO_CABECERA})`;
-                headerBg.style.backgroundSize = 'cover';
-                headerBg.style.backgroundPosition = 'center';
+        // ==================== FONDO CABECERA ====================
+        // Buscar fondo activo en fondos_cabecera
+        const fondosSnap = await database.ref('fondos_cabecera').once('value');
+        const fondos = fondosSnap.val() || {};
+        let fondoActivo = null;
+        for (const [id, data] of Object.entries(fondos)) {
+            if (data.activo === true) {
+                fondoActivo = data;
+                break;
             }
-            const appLogo = document.getElementById('app-logo');
-            if (appLogo && db.config.LOGO_URL) { appLogo.src = db.config.LOGO_URL; }
         }
         
+        const headerBg = document.getElementById('header-bg');
+        if (headerBg && fondoActivo) {
+            headerBg.style.backgroundImage = `url(${fondoActivo.url})`;
+            headerBg.style.backgroundSize = 'cover';
+            headerBg.style.backgroundPosition = 'center';
+            console.log("✅ Fondo activo cargado desde fondos_cabecera:", fondoActivo.nombre);
+        } else if (headerBg) {
+            // Fallback: intentar desde config
+            const configSnapTemp = await database.ref('config').once('value');
+            const configDataTemp = configSnapTemp.val();
+            if (configDataTemp && configDataTemp.FONDO_CABECERA) {
+                headerBg.style.backgroundImage = `url(${configDataTemp.FONDO_CABECERA})`;
+                headerBg.style.backgroundSize = 'cover';
+                headerBg.style.backgroundPosition = 'center';
+                console.log("✅ Fondo cargado desde config (fallback)");
+            }
+        }
+        
+        // ==================== LOGO ====================
+        const appLogo = document.getElementById('app-logo');
+        if (appLogo) {
+            const configSnapTemp = await database.ref('config').once('value');
+            const configDataTemp = configSnapTemp.val();
+            
+            if (configDataTemp && configDataTemp.LOGO_URL) {
+                appLogo.src = configDataTemp.LOGO_URL;
+            } else if (configDataTemp && Array.isArray(configDataTemp) && configDataTemp[0] && configDataTemp[0].LOGO_URL) {
+                appLogo.src = configDataTemp[0].LOGO_URL;
+            } else {
+                appLogo.src = "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg";
+            }
+            console.log("✅ Logo cargado:", appLogo.src);
+        }
+        
+        // ==================== ANUNCIOS ====================
         const anunciosSnap = await database.ref('anuncios').once('value');
         const anunciosData = anunciosSnap.val();
         if (anunciosData && Array.isArray(anunciosData)) {
             db.anuncios = anunciosData;
             const textoAnuncio = document.getElementById('texto-anuncio');
             const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI');
-            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { textoAnuncio.innerText = anuncioActivo.TEXTO; }
+            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { 
+                textoAnuncio.innerText = anuncioActivo.TEXTO; 
+            }
         }
+        
         console.log("🎉 Carga completa!");
-    } catch (error) { console.error("❌ Error:", error); throw error; }
+    } catch (error) { 
+        console.error("❌ Error:", error); 
+        throw error; 
+    }
 }
 function renderHome() {
     const app = document.getElementById("app-container");

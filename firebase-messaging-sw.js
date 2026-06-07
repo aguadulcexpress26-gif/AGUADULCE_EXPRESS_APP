@@ -1,4 +1,4 @@
-// firebase-messaging-sw.js - Service Worker para notificaciones push con sonido repetitivo
+// firebase-messaging-sw.js - Service Worker para notificaciones push con sonido
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
@@ -15,31 +15,22 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Almacenar el intervalo de sonido para poder detenerlo
 let soundInterval = null;
 
-// Función para reproducir sonido repetitivo
 function playRepeatingSound() {
     if (soundInterval) clearInterval(soundInterval);
     
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    audio.volume = 1.0;
-    audio.loop = false;
-    
     const playSound = () => {
-        const newAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-        newAudio.volume = 1.0;
-        newAudio.play().catch(e => console.log('Error al reproducir sonido:', e));
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.volume = 1.0;
+        audio.play().catch(e => console.log('Error al reproducir sonido:', e));
     };
     
-    // Reproducir inmediatamente
     playSound();
-    
-    // Configurar repetición cada 2 segundos durante 8 segundos (4 repeticiones)
     let repeticiones = 0;
     soundInterval = setInterval(() => {
         repeticiones++;
-        if (repeticiones >= 4) { // 4 repeticiones = 8 segundos (cada 2 segundos)
+        if (repeticiones >= 4) {
             clearInterval(soundInterval);
             soundInterval = null;
         } else {
@@ -47,7 +38,6 @@ function playRepeatingSound() {
         }
     }, 2000);
     
-    // Auto-limpiar después de 8 segundos por si acaso
     setTimeout(() => {
         if (soundInterval) {
             clearInterval(soundInterval);
@@ -56,7 +46,6 @@ function playRepeatingSound() {
     }, 9000);
 }
 
-// Notificaciones en segundo plano
 messaging.onBackgroundMessage((payload) => {
     console.log('📱 Notificación en background:', payload);
     
@@ -69,33 +58,19 @@ messaging.onBackgroundMessage((payload) => {
         requireInteraction: true,
         priority: 'high',
         tag: 'nuevo-pedido',
-        renotify: true,
-        data: {
-            sound: 'repeating',
-            timestamp: Date.now()
-        }
+        renotify: true
     };
     
     self.registration.showNotification(notificationTitle, notificationOptions)
-        .then(() => {
-            // Reproducir sonido repetitivo después de mostrar la notificación
-            playRepeatingSound();
-        })
+        .then(() => playRepeatingSound())
         .catch(err => console.log('Error mostrando notificación:', err));
 });
 
-// Manejar clic en la notificación (detener sonido al abrir)
 self.addEventListener('notificationclick', (event) => {
-    // Detener el sonido repetitivo
     if (soundInterval) {
         clearInterval(soundInterval);
         soundInterval = null;
     }
-    
     event.notification.close();
-    
-    // Abrir la app del repartidor
-    event.waitUntil(
-        clients.openWindow('/AGUADULCE_EXPRESS_APP/reparto/reparto.html')
-    );
+    event.waitUntil(clients.openWindow('/AGUADULCE_EXPRESS_APP/reparto/reparto.html'));
 });

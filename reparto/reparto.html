@@ -57,6 +57,7 @@
         .boton-entregar { background: #22c55e; color: white; }
         .boton-secundario { background: #e2e8f0; color: #475569; }
         .text-retrasado { color: #ef4444 !important; font-weight: bold; }
+        .btn-test-sound { background: #f59e0b; color: #000; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -81,6 +82,7 @@
         <div class="flex justify-between items-center">
             <div><h1 class="text-xl font-black">🛵 Repartidor</h1><p id="repartidorNombreDisplay" class="text-slate-500 text-xs"></p></div>
             <div class="flex gap-2">
+                <button onclick="testNotification()" class="bg-yellow-500 text-black px-3 py-2 rounded-full text-xs font-medium">🔊 PROBAR SONIDO</button>
                 <button onclick="abrirAsistencia()" class="bg-red-100 text-red-600 px-3 py-2 rounded-full text-xs font-medium">🆘 Asistencia</button>
                 <button onclick="logoutRepartidor()" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-full text-sm">🚪 Salir</button>
             </div>
@@ -146,6 +148,64 @@
         document.getElementById('tab-historial').classList.toggle('active', tab === 'historial');
     }
     
+    // ==================== PRUEBA DE SONIDO ====================
+    function testNotification() {
+        console.log("🔔 Probando notificación y sonido...");
+        
+        if (Notification.permission === 'granted') {
+            // Probar notificación
+            new Notification('🔔 Prueba de sonido', {
+                body: 'Si ves esto, las notificaciones están activadas',
+                icon: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
+                vibrate: [200, 100, 200]
+            });
+            
+            // Probar sonido
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.volume = 1.0;
+            audio.play().then(() => {
+                Swal.fire({
+                    title: '🔊 Sonido reproducido',
+                    text: 'Si escuchaste el sonido, las notificaciones funcionarán correctamente.',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: '#fff',
+                    color: '#1e293b'
+                });
+            }).catch(e => {
+                Swal.fire({
+                    title: '⚠️ Error de sonido',
+                    text: 'El navegador bloqueó el sonido automático. Toca la pantalla y vuelve a intentar.',
+                    icon: 'warning',
+                    background: '#fff',
+                    color: '#1e293b'
+                });
+            });
+        } else {
+            // Solicitar permiso
+            Notification.requestPermission().then(perm => {
+                if (perm === 'granted') {
+                    Swal.fire({
+                        title: '✅ Permiso concedido',
+                        text: 'Ahora prueba de nuevo el sonido.',
+                        icon: 'success',
+                        background: '#fff',
+                        color: '#1e293b'
+                    });
+                } else {
+                    Swal.fire({
+                        title: '❌ Permiso denegado',
+                        text: 'Para recibir notificaciones, activa los permisos en Configuración → Notificaciones.',
+                        icon: 'error',
+                        background: '#fff',
+                        color: '#1e293b'
+                    });
+                }
+            });
+        }
+    }
+    
     function abrirAsistencia() {
         Swal.fire({
             title: '🆘 Asistencia Repartidor',
@@ -206,31 +266,9 @@
         
         if (permission === 'granted') {
             console.log('✅ Permiso concedido');
-            
-            if ('serviceWorker' in navigator) {
-                const registration = await navigator.serviceWorker.ready;
-                console.log('✅ Service Worker listo');
-                
-                setTimeout(() => {
-                    if (registration.active) {
-                        registration.active.postMessage({
-                            type: 'NOTIFICACION_PEDIDO',
-                            titulo: '✅ Notificaciones activadas',
-                            cuerpo: 'Recibirás alertas de nuevos pedidos',
-                            pedidoId: 'test'
-                        });
-                    }
-                }, 1000);
-            }
             return true;
         } else {
             console.log('❌ Permiso denegado');
-            Swal.fire({
-                title: '⚠️ Notificaciones bloqueadas',
-                text: 'Para recibir alertas de nuevos pedidos, activa las notificaciones en la configuración del navegador.',
-                icon: 'warning',
-                confirmButtonText: 'Entendido'
-            });
             return false;
         }
     }
@@ -634,12 +672,10 @@
     
     // ==================== REGISTRO DE SERVICE WORKERS ====================
     if ('serviceWorker' in navigator) {
-        // Registrar FCM Service Worker (para notificaciones push con sonido)
         navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js')
             .then(reg => console.log('✅ FCM Service Worker registrado', reg))
             .catch(err => console.error('❌ Error FCM SW:', err));
         
-        // Registrar PWA Service Worker (para instalación)
         navigator.serviceWorker.register('sw-reparto.js')
             .then(reg => console.log('✅ PWA Service Worker registrado', reg))
             .catch(err => console.error('❌ Error PWA SW:', err));

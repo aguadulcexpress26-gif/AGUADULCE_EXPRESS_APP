@@ -41,8 +41,8 @@
         .tab button.active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        .contador-coccion { background: #dbeafe; border-radius: 12px; padding: 10px; text-align: center; margin: 10px 0; }
-        .contador-coccion .tiempo { font-size: 28px; font-weight: 800; color: #1d4ed8; font-family: monospace; }
+        .contador-coccion { background: #f1f5f9; border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+        .contador-coccion .tiempo { font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700; }
         .stats-card { background: white; border-radius: 16px; padding: 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
         .stats-card .label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; }
         .stats-card .value { font-size: 16px; font-weight: 800; }
@@ -52,6 +52,7 @@
         .boton-llegue { background: #f97316; color: white; }
         .boton-entregar { background: #22c55e; color: white; }
         .boton-secundario { background: #e2e8f0; color: #475569; }
+        .text-retrasado { color: #ef4444 !important; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -119,6 +120,7 @@
     
     let repartidorActual = null, pedidosListener = null, pedidoActual = null, temporizadorAusencia = null, avisoEnviado = false;
     let intervalosContador = {};
+    let intervalosContadorRepartidor = {};
     let pedidosIdsPrevios = new Set();
     
     const mensajesPredefinidos = {
@@ -185,51 +187,6 @@
         document.getElementById('gananciaMes').innerText = gananciaMes.toFixed(2) + '€';
     }
     
-    // ==================== NOTIFICACIONES SIMPLIFICADAS ====================
-   async function iniciarNotificaciones() {
-    try {
-        // 1. PRIMERO: Solicitar permiso al usuario
-        let permission = Notification.permission;
-        
-        if (permission !== 'granted') {
-            permission = await Notification.requestPermission();
-            console.log('📱 Permiso de notificaciones:', permission);
-        }
-        
-        if (permission !== 'granted') {
-            console.log('❌ Permiso denegado, las notificaciones no funcionarán');
-            // Mostrar mensaje al usuario
-            Swal.fire({
-                title: '⚠️ Permiso de notificaciones',
-                text: 'Para recibir alertas de nuevos pedidos, activa las notificaciones en la configuración de tu navegador.',
-                icon: 'info',
-                background: '#fff',
-                confirmButtonText: 'Entendido'
-            });
-            return false;
-        }
-        
-        // 2. Asegurar que el Service Worker esté listo
-        const registration = await navigator.serviceWorker.ready;
-        console.log('✅ Service Worker listo para notificaciones');
-        
-        // 3. Enviar una notificación de prueba
-        if (registration.active) {
-            registration.active.postMessage({
-                type: 'NOTIFICACION_PEDIDO',
-                titulo: '✅ Notificaciones activadas',
-                cuerpo: 'Recibirás alertas de nuevos pedidos asignados',
-                pedidoId: 'test'
-            });
-            console.log('🔔 Notificación de prueba enviada');
-        }
-        return true;
-    } catch (error) {
-        console.error('❌ Error al iniciar notificaciones:', error);
-        return false;
-    }
-}
-    
     async function loginRepartidor() {
         const nombre = document.getElementById('repartidorNombre').value.trim();
         const password = document.getElementById('repartidorPass').value;
@@ -247,15 +204,10 @@
             document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
             await auth.signInAnonymously();
             iniciarEscuchaPedidos();
-            iniciarNotificaciones();
         } else Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
     }
     
-    function logoutRepartidor() { 
-        if (pedidosListener && pedidosListener.off) pedidosListener.off(); 
-        localStorage.removeItem('repartidor_actual'); 
-        location.reload(); 
-    }
+    function logoutRepartidor() { if (pedidosListener && pedidosListener.off) pedidosListener.off(); localStorage.removeItem('repartidor_actual'); location.reload(); }
     
     if (localStorage.getItem('repartidor_actual')) {
         repartidorActual = JSON.parse(localStorage.getItem('repartidor_actual'));
@@ -264,10 +216,56 @@
         document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
         auth.signInAnonymously();
         iniciarEscuchaPedidos();
-        iniciarNotificaciones();
     }
     
-    // ==================== ESCUCHA DE PEDIDOS CON NOTIFICACIONES ====================
+    // ==================== CONTADOR REGRESIVO EN TIEMPO REAL ====================
+    function iniciarContadorRegresivoRepartidor(pedidoId, minutosRestantes) {
+        if (intervalosContadorRepartidor[pedidoId]) {
+            clearInterval(intervalosContadorRepartidor[pedidoId]);
+        }
+        
+        let tiempoRestante = minutosRestantes;
+        const timerElement = document.getElementById(`timer-coccion-${pedidoId}`);
+        if (!timerElement) return;
+        
+        const intervalo = setInterval(async () => {
+            const pedidoSnap = await database.ref(`pedidos/${pedidoId}/estado`).once('value');
+            const estadoActual = pedidoSnap.val();
+            
+            if (estadoActual !== 'COCCIÓN') {
+                clearInterval(intervalo);
+                delete intervalosContadorRepartidor[pedidoId];
+                return;
+            }
+            
+            const tiempoSnap = await database.ref(`pedidos/${pedidoId}/tiempo_restante`).once('value');
+            let restante = tiempoSnap.val();
+            
+            if (restante === null || restante === undefined) {
+                restante = tiempoRestante;
+            }
+            
+            if (restante <= 0) {
+                clearInterval(intervalo);
+                delete intervalosContadorRepartidor[pedidoId];
+                if (timerElement) {
+                    timerElement.innerHTML = '⏰ RETRASADO';
+                    timerElement.classList.add('text-retrasado');
+                    timerElement.classList.remove('text-cyan-600');
+                }
+            } else {
+                const minutos = Math.floor(restante);
+                const segundos = Math.floor((restante % 1) * 60);
+                if (timerElement) {
+                    timerElement.innerHTML = `${minutos}:${segundos.toString().padStart(2, '0')}`;
+                }
+                tiempoRestante = restante;
+            }
+        }, 1000);
+        
+        intervalosContadorRepartidor[pedidoId] = intervalo;
+    }
+    
     function iniciarEscuchaPedidos() {
         if (pedidosListener) pedidosListener.off();
         
@@ -286,7 +284,6 @@
                 }
             }
             
-            // Detectar nuevos pedidos y enviar notificación
             const nuevosIds = [...nuevosPedidosIds].filter(id => !pedidosIdsPrevios.has(id));
             if (nuevosIds.length > 0) {
                 const registration = await navigator.serviceWorker.ready;
@@ -300,7 +297,6 @@
                             pedidoId: nuevoId,
                             total: pedido.total
                         });
-                        console.log('🔔 Notificación enviada para pedido:', nuevoId);
                     }
                 }
             }
@@ -316,7 +312,7 @@
     }
     
     function actualizarContadores(pedidos) {
-        const porRecoger = pedidos.filter(p => p.estado === 'LISTO' || p.estado === 'COCCIÓN').length;
+        const porRecoger = pedidos.filter(p => p.estado === 'LISTO').length;
         const enCamino = pedidos.filter(p => p.estado === 'EN_REPARTO').length;
         const enPuerta = pedidos.filter(p => p.estado === 'EN_PUERTA').length;
         document.getElementById('totalPorRecoger').innerText = porRecoger;
@@ -324,56 +320,91 @@
         document.getElementById('totalEnPuerta').innerText = enPuerta;
     }
     
-    function iniciarContadorRegresivo(pedidoId, minutos) {
-        if (intervalosContador[pedidoId]) clearInterval(intervalosContador[pedidoId]);
-        let tiempoRestante = minutos;
-        const timerElement = document.getElementById(`timer-${pedidoId}`);
-        const interval = setInterval(async () => {
-            tiempoRestante--;
-            if (tiempoRestante <= 0) {
-                clearInterval(interval);
-                delete intervalosContador[pedidoId];
-                if (timerElement) timerElement.innerText = '0:00';
-            } else {
-                const mins = Math.floor(tiempoRestante / 60);
-                const segs = tiempoRestante % 60;
-                if (timerElement) timerElement.innerText = `${mins}:${segs.toString().padStart(2, '0')}`;
-                await database.ref(`pedidos/${pedidoId}/tiempo_restante`).set(tiempoRestante);
-            }
-        }, 60000);
-        intervalosContador[pedidoId] = interval;
-    }
-    
     function renderizarActivos(pedidos) {
         const container = document.getElementById('listaActivos');
         if (pedidos.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-10">📭 No hay pedidos activos</div>'; return; }
         container.innerHTML = '';
+        
         for (const p of pedidos) {
             const estado = p.estado || '';
             let badgeClass = 'badge-blue', badgeText = '📦 Por recoger', colorBorder = '#3b82f6';
             let tiempoHtml = '';
             let botonesHtml = '';
+            
             if (estado === 'COCCIÓN') {
-                badgeClass = 'badge-orange'; badgeText = '⏱️ En preparación'; colorBorder = '#f97316';
+                badgeClass = 'badge-orange'; 
+                badgeText = '⏱️ En preparación'; 
+                colorBorder = '#f97316';
+                
                 const tiempoRestante = p.tiempo_restante !== undefined ? p.tiempo_restante : (p.tiempo_coccion || 15);
-                tiempoHtml = `<div class="contador-coccion"><div class="tiempo" id="timer-${p.id}">${Math.floor(tiempoRestante/60)}:${(tiempoRestante%60).toString().padStart(2,'0')}</div><div class="text-xs">tiempo restante</div></div>`;
-                iniciarContadorRegresivo(p.id, tiempoRestante);
-                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button><button disabled class="boton-secundario boton-accion opacity-50">⏳ Esperando</button></div>`;
+                
+                tiempoHtml = `
+                    <div class="contador-coccion">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs text-slate-500">⏱️ Tiempo restante:</span>
+                            <span class="tiempo font-mono text-xl font-bold text-cyan-600" id="timer-coccion-${p.id}">${Math.floor(tiempoRestante)}:00</span>
+                        </div>
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                    iniciarContadorRegresivoRepartidor(p.id, tiempoRestante);
+                }, 100);
+                
+                botonesHtml = `<div class="flex gap-2 mt-3">
+                    <button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button>
+                    <button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button>
+                    <button disabled class="boton-secundario boton-accion opacity-50">⏳ Esperando</button>
+                </div>`;
             }
             else if (estado === 'LISTO') {
-                badgeClass = 'badge-blue'; badgeText = '📦 Por recoger'; colorBorder = '#3b82f6';
-                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button><button onclick="marcarRecogido('${p.id}')" class="boton-recoger boton-accion">🛵 Recoger</button></div>`;
+                badgeClass = 'badge-green'; 
+                badgeText = '✅ Listo para recoger'; 
+                colorBorder = '#22c55e';
+                
+                tiempoHtml = `<div class="bg-green-500/10 rounded-xl p-2 text-center text-green-400 text-sm">✅ Pedido listo - Esperando recogida</div>`;
+                
+                botonesHtml = `<div class="flex gap-2 mt-3">
+                    <button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button>
+                    <button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button>
+                    <button onclick="marcarRecogido('${p.id}')" class="boton-recoger boton-accion">🛵 Recoger</button>
+                </div>`;
             }
             else if (estado === 'EN_REPARTO') {
-                badgeClass = 'badge-purple'; badgeText = '🛵 En reparto'; colorBorder = '#8b5cf6';
-                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button><button onclick="marcarLlegado('${p.id}')" class="boton-llegue boton-accion">📍 Llegué</button></div>`;
+                badgeClass = 'badge-purple'; 
+                badgeText = '🛵 En reparto'; 
+                colorBorder = '#8b5cf6';
+                
+                botonesHtml = `<div class="flex gap-2 mt-3">
+                    <button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button>
+                    <button onclick="abrirGPS('${p.id}')" class="btn-primary boton-accion">🗺️ GPS</button>
+                    <button onclick="marcarLlegado('${p.id}')" class="boton-llegue boton-accion">📍 Llegué</button>
+                </div>`;
             }
             else if (estado === 'EN_PUERTA') {
-                badgeClass = 'badge-orange'; badgeText = '🔔 En la puerta'; colorBorder = '#f97316';
-                botonesHtml = `<div class="flex gap-2 mt-3"><button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button><button onclick="abrirOpcionesEntrega('${p.id}')" class="btn-warning boton-accion">🔧 Opciones</button><button onclick="entregarPedidoDirecto('${p.id}')" class="boton-entregar boton-accion">💰 Cobrar</button></div>`;
+                badgeClass = 'badge-orange'; 
+                badgeText = '🔔 En la puerta'; 
+                colorBorder = '#f97316';
+                
+                botonesHtml = `<div class="flex gap-2 mt-3">
+                    <button onclick="verDetalleCompleto('${p.id}')" class="boton-secundario boton-accion">📋 Detalle</button>
+                    <button onclick="abrirOpcionesEntrega('${p.id}')" class="btn-warning boton-accion">🔧 Opciones</button>
+                    <button onclick="entregarPedidoDirecto('${p.id}')" class="boton-entregar boton-accion">💰 Cobrar</button>
+                </div>`;
             }
+            
             container.innerHTML += `<div class="card" style="border-left: 4px solid ${colorBorder};">
-                <div class="flex justify-between items-start"><div><span class="text-blue-600 font-bold text-sm">#${p.id_pedido || p.id.substring(0,8)}</span><p class="font-bold">${escapeHTML(p.cliente_nombre)}</p><p class="text-slate-500 text-xs">${escapeHTML(p.direccion || 'Sin dirección')}</p></div><div class="text-right"><span class="text-emerald-600 font-bold">${(p.total||0).toFixed(2)}€</span><div class="badge ${badgeClass} mt-1">${badgeText}</div></div></div>
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-blue-600 font-bold text-sm">#${p.id_pedido || p.id.substring(0,8)}</span>
+                        <p class="font-bold">${escapeHTML(p.cliente_nombre)}</p>
+                        <p class="text-slate-500 text-xs">${escapeHTML(p.direccion || 'Sin dirección')}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-emerald-600 font-bold">${(p.total||0).toFixed(2)}€</span>
+                        <div class="badge ${badgeClass} mt-1">${badgeText}</div>
+                    </div>
+                </div>
                 ${tiempoHtml}
                 ${botonesHtml}
                 <button onclick="abrirOpciones('${p.id}')" class="w-full mt-2 bg-slate-100 text-slate-600 py-2 rounded-xl text-xs font-medium">🔧 Más opciones</button>
@@ -384,6 +415,7 @@
     function renderizarHistorial(pedidos) {
         const container = document.getElementById('listaHistorial');
         if (pedidos.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-10">📭 No hay pedidos en el historial</div>'; return; }
+        
         const agrupados = {};
         for (const p of pedidos) {
             const fecha = new Date(p.timestamp_entregado || p.timestamp_cancelacion || p.fecha || 0);
@@ -392,8 +424,10 @@
             if (!agrupados[fechaKey]) agrupados[fechaKey] = { display: fechaDisplay, pedidos: [] };
             agrupados[fechaKey].pedidos.push(p);
         }
+        
         const fechasOrdenadas = Object.keys(agrupados).sort().reverse();
         container.innerHTML = '';
+        
         for (const fechaKey of fechasOrdenadas) {
             const grupo = agrupados[fechaKey];
             container.innerHTML += `<div class="sticky top-0 bg-white/90 backdrop-blur-sm rounded-xl p-2 mb-2 z-10"><p class="text-cyan-600 text-xs font-bold uppercase flex items-center gap-2">📅 ${grupo.display}<span class="bg-cyan-100 text-cyan-600 px-2 py-0.5 rounded-full text-[10px]">${grupo.pedidos.length} pedidos</span></p></div>`;
@@ -497,44 +531,44 @@
     }
     
     async function cancelarPorAusencia(pedidoId) {
-    const confirm = await Swal.fire({ title: '¿Cancelar?', text: 'El cliente no se presentó. Se generará una deuda.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar' });
-    
-    if (confirm.isConfirmed) {
-        const pedidoSnap = await database.ref(`pedidos/${pedidoId}`).once('value');
-        const pedido = pedidoSnap.val();
-        const deuda = pedido?.total || 0;
-        const emailSanitizado = sanitizarEmail(pedido?.cliente_email);
+        const confirm = await Swal.fire({ title: '¿Cancelar?', text: 'El cliente no se presentó. Se generará una deuda.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar' });
         
-        const mensajeCancelacion = `❌ PEDIDO CANCELADO POR AUSENCIA\n\nHola ${pedido?.cliente_nombre},\n\n⚠️ No te presentaste a recibir tu pedido después de que el repartidor te avisó.\n\n💰 Deuda generada: ${deuda.toFixed(2)}€\n\n🚫 Tu cuenta ha sido BLOQUEADA temporalmente.\n\n📞 Para regularizar tu situación, contacta con soporte:\n   ✉️ soporteaguadulcexpress26@gmail.com\n   📞 643 261 881\n\nGracias por tu comprensión.`;
-        
-        await database.ref(`mensajes/${pedidoId}`).push({
-            emisor: 'sistema',
-            texto: mensajeCancelacion,
-            tipo: 'cancelacion',
-            timestamp: Date.now(),
-            leido: false
-        });
-        
-        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
-            email_original: pedido?.cliente_email,
-            nombre: pedido?.cliente_nombre,
-            motivo: 'No se presentó a recibir el pedido',
-            deuda: deuda,
-            fecha: Date.now(),
-            activo: true
-        });
-        
-        await database.ref(`pedidos/${pedidoId}`).update({
-            estado: 'CANCELADO_POR_AUSENCIA',
-            deuda_generada: deuda,
-            mensaje_cancelacion_enviado: true,
-            timestamp_cancelacion: Date.now()
-        });
-        
-        cerrarModalOpciones();
-        Swal.fire({ title: '❌ Cancelado', text: `Deuda registrada: ${deuda.toFixed(2)}€`, icon: 'error' });
+        if (confirm.isConfirmed) {
+            const pedidoSnap = await database.ref(`pedidos/${pedidoId}`).once('value');
+            const pedido = pedidoSnap.val();
+            const deuda = pedido?.total || 0;
+            const emailSanitizado = sanitizarEmail(pedido?.cliente_email);
+            
+            const mensajeCancelacion = `❌ PEDIDO CANCELADO POR AUSENCIA\n\nHola ${pedido?.cliente_nombre},\n\n⚠️ No te presentaste a recibir tu pedido después de que el repartidor te avisó.\n\n💰 Deuda generada: ${deuda.toFixed(2)}€\n\n🚫 Tu cuenta ha sido BLOQUEADA temporalmente.\n\n📞 Para regularizar tu situación, contacta con soporte:\n   ✉️ soporteaguadulcexpress26@gmail.com\n   📞 643 261 881\n\nGracias por tu comprensión.`;
+            
+            await database.ref(`mensajes/${pedidoId}`).push({
+                emisor: 'sistema',
+                texto: mensajeCancelacion,
+                tipo: 'cancelacion',
+                timestamp: Date.now(),
+                leido: false
+            });
+            
+            await database.ref(`clientes_morosos/${emailSanitizado}`).set({
+                email_original: pedido?.cliente_email,
+                nombre: pedido?.cliente_nombre,
+                motivo: 'No se presentó a recibir el pedido',
+                deuda: deuda,
+                fecha: Date.now(),
+                activo: true
+            });
+            
+            await database.ref(`pedidos/${pedidoId}`).update({
+                estado: 'CANCELADO_POR_AUSENCIA',
+                deuda_generada: deuda,
+                mensaje_cancelacion_enviado: true,
+                timestamp_cancelacion: Date.now()
+            });
+            
+            cerrarModalOpciones();
+            Swal.fire({ title: '❌ Cancelado', text: `Deuda registrada: ${deuda.toFixed(2)}€`, icon: 'error' });
+        }
     }
-}
     
     function abrirGPS(pedidoId) { database.ref(`pedidos/${pedidoId}`).once('value', snap => { const p = snap.val(); Swal.fire({ title: '🗺️ Navegación', html: `<button onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.direccion || '')}', '_blank')" class="btn-primary mb-2">📍 Ir al Cliente</button><button onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.restaurante_direccion || '')}", '_blank')" class="btn-secondary">🏪 Ir al Restaurante</button>`, showConfirmButton: false }); }); }
     function llamarCliente(pedidoId) { database.ref(`pedidos/${pedidoId}`).once('value', snap => { const p = snap.val(); if(p?.cliente_telefono) window.location.href = `tel:${p.cliente_telefono}`; else Swal.fire({ title: 'Info', text: 'Número no disponible', icon: 'info' }); }); }

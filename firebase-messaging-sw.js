@@ -17,20 +17,24 @@ const messaging = firebase.messaging();
 
 let soundInterval = null;
 
+// 🔥 TU SONIDO PERSONALIZADO
+const SONIDO_URL = 'https://raw.githubusercontent.com/aguadulcexpress26-gif/AGUADULCE_EXPRESS_APP/main/sonidorepartidoraguadulceexpress.mp3';
+
 function playRepeatingSound() {
     if (soundInterval) clearInterval(soundInterval);
     
     const playSound = () => {
-        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        const audio = new Audio(SONIDO_URL);
         audio.volume = 1.0;
         audio.play().catch(e => console.log('Error al reproducir sonido:', e));
     };
     
     playSound();
     let repeticiones = 0;
+    // Repetir cada 2 segundos durante 10 segundos (5 repeticiones)
     soundInterval = setInterval(() => {
         repeticiones++;
-        if (repeticiones >= 4) {
+        if (repeticiones >= 5) {
             clearInterval(soundInterval);
             soundInterval = null;
         } else {
@@ -43,7 +47,7 @@ function playRepeatingSound() {
             clearInterval(soundInterval);
             soundInterval = null;
         }
-    }, 9000);
+    }, 11000);
 }
 
 messaging.onBackgroundMessage((payload) => {
@@ -54,7 +58,7 @@ messaging.onBackgroundMessage((payload) => {
         body: payload.notification?.body || 'Tienes un nuevo pedido asignado',
         icon: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
         badge: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
-        vibrate: [200, 100, 200, 100, 200, 100, 200, 100, 200],
+        vibrate: [500, 300, 500, 300, 500, 300, 1000],
         requireInteraction: true,
         priority: 'high',
         tag: 'nuevo-pedido',

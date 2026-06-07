@@ -16,7 +16,6 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'NOTIFICACION_PEDIDO') {
     const { titulo, cuerpo, pedidoId, total } = event.data;
     
-    // Verificar si hay permiso antes de mostrar
     if (Notification.permission !== 'granted') {
       console.log('⚠️ No hay permiso para mostrar notificación');
       return;
@@ -47,4 +46,9 @@ self.addEventListener('notificationclick', (event) => {
   if (event.action === 'ver') {
     event.waitUntil(clients.openWindow(event.notification.data.url));
   }
+});
+
+// 🔥 Opcional: manejar sonido cuando la app está en primer plano
+self.addEventListener('notificationclick', (event) => {
+  // Silencioso, no repetir sonido
 });

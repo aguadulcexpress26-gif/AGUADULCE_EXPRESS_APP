@@ -497,16 +497,44 @@
     }
     
     async function cancelarPorAusencia(pedidoId) {
-        const confirm = await Swal.fire({ title: '¿Cancelar?', text: 'El cliente no se presentó', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí' });
-        if (confirm.isConfirmed) {
-            const deuda = pedidoActual?.total || 0;
-            const emailSanitizado = sanitizarEmail(pedidoActual?.cliente_email);
-            await database.ref(`clientes_morosos/${emailSanitizado}`).set({ email_original: pedidoActual?.cliente_email, nombre: pedidoActual?.cliente_nombre, motivo: 'No se presentó', deuda, fecha: Date.now(), activo: true });
-            await database.ref(`pedidos/${pedidoId}`).update({ estado: 'CANCELADO_POR_AUSENCIA', deuda_generada: deuda });
-            cerrarModalOpciones();
-            Swal.fire({ title: '❌ Cancelado', text: `Deuda: ${deuda.toFixed(2)}€`, icon: 'error' });
-        }
+    const confirm = await Swal.fire({ title: '¿Cancelar?', text: 'El cliente no se presentó. Se generará una deuda.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar' });
+    
+    if (confirm.isConfirmed) {
+        const pedidoSnap = await database.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = pedidoSnap.val();
+        const deuda = pedido?.total || 0;
+        const emailSanitizado = sanitizarEmail(pedido?.cliente_email);
+        
+        const mensajeCancelacion = `❌ PEDIDO CANCELADO POR AUSENCIA\n\nHola ${pedido?.cliente_nombre},\n\n⚠️ No te presentaste a recibir tu pedido después de que el repartidor te avisó.\n\n💰 Deuda generada: ${deuda.toFixed(2)}€\n\n🚫 Tu cuenta ha sido BLOQUEADA temporalmente.\n\n📞 Para regularizar tu situación, contacta con soporte:\n   ✉️ soporteaguadulcexpress26@gmail.com\n   📞 643 261 881\n\nGracias por tu comprensión.`;
+        
+        await database.ref(`mensajes/${pedidoId}`).push({
+            emisor: 'sistema',
+            texto: mensajeCancelacion,
+            tipo: 'cancelacion',
+            timestamp: Date.now(),
+            leido: false
+        });
+        
+        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
+            email_original: pedido?.cliente_email,
+            nombre: pedido?.cliente_nombre,
+            motivo: 'No se presentó a recibir el pedido',
+            deuda: deuda,
+            fecha: Date.now(),
+            activo: true
+        });
+        
+        await database.ref(`pedidos/${pedidoId}`).update({
+            estado: 'CANCELADO_POR_AUSENCIA',
+            deuda_generada: deuda,
+            mensaje_cancelacion_enviado: true,
+            timestamp_cancelacion: Date.now()
+        });
+        
+        cerrarModalOpciones();
+        Swal.fire({ title: '❌ Cancelado', text: `Deuda registrada: ${deuda.toFixed(2)}€`, icon: 'error' });
     }
+}
     
     function abrirGPS(pedidoId) { database.ref(`pedidos/${pedidoId}`).once('value', snap => { const p = snap.val(); Swal.fire({ title: '🗺️ Navegación', html: `<button onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.direccion || '')}', '_blank')" class="btn-primary mb-2">📍 Ir al Cliente</button><button onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.restaurante_direccion || '')}", '_blank')" class="btn-secondary">🏪 Ir al Restaurante</button>`, showConfirmButton: false }); }); }
     function llamarCliente(pedidoId) { database.ref(`pedidos/${pedidoId}`).once('value', snap => { const p = snap.val(); if(p?.cliente_telefono) window.location.href = `tel:${p.cliente_telefono}`; else Swal.fire({ title: 'Info', text: 'Número no disponible', icon: 'info' }); }); }

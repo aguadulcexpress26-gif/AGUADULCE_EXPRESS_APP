@@ -17,7 +17,7 @@ const messaging = firebase.messaging();
 
 let soundInterval = null;
 
-// 🔥 TU SONIDO PERSONALIZADO
+// 🔥 URL CORRECTA DE TU SONIDO
 const SONIDO_URL = 'https://raw.githubusercontent.com/aguadulcexpress26-gif/AGUADULCE_EXPRESS_APP/main/sonidorepartidoraguadulceexpress.mp3';
 
 function playRepeatingSound() {
@@ -31,7 +31,6 @@ function playRepeatingSound() {
     
     playSound();
     let repeticiones = 0;
-    // Repetir cada 2 segundos durante 10 segundos (5 repeticiones)
     soundInterval = setInterval(() => {
         repeticiones++;
         if (repeticiones >= 5) {

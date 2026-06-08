@@ -1,4 +1,4 @@
-// firebase-sw-v4.js
+// firebase-sw-v4.js - Service Worker para notificaciones push con sonido personalizado
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
@@ -17,29 +17,16 @@ const messaging = firebase.messaging();
 
 let soundInterval = null;
 
-// 🔥 SONIDOS DISPONIBLES - Cambia la URL por el que quieras
-const SONIDOS = {
-    'alerta': 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3',
-    'timbre': 'https://actions.google.com/sound/bar/office-door-bell.mp3',
-    'campana': 'https://www.soundjay.com/misc/sounds/electric-bell-01.mp3',
-    'default': 'default'  // Sonido por defecto del móvil
-};
-
-// 🔥 CAMBIA AQUÍ EL SONIDO QUE QUIERES USAR
-const SONIDO_SELECCIONADO = 'default'; // Opciones: 'alerta', 'timbre', 'campana', 'default'
+// 🔥 TU SONIDO PERSONALIZADO
+const SONIDO_URL = 'https://raw.githubusercontent.com/aguadulcexpress26-gif/AGUADULCE_EXPRESS_APP/main/sonidorepartidoraguadulceexpress.mp3';
 
 function playRepeatingSound() {
     if (soundInterval) clearInterval(soundInterval);
     
     const playSound = () => {
-        if (SONIDO_SELECCIONADO === 'default') {
-            // Sonido por defecto del móvil (no requiere URL)
-            console.log('Usando sonido por defecto del móvil');
-        } else {
-            const audio = new Audio(SONIDOS[SONIDO_SELECCIONADO]);
-            audio.volume = 1.0;
-            audio.play().catch(e => console.log('Error:', e));
-        }
+        const audio = new Audio(SONIDO_URL);
+        audio.volume = 1.0;
+        audio.play().catch(e => console.log('Error al reproducir sonido:', e));
     };
     
     playSound();
@@ -62,13 +49,6 @@ function playRepeatingSound() {
     }, 11000);
 }
 
-// También hacer vibrar el móvil
-function vibrarMovil() {
-    if (navigator.vibrate) {
-        navigator.vibrate([500, 300, 500, 300, 500]);
-    }
-}
-
 messaging.onBackgroundMessage((payload) => {
     console.log('📱 Notificación en background:', payload);
     
@@ -85,11 +65,16 @@ messaging.onBackgroundMessage((payload) => {
     };
     
     self.registration.showNotification(notificationTitle, notificationOptions)
-        .then(() => {
-            playRepeatingSound();
-            vibrarMovil();
-        })
+        .then(() => playRepeatingSound())
         .catch(err => console.log('Error:', err));
+});
+
+// Para probar desde la consola
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'TEST_SONIDO') {
+        console.log('🔊 Test de sonido desde Service Worker');
+        playRepeatingSound();
+    }
 });
 
 self.addEventListener('notificationclick', (event) => {

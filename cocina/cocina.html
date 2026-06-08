@@ -324,53 +324,66 @@
     }
     
     // ==================== RECHAZAR PEDIDO (CORREGIDO - SIN DEUDA) ====================
-    async function rechazarPedido(id) {
-        const confirm = await Swal.fire({
-            title: '¿Rechazar pedido?',
-            text: 'El cliente NO pagará por este pedido. Recibirá una notificación.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#ef4444',
-            confirmButtonText: 'Sí, rechazar',
-            background: '#0f172a', color: 'white'
-        });
-        
-        if (confirm.isConfirmed) {
-            try {
-                const pedidoSnap = await database.ref(`pedidos/${id}`).once('value');
-                const pedido = pedidoSnap.val();
-                
-                if (!pedido) {
-                    Swal.fire({ title: 'Error', text: 'Pedido no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
-                    return;
-                }
-                
-                // Mensaje de RECHAZO (sin deuda)
-                const mensajeRechazo = `❌ PEDIDO RECHAZADO\n\nHola ${pedido.cliente_nombre},\n\nLamentamos informarte que tu pedido #${pedido.id_pedido || id.substring(0,8)} ha sido RECHAZADO por el restaurante.\n\nMotivo: El restaurante no pudo preparar tu pedido en este momento.\n\n✅ No se ha realizado ningún cargo en tu cuenta.\n\nPuedes realizar un nuevo pedido cuando lo desees.\n\nGracias por confiar en Aguadulce Express.`;
-                
-                await database.ref(`mensajes/${id}`).push({
-                    emisor: 'sistema',
-                    texto: mensajeRechazo,
-                    tipo: 'rechazo',
-                    timestamp: Date.now(),
-                    leido: false
-                });
-                
-                await database.ref(`pedidos/${id}`).update({
-                    estado: 'RECHAZADO',
-                    motivo_rechazo: 'Rechazado por el restaurante',
-                    mensaje_rechazo_enviado: true,
-                    timestamp_rechazo: Date.now()
-                });
-                
-                Swal.fire({ title: '❌ Pedido rechazado', text: 'El cliente ha sido notificado (sin cargo)', icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
-                
-            } catch (error) {
-                console.error("Error:", error);
-                Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+   async function rechazarPedido(id) {
+    const confirm = await Swal.fire({
+        title: '¿Rechazar pedido?',
+        text: 'El cliente NO pagará por este pedido. Recibirá una notificación.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Sí, rechazar',
+        background: '#0f172a', color: 'white'
+    });
+    
+    if (confirm.isConfirmed) {
+        try {
+            // 1. Obtener datos del pedido
+            const pedidoSnap = await database.ref(`pedidos/${id}`).once('value');
+            const pedido = pedidoSnap.val();
+            
+            if (!pedido) {
+                Swal.fire({ title: 'Error', text: 'Pedido no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
+                return;
             }
+            
+            // 2. Enviar mensaje de rechazo al cliente
+            const mensajeRechazo = `❌ PEDIDO RECHAZADO\n\nHola ${pedido.cliente_nombre},\n\nLamentamos informarte que tu pedido #${pedido.id_pedido || id.substring(0,8)} ha sido RECHAZADO por el restaurante.\n\nMotivo: El restaurante no pudo preparar tu pedido en este momento.\n\n✅ No se ha realizado ningún cargo en tu cuenta.\n\nPuedes realizar un nuevo pedido cuando lo desees.\n\nGracias por confiar en Aguadulce Express.`;
+            
+            await database.ref(`mensajes/${id}`).push({
+                emisor: 'sistema',
+                texto: mensajeRechazo,
+                tipo: 'rechazo',
+                timestamp: Date.now(),
+                leido: false
+            });
+            
+            // 3. Actualizar estado del pedido
+            await database.ref(`pedidos/${id}`).update({
+                estado: 'RECHAZADO',
+                motivo_rechazo: 'Rechazado por el restaurante',
+                mensaje_rechazo_enviado: true,
+                timestamp_rechazo: Date.now()
+            });
+            
+            // 4. Notificar por consola
+            console.log(`✅ Mensaje de rechazo enviado para pedido: ${id}`);
+            
+            Swal.fire({ 
+                title: '❌ Pedido rechazado', 
+                text: 'El cliente ha sido notificado', 
+                icon: 'success', 
+                timer: 2000, 
+                showConfirmButton: false, 
+                background: '#0f172a', 
+                color: 'white' 
+            });
+            
+        } catch (error) {
+            console.error("Error al rechazar pedido:", error);
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
         }
     }
+}
     
     async function asignarTiempo(id, minutos, btn) {
         const parent = btn.parentElement;

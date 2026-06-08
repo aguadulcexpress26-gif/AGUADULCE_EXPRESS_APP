@@ -57,7 +57,15 @@
         .boton-entregar { background: #22c55e; color: white; }
         .boton-secundario { background: #e2e8f0; color: #475569; }
         .text-retrasado { color: #ef4444 !important; font-weight: bold; }
-        .btn-test-sound { background: #f59e0b; color: #000; font-weight: bold; }
+        .header-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; z-index: 0; }
+        .banner-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.2) 50%, transparent 100%); z-index: 1; }
+        .menu-icon { cursor: pointer; transition: transform 0.2s; }
+        .menu-icon:active { transform: scale(0.95); }
+        .menu-panel { position: fixed; top: 70px; right: 20px; background: white; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); z-index: 1000; width: 200px; overflow: hidden; display: none; border: 1px solid #e2e8f0; }
+        .menu-panel button { width: 100%; padding: 14px 16px; text-align: left; background: white; border: none; border-bottom: 1px solid #e2e8f0; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        .menu-panel button:last-child { border-bottom: none; }
+        .menu-panel button:hover { background: #f1f5f9; }
+        .menu-panel button:active { background: #e2e8f0; }
     </style>
 </head>
 <body>
@@ -78,16 +86,32 @@
 
 <!-- Dashboard Principal -->
 <div id="dashboardPanel" class="hidden min-h-screen pb-24">
-    <div class="bg-white border-b border-slate-200 p-4 sticky top-0 z-10">
-        <div class="flex justify-between items-center">
-            <div><h1 class="text-xl font-black">🛵 Repartidor</h1><p id="repartidorNombreDisplay" class="text-slate-500 text-xs"></p></div>
-            <div class="flex gap-2">
-                <button onclick="testNotification()" class="bg-yellow-500 text-black px-3 py-2 rounded-full text-xs font-medium">🔊 PROBAR SONIDO</button>
-                <button onclick="abrirAsistencia()" class="bg-red-100 text-red-600 px-3 py-2 rounded-full text-xs font-medium">🆘 Asistencia</button>
-                <button onclick="logoutRepartidor()" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-full text-sm">🚪 Salir</button>
+    <!-- Header con fondo y menú -->
+    <div class="relative h-48 w-full overflow-hidden">
+        <div id="repartoHeaderBg" class="header-bg"></div>
+        <div class="banner-overlay"></div>
+        <div class="absolute top-5 right-5 z-20">
+            <div class="menu-icon" onclick="toggleMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </div>
+        </div>
+        <div class="absolute bottom-5 left-5 z-20">
+            <div class="bg-black/50 backdrop-blur-sm rounded-2xl px-4 py-2">
+                <h1 class="text-2xl font-black text-white">🛵 Repartidor</h1>
+                <p id="repartidorNombreDisplay" class="text-cyan-300 text-xs font-bold">CARGANDO...</p>
             </div>
         </div>
     </div>
+
+    <!-- Menú desplegable -->
+    <div id="menuPanel" class="menu-panel">
+        <button onclick="testSonidoDirecto(); toggleMenu()">🔊 Probar Sonido</button>
+        <button onclick="abrirAsistencia(); toggleMenu()">🆘 Asistencia</button>
+        <button onclick="logoutRepartidor(); toggleMenu()">🚪 Salir</button>
+    </div>
+
     <div class="p-4">
         <div class="grid-stats">
             <div class="stats-card"><div class="label">💰 HOY</div><div class="value text-emerald-600" id="gananciaHoy">0.00€</div></div>
@@ -138,6 +162,60 @@
         'timbre': '🔔 ¡Hola! He llamado al timbre. Por favor, sal a recibir tu pedido.'
     };
     
+    // ==================== FUNCIONES DE UI ====================
+    function toggleMenu() {
+        const menu = document.getElementById('menuPanel');
+        if (menu) {
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        }
+    }
+    
+    // Cerrar menú al hacer clic fuera
+    document.addEventListener('click', function(event) {
+        const menu = document.getElementById('menuPanel');
+        const menuIcon = document.querySelector('.menu-icon');
+        if (menu && menuIcon && !menuIcon.contains(event.target) && !menu.contains(event.target)) {
+            menu.style.display = 'none';
+        }
+    });
+    
+    function testSonidoDirecto() {
+        const url = 'https://raw.githubusercontent.com/aguadulcexpress26-gif/AGUADULCE_EXPRESS_APP/main/sonidorepartidoraguadulceexpress.mp3';
+        
+        Swal.fire({
+            title: '🔊 Probando sonido',
+            text: 'Reproduciendo...',
+            icon: 'info',
+            timer: 1000,
+            showConfirmButton: false,
+            background: '#fff',
+            color: '#1e293b'
+        });
+        
+        const audio = new Audio(url);
+        audio.volume = 1.0;
+        audio.play().then(() => {
+            Swal.fire({
+                title: '✅ Sonido reproducido',
+                text: 'Si escuchaste el sonido, las notificaciones funcionarán correctamente.',
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false,
+                background: '#fff',
+                color: '#1e293b'
+            });
+        }).catch(e => {
+            Swal.fire({
+                title: '❌ Error de sonido',
+                html: `No se pudo reproducir el sonido.<br><br>URL: ${url}<br><br>Error: ${e.message}`,
+                icon: 'error',
+                confirmButtonText: 'Entendido',
+                background: '#fff',
+                color: '#1e293b'
+            });
+        });
+    }
+    
     function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
     function sanitizarEmail(email) { return email ? email.replace(/\./g, '_') : ''; }
     function cerrarModalOpciones() { document.getElementById('modalOpciones').style.display = 'none'; if (temporizadorAusencia) clearInterval(temporizadorAusencia); }
@@ -146,64 +224,6 @@
         document.getElementById('listaHistorial').classList.toggle('active', tab === 'historial');
         document.getElementById('tab-activos').classList.toggle('active', tab === 'activos');
         document.getElementById('tab-historial').classList.toggle('active', tab === 'historial');
-    }
-    
-    // ==================== PRUEBA DE SONIDO ====================
-    function testNotification() {
-        console.log("🔔 Probando notificación y sonido...");
-        
-        if (Notification.permission === 'granted') {
-            // Probar notificación
-            new Notification('🔔 Prueba de sonido', {
-                body: 'Si ves esto, las notificaciones están activadas',
-                icon: 'https://i.postimg.cc/JzmCWWG3/MOTO-LOGO.webp',
-                vibrate: [200, 100, 200]
-            });
-            
-            // Probar sonido
-            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-            audio.volume = 1.0;
-            audio.play().then(() => {
-                Swal.fire({
-                    title: '🔊 Sonido reproducido',
-                    text: 'Si escuchaste el sonido, las notificaciones funcionarán correctamente.',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false,
-                    background: '#fff',
-                    color: '#1e293b'
-                });
-            }).catch(e => {
-                Swal.fire({
-                    title: '⚠️ Error de sonido',
-                    text: 'El navegador bloqueó el sonido automático. Toca la pantalla y vuelve a intentar.',
-                    icon: 'warning',
-                    background: '#fff',
-                    color: '#1e293b'
-                });
-            });
-        } else {
-            // Solicitar permiso
-            Notification.requestPermission().then(perm => {
-                if (perm === 'granted') {
-                    Swal.fire({
-                        title: '✅ Permiso concedido',
-                        text: 'Ahora prueba de nuevo el sonido.',
-                        icon: 'success',
-                        background: '#fff',
-                        color: '#1e293b'
-                    });
-                } else {
-                    Swal.fire({
-                        title: '❌ Permiso denegado',
-                        text: 'Para recibir notificaciones, activa los permisos en Configuración → Notificaciones.',
-                        icon: 'error',
-                        background: '#fff',
-                        color: '#1e293b'
-                    });
-                }
-            });
-        }
     }
     
     function abrirAsistencia() {
@@ -237,41 +257,21 @@
     }
     
     async function calcularGanancias(pedidos) {
-    const hoyInicio = new Date(); hoyInicio.setHours(0, 0, 0, 0);
-    const semanaInicio = getInicioSemana();
-    const mesInicio = getInicioMes();
-    let gananciaHoy = 0, gananciaSemana = 0, gananciaMes = 0;
-    for (const p of pedidos) {
-        // 🔥 SOLO pedidos ENTREGADO (no cancelados)
-        if (p.estado !== 'ENTREGADO') continue;
-        const fecha = new Date(p.timestamp_entregado || p.fecha || 0);
-        const monto = p.total || 0;
-        if (fecha >= hoyInicio) gananciaHoy += monto;
-        if (fecha >= semanaInicio) gananciaSemana += monto;
-        if (fecha >= mesInicio) gananciaMes += monto;
-    }
-    document.getElementById('gananciaHoy').innerText = gananciaHoy.toFixed(2) + '€';
-    document.getElementById('gananciaSemana').innerText = gananciaSemana.toFixed(2) + '€';
-    document.getElementById('gananciaMes').innerText = gananciaMes.toFixed(2) + '€';
-}
-    
-    async function solicitarPermisoNotificaciones() {
-        console.log('🔔 Solicitando permiso de notificaciones...');
-        
-        if (Notification.permission === 'granted') {
-            console.log('✅ Permiso ya concedido');
-            return true;
+        const hoyInicio = new Date(); hoyInicio.setHours(0, 0, 0, 0);
+        const semanaInicio = getInicioSemana();
+        const mesInicio = getInicioMes();
+        let gananciaHoy = 0, gananciaSemana = 0, gananciaMes = 0;
+        for (const p of pedidos) {
+            if (p.estado !== 'ENTREGADO') continue;
+            const fecha = new Date(p.timestamp_entregado || p.fecha || 0);
+            const monto = p.total || 0;
+            if (fecha >= hoyInicio) gananciaHoy += monto;
+            if (fecha >= semanaInicio) gananciaSemana += monto;
+            if (fecha >= mesInicio) gananciaMes += monto;
         }
-        
-        const permission = await Notification.requestPermission();
-        
-        if (permission === 'granted') {
-            console.log('✅ Permiso concedido');
-            return true;
-        } else {
-            console.log('❌ Permiso denegado');
-            return false;
-        }
+        document.getElementById('gananciaHoy').innerText = gananciaHoy.toFixed(2) + '€';
+        document.getElementById('gananciaSemana').innerText = gananciaSemana.toFixed(2) + '€';
+        document.getElementById('gananciaMes').innerText = gananciaMes.toFixed(2) + '€';
     }
     
     async function loginRepartidor() {
@@ -292,9 +292,15 @@
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboardPanel').classList.remove('hidden');
             document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+            
+            // Cargar fondo de cabecera
+            const headerBg = document.getElementById('repartoHeaderBg');
+            if (headerBg) {
+                headerBg.style.backgroundImage = "url('https://i.postimg.cc/Jh8cGWf9/Copilot-20260407-120738.png')";
+            }
+            
             await auth.signInAnonymously();
             iniciarEscuchaPedidos();
-            await solicitarPermisoNotificaciones();
         } else {
             Swal.fire({ title: 'Error', text: 'Credenciales incorrectas', icon: 'error' });
         }
@@ -311,6 +317,12 @@
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.remove('hidden');
         document.getElementById('repartidorNombreDisplay').innerText = repartidorActual.nombre;
+        
+        const headerBg = document.getElementById('repartoHeaderBg');
+        if (headerBg) {
+            headerBg.style.backgroundImage = "url('https://i.postimg.cc/Jh8cGWf9/Copilot-20260407-120738.png')";
+        }
+        
         auth.signInAnonymously();
         iniciarEscuchaPedidos();
     }

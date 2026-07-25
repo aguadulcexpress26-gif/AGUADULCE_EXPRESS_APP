@@ -41,6 +41,7 @@
         .swal2-input, .swal2-textarea, .swal2-select { background: #1e293b !important; color: white !important; border: 1px solid #334155 !important; }
         .swal2-input:focus, .swal2-textarea:focus { border-color: #f59e0b !important; }
         .swal2-popup { border-radius: 16px !important; }
+        .user-email-display { font-size: 12px; color: #94a3b8; padding: 4px 12px; background: #1e293b; border-radius: 20px; border: 1px solid #334155; }
     </style>
 </head>
 <body class="bg-slate-900 text-white">
@@ -61,7 +62,10 @@
 <div id="adminPanel" class="hidden min-h-screen flex">
     <!-- Sidebar -->
     <div class="w-72 bg-slate-800 p-4 flex flex-col overflow-y-auto">
-        <div class="text-amber-400 text-2xl font-black mb-8 px-3">🍔 ADMIN</div>
+        <div class="flex items-center justify-between mb-6 px-3">
+            <div class="text-amber-400 text-2xl font-black">🍔 ADMIN</div>
+            <div id="adminEmailDisplay" class="user-email-display text-xs">Cargando...</div>
+        </div>
         <div class="flex-1">
             <div class="sidebar-item active p-3 rounded-xl mb-2" onclick="cambiarSeccion('restaurantes', this)">🏪 Restaurantes</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('horarios', this)">⏰ Horarios (7 días)</div>
@@ -484,6 +488,9 @@ function loginAdmin() {
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('adminPanel').classList.remove('hidden');
             
+            // Mostrar el email del admin
+            document.getElementById('adminEmailDisplay').textContent = user.email;
+            
             Swal.fire({
                 title: '✅ Bienvenido Admin',
                 icon: 'success',
@@ -525,6 +532,7 @@ auth.onAuthStateChanged((user) => {
     if (user && user.email === 'admin@aguadulce.com' && localStorage.getItem('admin_logged') === 'true') {
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('adminPanel').classList.remove('hidden');
+        document.getElementById('adminEmailDisplay').textContent = user.email;
         cargarTodosLosDatos();
     } else if (localStorage.getItem('admin_logged') === 'true') {
         localStorage.removeItem('admin_logged');
@@ -1256,11 +1264,15 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 👥 USUARIOS - CREAR USUARIOS (CORREGIDO)
+// 🛵 REPARTIDORES - FUNCIÓN CORREGIDA
 // ============================================================
-async function guardarUsuario() {
-    // 1️⃣ VERIFICAR QUE EL ADMIN ESTÁ AUTENTICADO
-    const user = auth.currentUser;
+async function guardarRepartidor() {
+    console.log('📌 guardarRepartidor - Iniciando...');
+    
+    // 🔥 VERIFICAR QUE EL ADMIN ESTÁ AUTENTICADO
+    const user = firebase.auth().currentUser;
+    console.log('📌 Usuario actual:', user ? user.email : 'NO LOGUEADO');
+    
     if (!user) {
         Swal.fire({
             title: '⚠️ Sesión expirada',
@@ -1273,14 +1285,186 @@ async function guardarUsuario() {
         return;
     }
     
-    // 2️⃣ OBTENER DATOS DEL FORMULARIO
+    // Forzar refresh del token
+    try {
+        await user.getIdToken(true);
+        console.log('✅ Token refrescado correctamente');
+    } catch (error) {
+        console.error('❌ Error al refrescar token:', error);
+        Swal.fire({
+            title: '⚠️ Error de autenticación',
+            text: 'No se pudo refrescar el token. Intenta cerrar sesión y volver a iniciar.',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    const nombre = document.getElementById('repNombre').value.trim();
+    const telefono = document.getElementById('repTelefono').value.trim();
+    const vehiculo = document.getElementById('repVehiculo').value.trim();
+    const password = document.getElementById('repPassword').value.trim() || '123456';
+    
+    if (!nombre) {
+        Swal.fire({
+            title: 'Error',
+            text: 'El nombre es obligatorio',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    const email = `repartidor_${Date.now()}@aguadulce.com`;
+    
+    Swal.fire({
+        title: '⏳ Creando repartidor...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    try {
+        console.log('📌 Llamando a crearUsuarioAdmin...');
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const result = await crearUsuario({
+            email: email,
+            password: password,
+            rol: 'repartidor',
+            nombre: nombre,
+            restauranteId: '',
+            telefono: telefono,
+            vehiculo: vehiculo
+        });
+        
+        console.log('📌 Resultado:', result);
+        
+        if (result.data && result.data.success) {
+            cerrarModal('modalRepartidor');
+            document.getElementById('repNombre').value = '';
+            document.getElementById('repTelefono').value = '';
+            document.getElementById('repVehiculo').value = '';
+            document.getElementById('repPassword').value = '';
+            
+            await cargarRepartidores();
+            
+            Swal.fire({
+                title: '✅ Repartidor creado',
+                text: `Email: ${email}\nContraseña: ${password}`,
+                icon: 'success',
+                timer: 4000,
+                background: '#0f172a',
+                color: 'white'
+            });
+        } else {
+            throw new Error(result.data?.message || 'Error al crear repartidor');
+        }
+    } catch (error) {
+        console.error('❌ Error detallado:', error);
+        
+        let mensajeError = error.message || 'Error al crear repartidor';
+        
+        if (error.message.includes('permission-denied')) {
+            mensajeError = 'No tienes permisos para crear repartidores. Asegúrate de estar logueado como admin.';
+        } else if (error.message.includes('unauthenticated')) {
+            mensajeError = 'Debes iniciar sesión como admin para crear repartidores.';
+        } else if (error.message.includes('email-already-exists')) {
+            mensajeError = 'El email generado ya existe. Intenta de nuevo.';
+        }
+        
+        Swal.fire({
+            title: '❌ Error',
+            text: mensajeError,
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
+
+async function cargarRepartidores() {
+    const container = document.getElementById('listaRepartidores');
+    try {
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        
+        if (Object.keys(repartidores).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores registrados</div>';
+            return;
+        }
+        
+        let html = '';
+        for (const [uid, data] of Object.entries(repartidores)) {
+            html += `
+                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-white">${escapeHTML(data.nombre || 'Sin nombre')}</p>
+                            <p class="text-white/50 text-sm">${escapeHTML(data.email || '')}</p>
+                            <p class="text-white/50 text-xs">📱 ${escapeHTML(data.telefono || 'Sin teléfono')}</p>
+                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(data.vehiculo || 'Sin vehículo')}</p>
+                            <p class="text-white/50 text-xs">📦 ${data.pedidos_entregados || 0} entregas</p>
+                        </div>
+                        <div>
+                            <span class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
+    }
+}
+
+// ============================================================
+// 👥 USUARIOS - CREAR USUARIOS (CORREGIDO)
+// ============================================================
+async function guardarUsuario() {
+    console.log('📌 guardarUsuario - Iniciando...');
+    
+    // 🔥 VERIFICAR QUE EL ADMIN ESTÁ AUTENTICADO
+    const user = firebase.auth().currentUser;
+    console.log('📌 Usuario actual:', user ? user.email : 'NO LOGUEADO');
+    
+    if (!user) {
+        Swal.fire({
+            title: '⚠️ Sesión expirada',
+            text: 'Debes iniciar sesión nuevamente',
+            icon: 'warning',
+            background: '#0f172a',
+            color: 'white'
+        });
+        logoutAdmin();
+        return;
+    }
+    
+    // Forzar refresh del token
+    try {
+        await user.getIdToken(true);
+        console.log('✅ Token refrescado correctamente');
+    } catch (error) {
+        console.error('❌ Error al refrescar token:', error);
+        Swal.fire({
+            title: '⚠️ Error de autenticación',
+            text: 'No se pudo refrescar el token. Intenta cerrar sesión y volver a iniciar.',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
     const nombre = document.getElementById('userNombre').value.trim();
     const email = document.getElementById('userEmail').value.trim();
     const password = document.getElementById('userPassword').value.trim();
     const rol = document.getElementById('userRol').value;
     const restauranteId = document.getElementById('userRestaurante').value;
     
-    // 3️⃣ VALIDAR
     if (!email || !password) {
         Swal.fire({
             title: 'Error',
@@ -1303,10 +1487,8 @@ async function guardarUsuario() {
         return;
     }
     
-    // 4️⃣ MOSTRAR LOADING
     Swal.fire({
         title: '⏳ Creando usuario...',
-        text: 'Por favor espera',
         allowOutsideClick: false,
         didOpen: () => {
             Swal.showLoading();
@@ -1314,11 +1496,7 @@ async function guardarUsuario() {
     });
     
     try {
-        // 5️⃣ OBTENER EL TOKEN DEL USUARIO ACTUAL
-        const token = await user.getIdToken();
-        console.log('✅ Token obtenido:', token ? 'OK' : 'VACÍO');
-        
-        // 6️⃣ LLAMAR A LA CLOUD FUNCTION CON EL TOKEN
+        console.log('📌 Llamando a crearUsuarioAdmin...');
         const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
@@ -1330,7 +1508,8 @@ async function guardarUsuario() {
             vehiculo: ''
         });
         
-        // 7️⃣ PROCESAR RESULTADO
+        console.log('📌 Resultado:', result);
+        
         if (result.data && result.data.success) {
             cerrarModal('modalUsuario');
             document.getElementById('userNombre').value = '';
@@ -1375,128 +1554,6 @@ async function guardarUsuario() {
             background: '#0f172a',
             color: 'white'
         });
-    }
-}
-
-// ============================================================
-// 🛵 REPARTIDORES
-// ============================================================
-async function guardarRepartidor() {
-    // Verificar autenticación
-    const user = auth.currentUser;
-    if (!user) {
-        Swal.fire({
-            title: '⚠️ Sesión expirada',
-            text: 'Debes iniciar sesión nuevamente',
-            icon: 'warning',
-            background: '#0f172a',
-            color: 'white'
-        });
-        logoutAdmin();
-        return;
-    }
-    
-    const nombre = document.getElementById('repNombre').value.trim();
-    const telefono = document.getElementById('repTelefono').value.trim();
-    const vehiculo = document.getElementById('repVehiculo').value.trim();
-    const password = document.getElementById('repPassword').value.trim() || '123456';
-    
-    if (!nombre) {
-        Swal.fire({
-            title: 'Error',
-            text: 'El nombre es obligatorio',
-            icon: 'error',
-            background: '#0f172a',
-            color: 'white'
-        });
-        return;
-    }
-    
-    const email = `repartidor_${Date.now()}@aguadulce.com`;
-    
-    Swal.fire({
-        title: '⏳ Creando repartidor...',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-    
-    try {
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
-        const result = await crearUsuario({
-            email: email,
-            password: password,
-            rol: 'repartidor',
-            nombre: nombre,
-            restauranteId: '',
-            telefono: telefono,
-            vehiculo: vehiculo
-        });
-        
-        if (result.data && result.data.success) {
-            cerrarModal('modalRepartidor');
-            document.getElementById('repNombre').value = '';
-            document.getElementById('repTelefono').value = '';
-            document.getElementById('repVehiculo').value = '';
-            document.getElementById('repPassword').value = '';
-            
-            await cargarRepartidores();
-            
-            Swal.fire({
-                title: '✅ Repartidor creado',
-                text: `Email: ${email}\nContraseña: ${password}`,
-                icon: 'success',
-                timer: 4000,
-                background: '#0f172a',
-                color: 'white'
-            });
-        }
-    } catch (error) {
-        console.error('❌ Error:', error);
-        Swal.fire({
-            title: '❌ Error',
-            text: error.message || 'Error al crear repartidor',
-            icon: 'error',
-            background: '#0f172a',
-            color: 'white'
-        });
-    }
-}
-
-async function cargarRepartidores() {
-    const container = document.getElementById('listaRepartidores');
-    try {
-        const snapshot = await database.ref('repartidores').once('value');
-        const repartidores = snapshot.val() || {};
-        
-        if (Object.keys(repartidores).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores registrados</div>';
-            return;
-        }
-        
-        let html = '';
-        for (const [uid, data] of Object.entries(repartidores)) {
-            html += `
-                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="font-bold text-white">${escapeHTML(data.nombre || 'Sin nombre')}</p>
-                            <p class="text-white/50 text-sm">${escapeHTML(data.email || '')}</p>
-                            <p class="text-white/50 text-xs">📱 ${escapeHTML(data.telefono || 'Sin teléfono')}</p>
-                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(data.vehiculo || 'Sin vehículo')}</p>
-                            <p class="text-white/50 text-xs">📦 ${data.pedidos_entregados || 0} entregas</p>
-                        </div>
-                        <div>
-                            <span class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        container.innerHTML = html;
-    } catch (error) {
-        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
     }
 }
 
@@ -2055,7 +2112,7 @@ async function guardarProductoCompleto() {
 }
 
 // ============================================================
-// 🛠️ FUNCIONES STUB PARA OTRAS SECCIONES
+// 🛠️ FUNCIONES STUB
 // ============================================================
 function exportarReporteExcel() {
     Swal.fire({ title: '📎 Exportando...', text: 'Función en desarrollo', icon: 'info', background: '#0f172a', color: 'white' });
@@ -2066,7 +2123,7 @@ function exportarLiquidacionesExcel() {
 }
 
 function asignacionAutomatica() {
-    // Función placeholder para asignación automática
+    // Función placeholder
 }
 
 // ============================================================
@@ -2088,7 +2145,6 @@ function cargarTodosLosDatos() {
     actualizarSelectsRestaurantes();
 }
 
-// Iniciar asignación automática
 setInterval(asignacionAutomatica, 30000);
 setTimeout(asignacionAutomatica, 5000);
 

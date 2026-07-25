@@ -488,7 +488,6 @@ function loginAdmin() {
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('adminPanel').classList.remove('hidden');
             
-            // Mostrar el email del admin
             document.getElementById('adminEmailDisplay').textContent = user.email;
             
             Swal.fire({
@@ -1264,7 +1263,7 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 🛵 REPARTIDORES - FUNCIÓN CORREGIDA
+// 🛵 REPARTIDORES - FUNCIÓN CORREGIDA CON FETCH
 // ============================================================
 async function guardarRepartidor() {
     console.log('📌 guardarRepartidor - Iniciando...');
@@ -1285,15 +1284,17 @@ async function guardarRepartidor() {
         return;
     }
     
-    // Forzar refresh del token
+    // Obtener token
+    let token;
     try {
-        await user.getIdToken(true);
-        console.log('✅ Token refrescado correctamente');
+        token = await user.getIdToken(true);
+        console.log('✅ Token obtenido correctamente');
+        console.log('📌 Token (primeros 50 caracteres):', token.substring(0, 50) + '...');
     } catch (error) {
-        console.error('❌ Error al refrescar token:', error);
+        console.error('❌ Error al obtener token:', error);
         Swal.fire({
             title: '⚠️ Error de autenticación',
-            text: 'No se pudo refrescar el token. Intenta cerrar sesión y volver a iniciar.',
+            text: 'No se pudo obtener el token. Intenta cerrar sesión y volver a iniciar.',
             icon: 'error',
             background: '#0f172a',
             color: 'white'
@@ -1328,21 +1329,35 @@ async function guardarRepartidor() {
     });
     
     try {
-        console.log('📌 Llamando a crearUsuarioAdmin...');
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
-        const result = await crearUsuario({
-            email: email,
-            password: password,
-            rol: 'repartidor',
-            nombre: nombre,
-            restauranteId: '',
-            telefono: telefono,
-            vehiculo: vehiculo
+        console.log('📌 Llamando a crearUsuarioAdmin con fetch...');
+        
+        // 🔥 URL de la Cloud Function (2da generación)
+        const url = 'https://crearusuarioadmin-hfzf3bbfgq-uc.a.run.app';
+        
+        // 🔥 Enviar la petición con el token en el header
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                data: {
+                    email: email,
+                    password: password,
+                    rol: 'repartidor',
+                    nombre: nombre,
+                    restauranteId: '',
+                    telefono: telefono,
+                    vehiculo: vehiculo
+                }
+            })
         });
         
-        console.log('📌 Resultado:', result);
+        const result = await response.json();
+        console.log('📌 Respuesta de la Cloud Function:', result);
         
-        if (result.data && result.data.success) {
+        if (response.ok && result.result && result.result.success) {
             cerrarModal('modalRepartidor');
             document.getElementById('repNombre').value = '';
             document.getElementById('repTelefono').value = '';
@@ -1360,7 +1375,7 @@ async function guardarRepartidor() {
                 color: 'white'
             });
         } else {
-            throw new Error(result.data?.message || 'Error al crear repartidor');
+            throw new Error(result.result?.message || result.error?.message || 'Error al crear repartidor');
         }
     } catch (error) {
         console.error('❌ Error detallado:', error);
@@ -1373,6 +1388,8 @@ async function guardarRepartidor() {
             mensajeError = 'Debes iniciar sesión como admin para crear repartidores.';
         } else if (error.message.includes('email-already-exists')) {
             mensajeError = 'El email generado ya existe. Intenta de nuevo.';
+        } else if (error.message.includes('Failed to fetch')) {
+            mensajeError = 'No se pudo conectar con la Cloud Function. Verifica que esté desplegada.';
         }
         
         Swal.fire({
@@ -1417,17 +1434,17 @@ async function cargarRepartidores() {
         }
         container.innerHTML = html;
     } catch (error) {
+        console.error('❌ Error al cargar repartidores:', error);
         container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
     }
 }
 
 // ============================================================
-// 👥 USUARIOS - CREAR USUARIOS (CORREGIDO)
+// 👥 USUARIOS - CREAR USUARIOS (CORREGIDO CON FETCH)
 // ============================================================
 async function guardarUsuario() {
     console.log('📌 guardarUsuario - Iniciando...');
     
-    // 🔥 VERIFICAR QUE EL ADMIN ESTÁ AUTENTICADO
     const user = firebase.auth().currentUser;
     console.log('📌 Usuario actual:', user ? user.email : 'NO LOGUEADO');
     
@@ -1443,15 +1460,15 @@ async function guardarUsuario() {
         return;
     }
     
-    // Forzar refresh del token
+    let token;
     try {
-        await user.getIdToken(true);
-        console.log('✅ Token refrescado correctamente');
+        token = await user.getIdToken(true);
+        console.log('✅ Token obtenido correctamente');
     } catch (error) {
-        console.error('❌ Error al refrescar token:', error);
+        console.error('❌ Error al obtener token:', error);
         Swal.fire({
             title: '⚠️ Error de autenticación',
-            text: 'No se pudo refrescar el token. Intenta cerrar sesión y volver a iniciar.',
+            text: 'No se pudo obtener el token.',
             icon: 'error',
             background: '#0f172a',
             color: 'white'
@@ -1496,21 +1513,31 @@ async function guardarUsuario() {
     });
     
     try {
-        console.log('📌 Llamando a crearUsuarioAdmin...');
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
-        const result = await crearUsuario({
-            email: email,
-            password: password,
-            rol: rol,
-            nombre: nombre || 'Usuario',
-            restauranteId: restauranteId || '',
-            telefono: '',
-            vehiculo: ''
+        const url = 'https://crearusuarioadmin-hfzf3bbfgq-uc.a.run.app';
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                data: {
+                    email: email,
+                    password: password,
+                    rol: rol,
+                    nombre: nombre || 'Usuario',
+                    restauranteId: restauranteId || '',
+                    telefono: '',
+                    vehiculo: ''
+                }
+            })
         });
         
-        console.log('📌 Resultado:', result);
+        const result = await response.json();
+        console.log('📌 Respuesta:', result);
         
-        if (result.data && result.data.success) {
+        if (response.ok && result.result && result.result.success) {
             cerrarModal('modalUsuario');
             document.getElementById('userNombre').value = '';
             document.getElementById('userEmail').value = '';
@@ -1528,28 +1555,13 @@ async function guardarUsuario() {
                 color: 'white'
             });
         } else {
-            throw new Error(result.data?.message || 'Error al crear usuario');
+            throw new Error(result.result?.message || result.error?.message || 'Error al crear usuario');
         }
     } catch (error) {
         console.error('❌ Error detallado:', error);
-        
-        let mensajeError = error.message || 'Error al crear usuario';
-        
-        if (error.message.includes('permission-denied')) {
-            mensajeError = 'No tienes permisos para crear usuarios. Asegúrate de estar logueado como admin.';
-        } else if (error.message.includes('unauthenticated')) {
-            mensajeError = 'Debes iniciar sesión como admin para crear usuarios.';
-        } else if (error.message.includes('email-already-exists')) {
-            mensajeError = 'Este email ya está registrado. Usa otro email.';
-        } else if (error.message.includes('invalid-email')) {
-            mensajeError = 'El email no es válido.';
-        } else if (error.message.includes('weak-password')) {
-            mensajeError = 'La contraseña es muy débil. Usa al menos 6 caracteres.';
-        }
-        
         Swal.fire({
             title: '❌ Error',
-            text: mensajeError,
+            text: error.message || 'Error al crear usuario',
             icon: 'error',
             background: '#0f172a',
             color: 'white'

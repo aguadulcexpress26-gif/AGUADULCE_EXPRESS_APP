@@ -1284,7 +1284,7 @@ async function guardarRepartidor() {
         return;
     }
     
-    // Obtener token
+    // OBTENER EL TOKEN
     let token;
     try {
         token = await user.getIdToken(true);
@@ -1302,6 +1302,7 @@ async function guardarRepartidor() {
         return;
     }
     
+    // OBTENER DATOS DEL FORMULARIO
     const nombre = document.getElementById('repNombre').value.trim();
     const telefono = document.getElementById('repTelefono').value.trim();
     const vehiculo = document.getElementById('repVehiculo').value.trim();
@@ -1329,17 +1330,16 @@ async function guardarRepartidor() {
     });
     
     try {
-        console.log('📌 Llamando a crearUsuarioAdmin con fetch...');
-        
-        // 🔥 URL de la Cloud Function (2da generación)
         const url = 'https://crearusuarioadmin-hfzf3bbfgq-uc.a.run.app';
+        console.log('📌 URL:', url);
+        console.log('📌 Datos a enviar:', { email, password, rol: 'repartidor', nombre, telefono, vehiculo });
         
-        // 🔥 Enviar la petición con el token en el header
+        // 🔥 ENVIAR CON EL TOKEN EN EL HEADER Authorization
         const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`  // ← ESTO ES LO QUE FALTA
             },
             body: JSON.stringify({
                 data: {
@@ -1354,8 +1354,9 @@ async function guardarRepartidor() {
             })
         });
         
+        console.log('📌 Status de la respuesta:', response.status);
         const result = await response.json();
-        console.log('📌 Respuesta de la Cloud Function:', result);
+        console.log('📌 Respuesta completa:', result);
         
         if (response.ok && result.result && result.result.success) {
             cerrarModal('modalRepartidor');
@@ -1375,6 +1376,7 @@ async function guardarRepartidor() {
                 color: 'white'
             });
         } else {
+            console.error('❌ Error en la respuesta:', result);
             throw new Error(result.result?.message || result.error?.message || 'Error al crear repartidor');
         }
     } catch (error) {
@@ -1390,6 +1392,8 @@ async function guardarRepartidor() {
             mensajeError = 'El email generado ya existe. Intenta de nuevo.';
         } else if (error.message.includes('Failed to fetch')) {
             mensajeError = 'No se pudo conectar con la Cloud Function. Verifica que esté desplegada.';
+        } else if (error.message.includes('401')) {
+            mensajeError = 'Error de autenticación. El token no es válido. Cierra sesión y vuelve a iniciar.';
         }
         
         Swal.fire({
@@ -1401,7 +1405,6 @@ async function guardarRepartidor() {
         });
     }
 }
-
 async function cargarRepartidores() {
     const container = document.getElementById('listaRepartidores');
     try {

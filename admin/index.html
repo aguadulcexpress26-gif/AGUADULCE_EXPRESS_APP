@@ -11,11 +11,11 @@
     <!-- SWEETALERT -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
-   <!-- FIREBASE -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    <!-- FIREBASE - TODOS LOS SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     
     <!-- FUENTES -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -38,6 +38,9 @@
         .modal { display: none; }
         .modal.show { display: flex; }
         .fondo-seleccionado { border: 2px solid #f59e0b; }
+        .swal2-input, .swal2-textarea, .swal2-select { background: #1e293b !important; color: white !important; border: 1px solid #334155 !important; }
+        .swal2-input:focus, .swal2-textarea:focus { border-color: #f59e0b !important; }
+        .swal2-popup { border-radius: 16px !important; }
     </style>
 </head>
 <body class="bg-slate-900 text-white">
@@ -417,8 +420,11 @@ if (!firebase.apps.length) {
 
 const database = firebase.database();
 const auth = firebase.auth();
+const functions = firebase.functions();
 
 console.log('✅ Firebase Auth inicializado:', !!auth);
+console.log('✅ Firebase Functions inicializado:', !!functions);
+console.log('✅ Firebase Database inicializado:', !!database);
 
 // ============================================================
 // 📌 FUNCIONES UTILITARIAS
@@ -962,7 +968,7 @@ async function eliminarProducto(restId, productoId) {
 }
 
 // ============================================================
-// 🛒 PEDIDOS - FUNCIONES AGREGADAS
+// 🛒 PEDIDOS
 // ============================================================
 async function cargarPedidosAdmin() {
     const container = document.getElementById('listaPedidosAdmin');
@@ -1147,7 +1153,6 @@ async function cancelarPedidoAdmin(pedidoId) {
 }
 
 async function asignarRepartidorPedido(pedidoId) {
-    // Obtener lista de repartidores activos
     const snapshot = await database.ref('repartidores').once('value');
     const repartidores = snapshot.val() || {};
     
@@ -1251,7 +1256,7 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 👥 USUARIOS - FUNCIÓN PARA CREAR USUARIOS DESDE ADMIN
+// 👥 USUARIOS - CREAR USUARIOS
 // ============================================================
 async function guardarUsuario() {
     const nombre = document.getElementById('userNombre').value.trim();
@@ -1282,8 +1287,17 @@ async function guardarUsuario() {
         return;
     }
     
+    Swal.fire({
+        title: '⏳ Creando usuario...',
+        text: 'Por favor espera',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
     try {
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const crearUsuario = functions.httpsCallable('crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
             password: password,
@@ -1294,25 +1308,46 @@ async function guardarUsuario() {
             vehiculo: ''
         });
         
-        if (result.data.success) {
+        if (result.data && result.data.success) {
             cerrarModal('modalUsuario');
+            document.getElementById('userNombre').value = '';
+            document.getElementById('userEmail').value = '';
+            document.getElementById('userPassword').value = '';
+            
             await cargarUsuarios();
             
             Swal.fire({
                 title: '✅ Usuario creado',
                 text: `${email} ahora es ${rol}`,
                 icon: 'success',
-                timer: 2000,
-                showConfirmButton: false,
+                timer: 3000,
+                showConfirmButton: true,
                 background: '#0f172a',
                 color: 'white'
             });
+        } else {
+            throw new Error(result.data?.message || 'Error al crear usuario');
         }
     } catch (error) {
-        console.error('❌ Error al crear usuario:', error);
+        console.error('❌ Error detallado:', error);
+        
+        let mensajeError = error.message || 'Error al crear usuario';
+        
+        if (error.message.includes('permission-denied')) {
+            mensajeError = 'No tienes permisos para crear usuarios. Asegúrate de estar logueado como admin.';
+        } else if (error.message.includes('unauthenticated')) {
+            mensajeError = 'Debes iniciar sesión como admin para crear usuarios.';
+        } else if (error.message.includes('email-already-exists')) {
+            mensajeError = 'Este email ya está registrado. Usa otro email.';
+        } else if (error.message.includes('invalid-email')) {
+            mensajeError = 'El email no es válido.';
+        } else if (error.message.includes('weak-password')) {
+            mensajeError = 'La contraseña es muy débil. Usa al menos 6 caracteres.';
+        }
+        
         Swal.fire({
             title: '❌ Error',
-            text: error.message || 'Error al crear usuario',
+            text: mensajeError,
             icon: 'error',
             background: '#0f172a',
             color: 'white'
@@ -1321,7 +1356,7 @@ async function guardarUsuario() {
 }
 
 // ============================================================
-// 🛵 REPARTIDORES - FUNCIÓN PARA CREAR REPARTIDORES
+// 🛵 REPARTIDORES
 // ============================================================
 async function guardarRepartidor() {
     const nombre = document.getElementById('repNombre').value.trim();
@@ -1342,8 +1377,16 @@ async function guardarRepartidor() {
     
     const email = `repartidor_${Date.now()}@aguadulce.com`;
     
+    Swal.fire({
+        title: '⏳ Creando repartidor...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
     try {
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const crearUsuario = functions.httpsCallable('crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
             password: password,
@@ -1354,15 +1397,20 @@ async function guardarRepartidor() {
             vehiculo: vehiculo
         });
         
-        if (result.data.success) {
+        if (result.data && result.data.success) {
             cerrarModal('modalRepartidor');
+            document.getElementById('repNombre').value = '';
+            document.getElementById('repTelefono').value = '';
+            document.getElementById('repVehiculo').value = '';
+            document.getElementById('repPassword').value = '';
+            
             await cargarRepartidores();
             
             Swal.fire({
                 title: '✅ Repartidor creado',
                 text: `Email: ${email}\nContraseña: ${password}`,
                 icon: 'success',
-                timer: 3000,
+                timer: 4000,
                 background: '#0f172a',
                 color: 'white'
             });
@@ -1371,7 +1419,7 @@ async function guardarRepartidor() {
         console.error('❌ Error:', error);
         Swal.fire({
             title: '❌ Error',
-            text: error.message,
+            text: error.message || 'Error al crear repartidor',
             icon: 'error',
             background: '#0f172a',
             color: 'white'
@@ -1379,160 +1427,609 @@ async function guardarRepartidor() {
     }
 }
 
-// ============================================================
-// 📌 FUNCIONES STUB (para evitar errores)
-// ============================================================
 async function cargarRepartidores() {
-    document.getElementById('listaRepartidores').innerHTML = '<div class="text-center text-white/50 p-10">Cargando repartidores...</div>';
+    const container = document.getElementById('listaRepartidores');
+    try {
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        
+        if (Object.keys(repartidores).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores registrados</div>';
+            return;
+        }
+        
+        let html = '';
+        for (const [uid, data] of Object.entries(repartidores)) {
+            html += `
+                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-white">${escapeHTML(data.nombre || 'Sin nombre')}</p>
+                            <p class="text-white/50 text-sm">${escapeHTML(data.email || '')}</p>
+                            <p class="text-white/50 text-xs">📱 ${escapeHTML(data.telefono || 'Sin teléfono')}</p>
+                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(data.vehiculo || 'Sin vehículo')}</p>
+                            <p class="text-white/50 text-xs">📦 ${data.pedidos_entregados || 0} entregas</p>
+                        </div>
+                        <div>
+                            <span class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
+    }
 }
 
+// ============================================================
+// 📢 BANNERS
+// ============================================================
 async function cargarBanners() {
-    document.getElementById('listaBanners').innerHTML = '<div class="text-center text-white/50 p-10">Cargando banners...</div>';
+    const container = document.getElementById('listaBanners');
+    try {
+        const snapshot = await database.ref('banners').once('value');
+        const banners = snapshot.val() || {};
+        
+        if (Object.keys(banners).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay banners</div>';
+            return;
+        }
+        
+        let html = '';
+        for (const [id, data] of Object.entries(banners)) {
+            html += `
+                <div class="bg-slate-800 rounded-2xl overflow-hidden border border-white/10">
+                    <img src="${data.imagen || 'https://placehold.co/600x300/1e293b/ffffff?text=Sin+Imagen'}" class="w-full h-40 object-cover" onerror="this.src='https://placehold.co/600x300/1e293b/ffffff?text=Sin+Imagen'">
+                    <div class="p-4">
+                        <p class="font-bold">${escapeHTML(data.titulo || 'Sin título')}</p>
+                        ${data.link ? `<p class="text-white/50 text-xs">🔗 ${escapeHTML(data.link)}</p>` : ''}
+                        <p class="text-white/50 text-xs">Orden: ${data.orden || 0}</p>
+                        <button onclick="eliminarBanner('${id}')" class="mt-2 bg-red-600/20 text-red-400 px-3 py-1 rounded-lg text-xs">🗑️ Eliminar</button>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar banners</div>`;
+    }
 }
 
+async function guardarBanner() {
+    const titulo = document.getElementById('bannerTitulo').value.trim();
+    const imagen = document.getElementById('bannerImagen').value.trim();
+    const link = document.getElementById('bannerLink').value.trim();
+    const orden = parseInt(document.getElementById('bannerOrden').value) || 0;
+    
+    if (!titulo || !imagen) {
+        Swal.fire({ title: 'Error', text: 'Título e imagen son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    try {
+        await database.ref('banners').push({
+            titulo: titulo,
+            imagen: imagen,
+            link: link || '',
+            orden: orden,
+            creado_en: Date.now()
+        });
+        cerrarModal('modalBanner');
+        document.getElementById('bannerTitulo').value = '';
+        document.getElementById('bannerImagen').value = '';
+        document.getElementById('bannerLink').value = '';
+        document.getElementById('bannerOrden').value = '';
+        await cargarBanners();
+        Swal.fire({ title: '✅ Banner creado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    } catch (error) {
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+async function eliminarBanner(id) {
+    const confirm = await Swal.fire({ title: '¿Eliminar banner?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
+    if (confirm.isConfirmed) {
+        await database.ref(`banners/${id}`).remove();
+        await cargarBanners();
+    }
+}
+
+// ============================================================
+// 🎨 FONDOS CABECERA
+// ============================================================
 async function cargarFondosCabecera() {
-    document.getElementById('listaFondos').innerHTML = '<div class="text-center text-white/50 p-10">Cargando fondos...</div>';
+    const container = document.getElementById('listaFondos');
+    try {
+        const snapshot = await database.ref('fondos_cabecera').once('value');
+        const fondos = snapshot.val() || {};
+        
+        if (Object.keys(fondos).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay fondos de cabecera</div>';
+            return;
+        }
+        
+        let html = '';
+        for (const [id, data] of Object.entries(fondos)) {
+            html += `
+                <div class="bg-slate-800 rounded-2xl overflow-hidden border border-white/10">
+                    <img src="${data.url || 'https://placehold.co/600x300/1e293b/ffffff?text=Sin+Imagen'}" class="w-full h-40 object-cover" onerror="this.src='https://placehold.co/600x300/1e293b/ffffff?text=Sin+Imagen'">
+                    <div class="p-4">
+                        <p class="text-white/50 text-xs">Orden: ${data.orden || 0}</p>
+                        <button onclick="eliminarFondoCabecera('${id}')" class="mt-2 bg-red-600/20 text-red-400 px-3 py-1 rounded-lg text-xs">🗑️ Eliminar</button>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar fondos</div>`;
+    }
 }
 
-async function cargarUsuarios() {
-    document.getElementById('listaUsuarios').innerHTML = '<div class="text-center text-white/50 p-10">Cargando usuarios...</div>';
-}
-
-async function cargarReportes() {
-    document.getElementById('reporteDetalle').innerHTML = '<div class="text-center text-white/50 p-10">Cargando reportes...</div>';
-}
-
-async function cargarClientes() {
-    document.getElementById('tablaClientes').innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-4">Cargando clientes...</td></tr>';
-}
-
-async function generarReporteContable() {
-    document.getElementById('tablaReporteContable').innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-4">Cargando reporte...</td></tr>';
-}
-
-async function calcularLiquidaciones() {
-    document.getElementById('tablaLiquidaciones').innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-4">Cargando liquidaciones...</td></tr>';
-}
-
-function agregarFondoCabecera() {
-    Swal.fire({
-        title: 'Agregar Fondo',
+async function agregarFondoCabecera() {
+    const { value: formData } = await Swal.fire({
+        title: '🎨 Agregar Fondo de Cabecera',
         html: `
-            <input id="fondoUrl" class="swal2-input" placeholder="URL de la imagen">
-            <input id="fondoOrden" class="swal2-input" placeholder="Orden (número)">
+            <input id="fondoUrl" class="swal2-input" placeholder="URL de la imagen *">
+            <input id="fondoOrden" class="swal2-input" placeholder="Orden (número)" value="0">
         `,
         confirmButtonText: 'Agregar',
         background: '#0f172a',
         color: 'white',
         preConfirm: () => {
-            const url = document.getElementById('fondoUrl').value;
-            const orden = document.getElementById('fondoOrden').value;
-            if (!url) { Swal.showValidationMessage('URL es obligatoria'); return false; }
-            return { url, orden: parseInt(orden) || 0 };
-        }
-    }).then(result => {
-        if (result.isConfirmed && result.value) {
-            Swal.fire({ title: '✅ Fondo agregado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
-            cargarFondosCabecera();
+            const url = document.getElementById('fondoUrl').value.trim();
+            const orden = parseInt(document.getElementById('fondoOrden').value) || 0;
+            if (!url) { Swal.showValidationMessage('La URL es obligatoria'); return false; }
+            return { url, orden };
         }
     });
+    
+    if (formData) {
+        try {
+            await database.ref('fondos_cabecera').push({
+                url: formData.url,
+                orden: formData.orden,
+                creado_en: Date.now()
+            });
+            await cargarFondosCabecera();
+            Swal.fire({ title: '✅ Fondo agregado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        } catch (error) {
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+        }
+    }
 }
 
-function agregarGrupoOpciones() {
-    Swal.fire({
-        title: 'Agregar Grupo de Opciones',
+async function eliminarFondoCabecera(id) {
+    const confirm = await Swal.fire({ title: '¿Eliminar fondo?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
+    if (confirm.isConfirmed) {
+        await database.ref(`fondos_cabecera/${id}`).remove();
+        await cargarFondosCabecera();
+    }
+}
+
+// ============================================================
+// 👥 USUARIOS - LISTAR
+// ============================================================
+async function cargarUsuarios() {
+    const container = document.getElementById('listaUsuarios');
+    try {
+        const snapshot = await database.ref('usuarios_admin').once('value');
+        const usuarios = snapshot.val() || {};
+        
+        let html = '';
+        for (const [uid, data] of Object.entries(usuarios)) {
+            html += `
+                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
+                    <p class="font-bold text-white">${escapeHTML(data.email || uid)}</p>
+                    <p class="text-white/50 text-sm">Rol: ${escapeHTML(data.rol || 'sin rol')}</p>
+                    <p class="text-white/50 text-xs">UID: ${uid.slice(0,12)}...</p>
+                </div>
+            `;
+        }
+        container.innerHTML = html || '<div class="text-center text-white/50 p-10">No hay usuarios</div>';
+    } catch (error) {
+        container.innerHTML = '<div class="text-center text-white/50 p-10">No hay usuarios registrados</div>';
+    }
+}
+
+// ============================================================
+// 📊 REPORTES
+// ============================================================
+async function cargarReportes() {
+    const container = document.getElementById('reporteDetalle');
+    try {
+        const snapshot = await database.ref('pedidos').once('value');
+        const pedidos = snapshot.val() || {};
+        
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const hoyTimestamp = hoy.getTime();
+        
+        let totalVentas = 0;
+        let totalPedidos = 0;
+        let totalProductos = 0;
+        
+        for (const [id, data] of Object.entries(pedidos)) {
+            const fecha = data.fecha || 0;
+            if (fecha >= hoyTimestamp && data.estado === 'entregado') {
+                totalVentas += data.total || 0;
+                totalPedidos++;
+                if (data.items) {
+                    data.items.forEach(item => {
+                        totalProductos += item.cantidad || 1;
+                    });
+                }
+            }
+        }
+        
+        document.getElementById('totalVentasHoy').textContent = totalVentas.toFixed(2);
+        document.getElementById('totalPedidosHoy').textContent = totalPedidos;
+        document.getElementById('productosVendidosHoy').textContent = totalProductos;
+        
+        const repartidoresSnap = await database.ref('repartidores').once('value');
+        const repartidores = repartidoresSnap.val() || {};
+        let activos = 0;
+        for (const [uid, data] of Object.entries(repartidores)) {
+            if (data.activo !== false) activos++;
+        }
+        document.getElementById('totalRepartidoresHoy').textContent = activos;
+        
+        container.innerHTML = `
+            <h3 class="font-bold text-lg mb-4">📋 Resumen del día</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-slate-700/30 rounded-xl p-4 text-center">
+                    <p class="text-white/50 text-xs">💵 Ventas</p>
+                    <p class="text-xl font-bold text-amber-400">${totalVentas.toFixed(2)}€</p>
+                </div>
+                <div class="bg-slate-700/30 rounded-xl p-4 text-center">
+                    <p class="text-white/50 text-xs">📦 Pedidos</p>
+                    <p class="text-xl font-bold text-cyan-400">${totalPedidos}</p>
+                </div>
+                <div class="bg-slate-700/30 rounded-xl p-4 text-center">
+                    <p class="text-white/50 text-xs">🛵 Repartidores</p>
+                    <p class="text-xl font-bold text-green-400">${activos}</p>
+                </div>
+                <div class="bg-slate-700/30 rounded-xl p-4 text-center">
+                    <p class="text-white/50 text-xs">🍕 Productos</p>
+                    <p class="text-xl font-bold text-purple-400">${totalProductos}</p>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        container.innerHTML = '<div class="text-center text-red-400 p-10">Error al cargar reportes</div>';
+    }
+}
+
+// ============================================================
+// 👥 CLIENTES
+// ============================================================
+async function cargarClientes() {
+    const tbody = document.getElementById('tablaClientes');
+    try {
+        const snapshot = await database.ref('clientes').once('value');
+        const clientes = snapshot.val() || {};
+        const morososSnap = await database.ref('clientes_morosos').once('value');
+        const morosos = morososSnap.val() || {};
+        
+        let totalClientes = 0;
+        let totalMorosos = 0;
+        let totalDeuda = 0;
+        
+        let html = '';
+        for (const [uid, data] of Object.entries(clientes)) {
+            totalClientes++;
+            const esMoroso = morosos[uid] || false;
+            const deuda = esMoroso ? (esMoroso.deuda || 0) : 0;
+            if (esMoroso) {
+                totalMorosos++;
+                totalDeuda += deuda;
+            }
+            
+            html += `
+                <tr>
+                    <td class="p-2">${escapeHTML(data.nombre || 'Sin nombre')}</td>
+                    <td class="p-2">${escapeHTML(data.email || '')}</td>
+                    <td class="p-2">${escapeHTML(data.telefono || '')}</td>
+                    <td class="p-2 text-center">${deuda > 0 ? deuda.toFixed(2) + '€' : '-'}</td>
+                    <td class="p-2 text-center">
+                        <span class="${esMoroso ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'} px-2 py-1 rounded text-xs">${esMoroso ? '⛔ BLOQUEADO' : '✅ ACTIVO'}</span>
+                    </td>
+                    <td class="p-2 text-center">
+                        ${!esMoroso ? `<button onclick="agregarMoroso('${uid}')" class="bg-red-600/20 text-red-400 px-2 py-1 rounded text-xs">⛔ Bloquear</button>` : `<button onclick="quitarMoroso('${uid}')" class="bg-green-600/20 text-green-400 px-2 py-1 rounded text-xs">✅ Desbloquear</button>`}
+                    </td>
+                </tr>
+            `;
+        }
+        
+        document.getElementById('totalClientes').textContent = totalClientes;
+        document.getElementById('totalMorosos').textContent = totalMorosos;
+        document.getElementById('totalDeuda').textContent = totalDeuda.toFixed(2) + '€';
+        tbody.innerHTML = html || '<tr><td colspan="6" class="text-center text-white/50 p-4">No hay clientes</td></tr>';
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-red-400 p-4">Error al cargar clientes</td></tr>`;
+    }
+}
+
+async function agregarMoroso(uid) {
+    const { value: formData } = await Swal.fire({
+        title: '⛔ Agregar a Lista Negra',
         html: `
-            <input id="grupoNombre" class="swal2-input" placeholder="Nombre del grupo (ej: Tamaños)">
-            <input id="grupoMin" class="swal2-input" placeholder="Mínimo requerido (0-5)" value="1">
+            <input id="morosoDeuda" class="swal2-input" placeholder="Monto de deuda (€)" type="number" step="0.01">
+            <textarea id="morosoMotivo" class="swal2-textarea" placeholder="Motivo (opcional)"></textarea>
         `,
-        confirmButtonText: 'Agregar Grupo',
+        showCancelButton: true,
+        confirmButtonText: '⛔ Bloquear',
         background: '#0f172a',
         color: 'white',
         preConfirm: () => {
-            const nombre = document.getElementById('grupoNombre').value;
-            const min = parseInt(document.getElementById('grupoMin').value) || 1;
-            if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
-            return { nombre, min };
+            const deuda = parseFloat(document.getElementById('morosoDeuda').value) || 0;
+            const motivo = document.getElementById('morosoMotivo').value || 'Sin motivo';
+            return { deuda, motivo };
         }
-    }).then(result => {
-        if (result.isConfirmed && result.value) {
-            const container = document.getElementById('grupos-opciones-container');
-            const grupoHtml = `
-                <div class="bg-slate-800 rounded-lg p-3 border border-white/10">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-sm">${escapeHTML(result.value.nombre)} (mín: ${result.value.min})</span>
-                        <button class="text-red-400 text-sm" onclick="this.parentElement.parentElement.remove()">🗑️</button>
-                    </div>
-                    <div class="flex gap-2 mt-2 flex-wrap">
-                        <input class="flex-1 p-1 rounded bg-slate-700 text-xs" placeholder="Opción" onkeydown="if(event.key==='Enter'){agregarOpcion(this)}">
-                        <button class="bg-amber-500 text-black px-2 py-1 rounded text-xs" onclick="agregarOpcion(this.previousElementSibling)">➕</button>
-                    </div>
-                    <div class="flex flex-wrap gap-1 mt-2" id="opciones_${Date.now()}"></div>
-                </div>
+    });
+    
+    if (formData) {
+        await database.ref(`clientes_morosos/${uid}`).set({
+            deuda: formData.deuda,
+            motivo: formData.motivo,
+            fecha: Date.now()
+        });
+        await cargarClientes();
+        Swal.fire({ title: '⛔ Cliente bloqueado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }
+}
+
+async function quitarMoroso(uid) {
+    const confirm = await Swal.fire({
+        title: '¿Desbloquear cliente?',
+        icon: 'warning',
+        showCancelButton: true,
+        background: '#0f172a',
+        color: 'white'
+    });
+    if (confirm.isConfirmed) {
+        await database.ref(`clientes_morosos/${uid}`).remove();
+        await cargarClientes();
+        Swal.fire({ title: '✅ Cliente desbloqueado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 💰 CONTABLE
+// ============================================================
+async function generarReporteContable() {
+    const tbody = document.getElementById('tablaReporteContable');
+    try {
+        const snapshot = await database.ref('pedidos').once('value');
+        const pedidos = snapshot.val() || {};
+        const restaurantesSnap = await database.ref('restaurantes').once('value');
+        const restaurantes = restaurantesSnap.val() || {};
+        
+        let totalVentas = 0;
+        let totalComisiones = 0;
+        let totalLiquidar = 0;
+        const reporte = {};
+        
+        for (const [id, data] of Object.entries(pedidos)) {
+            if (data.estado !== 'entregado') continue;
+            const restId = data.uid_restaurante;
+            if (!reporte[restId]) {
+                const comision = restaurantes[restId]?.comision || 10;
+                reporte[restId] = { ventas: 0, comision: comision, pedidos: 0 };
+            }
+            const total = data.total || 0;
+            reporte[restId].ventas += total;
+            reporte[restId].pedidos++;
+            totalVentas += total;
+        }
+        
+        let html = '';
+        for (const [id, data] of Object.entries(reporte)) {
+            const comisionMonto = data.ventas * (data.comision / 100);
+            const liquidar = data.ventas - comisionMonto;
+            totalComisiones += comisionMonto;
+            totalLiquidar += liquidar;
+            const nombre = restaurantes[id]?.NOMBRE_RESTAURANTE || restaurantes[id]?.nombre || id;
+            html += `
+                <tr>
+                    <td class="p-2">${escapeHTML(nombre)}</td>
+                    <td class="p-2 text-right">${data.ventas.toFixed(2)}€</td>
+                    <td class="p-2 text-right">${comisionMonto.toFixed(2)}€ (${data.comision}%)</td>
+                    <td class="p-2 text-right">0.00€</td>
+                    <td class="p-2 text-right font-bold text-emerald-400">${liquidar.toFixed(2)}€</td>
+                    <td class="p-2 text-center"><span class="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">✅ PENDIENTE</span></td>
+                    <td class="p-2 text-center"><button class="bg-cyan-400 text-black px-2 py-1 rounded text-xs">📊 Detalle</button></td>
+                </tr>
             `;
-            container.insertAdjacentHTML('beforeend', grupoHtml);
+        }
+        
+        document.getElementById('totalVentasContable').textContent = totalVentas.toFixed(2) + '€';
+        document.getElementById('totalComisionesContable').textContent = totalComisiones.toFixed(2) + '€';
+        document.getElementById('totalDescuentosContable').textContent = '0.00€';
+        document.getElementById('totalLiquidarContable').textContent = totalLiquidar.toFixed(2) + '€';
+        
+        tbody.innerHTML = html || '<tr><td colspan="7" class="text-center text-white/50 p-4">No hay datos</td></tr>';
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-red-400 p-4">Error al cargar reporte</td></tr>`;
+    }
+}
+
+// ============================================================
+// 💵 LIQUIDACIONES
+// ============================================================
+async function calcularLiquidaciones() {
+    const tbody = document.getElementById('tablaLiquidaciones');
+    try {
+        const snapshot = await database.ref('pedidos').once('value');
+        const pedidos = snapshot.val() || {};
+        const restaurantesSnap = await database.ref('restaurantes').once('value');
+        const restaurantes = restaurantesSnap.val() || {};
+        
+        let totalVentas = 0;
+        let totalComisiones = 0;
+        let totalLiquidar = 0;
+        const reporte = {};
+        
+        for (const [id, data] of Object.entries(pedidos)) {
+            if (data.estado !== 'entregado') continue;
+            const restId = data.uid_restaurante;
+            if (!reporte[restId]) {
+                const comision = restaurantes[restId]?.comision || 10;
+                reporte[restId] = { ventas: 0, comision: comision, pedidos: 0 };
+            }
+            const total = data.total || 0;
+            reporte[restId].ventas += total;
+            reporte[restId].pedidos++;
+            totalVentas += total;
+        }
+        
+        let html = '';
+        for (const [id, data] of Object.entries(reporte)) {
+            const comisionMonto = data.ventas * (data.comision / 100);
+            const liquidar = data.ventas - comisionMonto;
+            totalComisiones += comisionMonto;
+            totalLiquidar += liquidar;
+            const nombre = restaurantes[id]?.NOMBRE_RESTAURANTE || restaurantes[id]?.nombre || id;
+            html += `
+                <tr>
+                    <td class="p-2">${escapeHTML(nombre)}</td>
+                    <td class="p-2 text-right">${data.pedidos}</td>
+                    <td class="p-2 text-right">${data.ventas.toFixed(2)}€</td>
+                    <td class="p-2 text-right">${data.comision}%</td>
+                    <td class="p-2 text-right font-bold text-emerald-400">${liquidar.toFixed(2)}€</td>
+                    <td class="p-2 text-center"><span class="bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded text-xs">⏳ PENDIENTE</span></td>
+                    <td class="p-2 text-center"><button onclick="liquidarRestaurante('${id}')" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs">💵 Liquidar</button></td>
+                </tr>
+            `;
+        }
+        
+        document.getElementById('liquidTotalVentas').textContent = totalVentas.toFixed(2) + '€';
+        document.getElementById('liquidTotalComisiones').textContent = totalComisiones.toFixed(2) + '€';
+        document.getElementById('liquidTotalLiquidar').textContent = totalLiquidar.toFixed(2) + '€';
+        document.getElementById('liquidTotalLiquidado').textContent = '0.00€';
+        
+        tbody.innerHTML = html || '<tr><td colspan="7" class="text-center text-white/50 p-4">No hay datos</td></tr>';
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-red-400 p-4">Error al cargar liquidaciones</td></tr>`;
+    }
+}
+
+async function liquidarRestaurante(restId) {
+    Swal.fire({
+        title: '💵 Liquidar Restaurante',
+        text: '¿Confirmas que se ha pagado la liquidación?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '✅ Sí, liquidar',
+        background: '#0f172a',
+        color: 'white'
+    }).then(async result => {
+        if (result.isConfirmed) {
+            await database.ref(`liquidaciones_pendientes/${restId}`).set({
+                fecha: Date.now(),
+                monto: 0,
+                estado: 'liquidado'
+            });
+            await calcularLiquidaciones();
+            Swal.fire({ title: '✅ Liquidación registrada', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
         }
     });
 }
 
-function agregarOpcion(input) {
-    const valor = input.value.trim();
-    if (!valor) return;
-    const container = input.parentElement.parentElement.querySelector('.flex.flex-wrap.gap-1');
+// ============================================================
+// 🍕 EXTRAS / PRODUCTOS
+// ============================================================
+function agregarGrupoOpciones() {
+    const container = document.getElementById('grupos-opciones-container');
     if (!container) return;
-    const span = document.createElement('span');
-    span.className = 'bg-slate-700/50 text-xs px-2 py-1 rounded flex items-center gap-1';
-    span.innerHTML = `${escapeHTML(valor)} <span class="text-red-400 cursor-pointer" onclick="this.parentElement.remove()">✖</span>`;
-    container.appendChild(span);
+    const id = Date.now();
+    container.innerHTML += `
+        <div class="bg-slate-800 rounded-lg p-3 border border-white/10" id="grupo_${id}">
+            <div class="flex justify-between items-center">
+                <input class="flex-1 p-2 rounded bg-slate-700 text-sm" placeholder="Nombre del grupo (ej: Tamaños)" id="grupo_nombre_${id}">
+                <div class="flex gap-2 ml-2">
+                    <input class="w-12 p-2 rounded bg-slate-700 text-sm text-center" placeholder="Min" value="1" id="grupo_min_${id}">
+                    <button class="text-red-400 text-sm" onclick="document.getElementById('grupo_${id}').remove()">🗑️</button>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-2">
+                <input class="flex-1 p-2 rounded bg-slate-700 text-sm" placeholder="Opción" id="grupo_input_${id}">
+                <button class="bg-amber-500 text-black px-3 py-1 rounded text-sm" onclick="agregarOpcionGrupo('${id}')">➕</button>
+            </div>
+            <div class="flex flex-wrap gap-1 mt-2" id="grupo_opciones_${id}"></div>
+        </div>
+    `;
+}
+
+function agregarOpcionGrupo(grupoId) {
+    const input = document.getElementById(`grupo_input_${grupoId}`);
+    const container = document.getElementById(`grupo_opciones_${grupoId}`);
+    if (!input || !container || !input.value.trim()) return;
+    container.innerHTML += `<span class="bg-slate-700/50 text-xs px-2 py-1 rounded flex items-center gap-1">${escapeHTML(input.value.trim())} <span class="text-red-400 cursor-pointer" onclick="this.parentElement.remove()">✖</span></span>`;
     input.value = '';
 }
 
 async function guardarProductoCompleto() {
-    Swal.fire({
-        title: '✅ Producto guardado',
-        icon: 'success',
-        timer: 1500,
-        showConfirmButton: false,
-        background: '#0f172a',
-        color: 'white'
-    });
-    cerrarModal('modalProducto');
+    const restId = document.getElementById('prodRestaurante').value;
+    const nombre = document.getElementById('prodNombre').value.trim();
+    const precio = parseFloat(document.getElementById('prodPrecio').value);
+    const categoria = document.getElementById('prodCategoria').value;
+    const descripcion = document.getElementById('prodDescripcion').value.trim();
+    const foto = document.getElementById('prodFoto').value.trim();
+    
+    if (!restId) {
+        Swal.fire({ title: 'Error', text: 'Selecciona un restaurante', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    if (!nombre) {
+        Swal.fire({ title: 'Error', text: 'El nombre del producto es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    if (!precio || precio <= 0) {
+        Swal.fire({ title: 'Error', text: 'Ingresa un precio válido', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    try {
+        await database.ref('menu_general').push({
+            ID_RESTAURANTE: restId,
+            PLATO: nombre,
+            PRECIO: precio,
+            CATEGORIA: categoria,
+            DESCRIPCION: descripcion || '',
+            FOTO: foto || '',
+            FOTO_PLATO: foto || '',
+            ACTIVO: true,
+            creado_en: Date.now()
+        });
+        cerrarModal('modalProducto');
+        document.getElementById('prodNombre').value = '';
+        document.getElementById('prodPrecio').value = '';
+        document.getElementById('prodDescripcion').value = '';
+        document.getElementById('prodFoto').value = '';
+        document.getElementById('grupos-opciones-container').innerHTML = '';
+        await cargarProductos(restId);
+        Swal.fire({ title: '✅ Producto guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    } catch (error) {
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 🛠️ FUNCIONES STUB PARA OTRAS SECCIONES
+// ============================================================
+function exportarReporteExcel() {
+    Swal.fire({ title: '📎 Exportando...', text: 'Función en desarrollo', icon: 'info', background: '#0f172a', color: 'white' });
+}
+
+function exportarLiquidacionesExcel() {
+    Swal.fire({ title: '📎 Exportando...', text: 'Función en desarrollo', icon: 'info', background: '#0f172a', color: 'white' });
 }
 
 function asignacionAutomatica() {
     // Función placeholder para asignación automática
-}
-
-function exportarReporteExcel() {
-    Swal.fire({
-        title: '📎 Exportando...',
-        text: 'Función en desarrollo',
-        icon: 'info',
-        background: '#0f172a',
-        color: 'white'
-    });
-}
-
-function exportarLiquidacionesExcel() {
-    Swal.fire({
-        title: '📎 Exportando...',
-        text: 'Función en desarrollo',
-        icon: 'info',
-        background: '#0f172a',
-        color: 'white'
-    });
-}
-
-function agregarMoroso() {
-    Swal.fire({
-        title: '⛔ Cliente bloqueado',
-        icon: 'success',
-        timer: 1500,
-        showConfirmButton: false,
-        background: '#0f172a',
-        color: 'white'
-    });
-    cerrarModal('modalAgregarMoroso');
 }
 
 // ============================================================

@@ -115,10 +115,12 @@
             <div class="flex gap-3 mb-4 flex-wrap">
                 <select id="filtroEstadoPedido" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
                     <option value="todos">Todos</option>
-                    <option value="RECIBIDO">Pendientes</option>
-                    <option value="COCCIÓN">En Cocina</option>
-                    <option value="LISTO">Listos</option>
-                    <option value="ENTREGADO">Entregados</option>
+                    <option value="pendiente">Pendientes</option>
+                    <option value="aceptado">Aceptados</option>
+                    <option value="preparando">En Cocina</option>
+                    <option value="listo">Listos</option>
+                    <option value="en_camino">En Camino</option>
+                    <option value="entregado">Entregados</option>
                 </select>
                 <select id="filtroRestaurantePedido" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
                     <option value="">Todos los restaurantes</option>
@@ -346,14 +348,18 @@
 <div id="modalUsuario" class="modal hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
         <h3 class="text-xl font-bold mb-4">👥 Usuario</h3>
+        <input type="text" id="userNombre" placeholder="Nombre completo" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <input type="email" id="userEmail" placeholder="Email" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <input type="password" id="userPassword" placeholder="Contraseña" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
         <select id="userRol" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
             <option value="admin">Administrador</option>
+            <option value="restaurante">Restaurante</option>
             <option value="cocina">Cocina</option>
             <option value="repartidor">Repartidor</option>
         </select>
-        <select id="userRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3"></select>
+        <select id="userRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+            <option value="">Seleccionar restaurante</option>
+        </select>
         <div class="flex gap-3">
             <button onclick="guardarUsuario()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
             <button onclick="cerrarModal('modalUsuario')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
@@ -889,7 +895,6 @@ async function cargarProductos(restId) {
     if (encontrados === 0) container.innerHTML = '<p class="text-white/50">No hay productos para este restaurante</p>';
 }
 
-// [Las funciones de menús continúan igual...]
 async function editarProducto(restPin, productoId) {
     const snapshot = await database.ref(`menu_general/${productoId}`).once('value');
     const data = snapshot.val();
@@ -942,9 +947,592 @@ async function editarProducto(restPin, productoId) {
     }
 }
 
-// [Todas las demás funciones (menús, pedidos, repartidores, banners, fondos, usuarios, clientes, contable, liquidaciones) permanecen IGUAL que en tu código original]
-// Para no alargar excesivamente, las funciones restantes no se repiten aquí
-// pero debes mantenerlas en tu archivo.
+async function toggleProducto(restId, productoId, activo) { 
+    await database.ref(`menu_general/${productoId}/ACTIVO`).set(activo); 
+    await cargarProductos(restId); 
+}
+
+async function eliminarProducto(restId, productoId) { 
+    const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); 
+    if (confirm.isConfirmed) { 
+        await database.ref(`menu_general/${productoId}`).remove(); 
+        await cargarProductos(restId); 
+    } 
+}
+
+// ============================================================
+// 🛒 PEDIDOS - FUNCIONES AGREGADAS
+// ============================================================
+async function cargarPedidosAdmin() {
+    const container = document.getElementById('listaPedidosAdmin');
+    
+    if (!container) {
+        console.warn('⚠️ Elemento listaPedidosAdmin no encontrado');
+        return;
+    }
+    
+    try {
+        const snapshot = await database.ref('pedidos').once('value');
+        const pedidos = snapshot.val() || {};
+        
+        const filtroEstado = document.getElementById('filtroEstadoPedido')?.value || 'todos';
+        const filtroRestaurante = document.getElementById('filtroRestaurantePedido')?.value || '';
+        
+        let html = '';
+        let count = 0;
+        
+        const pedidosArray = Object.entries(pedidos).sort((a, b) => {
+            const fechaA = a[1].fecha || 0;
+            const fechaB = b[1].fecha || 0;
+            return fechaB - fechaA;
+        });
+        
+        for (const [id, data] of pedidosArray) {
+            const estado = data.estado || 'pendiente';
+            
+            if (filtroEstado !== 'todos' && estado !== filtroEstado) continue;
+            if (filtroRestaurante && data.uid_restaurante !== filtroRestaurante) continue;
+            
+            count++;
+            
+            let nombreRestaurante = data.uid_restaurante || 'Desconocido';
+            try {
+                const restSnapshot = await database.ref(`restaurantes/${data.uid_restaurante}/NOMBRE_RESTAURANTE`).once('value');
+                if (restSnapshot.exists()) {
+                    nombreRestaurante = restSnapshot.val();
+                }
+            } catch (e) {}
+            
+            const estadoColors = {
+                'pendiente': 'bg-yellow-500/20 text-yellow-400',
+                'aceptado': 'bg-blue-500/20 text-blue-400',
+                'preparando': 'bg-cyan-500/20 text-cyan-400',
+                'listo': 'bg-green-500/20 text-green-400',
+                'en_camino': 'bg-purple-500/20 text-purple-400',
+                'entregado': 'bg-emerald-500/20 text-emerald-400',
+                'cancelado': 'bg-red-500/20 text-red-400'
+            };
+            
+            const estadoColor = estadoColors[estado] || 'bg-gray-500/20 text-gray-400';
+            const estadoLabel = {
+                'pendiente': '⏳ Pendiente',
+                'aceptado': '✅ Aceptado',
+                'preparando': '👨‍🍳 Preparando',
+                'listo': '📦 Listo',
+                'en_camino': '🛵 En camino',
+                'entregado': '✅ Entregado',
+                'cancelado': '❌ Cancelado'
+            }[estado] || estado;
+            
+            const total = data.total || 0;
+            const items = data.items || [];
+            const cliente = data.uid_cliente || 'Cliente anónimo';
+            const direccion = data.direccion_entrega || 'Sin dirección';
+            
+            html += `
+                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
+                    <div class="flex justify-between items-start flex-wrap gap-2">
+                        <div>
+                            <span class="text-xs text-white/50">#${id.slice(0,8)}</span>
+                            <span class="text-xs text-cyan-400 ml-2">${escapeHTML(nombreRestaurante)}</span>
+                        </div>
+                        <span class="${estadoColor} px-3 py-1 rounded-full text-xs font-bold">${estadoLabel}</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                        <div>
+                            <p class="text-white/50 text-xs">Cliente</p>
+                            <p class="text-sm font-bold">${escapeHTML(cliente)}</p>
+                        </div>
+                        <div>
+                            <p class="text-white/50 text-xs">Total</p>
+                            <p class="text-sm font-bold text-amber-400">${total.toFixed(2)}€</p>
+                        </div>
+                        <div>
+                            <p class="text-white/50 text-xs">Dirección</p>
+                            <p class="text-sm">${escapeHTML(direccion)}</p>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <p class="text-white/50 text-xs">Productos:</p>
+                        <div class="flex flex-wrap gap-2 mt-1">
+                            ${items.map(item => `
+                                <span class="bg-slate-700 px-2 py-1 rounded text-xs">${escapeHTML(item.nombre || item.PLATO || 'Producto')} x${item.cantidad || 1}</span>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4 flex-wrap">
+                        ${estado === 'pendiente' ? `<button onclick="actualizarPedidoAdmin('${id}', 'aceptado')" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">✅ Aceptar</button>` : ''}
+                        ${estado === 'aceptado' ? `<button onclick="actualizarPedidoAdmin('${id}', 'preparando')" class="bg-cyan-600 text-white px-3 py-1 rounded-lg text-xs">👨‍🍳 Preparar</button>` : ''}
+                        ${estado === 'preparando' ? `<button onclick="actualizarPedidoAdmin('${id}', 'listo')" class="bg-green-600 text-white px-3 py-1 rounded-lg text-xs">📦 Marcar Listo</button>` : ''}
+                        ${estado === 'listo' ? `<button onclick="asignarRepartidorPedido('${id}')" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs">🛵 Asignar Repartidor</button>` : ''}
+                        ${estado !== 'entregado' && estado !== 'cancelado' ? `<button onclick="cancelarPedidoAdmin('${id}')" class="bg-red-600/20 text-red-400 px-3 py-1 rounded-lg text-xs">❌ Cancelar</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (count === 0) {
+            html = `<div class="text-center text-white/50 p-10">📭 No hay pedidos con estos filtros</div>`;
+        }
+        
+        container.innerHTML = html;
+        
+        document.getElementById('totalPedidosHoy').textContent = count;
+        
+    } catch (error) {
+        console.error('❌ Error al cargar pedidos:', error);
+        container.innerHTML = `<div class="text-center text-red-400 p-10">⚠️ Error al cargar pedidos: ${error.message}</div>`;
+    }
+}
+
+async function actualizarPedidoAdmin(pedidoId, nuevoEstado) {
+    try {
+        await database.ref(`pedidos/${pedidoId}/estado`).set(nuevoEstado);
+        Swal.fire({
+            title: '✅ Pedido actualizado',
+            text: `Estado cambiado a: ${nuevoEstado}`,
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+        cargarPedidosAdmin();
+    } catch (error) {
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message,
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
+
+async function cancelarPedidoAdmin(pedidoId) {
+    const confirm = await Swal.fire({
+        title: '¿Cancelar pedido?',
+        text: 'Esta acción no se puede deshacer',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: '✅ Sí, cancelar',
+        cancelButtonText: '❌ No',
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    if (confirm.isConfirmed) {
+        try {
+            await database.ref(`pedidos/${pedidoId}/estado`).set('cancelado');
+            Swal.fire({
+                title: '✅ Pedido cancelado',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+            cargarPedidosAdmin();
+        } catch (error) {
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    }
+}
+
+async function asignarRepartidorPedido(pedidoId) {
+    // Obtener lista de repartidores activos
+    const snapshot = await database.ref('repartidores').once('value');
+    const repartidores = snapshot.val() || {};
+    
+    let optionsHtml = '';
+    for (const [uid, data] of Object.entries(repartidores)) {
+        if (data.activo !== false) {
+            optionsHtml += `<option value="${uid}">${escapeHTML(data.nombre || uid)}</option>`;
+        }
+    }
+    
+    if (!optionsHtml) {
+        Swal.fire({
+            title: '⚠️ No hay repartidores',
+            text: 'Crea un repartidor primero',
+            icon: 'warning',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    const { value: repartidorUid } = await Swal.fire({
+        title: '🛵 Asignar Repartidor',
+        html: `
+            <label class="text-white/70 text-sm">Selecciona un repartidor:</label>
+            <select id="selectRepartidor" class="swal2-input">
+                ${optionsHtml}
+            </select>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '✅ Asignar',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return document.getElementById('selectRepartidor').value;
+        }
+    });
+    
+    if (repartidorUid) {
+        try {
+            await database.ref(`pedidos/${pedidoId}`).update({
+                uid_repartidor: repartidorUid,
+                estado: 'en_camino'
+            });
+            Swal.fire({
+                title: '✅ Repartidor asignado',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+            cargarPedidosAdmin();
+        } catch (error) {
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    }
+}
+
+async function borrarTodosPedidos() {
+    const confirm = await Swal.fire({
+        title: '⚠️ ¿BORRAR TODOS LOS PEDIDOS?',
+        text: 'Esta acción es irreversible y eliminará TODOS los pedidos',
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonText: '🗑️ Sí, borrar todo',
+        cancelButtonText: '❌ Cancelar',
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    if (confirm.isConfirmed) {
+        try {
+            await database.ref('pedidos').remove();
+            Swal.fire({
+                title: '🗑️ Todos los pedidos borrados',
+                icon: 'info',
+                timer: 2000,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+            cargarPedidosAdmin();
+        } catch (error) {
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    }
+}
+
+// ============================================================
+// 👥 USUARIOS - FUNCIÓN PARA CREAR USUARIOS DESDE ADMIN
+// ============================================================
+async function guardarUsuario() {
+    const nombre = document.getElementById('userNombre').value.trim();
+    const email = document.getElementById('userEmail').value.trim();
+    const password = document.getElementById('userPassword').value.trim();
+    const rol = document.getElementById('userRol').value;
+    const restauranteId = document.getElementById('userRestaurante').value;
+    
+    if (!email || !password) {
+        Swal.fire({
+            title: 'Error',
+            text: 'Email y contraseña son obligatorios',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    if (rol === 'restaurante' && !restauranteId) {
+        Swal.fire({
+            title: 'Error',
+            text: 'Debes seleccionar un restaurante',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    try {
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const result = await crearUsuario({
+            email: email,
+            password: password,
+            rol: rol,
+            nombre: nombre || 'Usuario',
+            restauranteId: restauranteId || '',
+            telefono: '',
+            vehiculo: ''
+        });
+        
+        if (result.data.success) {
+            cerrarModal('modalUsuario');
+            await cargarUsuarios();
+            
+            Swal.fire({
+                title: '✅ Usuario creado',
+                text: `${email} ahora es ${rol}`,
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error al crear usuario:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message || 'Error al crear usuario',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
+
+// ============================================================
+// 🛵 REPARTIDORES - FUNCIÓN PARA CREAR REPARTIDORES
+// ============================================================
+async function guardarRepartidor() {
+    const nombre = document.getElementById('repNombre').value.trim();
+    const telefono = document.getElementById('repTelefono').value.trim();
+    const vehiculo = document.getElementById('repVehiculo').value.trim();
+    const password = document.getElementById('repPassword').value.trim() || '123456';
+    
+    if (!nombre) {
+        Swal.fire({
+            title: 'Error',
+            text: 'El nombre es obligatorio',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    const email = `repartidor_${Date.now()}@aguadulce.com`;
+    
+    try {
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const result = await crearUsuario({
+            email: email,
+            password: password,
+            rol: 'repartidor',
+            nombre: nombre,
+            restauranteId: '',
+            telefono: telefono,
+            vehiculo: vehiculo
+        });
+        
+        if (result.data.success) {
+            cerrarModal('modalRepartidor');
+            await cargarRepartidores();
+            
+            Swal.fire({
+                title: '✅ Repartidor creado',
+                text: `Email: ${email}\nContraseña: ${password}`,
+                icon: 'success',
+                timer: 3000,
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message,
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
+
+// ============================================================
+// 📌 FUNCIONES STUB (para evitar errores)
+// ============================================================
+async function cargarRepartidores() {
+    document.getElementById('listaRepartidores').innerHTML = '<div class="text-center text-white/50 p-10">Cargando repartidores...</div>';
+}
+
+async function cargarBanners() {
+    document.getElementById('listaBanners').innerHTML = '<div class="text-center text-white/50 p-10">Cargando banners...</div>';
+}
+
+async function cargarFondosCabecera() {
+    document.getElementById('listaFondos').innerHTML = '<div class="text-center text-white/50 p-10">Cargando fondos...</div>';
+}
+
+async function cargarUsuarios() {
+    document.getElementById('listaUsuarios').innerHTML = '<div class="text-center text-white/50 p-10">Cargando usuarios...</div>';
+}
+
+async function cargarReportes() {
+    document.getElementById('reporteDetalle').innerHTML = '<div class="text-center text-white/50 p-10">Cargando reportes...</div>';
+}
+
+async function cargarClientes() {
+    document.getElementById('tablaClientes').innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-4">Cargando clientes...</td></tr>';
+}
+
+async function generarReporteContable() {
+    document.getElementById('tablaReporteContable').innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-4">Cargando reporte...</td></tr>';
+}
+
+async function calcularLiquidaciones() {
+    document.getElementById('tablaLiquidaciones').innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-4">Cargando liquidaciones...</td></tr>';
+}
+
+function agregarFondoCabecera() {
+    Swal.fire({
+        title: 'Agregar Fondo',
+        html: `
+            <input id="fondoUrl" class="swal2-input" placeholder="URL de la imagen">
+            <input id="fondoOrden" class="swal2-input" placeholder="Orden (número)">
+        `,
+        confirmButtonText: 'Agregar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            const url = document.getElementById('fondoUrl').value;
+            const orden = document.getElementById('fondoOrden').value;
+            if (!url) { Swal.showValidationMessage('URL es obligatoria'); return false; }
+            return { url, orden: parseInt(orden) || 0 };
+        }
+    }).then(result => {
+        if (result.isConfirmed && result.value) {
+            Swal.fire({ title: '✅ Fondo agregado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+            cargarFondosCabecera();
+        }
+    });
+}
+
+function agregarGrupoOpciones() {
+    Swal.fire({
+        title: 'Agregar Grupo de Opciones',
+        html: `
+            <input id="grupoNombre" class="swal2-input" placeholder="Nombre del grupo (ej: Tamaños)">
+            <input id="grupoMin" class="swal2-input" placeholder="Mínimo requerido (0-5)" value="1">
+        `,
+        confirmButtonText: 'Agregar Grupo',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            const nombre = document.getElementById('grupoNombre').value;
+            const min = parseInt(document.getElementById('grupoMin').value) || 1;
+            if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+            return { nombre, min };
+        }
+    }).then(result => {
+        if (result.isConfirmed && result.value) {
+            const container = document.getElementById('grupos-opciones-container');
+            const grupoHtml = `
+                <div class="bg-slate-800 rounded-lg p-3 border border-white/10">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-sm">${escapeHTML(result.value.nombre)} (mín: ${result.value.min})</span>
+                        <button class="text-red-400 text-sm" onclick="this.parentElement.parentElement.remove()">🗑️</button>
+                    </div>
+                    <div class="flex gap-2 mt-2 flex-wrap">
+                        <input class="flex-1 p-1 rounded bg-slate-700 text-xs" placeholder="Opción" onkeydown="if(event.key==='Enter'){agregarOpcion(this)}">
+                        <button class="bg-amber-500 text-black px-2 py-1 rounded text-xs" onclick="agregarOpcion(this.previousElementSibling)">➕</button>
+                    </div>
+                    <div class="flex flex-wrap gap-1 mt-2" id="opciones_${Date.now()}"></div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', grupoHtml);
+        }
+    });
+}
+
+function agregarOpcion(input) {
+    const valor = input.value.trim();
+    if (!valor) return;
+    const container = input.parentElement.parentElement.querySelector('.flex.flex-wrap.gap-1');
+    if (!container) return;
+    const span = document.createElement('span');
+    span.className = 'bg-slate-700/50 text-xs px-2 py-1 rounded flex items-center gap-1';
+    span.innerHTML = `${escapeHTML(valor)} <span class="text-red-400 cursor-pointer" onclick="this.parentElement.remove()">✖</span>`;
+    container.appendChild(span);
+    input.value = '';
+}
+
+async function guardarProductoCompleto() {
+    Swal.fire({
+        title: '✅ Producto guardado',
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false,
+        background: '#0f172a',
+        color: 'white'
+    });
+    cerrarModal('modalProducto');
+}
+
+function asignacionAutomatica() {
+    // Función placeholder para asignación automática
+}
+
+function exportarReporteExcel() {
+    Swal.fire({
+        title: '📎 Exportando...',
+        text: 'Función en desarrollo',
+        icon: 'info',
+        background: '#0f172a',
+        color: 'white'
+    });
+}
+
+function exportarLiquidacionesExcel() {
+    Swal.fire({
+        title: '📎 Exportando...',
+        text: 'Función en desarrollo',
+        icon: 'info',
+        background: '#0f172a',
+        color: 'white'
+    });
+}
+
+function agregarMoroso() {
+    Swal.fire({
+        title: '⛔ Cliente bloqueado',
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false,
+        background: '#0f172a',
+        color: 'white'
+    });
+    cerrarModal('modalAgregarMoroso');
+}
 
 // ============================================================
 // 📌 CARGA INICIAL
@@ -968,8 +1556,6 @@ function cargarTodosLosDatos() {
 // Iniciar asignación automática
 setInterval(asignacionAutomatica, 30000);
 setTimeout(asignacionAutomatica, 5000);
-
-// [El resto de funciones (asignacionAutomatica, liquidaciones, etc.) permanecen igual]
 
 </script>
 </body>

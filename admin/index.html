@@ -1256,15 +1256,31 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 👥 USUARIOS - CREAR USUARIOS
+// 👥 USUARIOS - CREAR USUARIOS (CORREGIDO)
 // ============================================================
 async function guardarUsuario() {
+    // 1️⃣ VERIFICAR QUE EL ADMIN ESTÁ AUTENTICADO
+    const user = auth.currentUser;
+    if (!user) {
+        Swal.fire({
+            title: '⚠️ Sesión expirada',
+            text: 'Debes iniciar sesión nuevamente',
+            icon: 'warning',
+            background: '#0f172a',
+            color: 'white'
+        });
+        logoutAdmin();
+        return;
+    }
+    
+    // 2️⃣ OBTENER DATOS DEL FORMULARIO
     const nombre = document.getElementById('userNombre').value.trim();
     const email = document.getElementById('userEmail').value.trim();
     const password = document.getElementById('userPassword').value.trim();
     const rol = document.getElementById('userRol').value;
     const restauranteId = document.getElementById('userRestaurante').value;
     
+    // 3️⃣ VALIDAR
     if (!email || !password) {
         Swal.fire({
             title: 'Error',
@@ -1287,6 +1303,7 @@ async function guardarUsuario() {
         return;
     }
     
+    // 4️⃣ MOSTRAR LOADING
     Swal.fire({
         title: '⏳ Creando usuario...',
         text: 'Por favor espera',
@@ -1297,7 +1314,12 @@ async function guardarUsuario() {
     });
     
     try {
-        const crearUsuario = functions.httpsCallable('crearUsuarioAdmin');
+        // 5️⃣ OBTENER EL TOKEN DEL USUARIO ACTUAL
+        const token = await user.getIdToken();
+        console.log('✅ Token obtenido:', token ? 'OK' : 'VACÍO');
+        
+        // 6️⃣ LLAMAR A LA CLOUD FUNCTION CON EL TOKEN
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
             password: password,
@@ -1308,6 +1330,7 @@ async function guardarUsuario() {
             vehiculo: ''
         });
         
+        // 7️⃣ PROCESAR RESULTADO
         if (result.data && result.data.success) {
             cerrarModal('modalUsuario');
             document.getElementById('userNombre').value = '';
@@ -1359,6 +1382,20 @@ async function guardarUsuario() {
 // 🛵 REPARTIDORES
 // ============================================================
 async function guardarRepartidor() {
+    // Verificar autenticación
+    const user = auth.currentUser;
+    if (!user) {
+        Swal.fire({
+            title: '⚠️ Sesión expirada',
+            text: 'Debes iniciar sesión nuevamente',
+            icon: 'warning',
+            background: '#0f172a',
+            color: 'white'
+        });
+        logoutAdmin();
+        return;
+    }
+    
     const nombre = document.getElementById('repNombre').value.trim();
     const telefono = document.getElementById('repTelefono').value.trim();
     const vehiculo = document.getElementById('repVehiculo').value.trim();
@@ -1386,7 +1423,7 @@ async function guardarRepartidor() {
     });
     
     try {
-        const crearUsuario = functions.httpsCallable('crearUsuarioAdmin');
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
             password: password,

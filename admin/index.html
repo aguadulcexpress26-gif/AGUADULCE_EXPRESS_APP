@@ -367,6 +367,7 @@
         </select>
         <select id="userRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
             <option value="">Seleccionar restaurante</option>
+            <option value="nuevo">➕ Crear nuevo restaurante</option>
         </select>
         <div class="flex gap-3">
             <button onclick="guardarUsuario()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
@@ -749,6 +750,9 @@ function actualizarSelectsRestaurantes() {
         for (const [id, data] of Object.entries(restaurantes)) {
             optionsHtml += `<option value="${id}">${escapeHTML(data.NOMBRE_RESTAURANTE || data.nombre || id)}</option>`;
         }
+        // Agregar opción "Crear nuevo" para el modal de usuarios
+        optionsHtml += `<option value="nuevo">➕ Crear nuevo restaurante</option>`;
+        
         const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido', 'userRestaurante'];
         selects.forEach(id => { 
             const select = document.getElementById(id); 
@@ -1263,7 +1267,7 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 🛵 REPARTIDORES - FUNCIÓN CORREGIDA CON NOMBRE DE FUNCIÓN
+// 🛵 REPARTIDORES - FUNCIÓN CORREGIDA
 // ============================================================
 async function guardarRepartidor() {
     console.log('📌 guardarRepartidor - Iniciando...');
@@ -1294,7 +1298,6 @@ async function guardarRepartidor() {
     });
     
     try {
-        // 🔥 USAR httpsCallable EN LUGAR DE fetch
         const crearUsuario = firebase.functions().httpsCallable('admin-functions-crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
@@ -1328,26 +1331,16 @@ async function guardarRepartidor() {
         }
     } catch (error) {
         console.error('❌ Error detallado:', error);
-        
-        let mensajeError = error.message || 'Error al crear repartidor';
-        
-        if (error.message.includes('permission-denied')) {
-            mensajeError = 'No tienes permisos para crear repartidores. Asegúrate de estar logueado como admin.';
-        } else if (error.message.includes('unauthenticated')) {
-            mensajeError = 'Debes iniciar sesión como admin para crear repartidores.';
-        } else if (error.message.includes('email-already-exists')) {
-            mensajeError = 'El email generado ya existe. Intenta de nuevo.';
-        }
-        
         Swal.fire({
             title: '❌ Error',
-            text: mensajeError,
+            text: error.message || 'Error al crear repartidor',
             icon: 'error',
             background: '#0f172a',
             color: 'white'
         });
     }
 }
+
 async function cargarRepartidores() {
     const container = document.getElementById('listaRepartidores');
     try {
@@ -1386,7 +1379,7 @@ async function cargarRepartidores() {
 }
 
 // ============================================================
-// 👥 USUARIOS - CREAR USUARIOS (CORREGIDO)
+// 👥 USUARIOS - FUNCIÓN COMPLETA CON CREAR RESTAURANTE
 // ============================================================
 async function guardarUsuario() {
     console.log('📌 guardarUsuario - Iniciando...');
@@ -1402,11 +1395,69 @@ async function guardarUsuario() {
     const email = document.getElementById('userEmail').value.trim();
     const password = document.getElementById('userPassword').value.trim();
     const rol = document.getElementById('userRol').value;
-    const restauranteId = document.getElementById('userRestaurante').value;
+    let restauranteId = document.getElementById('userRestaurante').value;
     
     if (!email || !password) {
         Swal.fire({ title: 'Error', text: 'Email y contraseña son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
         return;
+    }
+    
+    // Si el usuario eligió "Crear nuevo restaurante"
+    if (restauranteId === 'nuevo') {
+        const { value: nuevoRestaurante } = await Swal.fire({
+            title: '🏪 Nuevo Restaurante',
+            html: `
+                <input id="nuevoRestNombre" class="swal2-input" placeholder="Nombre del restaurante *">
+                <input id="nuevoRestPIN" class="swal2-input" placeholder="PIN (ej: AB10DE) *">
+                <input id="nuevoRestDireccion" class="swal2-input" placeholder="Dirección">
+                <input id="nuevoRestTelefono" class="swal2-input" placeholder="Teléfono">
+            `,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: '✅ Crear Restaurante',
+            cancelButtonText: 'Cancelar',
+            background: '#0f172a',
+            color: 'white',
+            preConfirm: () => {
+                const nombreRest = document.getElementById('nuevoRestNombre').value.trim();
+                const pin = document.getElementById('nuevoRestPIN').value.toUpperCase().trim();
+                const direccion = document.getElementById('nuevoRestDireccion').value.trim();
+                const telefono = document.getElementById('nuevoRestTelefono').value.trim();
+                if (!nombreRest || !pin) {
+                    Swal.showValidationMessage('Nombre y PIN son obligatorios');
+                    return false;
+                }
+                return { nombre: nombreRest, pin: pin, direccion, telefono };
+            }
+        });
+        
+        if (!nuevoRestaurante) return;
+        
+        // Crear el restaurante en la base de datos
+        const { pin, nombre: nombreRest, direccion, telefono } = nuevoRestaurante;
+        await database.ref(`restaurantes/${pin}`).set({
+            ID_RESTAURANTE: pin,
+            NOMBRE_RESTAURANTE: nombreRest,
+            nombre: nombreRest,
+            id_restaurante: pin,
+            direccion: direccion || '',
+            telefono: telefono || '',
+            activo: true,
+            comision: 10,
+            creado_en: Date.now()
+        });
+        
+        restauranteId = pin;
+        
+        Swal.fire({
+            title: '✅ Restaurante creado',
+            text: `Restaurante "${nombreRest}" creado con PIN ${pin}`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
     }
     
     if (rol === 'restaurante' && !restauranteId) {

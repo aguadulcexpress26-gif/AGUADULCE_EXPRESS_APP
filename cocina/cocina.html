@@ -195,19 +195,17 @@ async function loginCocina() {
     }
 
     try {
-        // 🔥 AUTENTICAR CON EMAIL Y CONTRASEÑA
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
         console.log('✅ Usuario autenticado:', email, 'UID:', uid);
 
-        // 🔍 VERIFICAR QUE EL USUARIO SEA COCINA O RESTAURANTE
         const token = await userCredential.user.getIdTokenResult();
         const rol = token.claims.rol;
 
         if (rol !== 'cocina' && rol !== 'restaurante') {
             Swal.fire({
                 title: '⛔ Acceso denegado',
-                text: 'No tienes permisos para acceder a la cocina. Contacta con el administrador.',
+                text: 'No tienes permisos para acceder a la cocina.',
                 icon: 'error',
                 background: '#0f172a',
                 color: 'white'
@@ -216,40 +214,25 @@ async function loginCocina() {
             return;
         }
 
-        // 🔍 BUSCAR EL RESTAURANTE ASOCIADO
-        let restauranteId = null;
-        let nombreRestaurante = 'Sin restaurante asignado';
+        // 🔥 BUSCAR EL RESTAURANTE POR UID
+        let restauranteId = uid;
+        let nombreRestaurante = 'Restaurante';
         let fotoRestaurante = '';
 
-        // Buscar en usuarios_restaurante
-        const usuariosRestSnap = await database.ref('usuarios_restaurante').once('value');
-        const usuariosRest = usuariosRestSnap.val() || {};
-        for (const [id, data] of Object.entries(usuariosRest)) {
-            if (data.email === email) {
-                restauranteId = data.restaurante_id || id;
-                nombreRestaurante = data.nombre || 'Restaurante';
-                break;
-            }
-        }
-
-        // Si no se encontró, buscar en restaurantes por email
-        if (!restauranteId) {
+        try {
             const restSnap = await database.ref('restaurantes').once('value');
             const restaurantes = restSnap.val() || {};
+            
             for (const [id, data] of Object.entries(restaurantes)) {
-                if (data.email === email || data.uid_restaurante === uid) {
+                if (data.uid_restaurante === uid || data.email === email) {
                     restauranteId = id;
                     nombreRestaurante = data.NOMBRE_RESTAURANTE || data.nombre || id;
                     fotoRestaurante = data.FOTO || data.foto || '';
                     break;
                 }
             }
-        }
-
-        // Si no se encontró, usar el UID del usuario
-        if (!restauranteId) {
-            restauranteId = uid;
-            console.warn('⚠️ No se encontró restaurante asociado, usando UID:', uid);
+        } catch (error) {
+            console.warn('⚠️ No se pudo obtener el nombre del restaurante:', error);
         }
 
         uidRestaurante = restauranteId;
@@ -263,15 +246,14 @@ async function loginCocina() {
 
         console.log('✅ Restaurante identificado:', restauranteActual);
 
-        // Mostrar dashboard
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.remove('hidden');
         document.getElementById('restauranteNombre').innerText = nombreRestaurante;
+        
         if (fotoRestaurante) {
             document.getElementById('restauranteFoto').src = fotoRestaurante;
         }
 
-        // Iniciar escucha de pedidos
         iniciarEscuchaPedidos();
 
         Swal.fire({
@@ -295,7 +277,6 @@ async function loginCocina() {
         });
     }
 }
-
 function cerrarSesion() {
     if (pedidosListener) { 
         try { pedidosListener.off(); } catch(e) {} 
@@ -879,57 +860,69 @@ auth.onAuthStateChanged(async (user) => {
             const token = await user.getIdTokenResult();
             const rol = token.claims.rol;
             
+            console.log('📌 Usuario autenticado:', user.email, 'Rol:', rol);
+            
+            // Si el usuario es cocina o restaurante, iniciar la app
             if (rol === 'cocina' || rol === 'restaurante') {
-                const email = user.email;
+                const uid = user.uid;
                 let nombreRestaurante = 'Restaurante';
-                let restauranteId = null;
                 let fotoRestaurante = '';
-
-                const usuariosRestSnap = await database.ref('usuarios_restaurante').once('value');
-                const usuariosRest = usuariosRestSnap.val() || {};
-                for (const [id, data] of Object.entries(usuariosRest)) {
-                    if (data.email === email) {
-                        restauranteId = data.restaurante_id || id;
-                        nombreRestaurante = data.nombre || 'Restaurante';
-                        break;
-                    }
-                }
-
-                if (!restauranteId) {
+                let restauranteId = uid;
+                
+                try {
+                    // 🔥 BUSCAR EL RESTAURANTE POR UID (sin leer usuarios_restaurante)
                     const restSnap = await database.ref('restaurantes').once('value');
                     const restaurantes = restSnap.val() || {};
+                    
                     for (const [id, data] of Object.entries(restaurantes)) {
-                        if (data.email === email || data.uid_restaurante === user.uid) {
+                        // Comparar con uid_restaurante o email
+                        if (data.uid_restaurante === uid || data.email === user.email) {
                             restauranteId = id;
                             nombreRestaurante = data.NOMBRE_RESTAURANTE || data.nombre || id;
                             fotoRestaurante = data.FOTO || data.foto || '';
                             break;
                         }
                     }
+                } catch (error) {
+                    console.warn('⚠️ No se pudo obtener el nombre del restaurante:', error);
                 }
-
-                if (restauranteId) {
-                    uidRestaurante = restauranteId;
-                    restauranteActual = {
-                        uid: restauranteId,
-                        nombre: nombreRestaurante,
-                        email: email,
-                        foto: fotoRestaurante,
-                        id_restaurante: restauranteId
-                    };
-
-                    document.getElementById('loginScreen').classList.add('hidden');
-                    document.getElementById('dashboardPanel').classList.remove('hidden');
-                    document.getElementById('restauranteNombre').innerText = nombreRestaurante;
-                    if (fotoRestaurante) {
-                        document.getElementById('restauranteFoto').src = fotoRestaurante;
-                    }
-                    iniciarEscuchaPedidos();
-                    console.log('✅ Sesión restaurada para:', nombreRestaurante);
+                
+                uidRestaurante = restauranteId;
+                restauranteActual = {
+                    uid: restauranteId,
+                    nombre: nombreRestaurante,
+                    email: user.email,
+                    foto: fotoRestaurante,
+                    id_restaurante: restauranteId
+                };
+                
+                console.log('✅ Restaurante identificado:', restauranteActual);
+                
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('dashboardPanel').classList.remove('hidden');
+                document.getElementById('restauranteNombre').innerText = nombreRestaurante;
+                
+                if (fotoRestaurante) {
+                    document.getElementById('restauranteFoto').src = fotoRestaurante;
                 }
+                
+                iniciarEscuchaPedidos();
+                console.log('✅ Sesión restaurada para:', nombreRestaurante);
+            } else {
+                console.warn('⚠️ Usuario sin permisos de cocina:', user.email);
+                Swal.fire({
+                    title: '⛔ Acceso denegado',
+                    text: 'No tienes permisos para acceder a la cocina.',
+                    icon: 'error',
+                    background: '#0f172a',
+                    color: 'white'
+                });
+                auth.signOut();
             }
         } catch (error) {
             console.error('❌ Error restaurando sesión:', error);
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('dashboardPanel').classList.add('hidden');
         }
     }
 });

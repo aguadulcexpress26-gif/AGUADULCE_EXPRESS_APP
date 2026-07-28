@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crear Usuario</title>
+    <!-- SWEETALERT -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- FIREBASE -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-5">
+    <div class="bg-slate-800 rounded-2xl p-8 w-full max-w-2xl">
+        <h1 class="text-2xl font-bold text-amber-400 mb-6">🔐 Crear Usuarios</h1>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm text-white/70 mb-1">Email</label>
+                <input type="email" id="userEmail" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600" placeholder="ejemplo@aguadulce.com">
+            </div>
+            <div>
+                <label class="block text-sm text-white/70 mb-1">Contraseña</label>
+                <input type="password" id="userPassword" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600" placeholder="******">
+            </div>
+            <div>
+                <label class="block text-sm text-white/70 mb-1">Rol</label>
+                <select id="userRol" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    <option value="admin">Administrador</option>
+                    <option value="restaurante">Restaurante</option>
+                    <option value="cocina">Cocina</option>
+                    <option value="repartidor">Repartidor</option>
+                </select>
+            </div>
+            <div id="restauranteSelectContainer" class="hidden">
+                <label class="block text-sm text-white/70 mb-1">Restaurante (para rol Restaurante)</label>
+                <select id="userRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600"></select>
+            </div>
+            <button onclick="crearUsuario()" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl hover:bg-amber-400 transition">🚀 Crear Usuario</button>
+        </div>
+
+        <div id="resultado" class="mt-6"></div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAumnuMnQuFTTqz2McE3R2CBzejnr92nIE",
+            authDomain: "aguadulce-express-v2.firebaseapp.com",
+            databaseURL: "https://aguadulce-express-v2-default-rtdb.firebaseio.com",
+            projectId: "aguadulce-express-v2",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // Verificar que el usuario está autenticado como admin
+        auth.onAuthStateChanged(async user => {
+            if (!user) {
+                Swal.fire({
+                    title: '⚠️ No autenticado',
+                    text: 'Debes iniciar sesión como admin en el panel principal',
+                    icon: 'warning',
+                    background: '#0f172a',
+                    color: 'white'
+                });
+                return;
+            }
+            
+            // Verificar que tiene rol admin
+            try {
+                const token = await user.getIdTokenResult();
+                if (token.claims.rol !== 'admin') {
+                    Swal.fire({
+                        title: '⛔ Acceso denegado',
+                        text: 'No tienes permisos de administrador',
+                        icon: 'error',
+                        background: '#0f172a',
+                        color: 'white'
+                    });
+                    return;
+                }
+                console.log('✅ Autenticado como admin:', user.email);
+                
+                // Cargar restaurantes para el selector
+                const snap = await database.ref('restaurantes').once('value');
+                const restaurantes = snap.val() || {};
+                const select = document.getElementById('userRestaurante');
+                select.innerHTML = '<option value="">Seleccionar restaurante</option>';
+                for (const [id, data] of Object.entries(restaurantes)) {
+                    const nombre = data.NOMBRE_RESTAURANTE || data.nombre || id;
+                    select.innerHTML += `<option value="${id}">${nombre}</option>`;
+                }
+                
+            } catch (error) {
+                console.error('Error al verificar admin:', error);
+            }
+        });
+
+        // Mostrar/ocultar selector de restaurante según rol
+        document.getElementById('userRol').addEventListener('change', function() {
+            const container = document.getElementById('restauranteSelectContainer');
+            if (this.value === 'restaurante') {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        });
+
+        async function crearUsuario() {
+            const email = document.getElementById('userEmail').value.trim();
+            const password = document.getElementById('userPassword').value.trim();
+            const rol = document.getElementById('userRol').value;
+            const restauranteId = document.getElementById('userRestaurante').value;
+            
+            if (!email || !password) {
+                Swal.fire({ title: 'Error', text: 'Email y contraseña son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+                return;
+            }
+            
+            if (rol === 'restaurante' && !restauranteId) {
+                Swal.fire({ title: 'Error', text: 'Selecciona un restaurante', icon: 'error', background: '#0f172a', color: 'white' });
+                return;
+            }
+            
+            Swal.fire({
+                title: '⏳ Creando usuario...',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+            
+            try {
+                const user = auth.currentUser;
+                const token = await user.getIdToken();
+                
+                // Usar fetch a la Cloud Function
+                const response = await fetch('https://crearusuarioadmin-hfzf3bbfgq-uc.a.run.app', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        data: {
+                            email: email,
+                            password: password,
+                            rol: rol,
+                            nombre: document.getElementById('userNombre')?.value || 'Usuario',
+                            restauranteId: restauranteId || '',
+                            telefono: '',
+                            vehiculo: ''
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('Resultado:', result);
+                
+                if (response.ok && result.result && result.result.success) {
+                    Swal.fire({
+                        title: '✅ Usuario creado',
+                        text: `${email} ahora es ${rol}`,
+                        icon: 'success',
+                        background: '#0f172a',
+                        color: 'white'
+                    });
+                    document.getElementById('userEmail').value = '';
+                    document.getElementById('userPassword').value = '';
+                } else {
+                    throw new Error(result.error?.message || 'Error al crear usuario');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                Swal.fire({
+                    title: '❌ Error',
+                    text: error.message || 'Error al crear usuario',
+                    icon: 'error',
+                    background: '#0f172a',
+                    color: 'white'
+                });
+            }
+        }
+    </script>
+</body>
+</html>

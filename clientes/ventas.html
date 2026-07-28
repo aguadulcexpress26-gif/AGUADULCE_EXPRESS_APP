@@ -1595,12 +1595,16 @@ if ('serviceWorker' in navigator) {
 // ============================================================
 async function enviarPedidoFinal() {
     if (procesandoPedidoActivo) return;
+    
+    // 📌 OBTENER EL CLIENTE Y VERIFICAR QUE TIENE UID
     const cliente = obtenerCliente();
     if (!cliente || !cliente.uid) {
-        alertaError("Registro", "Debes registrarte para hacer pedidos");
+        alertaError("Error", "No se pudo identificar al cliente. Inicia sesión nuevamente.");
         mostrarModal('modal-login');
         return;
     }
+    
+    // 📌 VERIFICAR SI ESTÁ EN LA LISTA NEGRA
     try {
         const emailSanitizado = sanitizarEmail(cliente.email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
@@ -1609,10 +1613,19 @@ async function enviarPedidoFinal() {
             alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nPara regularizar tu situación y volver a pedir, contacta con soporte:\n📧 soporteaguadulcexpress26@gmail.com`);
             return;
         }
-    } catch (error) { console.error("Error verificando lista negra:", error); }
-    if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
+    } catch (error) { 
+        console.error("Error verificando lista negra:", error); 
+        // Si hay error al verificar, continuar (no bloquear el pedido)
+    }
+    
+    // 📌 VALIDACIONES BÁSICAS
+    if (cesta.length === 0) { 
+        alertaError("Carrito vacío", "No hay productos"); 
+        return; 
+    }
     if (!validarZona(cliente.cp)) return;
     if (!verificarAlcoholEnCesta()) return;
+    
     const tieneAlcohol = cesta.some(item => CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)));
     if (tieneAlcohol && !(await clienteEsMayorDeEdad())) {
         alertaError("Verificación de edad", "Debes ser mayor de 18 años.");
@@ -1693,10 +1706,13 @@ async function enviarPedidoFinal() {
             if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null;
         }
     }
+    
+    // 📌 CREAR EL PEDIDO CON uid_cliente (¡ESTO ES CLAVE!)
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const pedido = {
         id: idPedido,
         id_pedido: idPedido,
+        uid_cliente: cliente.uid,              // ← CAMPO OBLIGATORIO
         cliente_nombre: cliente.nombre,
         cliente: cliente.nombre,
         cliente_telefono: cliente.telefono,
@@ -1730,8 +1746,20 @@ async function enviarPedidoFinal() {
         timestamp: Date.now(),
         acepta_terminos: true
     };
+    
+    // 📌 AGREGAR MONTO DE PAGA SI EXISTE
     if (montoPaga) pedido.monto_paga = montoPaga;
 
+    // 🔍 VERIFICAR QUE uid_cliente EXISTE Y COINCIDE
+    console.log('📌 uid_cliente del pedido:', pedido.uid_cliente);
+    console.log('📌 auth.uid actual:', firebase.auth().currentUser.uid);
+    
+    if (pedido.uid_cliente !== firebase.auth().currentUser.uid) {
+        alertaError("Error", "El usuario no coincide con el pedido. Por favor, inicia sesión nuevamente.");
+        return;
+    }
+
+    // 📌 PROCESAR EL PEDIDO
     procesandoPedidoActivo = true;
     const btnProcesar = document.getElementById('btn-procesar-orden');
     if (btnProcesar) {
@@ -1739,7 +1767,14 @@ async function enviarPedidoFinal() {
         btnProcesar.innerText = "PROCESANDO...";
         btnProcesar.style.opacity = "0.5";
     }
-    Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    
+    Swal.fire({ 
+        title: 'Enviando pedido...', 
+        text: 'Por favor espera', 
+        allowOutsideClick: false, 
+        didOpen: () => { Swal.showLoading(); } 
+    });
+    
     try {
         await database.ref('pedidos/' + idPedido).set(pedido);
         cesta = [];
@@ -1759,6 +1794,7 @@ async function enviarPedidoFinal() {
         });
     } catch (error) {
         Swal.close();
+        console.error('❌ Error al enviar pedido:', error);
         alertaError("Error", error.message || "No se pudo enviar el pedido");
     }
     finally {

@@ -151,6 +151,8 @@
         </div>
         <div id="lista-cesta-checkout" class="space-y-3"></div>
         <div id="desglose-pago"></div>
+        
+        <!-- 📌 MÉTODO DE PAGO - UN SOLO SELECTOR -->
         <div>
             <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">Forma de Pago</p>
             <select id="metodo-pago" class="w-full">
@@ -158,7 +160,9 @@
                 <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
             </select>
         </div>
-        <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] mt-8 text-lg">Procesar Orden</button>
+        
+        <!-- 📌 BOTÓN ÚNICO DE PROCESAR ORDEN -->
+        <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] mt-8 text-lg">💳 Procesar Orden</button>
     </div>
 </div>
 
@@ -272,8 +276,8 @@
             </div>
             <div class="input-group text-left mb-4">
                 <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📮 Código Postal</label>
-                <input type="text" id="reg-cp" placeholder="04720" maxlength="5" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
-                <p class="text-white/40 text-[9px] mt-1">📌 Solo realizamos entregas en Aguadulce (04720)</p>
+                <input type="text" id="reg-cp" placeholder="04740" maxlength="5" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                <p class="text-white/40 text-[9px] mt-1">📌 Solo realizamos entregas en Roquetas de Mar (04740)</p>
             </div>
             <div class="legal-notice flex items-start gap-3 mb-6">
                 <input type="checkbox" id="reg-edad" class="w-5 h-5 accent-cyan-400 mt-0.5 flex-shrink-0">
@@ -324,9 +328,67 @@ let audioElement = null;
 let procesandoPedidoActivo = false;
 let clienteActual = null;
 
-const ZONAS_PERMITIDAS = ['04720'];
+// 📌 ROQUETAS DE MAR - SOLO CÓDIGO POSTAL 04740
+const ZONAS_PERMITIDAS = ['04740'];
 const HORARIO_ALCOHOL = { activo: true, horaFin: 22, mensaje: "🍺 La venta de bebidas alcohólicas solo está permitida hasta las 22:00." };
 const CATEGORIAS_ALCOHOL = ['Cervezas', 'Licores', 'Vinos', 'Bebidas alcohólicas', 'Alcohol', 'Cerveza', 'Vino', 'Licor'];
+
+// ============================================================
+// 📍 FUNCIONES DE SEGURIDAD Y VALIDACIÓN
+// ============================================================
+
+// 1️⃣ Validar email real
+function esEmailValido(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return false;
+    
+    const dominiosValidos = [
+        'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com',
+        'icloud.com', 'protonmail.com', 'mail.com', 'gmx.com',
+        'googlemail.com', 'live.com', 'msn.com', 'aol.com',
+        'zoho.com', 'yandex.com', 'tutanota.com', 'fastmail.com'
+    ];
+    
+    const dominio = email.split('@')[1];
+    return dominiosValidos.includes(dominio);
+}
+
+// 2️⃣ Verificar huella única (evitar cuentas duplicadas)
+async function verificarHuellaUnica(huella, email) {
+    if (!huella) return true;
+    
+    try {
+        const snapshot = await database.ref('clientes').once('value');
+        const clientes = snapshot.val() || {};
+        
+        for (const [uid, data] of Object.entries(clientes)) {
+            if (data.huella === huella && data.email !== email) {
+                return false;
+            }
+        }
+        return true;
+    } catch (error) {
+        console.error('Error verificando huella:', error);
+        return true;
+    }
+}
+
+// 3️⃣ Validar código postal (solo Roquetas)
+function validarZona(cp) {
+    if (!cp) { 
+        alertaError("Código postal requerido", "Indica tu código postal."); 
+        return false; 
+    }
+    if (!/^\d{5}$/.test(cp)) { 
+        alertaError("Código postal inválido", "Debe tener 5 dígitos."); 
+        return false; 
+    }
+    if (!ZONAS_PERMITIDAS.includes(cp)) { 
+        alertaError("Fuera de zona", `Solo entregamos en Roquetas de Mar (04740). CP: ${cp}`); 
+        return false; 
+    }
+    return true;
+}
 
 // ============================================================
 // 📍 CÁLCULO DE DISTANCIA Y ENVÍO CON GOOGLE MAPS
@@ -334,41 +396,30 @@ const CATEGORIAS_ALCOHOL = ['Cervezas', 'Licores', 'Vinos', 'Bebidas alcohólica
 
 const ZONAS_ROQUETAS = {
     centro: { lat: 36.7642, lng: -2.6148 },
-    tarifaBase: 2.50,           // Tarifa plana para 0-3 km
-    tarifaPorKm: 0.50,          // 0.50€ por km adicional
-    kmIncluidos: 3,             // Kilómetros incluidos en la tarifa plana
-    maxEnvio: 12.00,            // Máximo 12€
-    minEnvio: 0.50,             // Mínimo 0.50€
-    usoPlataforma: 0.99,        // Coste fijo de uso de plataforma
-    descuentoMinPedido: 20.00,  // Pedido mínimo para descuento
-    descuentoPorcentaje: 0.10   // 10% de descuento
+    tarifaBase: 2.50,
+    tarifaPorKm: 0.50,
+    kmIncluidos: 3,
+    maxEnvio: 12.00,
+    minEnvio: 0.50,
+    usoPlataforma: 0.99,
+    descuentoMinPedido: 20.00,
+    descuentoPorcentaje: 0.10
 };
 
-// Calcular distancia usando Google Maps Distance Matrix
 async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
-    const apiKey = 'AIzaSyDC9lJlocyTyOLAYk8yIGN3nW7MIYV2xv4'; // ← TU API KEY
-    
+    const apiKey = 'AIzaSyDC9lJlocyTyOLAYk8yIGN3nW7MIYV2xv4';
     const origen = encodeURIComponent(direccionRestaurante);
     const destino = encodeURIComponent(direccionCliente);
-    
     const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
     
     try {
         const response = await fetch(url);
         const data = await response.json();
-        
-        console.log('📡 Respuesta de Google Maps:', data);
-        
         if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
             const distanciaMetros = data.rows[0].elements[0].distance.value;
             const distanciaKm = distanciaMetros / 1000;
             const tiempoTexto = data.rows[0].elements[0].duration.text;
-            
-            return {
-                km: distanciaKm,
-                tiempo: tiempoTexto,
-                metros: distanciaMetros
-            };
+            return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
         } else {
             console.warn('⚠️ Error en Distance Matrix:', data.status);
             return null;
@@ -388,7 +439,6 @@ function calcularCostoEnvio(distanciaKm, subtotalPedido) {
     let mensaje = '';
     let descuentoAplicado = false;
     
-    // 1️⃣ CALCULAR ENVÍO SEGÚN DISTANCIA
     if (distanciaKm <= ZONAS_ROQUETAS.kmIncluidos) {
         costoEnvio = ZONAS_ROQUETAS.tarifaBase;
     } else {
@@ -396,23 +446,18 @@ function calcularCostoEnvio(distanciaKm, subtotalPedido) {
         costoEnvio = ZONAS_ROQUETAS.tarifaBase + (kmExtra * ZONAS_ROQUETAS.tarifaPorKm);
     }
     
-    // 2️⃣ APLICAR DESCUENTO SI EL PEDIDO ES > 20€
     if (subtotalPedido > ZONAS_ROQUETAS.descuentoMinPedido) {
         const descuento = costoEnvio * ZONAS_ROQUETAS.descuentoPorcentaje;
         costoEnvio = costoEnvio - descuento;
         descuentoAplicado = true;
-        mensaje = `🎉 ¡Pedido superior a 20€! Has recibido un 10% de descuento en el envío (-${(descuento).toFixed(2)}€)`;
+        mensaje = `🎉 ¡Pedido superior a 20€! Has recibido un 10% de descuento en el envío (-${descuento.toFixed(2)}€)`;
     }
     
-    // 3️⃣ APLICAR LÍMITES
     if (costoEnvio > ZONAS_ROQUETAS.maxEnvio) costoEnvio = ZONAS_ROQUETAS.maxEnvio;
     if (costoEnvio < ZONAS_ROQUETAS.minEnvio) costoEnvio = ZONAS_ROQUETAS.minEnvio;
-    
-    // 4️⃣ REDONDEAR A 0.05€
     costoEnvio = Math.ceil(costoEnvio * 20) / 20;
     costoEnvio = Math.round(costoEnvio * 100) / 100;
     
-    // 5️⃣ TOTAL = ENVÍO + USO PLATAFORMA
     const usoPlataforma = ZONAS_ROQUETAS.usoPlataforma;
     const total = costoEnvio + usoPlataforma;
     
@@ -426,7 +471,6 @@ function calcularCostoEnvio(distanciaKm, subtotalPedido) {
     };
 }
 
-// Obtener dirección del restaurante
 function obtenerDireccionRestaurante() {
     const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === restauranteActivo.id);
     if (restaurante) {
@@ -435,103 +479,69 @@ function obtenerDireccionRestaurante() {
     return 'Roquetas de Mar, Almería';
 }
 
-// Función principal para calcular envío en tiempo real
 async function calcularEnvioTiempoReal(direccionCliente) {
     const direccionRestaurante = obtenerDireccionRestaurante();
-    
     if (!direccionCliente) {
         console.warn('⚠️ Sin dirección del cliente');
-        return { costo: 2.50, km: null, tiempo: null };
+        return { km: null, tiempo: null };
     }
-    
     const distanciaData = await calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante);
-    
     if (distanciaData && distanciaData.km !== null) {
-        return {
-            km: distanciaData.km,
-            tiempo: distanciaData.tiempo
-        };
+        return { km: distanciaData.km, tiempo: distanciaData.tiempo };
     } else {
         console.warn('⚠️ Usando tarifa fija por fallo en API');
         return { km: null, tiempo: null };
     }
 }
 
+// ============================================================
+// 📌 FUNCIONES UTILITARIAS
+// ============================================================
 function sanitizarEmail(email) { if (!email) return ''; return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_'); }
 function alcoholDisponible() { return !HORARIO_ALCOHOL.activo || new Date().getHours() < HORARIO_ALCOHOL.horaFin; }
 
-function validarZona(cp) {
-    if (!cp) { alertaError("Código postal requerido", "Indica tu código postal."); return false; }
-    if (!/^\d{5}$/.test(cp)) { alertaError("Código postal inválido", "Debe tener 5 dígitos."); return false; }
-    if (!ZONAS_PERMITIDAS.includes(cp)) { alertaError("Fuera de zona", `Solo entregamos en Aguadulce (04720). CP: ${cp}`); return false; }
-    return true;
-}
-
-async function clienteEsMayorDeEdad() {
-    const cliente = obtenerCliente();
-    if (!cliente) return false;
-    const edadVerificada = localStorage.getItem('ae_edad_verificada_' + cliente.telefono);
-    if (edadVerificada === 'true') return true;
-    const result = await Swal.fire({ title: '🍺 Verificación de edad', html: 'Confirma que eres <strong>mayor de 18 años</strong>.', icon: 'question', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Soy mayor', cancelButtonText: 'Soy menor', showCancelButton: true });
-    if (result.isConfirmed) { localStorage.setItem('ae_edad_verificada_' + cliente.telefono, 'true'); return true; }
-    return false;
-}
-
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
     const horariosRest = restaurant.horarios_dias;
-    
     if (!horariosRest) {
         return { abierto: false, horario: "Horario no disponible" };
     }
-    
     const ahora = new Date();
     const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
     const hoy = diasSemana[ahora.getDay()];
     const horarioHoy = horariosRest[hoy];
-    
     if (!horarioHoy) {
         return { abierto: false, horario: "Horario no configurado" };
     }
-    
     if (horarioHoy.dia_libre === true) {
         return { abierto: false, horario: "📅 Día libre" };
     }
-    
     if (horarioHoy.activo === false) {
         return { abierto: false, horario: "🚫 Cerrado hoy" };
     }
-    
     const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
-    
     function conv(h) {
         if (!h || h === 'CERRADO') return null;
         let [hh, mm] = h.split(':');
         return parseInt(hh) + parseInt(mm) / 60;
     }
-    
     const a1 = conv(horarioHoy.apertura1);
     const c1 = conv(horarioHoy.cierre1);
     const a2 = conv(horarioHoy.apertura2);
     const c2 = conv(horarioHoy.cierre2);
-    
     let abierto = false;
     let horarioTexto = '';
-    
     if (a1 !== null && c1 !== null) {
         if (horaActual >= a1 && horaActual < c1) abierto = true;
         horarioTexto = `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
     }
-    
     if (a2 !== null && c2 !== null) {
         if (horaActual >= a2 && horaActual < c2) abierto = true;
         if (horarioTexto) horarioTexto += ` / `;
         horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
     }
-    
     if (!horarioTexto) {
         return { abierto: false, horario: "Sin horario" };
     }
-    
     return { 
         abierto: abierto, 
         horario: abierto ? "ABIERTO" : `🕒 ${horarioTexto}`
@@ -546,6 +556,9 @@ function mostrarToast(mensaje, icono = "✅") { const toast = document.createEle
 function alertaError(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "error", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
 function alertaInfo(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "info", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
 
+// ============================================================
+// 📋 POLÍTICA DE CANCELACIÓN
+// ============================================================
 function mostrarPoliticaCancelacion() {
     Swal.fire({
         title: '📋 Política de Cancelación por Ausencia',
@@ -553,7 +566,6 @@ function mostrarPoliticaCancelacion() {
             <div class="text-left">
                 <p class="text-white font-bold text-lg">¿Qué pasa si no estás cuando el repartidor llega?</p>
                 <p class="text-white/70 text-sm mt-3">Cuando el repartidor llega a tu domicilio, <strong>esperará un máximo de 5 minutos</strong> en la puerta.</p>
-                
                 <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mt-4">
                     <p class="text-red-400 font-bold text-sm">🔴 Si no te presentas en ese tiempo:</p>
                     <ul class="text-white/80 text-sm mt-2 space-y-2 list-disc pl-4">
@@ -563,14 +575,12 @@ function mostrarPoliticaCancelacion() {
                         <li>🚫 No podrás hacer nuevos pedidos hasta regularizar tu situación</li>
                     </ul>
                 </div>
-                
                 <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mt-4">
                     <p class="text-cyan-400 font-bold text-sm">✅ ¿Cómo regularizar tu situación?</p>
                     <p class="text-white/70 text-sm mt-2">Contacta con nuestro equipo de soporte:</p>
                     <p class="text-white text-sm font-medium">📧 soporteaguadulcexpress26@gmail.com</p>
                     <p class="text-white text-sm font-medium">📞 643 261 881 (solo llamadas)</p>
                 </div>
-                
                 <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mt-4">
                     <p class="text-yellow-400 font-bold text-sm">💡 Recomendación</p>
                     <p class="text-white/70 text-sm mt-2">Asegúrate de estar atento al seguimiento de tu pedido y de proporcionar una dirección y teléfono correctos.</p>
@@ -591,6 +601,9 @@ function mostrarPoliticaCancelacion() {
     });
 }
 
+// ============================================================
+// 📋 TÉRMINOS DE SERVICIO
+// ============================================================
 async function verTerminos(tipo = 'terminos') {
     let titulo = '', contenido = '';
     if (tipo === 'terminos') {
@@ -700,7 +713,17 @@ function actualizarCestaVisual() {
 }
 function vaciarCestaCompleta() { cesta = []; actualizarCestaVisual(); mostrarToast("Carrito vaciado", "🗑️"); }
 function eliminarDeCesta(id) { cesta = cesta.filter(item => item.id !== id); actualizarCestaVisual(); abrirRevision(); }
-function obtenerCliente() { return leerLocal("ae_cliente", null); }
+function obtenerCliente() { 
+    const cliente = leerLocal("ae_cliente", null);
+    if (cliente && !cliente.uid) {
+        const user = firebase.auth().currentUser;
+        if (user) {
+            cliente.uid = user.uid;
+            guardarLocal("ae_cliente", cliente);
+        }
+    }
+    return cliente;
+}
 function guardarCliente(cliente) { guardarLocal("ae_cliente", cliente); }
 function actualizarClienteUI() {
     const box = document.getElementById("info-cliente-logueado");
@@ -710,15 +733,22 @@ function actualizarClienteUI() {
     }
 }
 
+// ============================================================
+// 🔐 REGISTRO Y LOGIN CON VERIFICACIONES
+// ============================================================
 async function loginCliente() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
     if (!email || !password) { alertaError("Error", "Completa email y contraseña"); return; }
     try {
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        const perfilSnap = await database.ref(`clientes/${userCredential.user.uid}`).once('value');
+        const uid = userCredential.user.uid;
+        const perfilSnap = await database.ref(`clientes/${uid}`).once('value');
         const perfil = perfilSnap.val();
-        if (perfil) localStorage.setItem('ae_cliente', JSON.stringify(perfil));
+        if (perfil) {
+            perfil.uid = uid;
+            localStorage.setItem('ae_cliente', JSON.stringify(perfil));
+        }
         cerrarModal('modal-login');
         Swal.fire({ title: '✅ Bienvenido', text: `Hola ${perfil?.nombre || email}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
         renderHome();
@@ -738,26 +768,91 @@ async function registrarCliente() {
     const legal = document.getElementById('reg-legal').checked;
     const edad = document.getElementById('reg-edad').checked;
     
-    if (!nombre || !email || !telefono || !password || !calle || !cp) { alertaError("Error", "Completa todos los campos obligatorios"); return; }
-    if (!/^\d{5}$/.test(cp)) { alertaError("CP inválido", "Debe tener 5 dígitos"); return; }
-    if (!ZONAS_PERMITIDAS.includes(cp)) { alertaError("Fuera de zona", "Solo entregamos en Aguadulce (04720)"); return; }
-    if (!legal) { alertaError("Acepta términos", "Debes aceptar los términos"); return; }
+    if (!nombre || !email || !telefono || !password || !calle || !cp) { 
+        alertaError("Error", "Completa todos los campos obligatorios"); 
+        return; 
+    }
+    
+    // 📧 VALIDAR EMAIL REAL
+    if (!esEmailValido(email)) {
+        alertaError("Email inválido", "El email debe ser real (Gmail, Yahoo, Hotmail, etc.)");
+        return;
+    }
+    
+    // 📱 VALIDAR CÓDIGO POSTAL (SOLO ROQUETAS)
+    if (!/^\d{5}$/.test(cp)) { 
+        alertaError("CP inválido", "Debe tener 5 dígitos"); 
+        return; 
+    }
+    if (!ZONAS_PERMITIDAS.includes(cp)) { 
+        alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)"); 
+        return; 
+    }
+    if (!legal) { 
+        alertaError("Acepta términos", "Debes aceptar los términos"); 
+        return; 
+    }
+    
+    // 🍺 VERIFICAR EDAD
+    if (!edad) {
+        alertaError("Mayor de edad", "Debes ser mayor de 18 años para registrarte");
+        return;
+    }
+    
+    // 🛡️ VERIFICAR HUELLA (evitar cuentas duplicadas)
+    if (huellaDigitalTerminal) {
+        const huellaUnica = await verificarHuellaUnica(huellaDigitalTerminal, email);
+        if (!huellaUnica) {
+            alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono.");
+            return;
+        }
+    }
     
     try {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
+        
+        // 📧 ENVIAR VERIFICACIÓN DE EMAIL
+        await userCredential.user.sendEmailVerification();
+        
         const direccionCompleta = `${calle}${edificio ? ', ' + edificio : ''}${puerta ? ', ' + puerta : ''}, ${cp}`;
         const perfilCliente = {
-            uid: uid, nombre: nombre, email: email, telefono: telefono,
-            calle: calle, edificio: edificio || '', puerta: puerta || '', instrucciones: instrucciones || '',
-            cp: cp, direccion_completa: direccionCompleta, mayorEdad: edad, creado_en: Date.now(), moroso: false, deuda_total: 0
+            uid: uid,
+            nombre: nombre,
+            email: email,
+            telefono: telefono,
+            calle: calle,
+            edificio: edificio || '',
+            puerta: puerta || '',
+            instrucciones: instrucciones || '',
+            cp: cp,
+            direccion_completa: direccionCompleta,
+            mayorEdad: edad,
+            creado_en: Date.now(),
+            moroso: false,
+            deuda_total: 0,
+            huella: huellaDigitalTerminal || ''
         };
+        
         await database.ref(`clientes/${uid}`).set(perfilCliente);
         localStorage.setItem('ae_cliente', JSON.stringify(perfilCliente));
         cerrarRegistro();
-        Swal.fire({ title: '✅ Registro exitoso', text: `Bienvenido ${nombre}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        
+        await Swal.fire({
+            title: '📧 Verifica tu email',
+            text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam.`,
+            icon: 'info',
+            timer: 5000,
+            showConfirmButton: true,
+            background: '#020617',
+            color: 'white'
+        });
+        
         renderHome();
-    } catch (error) { alertaError("Error", error.message); }
+    } catch (error) { 
+        console.error('❌ Error en registro:', error);
+        alertaError("Error", error.message); 
+    }
 }
 
 function cerrarSesion() {
@@ -778,21 +873,20 @@ function cerrarRegistro() { document.getElementById('modal-registro').style.disp
 function mostrarModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
 function cerrarModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
 
+// ============================================================
+// 📡 CARGA DE DATOS DESDE FIREBASE
+// ============================================================
 async function cargarBaseDatos() {
     try {
         console.log("🔄 Cargando datos desde Firebase...");
-        
-        // RESTAURANTES
         const restaurantesSnap = await database.ref('restaurantes').once('value');
         const restaurantesRaw = restaurantesSnap.val() || {};
-        
         db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
             pin: pin,
             ...data,
             horarios_dias: data.horarios_dias || null,
             orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999
         }));
-        
         db.restaurantes.sort((a, b) => {
             const ordenA = a.orden_manual;
             const ordenB = b.orden_manual;
@@ -801,15 +895,10 @@ async function cargarBaseDatos() {
             const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase();
             return nombreA.localeCompare(nombreB);
         });
-        
         console.log("✅ Restaurantes ordenados:", db.restaurantes.length);
-        
-        // MENÚ
         const menuSnap = await database.ref('menu_general').once('value');
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         console.log("✅ Menú:", db.menu.length);
-        
-        // HORARIOS RESPALDO
         const horariosSnap = await database.ref('horarios_restaurantes').once('value');
         const horariosRaw = horariosSnap.val();
         db.horariosPorDia = {};
@@ -818,8 +907,6 @@ async function cargarBaseDatos() {
                 db.horariosPorDia[idRest] = horariosDias;
             }
         }
-        
-        // FONDO CABECERA
         const fondosSnap = await database.ref('fondos_cabecera').once('value');
         const fondos = fondosSnap.val() || {};
         let fondoActivo = null;
@@ -829,7 +916,6 @@ async function cargarBaseDatos() {
                 break;
             }
         }
-        
         const headerBg = document.getElementById('header-bg');
         if (headerBg && fondoActivo) {
             headerBg.style.backgroundImage = `url(${fondoActivo.url})`;
@@ -846,13 +932,10 @@ async function cargarBaseDatos() {
                 console.log("✅ Fondo cargado desde config (fallback)");
             }
         }
-        
-        // LOGO
         const appLogo = document.getElementById('app-logo');
         if (appLogo) {
             const configSnapTemp = await database.ref('config').once('value');
             const configDataTemp = configSnapTemp.val();
-            
             if (configDataTemp && configDataTemp.LOGO_URL) {
                 appLogo.src = configDataTemp.LOGO_URL;
             } else if (configDataTemp && Array.isArray(configDataTemp) && configDataTemp[0] && configDataTemp[0].LOGO_URL) {
@@ -862,8 +945,6 @@ async function cargarBaseDatos() {
             }
             console.log("✅ Logo cargado:", appLogo.src);
         }
-        
-        // ANUNCIOS
         const anunciosSnap = await database.ref('anuncios').once('value');
         const anunciosData = anunciosSnap.val();
         if (anunciosData && Array.isArray(anunciosData)) {
@@ -874,7 +955,6 @@ async function cargarBaseDatos() {
                 textoAnuncio.innerText = anuncioActivo.TEXTO; 
             }
         }
-        
         console.log("🎉 Carga completa!");
     } catch (error) { 
         console.error("❌ Error:", error); 
@@ -882,12 +962,13 @@ async function cargarBaseDatos() {
     }
 }
 
+// ============================================================
+// 🏠 RENDERIZAR HOME
+// ============================================================
 function renderHome() {
     const app = document.getElementById("app-container");
     if (!app) return;
-    
     const restaurantesOrdenados = [...db.restaurantes];
-    
     let html = `<div id="banner-container" class="mb-4"></div>
                 <div class="flex items-center justify-between mb-4 mt-2">
                     <div class="flex items-center gap-2">
@@ -895,7 +976,6 @@ function renderHome() {
                         <div class="h-px flex-1 bg-gradient-to-r from-cyan-500/50 to-transparent ml-4 w-20"></div>
                     </div>
                 </div>`;
-    
     restaurantesOrdenados.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
         html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${rest.FOTO}','${rest.ESTADO}')"` : ''}>
@@ -944,7 +1024,6 @@ function renderMenu() {
     const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(restauranteActivo.id));
     const categorias = [...new Set(platos.map(p => p.CATEGORIA || "General"))];
     const alcoholActivo = alcoholDisponible();
-    
     let html = `<div class="flex items-center gap-4 mb-6"><button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-black/40 border border-white/10 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate">${escapeHTML(restauranteActivo.nombre)}</h2></div>`;
     if (!alcoholActivo) html += `<div class="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-center text-xs text-red-400">${HORARIO_ALCOHOL.mensaje}</div>`;
     html += `<div class="flex overflow-x-auto gap-2 mb-6 no-scrollbar"><div class="cat-chip active" onclick="filtrarCategoria('TODOS', this)">TODOS</div>`;
@@ -953,7 +1032,6 @@ function renderMenu() {
         html += `<div class="cat-chip ${deshabilitada ? 'disabled' : ''}" data-categoria="${cat}" onclick="${!deshabilitada ? `filtrarCategoria('${cat}', this)` : ''}">${escapeHTML(cat)}${deshabilitada ? ' 🔒' : ''}</div>`;
     });
     html += `</div><div id="lista-platos" class="space-y-3">`;
-    
     platos.forEach(plato => {
         const deshabilitado = CATEGORIAS_ALCOHOL.includes(plato.CATEGORIA || "General") && !alcoholActivo;
         html += `<div class="plato-card ${deshabilitado ? 'disabled' : ''}" data-cat="${plato.CATEGORIA || "General"}" ${!deshabilitado ? `onclick='abrirDetalle(${JSON.stringify(plato).replace(/'/g, "&apos;")})'` : ''}>
@@ -1017,7 +1095,6 @@ function renderizarOpciones(p) {
     const cont = document.getElementById('contenedor-pasos');
     let html = '';
     const extras = p.EXTRAS_PARSEADOS || p.EXTRAS || p.extras;
-    
     if (extras && Array.isArray(extras) && extras.length) {
         extras.forEach((grupo, idx) => {
             const requerido = grupo.required ? '<span class="opcion-obligatorio">(Obligatorio)</span>' : '<span class="opcion-opcional">(Opcional)</span>';
@@ -1182,25 +1259,21 @@ async function abrirCheckout() {
     const desglose = document.getElementById('desglose-pago');
     const subtotal = cesta.reduce((a, i) => a + (i.total || 0), 0);
     
-    // 📍 CALCULAR ENVÍO DINÁMICO
     const clienteDireccion = cliente.direccion_completa;
     const envioData = await calcularEnvioTiempoReal(clienteDireccion);
     const distanciaKm = envioData.km;
     
-    // 🧮 CALCULAR COSTO CON LA NUEVA LÓGICA
     const resultadoEnvio = calcularCostoEnvio(distanciaKm, subtotal);
     const envio = resultadoEnvio.envio;
     const usoPlataforma = resultadoEnvio.usoPlataforma;
     const total = resultadoEnvio.total;
     const descuentoMsg = resultadoEnvio.mensaje;
     
-    // Mostrar información de distancia
     let distanciaHtml = '';
     if (distanciaKm !== null) {
         distanciaHtml = `<p class="text-white/40 text-[9px]">📍 Distancia: ${distanciaKm.toFixed(1)} km</p>`;
     }
     
-    // Mostrar mensaje de descuento si aplica
     let descuentoHtml = '';
     if (resultadoEnvio.descuentoAplicado) {
         descuentoHtml = `<div class="bg-green-500/20 border border-green-500/40 rounded-xl p-2 text-center text-green-400 text-xs font-bold">${descuentoMsg}</div>`;
@@ -1241,7 +1314,7 @@ async function abrirCheckout() {
         </div>
     `;
     
-    // Botón de procesar orden
+    // 📌 BOTÓN ÚNICO DE PROCESAR ORDEN
     const btnContainer = document.createElement('div');
     btnContainer.className = 'mt-6';
     btnContainer.innerHTML = `
@@ -1252,7 +1325,6 @@ async function abrirCheckout() {
     `;
     desglose.appendChild(btnContainer);
     
-    // Guardar el costo de envío para usarlo en el pedido
     window._costoEnvioActual = envio;
     window._usoPlataformaActual = usoPlataforma;
     window._distanciaActual = distanciaKm;
@@ -1281,16 +1353,11 @@ function iniciarSeguimientoPedido(idPedido) {
     if (!idPedido) return false;
     localStorage.setItem('ae_pedido_activo', idPedido);
     localStorage.setItem('ae_tracking_id', idPedido);
-    
     const container = document.getElementById('mensajes-repartidor');
-    if (container) {
-        container.innerHTML = '';
-    }
-    
+    if (container) container.innerHTML = '';
     if (trackingListenerRef) trackingListenerRef.off();
     trackingListenerRef = database.ref('pedidos/' + idPedido);
     trackingListenerRef.on('value', (snap) => { if (snap.val()) actualizarInterfazSeguimiento(snap.val()); });
-    
     if (window.mensajesListenerRef) window.mensajesListenerRef.off();
     window.mensajesListenerRef = database.ref('mensajes/' + idPedido);
     window.mensajesListenerRef.on('child_added', (snap) => {
@@ -1299,14 +1366,12 @@ function iniciarSeguimientoPedido(idPedido) {
             mostrarMensajeRepartidor(mensaje);
         }
     });
-    
     document.getElementById('btn-reabrir-seguimiento').style.display = 'flex';
     return true;
 }
 
 function actualizarInterfazSeguimiento(data) {
     const estado = (data.estado || '').toUpperCase();
-    
     const cfg = {
         'RECIBIDO': { w: '15%', txt: 'RECIBIDO', msg: '✅ Pedido recibido', emoji: '📥', paso: 1 },
         'COCCIÓN': { w: '35%', txt: 'PREPARANDO', msg: '👨‍🍳 El restaurante está preparando tu pedido', emoji: '🍳', paso: 2 },
@@ -1317,19 +1382,15 @@ function actualizarInterfazSeguimiento(data) {
         'RECHAZADO': { w: '100%', txt: 'RECHAZADO', msg: '❌ Pedido rechazado por el restaurante', emoji: '❌', paso: 0 },
         'CANCELADO_POR_AUSENCIA': { w: '100%', txt: 'CANCELADO', msg: '❌ Pedido cancelado por ausencia', emoji: '❌', paso: 0 }
     };
-    
     const config = cfg[estado] || cfg['RECIBIDO'];
-    
     document.getElementById('tracking-progress').style.width = config.w;
     document.getElementById('tracking-estado').innerText = config.txt;
     document.getElementById('tracking-mensaje').innerText = config.msg;
     document.getElementById('tracking-emoji').innerText = config.emoji;
-    
     for (let i = 1; i <= 4; i++) {
         const stepElement = document.getElementById(`step-${i}`);
         if (stepElement) stepElement.classList.toggle('active', i <= config.paso);
     }
-    
     if (estado === 'RECHAZADO') {
         document.getElementById('tracking-info').innerHTML = `
             <div style="text-align:center; color: #ef4444;">
@@ -1343,7 +1404,6 @@ function actualizarInterfazSeguimiento(data) {
         `;
         return;
     }
-    
     if (estado === 'CANCELADO_POR_AUSENCIA') {
         const deuda = data.deuda_generada || data.total || 0;
         mostrarCancelacionConContacto(data.id || data.id_pedido, deuda);
@@ -1361,10 +1421,8 @@ function actualizarInterfazSeguimiento(data) {
         `;
         return;
     }
-    
     if (estado === 'ENTREGADO') {
         if (alarmaInterval) clearInterval(alarmaInterval);
-        
         Swal.fire({
             title: '🎉 ¡Pedido Entregado!',
             html: `<div class="text-center"><div class="text-6xl mb-3">🍕</div><p class="text-lg font-bold">¡Gracias por confiar en nosotros!</p><p class="text-sm mt-2">Esperamos que disfrutes tu pedido.</p><p class="text-xs text-cyan-400 mt-3">✨ Aguadulce Express - Siempre contigo ✨</p></div>`,
@@ -1389,7 +1447,6 @@ function actualizarInterfazSeguimiento(data) {
         });
         return;
     }
-    
     document.getElementById('tracking-info').innerHTML = `
         <div style="display:grid; gap:8px;">
             <div><span style="color:#06b6d4;">📋 Pedido:</span> ${escapeHTML(data.id_pedido || data.id || '---')}</div>
@@ -1403,9 +1460,7 @@ function actualizarInterfazSeguimiento(data) {
 function mostrarMensajeRepartidor(mensaje) {
     const container = document.getElementById('mensajes-repartidor');
     if (!container) return;
-    
     let bgColor, borderColor, textColor, icono, titulo;
-    
     if (mensaje.emisor === 'repartidor') {
         bgColor = 'bg-cyan-500/10';
         borderColor = 'border-cyan-500/30';
@@ -1425,7 +1480,6 @@ function mostrarMensajeRepartidor(mensaje) {
         icono = '📱';
         titulo = 'MENSAJE';
     }
-    
     const mensajeHtml = `
         <div class="${bgColor} border ${borderColor} rounded-xl p-3 mb-2">
             <div class="flex items-start gap-2">
@@ -1438,9 +1492,7 @@ function mostrarMensajeRepartidor(mensaje) {
             </div>
         </div>
     `;
-    
     container.insertAdjacentHTML('afterbegin', mensajeHtml);
-    
     if (mensaje.emisor === 'repartidor') {
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         audio.play().catch(e => console.log);
@@ -1535,7 +1587,6 @@ async function mostrarCancelacionConContacto(pedidoId, deuda) {
 💡 Una vez regularizada la deuda, tu cuenta será reactivada automáticamente.
 
 Gracias por tu comprensión.`;
-    
     await database.ref(`mensajes/${pedidoId}`).push({ 
         emisor: 'sistema', 
         texto: mensaje, 
@@ -1543,17 +1594,13 @@ Gracias por tu comprensión.`;
         timestamp: Date.now(), 
         leido: false 
     });
-    
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-    
     if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
     if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
     if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-    
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
-    
     Swal.fire({
         title: '❌ Pedido Cancelado',
         html: `<div class="text-left">
@@ -1596,7 +1643,6 @@ if ('serviceWorker' in navigator) {
 async function enviarPedidoFinal() {
     if (procesandoPedidoActivo) return;
     
-    // 📌 OBTENER EL CLIENTE
     const cliente = obtenerCliente();
     if (!cliente || !cliente.uid) {
         alertaError("Error", "No se pudo identificar al cliente. Inicia sesión nuevamente.");
@@ -1604,7 +1650,6 @@ async function enviarPedidoFinal() {
         return;
     }
     
-    // 📌 OBTENER EL UID DIRECTAMENTE DE FIREBASE (PARA ASEGURAR)
     const user = firebase.auth().currentUser;
     if (!user) {
         alertaError("Error", "No estás autenticado. Inicia sesión nuevamente.");
@@ -1718,12 +1763,11 @@ async function enviarPedidoFinal() {
         }
     }
     
-    // 📌 CREAR EL PEDIDO CON EL UID CORRECTO
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const pedido = {
         id: idPedido,
         id_pedido: idPedido,
-        uid_cliente: uid,  // ← USAR EL UID DIRECTAMENTE DE FIREBASE
+        uid_cliente: uid,
         cliente_nombre: cliente.nombre,
         cliente: cliente.nombre,
         cliente_telefono: cliente.telefono,
@@ -1760,7 +1804,6 @@ async function enviarPedidoFinal() {
     
     if (montoPaga) pedido.monto_paga = montoPaga;
 
-    // 🔍 VERIFICACIÓN FINAL
     console.log('📌 uid_cliente en el pedido:', pedido.uid_cliente);
     console.log('📌 auth.uid actual:', firebase.auth().currentUser.uid);
     console.log('📌 Pedido completo:', pedido);
@@ -1770,7 +1813,6 @@ async function enviarPedidoFinal() {
         return;
     }
 
-    // 📌 PROCESAR EL PEDIDO
     procesandoPedidoActivo = true;
     const btnProcesar = document.getElementById('btn-procesar-orden');
     if (btnProcesar) {
@@ -1817,37 +1859,29 @@ async function enviarPedidoFinal() {
         }
     }
 }
+
 function cerrarTrackingPorRechazo() {
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
-    
     if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
     if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
     if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-    
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-    
     cesta = [];
     actualizarCestaVisual();
-    
     while (pantallaStack.length > 1) pantallaStack.pop();
     renderHome();
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
 
-// ============================================================
-// 🔥 initApp() - SIN LOGIN ANÓNIMO
-// ============================================================
 async function initApp() {
     document.getElementById('loader').style.display = 'flex';
-    
     try {
         cargarCesta();
         actualizarClienteUI();
         await cargarBaseDatos();
-        
         db.restaurantes.sort((a, b) => {
             const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999;
             const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999;
@@ -1856,21 +1890,16 @@ async function initApp() {
             const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase();
             return nombreA.localeCompare(nombreB);
         });
-        
         renderHome();
         restaurarPedidoActivo();
         initAudio();
-        
         setTimeout(() => agregarFooterLegal(), 500);
-        
         const observer = new MutationObserver(() => { 
             if (!document.getElementById('legal-footer-container')) agregarFooterLegal(); 
         });
         const appContainer = document.getElementById('app-container');
         if (appContainer) observer.observe(appContainer, { childList: true, subtree: true });
-        
         console.log("✅ App iniciada correctamente");
-        
     } catch (e) { 
         console.error("❌ Fallo en la carga inicial:", e); 
         alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); 

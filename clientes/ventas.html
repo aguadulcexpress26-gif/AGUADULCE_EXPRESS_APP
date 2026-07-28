@@ -1196,105 +1196,152 @@ function restaurarPedidoActivo() {
 async function enviarPedidoFinal() {
     if (procesandoPedidoActivo) return;
     const cliente = obtenerCliente();
-    if (!cliente || !cliente.uid) { 
-        alertaError("Registro", "Debes registrarte para hacer pedidos"); 
-        mostrarModal('modal-login'); 
-        return; 
+    if (!cliente || !cliente.uid) {
+        alertaError("Registro", "Debes registrarte para hacer pedidos");
+        mostrarModal('modal-login');
+        return;
     }
     try {
         const emailSanitizado = sanitizarEmail(cliente.email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
         const moroso = morosoSnap.val();
-        if (moroso && moroso.activo === true) { 
-            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nContacta con soporte.`); 
-            return; 
+        if (moroso && moroso.activo === true) {
+            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nContacta con soporte.`);
+            return;
         }
     } catch (error) { console.error("Error verificando lista negra:", error); }
     if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
     if (!validarZona(cliente.cp)) return;
     if (!verificarAlcoholEnCesta()) return;
     const tieneAlcohol = cesta.some(item => CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)));
-    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) { 
-        alertaError("Verificación de edad", "Debes ser mayor de 18 años."); 
-        return; 
+    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) {
+        alertaError("Verificación de edad", "Debes ser mayor de 18 años.");
+        return;
     }
-    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+
+    // 📌 MOSTRAR VENTANA DE CONFIRMACIÓN ANTES DE ENVIAR
     const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
     const envio = 0.99;
     const usoYServicios = 2.50;
     const total = subtotal + envio + usoYServicios;
+
+    const confirmar = await Swal.fire({
+        title: '📦 Confirmar Pedido',
+        html: `
+            <div class="text-left">
+                <p class="text-white font-bold text-lg">¿Estás seguro de crear esta orden?</p>
+                <p class="text-cyan-400 text-sm mt-2">⚠️ Una vez confirmado, <strong>NO podrás cancelarlo</strong>.</p>
+                <p class="text-white/60 text-xs mt-2">Si tienes alguna duda, <strong>vuelve a la cesta</strong> y verifica tu orden antes de continuar.</p>
+                <hr class="my-4 border-white/10">
+                <p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen del pedido</p>
+                <p class="text-sm"><span class="text-white/60">Restaurante:</span> ${escapeHTML(restauranteActivo.nombre)}</p>
+                <p class="text-sm"><span class="text-white/60">Productos:</span> ${cesta.length}</p>
+                <p class="text-sm"><span class="text-white/60">Total:</span> <strong class="text-cyan-400">${euros(total)}</strong></p>
+                <div class="mt-3 max-h-32 overflow-y-auto bg-white/5 rounded-xl p-2 text-xs space-y-1">
+                    ${cesta.map(item => `<div class="flex justify-between"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span>${euros(item.total)}</span></div>`).join('')}
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#06b6d4',
+        cancelButtonColor: '#ef4444',
+        confirmButtonText: '✅ Sí, enviar pedido',
+        cancelButtonText: '🔙 Volver a la cesta',
+        showCancelButton: true,
+        reverseButtons: true,
+        width: '90%',
+        maxWidth: '450px',
+        customClass: {
+            popup: 'rounded-3xl',
+            confirmButton: 'font-black uppercase',
+            cancelButton: 'font-black uppercase'
+        }
+    });
+
+    if (!confirmar.isConfirmed) {
+        // 🔙 El cliente eligió "Volver a la cesta" → cerramos checkout y abrimos revisión
+        cerrarCheckout();
+        abrirRevision();
+        return;
+    }
+
+    // ✅ Si confirma, continuar con el envío
+    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
     let montoPaga = null;
     if (metodo === "Efectivo") {
         const montoInput = document.getElementById('monto-paga');
-        if (montoInput && montoInput.value) { 
-            montoPaga = parseFloat(montoInput.value); 
-            if (isNaN(montoPaga)) montoPaga = null; 
+        if (montoInput && montoInput.value) {
+            montoPaga = parseFloat(montoInput.value);
+            if (isNaN(montoPaga)) montoPaga = null;
         }
     }
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const pedido = {
-        id: idPedido, 
-        id_pedido: idPedido, 
-        cliente_nombre: cliente.nombre, 
-        cliente: cliente.nombre, 
-        cliente_telefono: cliente.telefono, 
+        id: idPedido,
+        id_pedido: idPedido,
+        cliente_nombre: cliente.nombre,
+        cliente: cliente.nombre,
+        cliente_telefono: cliente.telefono,
         cliente_email: cliente.email,
-        direccion: cliente.direccion_completa, 
-        direccion_detalle: { 
-            calle: cliente.calle, 
-            edificio: cliente.edificio, 
-            puerta: cliente.puerta, 
-            instrucciones: cliente.instrucciones 
+        direccion: cliente.direccion_completa,
+        direccion_detalle: {
+            calle: cliente.calle,
+            edificio: cliente.edificio,
+            puerta: cliente.puerta,
+            instrucciones: cliente.instrucciones
         },
-        cp: cliente.cp, 
-        items: cesta.map(item => ({ 
-            nombre: item.nombre, 
-            cantidad: item.cantidad, 
-            precio_unitario: item.precio_unitario, 
-            opciones: item.opciones || "", 
-            extras_precio: item.extras_precio || 0, 
-            total: item.total 
+        cp: cliente.cp,
+        items: cesta.map(item => ({
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            precio_unitario: item.precio_unitario,
+            opciones: item.opciones || "",
+            extras_precio: item.extras_precio || 0,
+            total: item.total
         })),
-        subtotal: cesta.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0), 
-        envio: envio, 
-        usoYServicios: usoYServicios, 
-        total: total, 
+        subtotal: subtotal,
+        envio: envio,
+        usoYServicios: usoYServicios,
+        total: total,
         metodo_pago: metodo,
-        restaurante_id: restauranteActivo.id, 
-        restaurante_nombre: restauranteActivo.nombre, 
-        estado: "RECIBIDO", 
-        huella: huellaDigitalTerminal, 
-        fecha: Date.now(), 
+        restaurante_id: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre,
+        estado: "RECIBIDO",
+        huella: huellaDigitalTerminal,
+        fecha: Date.now(),
         timestamp: Date.now()
     };
     if (montoPaga) pedido.monto_paga = montoPaga;
+
     procesandoPedidoActivo = true;
     const btnProcesar = document.getElementById('btn-procesar-orden');
-    if (btnProcesar) { 
-        btnProcesar.disabled = true; 
-        btnProcesar.innerText = "PROCESANDO..."; 
-        btnProcesar.style.opacity = "0.5"; 
+    if (btnProcesar) {
+        btnProcesar.disabled = true;
+        btnProcesar.innerText = "PROCESANDO...";
+        btnProcesar.style.opacity = "0.5";
     }
     Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
     try {
         await database.ref('pedidos/' + idPedido).set(pedido);
-        cesta = []; 
-        actualizarCestaVisual(); 
-        cerrarCheckout(); 
-        iniciarSeguimientoPedido(idPedido); 
+        cesta = [];
+        actualizarCestaVisual();
+        cerrarCheckout();
+        iniciarSeguimientoPedido(idPedido);
         abrirModalTracking();
         Swal.close();
-    } catch (error) { 
-        Swal.close(); 
-        alertaError("Error", error.message || "No se pudo enviar el pedido"); 
+    } catch (error) {
+        Swal.close();
+        alertaError("Error", error.message || "No se pudo enviar el pedido");
     }
-    finally { 
-        procesandoPedidoActivo = false; 
-        if (btnProcesar) { 
-            btnProcesar.disabled = false; 
-            btnProcesar.innerText = "Procesar Orden"; 
-            btnProcesar.style.opacity = "1"; 
-        } 
+    finally {
+        procesandoPedidoActivo = false;
+        if (btnProcesar) {
+            btnProcesar.disabled = false;
+            btnProcesar.innerText = "Procesar Orden";
+            btnProcesar.style.opacity = "1";
+        }
     }
 }
 

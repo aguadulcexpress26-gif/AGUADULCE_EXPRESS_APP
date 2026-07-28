@@ -418,7 +418,39 @@ async function verTerminos(tipo = 'terminos') {
     let titulo = '', contenido = '';
     if (tipo === 'terminos') {
         titulo = '📋 TÉRMINOS DE SERVICIO';
-        contenido = '1. ACEPTACIÓN\nAl registrar sus datos y realizar un pedido a través de Aguadulce Express, el cliente acepta expresamente todas las condiciones aquí establecidas.\n\n2. PROCESO DE PEDIDO\nUna vez confirmado el pedido, recibirás un comprobante con el número de seguimiento. El tiempo de entrega estimado se muestra al finalizar la compra.\n\n3. POLÍTICA DE CANCELACIÓN Y DEUDA POR AUSENCIA\nCuando el repartidor llega al domicilio indicado por el cliente, esperará un máximo de 5 (cinco) minutos en la puerta.\nSi transcurrido ese tiempo el cliente no se presenta para recibir el pedido, el pedido será cancelado automáticamente y se generará una deuda por el importe TOTAL del pedido, que quedará registrada en la cuenta del cliente.\nEl cliente no podrá realizar nuevos pedidos hasta que no regularice su deuda pendiente.\n\n4. RESPONSABILIDAD DEL CLIENTE\nEl cliente es el único responsable de proporcionar una dirección y número de teléfono correctos.\n\n5. DERECHO DE ADMISIÓN\nAguadulce Express se reserva el derecho de rechazar o cancelar pedidos en caso de deuda pendiente o uso fraudulento.\n\n6. MODIFICACIONES\nAguadulce Express podrá modificar estos términos en cualquier momento.\n\nAl marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado todas las condiciones aquí establecidas.';
+        contenido = `1. ACEPTACIÓN
+Al registrar sus datos y realizar un pedido a través de Aguadulce Express, el cliente acepta expresamente todas las condiciones aquí establecidas.
+
+2. PROCESO DE PEDIDO
+Una vez confirmado el pedido, recibirás un comprobante con el número de seguimiento. El tiempo de entrega estimado se muestra al finalizar la compra.
+
+3. POLÍTICA DE CANCELACIÓN Y DEUDA POR AUSENCIA
+⚠️ IMPORTANTE: Una vez confirmado el pedido, NO podrás cancelarlo.
+
+Cuando el repartidor llega al domicilio indicado por el cliente, esperará un máximo de 5 (cinco) minutos en la puerta.
+
+Si transcurrido ese tiempo el cliente no se presenta para recibir el pedido:
+
+🔴 El pedido será CANCELADO AUTOMÁTICAMENTE.
+💰 Se generará una DEUDA por el importe TOTAL del pedido.
+📋 El cliente quedará registrado en la LISTA DE MOROSOS.
+🚫 El cliente NO podrá realizar nuevos pedidos hasta que regularice su situación.
+
+Para salir de la lista de morosos y poder seguir utilizando la plataforma, el cliente deberá:
+• Contactar con atención al cliente: soporteaguadulcexpress26@gmail.com
+• Regularizar la deuda pendiente.
+• Solicitar su reincorporación a la plataforma.
+
+4. RESPONSABILIDAD DEL CLIENTE
+El cliente es el único responsable de proporcionar una dirección y número de teléfono correctos.
+
+5. DERECHO DE ADMISIÓN
+Aguadulce Express se reserva el derecho de rechazar o cancelar pedidos en caso de deuda pendiente o uso fraudulento.
+
+6. MODIFICACIONES
+Aguadulce Express podrá modificar estos términos en cualquier momento.
+
+Al marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado todas las condiciones aquí establecidas.`;
     } else if (tipo === 'privacidad') {
         titulo = '🔒 POLÍTICA DE PRIVACIDAD';
         contenido = '1. RESPONSABLE DEL TRATAMIENTO\nAguadulce Express\n\n2. FINALIDAD DEL TRATAMIENTO\nGestionar los pedidos de comida a domicilio, incluyendo:\n- Procesamiento de pagos\n- Comunicación sobre el estado del pedido\n- Gestión de entregas\n\n3. DATOS RECOGIDOS\n- Nombre completo\n- Teléfono\n- Dirección de entrega\n- Código postal\n\n4. PLAZO DE CONSERVACIÓN\nLos datos se conservarán durante el tiempo que el cliente mantenga una cuenta activa, o hasta 2 años después del último pedido.\n\n5. DERECHOS DEL USUARIO\nPuede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad enviando un correo a soporte@aguadulceexpress.com\n\n6. SEGURIDAD\nImplementamos medidas técnicas y organizativas para garantizar la seguridad de sus datos.\n\n7. ACEPTACIÓN\nAl marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado la presente política de privacidad.';
@@ -1206,7 +1238,7 @@ async function enviarPedidoFinal() {
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
         const moroso = morosoSnap.val();
         if (moroso && moroso.activo === true) {
-            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nContacta con soporte.`);
+            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nPara regularizar tu situación y volver a pedir, contacta con soporte:\n📧 soporteaguadulcexpress26@gmail.com`);
             return;
         }
     } catch (error) { console.error("Error verificando lista negra:", error); }
@@ -1219,26 +1251,50 @@ async function enviarPedidoFinal() {
         return;
     }
 
-    // 📌 MOSTRAR VENTANA DE CONFIRMACIÓN ANTES DE ENVIAR
+    // 📌 CALCULAR TOTALES
     const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
-    const envio = 0.99;
+    const envio = window._costoEnvioActual || 0.99;
     const usoYServicios = 2.50;
     const total = subtotal + envio + usoYServicios;
 
+    // 📌 VENTANA DE CONFIRMACIÓN CON AVISO DE CANCELACIÓN
     const confirmar = await Swal.fire({
         title: '📦 Confirmar Pedido',
         html: `
             <div class="text-left">
                 <p class="text-white font-bold text-lg">¿Estás seguro de crear esta orden?</p>
                 <p class="text-cyan-400 text-sm mt-2">⚠️ Una vez confirmado, <strong>NO podrás cancelarlo</strong>.</p>
-                <p class="text-white/60 text-xs mt-2">Si tienes alguna duda, <strong>vuelve a la cesta</strong> y verifica tu orden antes de continuar.</p>
+                <div class="bg-red-500/20 border border-red-500/40 rounded-xl p-3 mt-3 text-left">
+                    <p class="text-red-400 text-xs font-bold uppercase">🔴 POLÍTICA DE CANCELACIÓN POR AUSENCIA</p>
+                    <p class="text-white/80 text-[11px] mt-1">Si el repartidor llega a tu domicilio y no te presentas en 5 minutos:</p>
+                    <ul class="text-white/70 text-[10px] mt-1 space-y-1 list-disc pl-4">
+                        <li>❌ El pedido será <strong>cancelado automáticamente</strong></li>
+                        <li>💰 Se generará una <strong>deuda</strong> por el importe TOTAL del pedido</li>
+                        <li>📋 Quedarás en la <strong>lista de morosos</strong></li>
+                        <li>🚫 No podrás hacer nuevos pedidos hasta regularizar</li>
+                    </ul>
+                    <p class="text-white/50 text-[9px] mt-2">📧 Contacta con soporte: soporteaguadulcexpress26@gmail.com</p>
+                </div>
+                <p class="text-white/60 text-xs mt-3">Si tienes alguna duda, <strong>vuelve a la cesta</strong> y verifica tu orden antes de continuar.</p>
                 <hr class="my-4 border-white/10">
                 <p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen del pedido</p>
                 <p class="text-sm"><span class="text-white/60">Restaurante:</span> ${escapeHTML(restauranteActivo.nombre)}</p>
                 <p class="text-sm"><span class="text-white/60">Productos:</span> ${cesta.length}</p>
-                <p class="text-sm"><span class="text-white/60">Total:</span> <strong class="text-cyan-400">${euros(total)}</strong></p>
+                
                 <div class="mt-3 max-h-32 overflow-y-auto bg-white/5 rounded-xl p-2 text-xs space-y-1">
                     ${cesta.map(item => `<div class="flex justify-between"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span>${euros(item.total)}</span></div>`).join('')}
+                </div>
+                
+                <hr class="my-4 border-white/10">
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-white/60">Subtotal</span><span>${euros(subtotal)}</span></div>
+                    <div class="flex justify-between"><span class="text-white/60">🚚 Envío</span><span>${euros(envio)}</span></div>
+                    <div class="flex justify-between"><span class="text-white/60">📱 Uso y Servicios</span><span>${euros(usoYServicios)}</span></div>
+                    <div class="border-t border-white/20 my-2"></div>
+                    <div class="flex justify-between text-lg font-black">
+                        <span class="text-white">TOTAL</span>
+                        <span class="text-cyan-400 text-xl">${euros(total)}</span>
+                    </div>
                 </div>
             </div>
         `,
@@ -1261,20 +1317,19 @@ async function enviarPedidoFinal() {
     });
 
     if (!confirmar.isConfirmed) {
-        // 🔙 El cliente eligió "Volver a la cesta" → cerramos checkout y abrimos revisión
         cerrarCheckout();
         abrirRevision();
         return;
     }
 
-    // ✅ Si confirma, continuar con el envío
+    // ✅ SI CONFIRMA, CONTINUAR CON EL ENVÍO
     const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
     let montoPaga = null;
     if (metodo === "Efectivo") {
         const montoInput = document.getElementById('monto-paga');
         if (montoInput && montoInput.value) {
             montoPaga = parseFloat(montoInput.value);
-            if (isNaN(montoPaga)) montoPaga = null;
+            if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null;
         }
     }
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
@@ -1311,7 +1366,8 @@ async function enviarPedidoFinal() {
         estado: "RECIBIDO",
         huella: huellaDigitalTerminal,
         fecha: Date.now(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        acepta_terminos: true
     };
     if (montoPaga) pedido.monto_paga = montoPaga;
 
@@ -1331,6 +1387,15 @@ async function enviarPedidoFinal() {
         iniciarSeguimientoPedido(idPedido);
         abrirModalTracking();
         Swal.close();
+        Swal.fire({
+            title: '🎉 ¡Pedido Enviado!',
+            text: `Total: ${euros(total)}`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#020617',
+            color: 'white'
+        });
     } catch (error) {
         Swal.close();
         alertaError("Error", error.message || "No se pudo enviar el pedido");

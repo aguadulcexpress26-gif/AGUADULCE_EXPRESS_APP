@@ -4,13 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crear Usuario</title>
-    <!-- SWEETALERT -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <!-- FIREBASE -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-5">
@@ -41,8 +38,6 @@
             </div>
             <button onclick="crearUsuario()" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl hover:bg-amber-400 transition">🚀 Crear Usuario</button>
         </div>
-
-        <div id="resultado" class="mt-6"></div>
     </div>
 
     <script>
@@ -56,7 +51,6 @@
         const auth = firebase.auth();
         const database = firebase.database();
 
-        // Verificar que el usuario está autenticado como admin
         auth.onAuthStateChanged(async user => {
             if (!user) {
                 Swal.fire({
@@ -69,7 +63,6 @@
                 return;
             }
             
-            // Verificar que tiene rol admin
             try {
                 const token = await user.getIdTokenResult();
                 if (token.claims.rol !== 'admin') {
@@ -84,7 +77,6 @@
                 }
                 console.log('✅ Autenticado como admin:', user.email);
                 
-                // Cargar restaurantes para el selector
                 const snap = await database.ref('restaurantes').once('value');
                 const restaurantes = snap.val() || {};
                 const select = document.getElementById('userRestaurante');
@@ -95,11 +87,10 @@
                 }
                 
             } catch (error) {
-                console.error('Error al verificar admin:', error);
+                console.error('Error:', error);
             }
         });
 
-        // Mostrar/ocultar selector de restaurante según rol
         document.getElementById('userRol').addEventListener('change', function() {
             const container = document.getElementById('restauranteSelectContainer');
             if (this.value === 'restaurante') {
@@ -134,9 +125,11 @@
             try {
                 const user = auth.currentUser;
                 const token = await user.getIdToken();
+                console.log('📌 Token obtenido:', token ? '✅ OK' : '❌ No');
                 
-                // Usar fetch a la Cloud Function
-                const response = await fetch('https://us-central1-aguadulce-express-v2.cloudfunctions.net/crearUsuarioAdmin', {                    method: 'POST',
+                // 🔥 URL CORRECTA - 1ra generación
+                const response = await fetch('https://us-central1-aguadulce-express-v2.cloudfunctions.net/crearUsuarioAdmin', {
+                    method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
@@ -146,7 +139,7 @@
                             email: email,
                             password: password,
                             rol: rol,
-                            nombre: document.getElementById('userNombre')?.value || 'Usuario',
+                            nombre: 'Usuario',
                             restauranteId: restauranteId || '',
                             telefono: '',
                             vehiculo: ''
@@ -155,7 +148,7 @@
                 });
                 
                 const result = await response.json();
-                console.log('Resultado:', result);
+                console.log('📌 Respuesta:', result);
                 
                 if (response.ok && result.result && result.result.success) {
                     Swal.fire({
@@ -171,7 +164,7 @@
                     throw new Error(result.error?.message || 'Error al crear usuario');
                 }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('❌ Error:', error);
                 Swal.fire({
                     title: '❌ Error',
                     text: error.message || 'Error al crear usuario',

@@ -290,6 +290,9 @@
 </div>
 
 <script>
+// ============================================================
+// 🔥 CONFIGURACIÓN DE FIREBASE
+// ============================================================
 let huellaDigitalTerminal = "";
 if (typeof FingerprintJS !== 'undefined') {
     FingerprintJS.load().then(fp => fp.get()).then(result => { huellaDigitalTerminal = result.visitorId; console.log("🛡️ Escudo Antifraude Activo. ID:", huellaDigitalTerminal); }).catch(err => { console.warn("⚠️ Error en FingerprintJS:", err); huellaDigitalTerminal = "AE-FALLBACK-" + Date.now() + "-" + Math.random().toString(36).substring(2); });
@@ -324,6 +327,135 @@ let clienteActual = null;
 const ZONAS_PERMITIDAS = ['04720'];
 const HORARIO_ALCOHOL = { activo: true, horaFin: 22, mensaje: "🍺 La venta de bebidas alcohólicas solo está permitida hasta las 22:00." };
 const CATEGORIAS_ALCOHOL = ['Cervezas', 'Licores', 'Vinos', 'Bebidas alcohólicas', 'Alcohol', 'Cerveza', 'Vino', 'Licor'];
+
+// ============================================================
+// 📍 CÁLCULO DE DISTANCIA Y ENVÍO CON GOOGLE MAPS
+// ============================================================
+
+const ZONAS_ROQUETAS = {
+    centro: { lat: 36.7642, lng: -2.6148 },
+    tarifaBase: 2.50,           // Tarifa plana para 0-3 km
+    tarifaPorKm: 0.50,          // 0.50€ por km adicional
+    kmIncluidos: 3,             // Kilómetros incluidos en la tarifa plana
+    maxEnvio: 12.00,            // Máximo 12€
+    minEnvio: 0.50,             // Mínimo 0.50€
+    usoPlataforma: 0.99,        // Coste fijo de uso de plataforma
+    descuentoMinPedido: 20.00,  // Pedido mínimo para descuento
+    descuentoPorcentaje: 0.10   // 10% de descuento
+};
+
+// Calcular distancia usando Google Maps Distance Matrix
+async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
+    const apiKey = 'AIzaSyDC9lJlocyTyOLAYk8yIGN3nW7MIYV2xv4'; // ← TU API KEY
+    
+    const origen = encodeURIComponent(direccionRestaurante);
+    const destino = encodeURIComponent(direccionCliente);
+    
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        console.log('📡 Respuesta de Google Maps:', data);
+        
+        if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+            const distanciaMetros = data.rows[0].elements[0].distance.value;
+            const distanciaKm = distanciaMetros / 1000;
+            const tiempoTexto = data.rows[0].elements[0].duration.text;
+            
+            return {
+                km: distanciaKm,
+                tiempo: tiempoTexto,
+                metros: distanciaMetros
+            };
+        } else {
+            console.warn('⚠️ Error en Distance Matrix:', data.status);
+            return null;
+        }
+    } catch (error) {
+        console.error('❌ Error al calcular distancia:', error);
+        return null;
+    }
+}
+
+function calcularCostoEnvio(distanciaKm, subtotalPedido) {
+    if (distanciaKm === null || distanciaKm === undefined) {
+        return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
+    }
+    
+    let costoEnvio;
+    let mensaje = '';
+    let descuentoAplicado = false;
+    
+    // 1️⃣ CALCULAR ENVÍO SEGÚN DISTANCIA
+    if (distanciaKm <= ZONAS_ROQUETAS.kmIncluidos) {
+        costoEnvio = ZONAS_ROQUETAS.tarifaBase;
+    } else {
+        const kmExtra = distanciaKm - ZONAS_ROQUETAS.kmIncluidos;
+        costoEnvio = ZONAS_ROQUETAS.tarifaBase + (kmExtra * ZONAS_ROQUETAS.tarifaPorKm);
+    }
+    
+    // 2️⃣ APLICAR DESCUENTO SI EL PEDIDO ES > 20€
+    if (subtotalPedido > ZONAS_ROQUETAS.descuentoMinPedido) {
+        const descuento = costoEnvio * ZONAS_ROQUETAS.descuentoPorcentaje;
+        costoEnvio = costoEnvio - descuento;
+        descuentoAplicado = true;
+        mensaje = `🎉 ¡Pedido superior a 20€! Has recibido un 10% de descuento en el envío (-${(descuento).toFixed(2)}€)`;
+    }
+    
+    // 3️⃣ APLICAR LÍMITES
+    if (costoEnvio > ZONAS_ROQUETAS.maxEnvio) costoEnvio = ZONAS_ROQUETAS.maxEnvio;
+    if (costoEnvio < ZONAS_ROQUETAS.minEnvio) costoEnvio = ZONAS_ROQUETAS.minEnvio;
+    
+    // 4️⃣ REDONDEAR A 0.05€
+    costoEnvio = Math.ceil(costoEnvio * 20) / 20;
+    costoEnvio = Math.round(costoEnvio * 100) / 100;
+    
+    // 5️⃣ TOTAL = ENVÍO + USO PLATAFORMA
+    const usoPlataforma = ZONAS_ROQUETAS.usoPlataforma;
+    const total = costoEnvio + usoPlataforma;
+    
+    return {
+        envio: costoEnvio,
+        usoPlataforma: usoPlataforma,
+        total: Math.round(total * 100) / 100,
+        descuentoAplicado: descuentoAplicado,
+        mensaje: mensaje,
+        distanciaKm: distanciaKm
+    };
+}
+
+// Obtener dirección del restaurante
+function obtenerDireccionRestaurante() {
+    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === restauranteActivo.id);
+    if (restaurante) {
+        return restaurante.direccion || restaurante.DIRECCION || 'Roquetas de Mar, Almería';
+    }
+    return 'Roquetas de Mar, Almería';
+}
+
+// Función principal para calcular envío en tiempo real
+async function calcularEnvioTiempoReal(direccionCliente) {
+    const direccionRestaurante = obtenerDireccionRestaurante();
+    
+    if (!direccionCliente) {
+        console.warn('⚠️ Sin dirección del cliente');
+        return { costo: 2.50, km: null, tiempo: null };
+    }
+    
+    const distanciaData = await calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante);
+    
+    if (distanciaData && distanciaData.km !== null) {
+        return {
+            km: distanciaData.km,
+            tiempo: distanciaData.tiempo
+        };
+    } else {
+        console.warn('⚠️ Usando tarifa fija por fallo en API');
+        return { km: null, tiempo: null };
+    }
+}
 
 function sanitizarEmail(email) { if (!email) return ''; return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_'); }
 function alcoholDisponible() { return !HORARIO_ALCOHOL.activo || new Date().getHours() < HORARIO_ALCOHOL.horaFin; }
@@ -413,6 +545,51 @@ function leerLocal(clave, defecto = null) { try { const data = localStorage.getI
 function mostrarToast(mensaje, icono = "✅") { const toast = document.createElement('div'); toast.className = 'toast-notify'; toast.innerHTML = `${icono} ${escapeHTML(mensaje)}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 1500); }
 function alertaError(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "error", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
 function alertaInfo(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "info", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
+
+function mostrarPoliticaCancelacion() {
+    Swal.fire({
+        title: '📋 Política de Cancelación por Ausencia',
+        html: `
+            <div class="text-left">
+                <p class="text-white font-bold text-lg">¿Qué pasa si no estás cuando el repartidor llega?</p>
+                <p class="text-white/70 text-sm mt-3">Cuando el repartidor llega a tu domicilio, <strong>esperará un máximo de 5 minutos</strong> en la puerta.</p>
+                
+                <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mt-4">
+                    <p class="text-red-400 font-bold text-sm">🔴 Si no te presentas en ese tiempo:</p>
+                    <ul class="text-white/80 text-sm mt-2 space-y-2 list-disc pl-4">
+                        <li>❌ El pedido será <strong>cancelado automáticamente</strong></li>
+                        <li>💰 Se generará una <strong>deuda</strong> por el importe TOTAL del pedido</li>
+                        <li>📋 Quedarás registrado en la <strong>lista de morosos</strong></li>
+                        <li>🚫 No podrás hacer nuevos pedidos hasta regularizar tu situación</li>
+                    </ul>
+                </div>
+                
+                <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mt-4">
+                    <p class="text-cyan-400 font-bold text-sm">✅ ¿Cómo regularizar tu situación?</p>
+                    <p class="text-white/70 text-sm mt-2">Contacta con nuestro equipo de soporte:</p>
+                    <p class="text-white text-sm font-medium">📧 soporteaguadulcexpress26@gmail.com</p>
+                    <p class="text-white text-sm font-medium">📞 643 261 881 (solo llamadas)</p>
+                </div>
+                
+                <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mt-4">
+                    <p class="text-yellow-400 font-bold text-sm">💡 Recomendación</p>
+                    <p class="text-white/70 text-sm mt-2">Asegúrate de estar atento al seguimiento de tu pedido y de proporcionar una dirección y teléfono correctos.</p>
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#06b6d4',
+        confirmButtonText: '✅ Entendido, gracias',
+        width: '90%',
+        maxWidth: '480px',
+        customClass: {
+            popup: 'rounded-3xl',
+            confirmButton: 'font-black uppercase'
+        }
+    });
+}
 
 async function verTerminos(tipo = 'terminos') {
     let titulo = '', contenido = '';
@@ -984,7 +1161,10 @@ function abrirRevision() {
     agregarFooterLegal();
 }
 
-function abrirCheckout() {
+// ============================================================
+// 📍 CHECKOUT MEJORADO CON GOOGLE MAPS
+// ============================================================
+async function abrirCheckout() {
     const cliente = obtenerCliente();
     if (!cliente || !cliente.uid) {
         alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión.");
@@ -992,30 +1172,92 @@ function abrirCheckout() {
         return;
     }
     if (localStorage.getItem('ae_pedido_activo')) { alertaInfo("Pedido en curso", "Ya tienes un pedido activo"); return; }
+    
     pushPantalla('checkout');
     document.getElementById('panel-revision').style.display = 'none';
     document.getElementById('panel-checkout').style.display = 'block';
     actualizarClienteUI();
+    
     const container = document.getElementById('lista-cesta-checkout');
     const desglose = document.getElementById('desglose-pago');
     const subtotal = cesta.reduce((a, i) => a + (i.total || 0), 0);
-    const envio = 0.99;
-    const usoYServicios = 2.50;
-    const total = subtotal + envio + usoYServicios;
-    container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
-    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2"><div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div><div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div><div class="flex justify-between text-sm"><span>📱 Uso y Servicios</span><span>${euros(usoYServicios)}</span></div><div class="border-t border-white/20 my-2"></div><div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div></div>`;
-    let montoDiv = document.getElementById('monto-paga-container');
-    if (!montoDiv) {
-        montoDiv = document.createElement('div');
-        montoDiv.id = 'monto-paga-container';
-        montoDiv.className = 'hidden';
-        montoDiv.innerHTML = `<p class="text-cyan-400 text-[10px] font-black uppercase mb-2">💵 ¿Con cuánto pagas? (efectivo)</p><input type="number" id="monto-paga" step="0.01" placeholder="Ej: 50.00" class="w-full"><p class="text-white/40 text-[9px] mt-1">Opcional</p>`;
-        desglose.appendChild(montoDiv);
+    
+    // 📍 CALCULAR ENVÍO DINÁMICO
+    const clienteDireccion = cliente.direccion_completa;
+    const envioData = await calcularEnvioTiempoReal(clienteDireccion);
+    const distanciaKm = envioData.km;
+    
+    // 🧮 CALCULAR COSTO CON LA NUEVA LÓGICA
+    const resultadoEnvio = calcularCostoEnvio(distanciaKm, subtotal);
+    const envio = resultadoEnvio.envio;
+    const usoPlataforma = resultadoEnvio.usoPlataforma;
+    const total = resultadoEnvio.total;
+    const descuentoMsg = resultadoEnvio.mensaje;
+    
+    // Mostrar información de distancia
+    let distanciaHtml = '';
+    if (distanciaKm !== null) {
+        distanciaHtml = `<p class="text-white/40 text-[9px]">📍 Distancia: ${distanciaKm.toFixed(1)} km</p>`;
     }
-    const metodoSelect = document.getElementById('metodo-pago');
-    const toggleMonto = () => { if (montoDiv) montoDiv.classList.toggle('hidden', metodoSelect.value !== 'Efectivo'); };
-    metodoSelect.onchange = toggleMonto;
-    toggleMonto();
+    
+    // Mostrar mensaje de descuento si aplica
+    let descuentoHtml = '';
+    if (resultadoEnvio.descuentoAplicado) {
+        descuentoHtml = `<div class="bg-green-500/20 border border-green-500/40 rounded-xl p-2 text-center text-green-400 text-xs font-bold">${descuentoMsg}</div>`;
+    } else if (subtotal < 20) {
+        const falta = (20 - subtotal).toFixed(2);
+        descuentoHtml = `<div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-2 text-center text-blue-400 text-[10px] font-bold">💡 Añade ${falta}€ más y obtén un 10% de descuento en el envío.</div>`;
+    }
+    
+    container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
+    
+    desglose.innerHTML = `
+        <div class="border-t border-white/10 pt-4 space-y-2">
+            <div class="flex justify-between text-sm">
+                <span>Subtotal</span>
+                <span>${euros(subtotal)}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span>📱 Uso de plataforma</span>
+                <span>${euros(usoPlataforma)}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span>🚚 Envío</span>
+                <span>${euros(envio)}</span>
+            </div>
+            ${distanciaHtml}
+            ${descuentoHtml}
+            <div class="border-t border-white/20 my-2"></div>
+            <div class="flex justify-between text-xl font-black">
+                <span>TOTAL</span>
+                <span class="text-cyan-400">${euros(total)}</span>
+            </div>
+        </div>
+        <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
+            <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 Efectivo - ¿Con cuánto pagas?</p>
+            <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
+            <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
+            <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
+        </div>
+    `;
+    
+    // Botón de procesar orden
+    const btnContainer = document.createElement('div');
+    btnContainer.className = 'mt-6';
+    btnContainer.innerHTML = `
+        <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg">
+            💳 Procesar Orden
+        </button>
+        <p class="text-white/20 text-[8px] text-center mt-2">Al procesar aceptas los términos de servicio</p>
+    `;
+    desglose.appendChild(btnContainer);
+    
+    // Guardar el costo de envío para usarlo en el pedido
+    window._costoEnvioActual = envio;
+    window._usoPlataformaActual = usoPlataforma;
+    window._distanciaActual = distanciaKm;
+    window._descuentoAplicado = resultadoEnvio.descuentoAplicado;
+    
     agregarFooterLegal();
 }
 
@@ -1225,191 +1467,6 @@ function restaurarPedidoActivo() {
     }
 }
 
-async function enviarPedidoFinal() {
-    if (procesandoPedidoActivo) return;
-    const cliente = obtenerCliente();
-    if (!cliente || !cliente.uid) {
-        alertaError("Registro", "Debes registrarte para hacer pedidos");
-        mostrarModal('modal-login');
-        return;
-    }
-    try {
-        const emailSanitizado = sanitizarEmail(cliente.email);
-        const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
-        const moroso = morosoSnap.val();
-        if (moroso && moroso.activo === true) {
-            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nPara regularizar tu situación y volver a pedir, contacta con soporte:\n📧 soporteaguadulcexpress26@gmail.com`);
-            return;
-        }
-    } catch (error) { console.error("Error verificando lista negra:", error); }
-    if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
-    if (!validarZona(cliente.cp)) return;
-    if (!verificarAlcoholEnCesta()) return;
-    const tieneAlcohol = cesta.some(item => CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)));
-    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) {
-        alertaError("Verificación de edad", "Debes ser mayor de 18 años.");
-        return;
-    }
-
-    // 📌 CALCULAR TOTALES
-    const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
-    const envio = window._costoEnvioActual || 0.99;
-    const usoYServicios = 2.50;
-    const total = subtotal + envio + usoYServicios;
-
-    // 📌 VENTANA DE CONFIRMACIÓN CON AVISO DE CANCELACIÓN
-    const confirmar = await Swal.fire({
-        title: '📦 Confirmar Pedido',
-        html: `
-            <div class="text-left">
-                <p class="text-white font-bold text-lg">¿Estás seguro de crear esta orden?</p>
-                <p class="text-cyan-400 text-sm mt-2">⚠️ Una vez confirmado, <strong>NO podrás cancelarlo</strong>.</p>
-                <div class="bg-red-500/20 border border-red-500/40 rounded-xl p-3 mt-3 text-left">
-                    <p class="text-red-400 text-xs font-bold uppercase">🔴 POLÍTICA DE CANCELACIÓN POR AUSENCIA</p>
-                    <p class="text-white/80 text-[11px] mt-1">Si el repartidor llega a tu domicilio y no te presentas en 5 minutos:</p>
-                    <ul class="text-white/70 text-[10px] mt-1 space-y-1 list-disc pl-4">
-                        <li>❌ El pedido será <strong>cancelado automáticamente</strong></li>
-                        <li>💰 Se generará una <strong>deuda</strong> por el importe TOTAL del pedido</li>
-                        <li>📋 Quedarás en la <strong>lista de morosos</strong></li>
-                        <li>🚫 No podrás hacer nuevos pedidos hasta regularizar</li>
-                    </ul>
-                    <p class="text-white/50 text-[9px] mt-2">📧 Contacta con soporte: soporteaguadulcexpress26@gmail.com</p>
-                </div>
-                <p class="text-white/60 text-xs mt-3">Si tienes alguna duda, <strong>vuelve a la cesta</strong> y verifica tu orden antes de continuar.</p>
-                <hr class="my-4 border-white/10">
-                <p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen del pedido</p>
-                <p class="text-sm"><span class="text-white/60">Restaurante:</span> ${escapeHTML(restauranteActivo.nombre)}</p>
-                <p class="text-sm"><span class="text-white/60">Productos:</span> ${cesta.length}</p>
-                
-                <div class="mt-3 max-h-32 overflow-y-auto bg-white/5 rounded-xl p-2 text-xs space-y-1">
-                    ${cesta.map(item => `<div class="flex justify-between"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span>${euros(item.total)}</span></div>`).join('')}
-                </div>
-                
-                <hr class="my-4 border-white/10">
-                <div class="space-y-2 text-sm">
-                    <div class="flex justify-between"><span class="text-white/60">Subtotal</span><span>${euros(subtotal)}</span></div>
-                    <div class="flex justify-between"><span class="text-white/60">🚚 Envío</span><span>${euros(envio)}</span></div>
-                    <div class="flex justify-between"><span class="text-white/60">📱 Uso y Servicios</span><span>${euros(usoYServicios)}</span></div>
-                    <div class="border-t border-white/20 my-2"></div>
-                    <div class="flex justify-between text-lg font-black">
-                        <span class="text-white">TOTAL</span>
-                        <span class="text-cyan-400 text-xl">${euros(total)}</span>
-                    </div>
-                </div>
-            </div>
-        `,
-        icon: 'question',
-        background: '#020617',
-        color: 'white',
-        confirmButtonColor: '#06b6d4',
-        cancelButtonColor: '#ef4444',
-        confirmButtonText: '✅ Sí, enviar pedido',
-        cancelButtonText: '🔙 Volver a la cesta',
-        showCancelButton: true,
-        reverseButtons: true,
-        width: '90%',
-        maxWidth: '450px',
-        customClass: {
-            popup: 'rounded-3xl',
-            confirmButton: 'font-black uppercase',
-            cancelButton: 'font-black uppercase'
-        }
-    });
-
-    if (!confirmar.isConfirmed) {
-        cerrarCheckout();
-        abrirRevision();
-        return;
-    }
-
-    // ✅ SI CONFIRMA, CONTINUAR CON EL ENVÍO
-    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
-    let montoPaga = null;
-    if (metodo === "Efectivo") {
-        const montoInput = document.getElementById('monto-paga');
-        if (montoInput && montoInput.value) {
-            montoPaga = parseFloat(montoInput.value);
-            if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null;
-        }
-    }
-    const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
-    const pedido = {
-        id: idPedido,
-        id_pedido: idPedido,
-        cliente_nombre: cliente.nombre,
-        cliente: cliente.nombre,
-        cliente_telefono: cliente.telefono,
-        cliente_email: cliente.email,
-        direccion: cliente.direccion_completa,
-        direccion_detalle: {
-            calle: cliente.calle,
-            edificio: cliente.edificio,
-            puerta: cliente.puerta,
-            instrucciones: cliente.instrucciones
-        },
-        cp: cliente.cp,
-        items: cesta.map(item => ({
-            nombre: item.nombre,
-            cantidad: item.cantidad,
-            precio_unitario: item.precio_unitario,
-            opciones: item.opciones || "",
-            extras_precio: item.extras_precio || 0,
-            total: item.total
-        })),
-        subtotal: subtotal,
-        envio: envio,
-        usoYServicios: usoYServicios,
-        total: total,
-        metodo_pago: metodo,
-        restaurante_id: restauranteActivo.id,
-        restaurante_nombre: restauranteActivo.nombre,
-        estado: "RECIBIDO",
-        huella: huellaDigitalTerminal,
-        fecha: Date.now(),
-        timestamp: Date.now(),
-        acepta_terminos: true
-    };
-    if (montoPaga) pedido.monto_paga = montoPaga;
-
-    procesandoPedidoActivo = true;
-    const btnProcesar = document.getElementById('btn-procesar-orden');
-    if (btnProcesar) {
-        btnProcesar.disabled = true;
-        btnProcesar.innerText = "PROCESANDO...";
-        btnProcesar.style.opacity = "0.5";
-    }
-    Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-    try {
-        await database.ref('pedidos/' + idPedido).set(pedido);
-        cesta = [];
-        actualizarCestaVisual();
-        cerrarCheckout();
-        iniciarSeguimientoPedido(idPedido);
-        abrirModalTracking();
-        Swal.close();
-        Swal.fire({
-            title: '🎉 ¡Pedido Enviado!',
-            text: `Total: ${euros(total)}`,
-            icon: 'success',
-            timer: 2000,
-            showConfirmButton: false,
-            background: '#020617',
-            color: 'white'
-        });
-    } catch (error) {
-        Swal.close();
-        alertaError("Error", error.message || "No se pudo enviar el pedido");
-    }
-    finally {
-        procesandoPedidoActivo = false;
-        if (btnProcesar) {
-            btnProcesar.disabled = false;
-            btnProcesar.innerText = "Procesar Orden";
-            btnProcesar.style.opacity = "1";
-        }
-    }
-}
-
 let mensajesGlobalListener = null;
 
 function iniciarEscuchaMensajesGlobal() {
@@ -1534,12 +1591,210 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
+// 🔥 ENVIAR PEDIDO FINAL CON VENTANA DE CONFIRMACIÓN
+// ============================================================
+async function enviarPedidoFinal() {
+    if (procesandoPedidoActivo) return;
+    const cliente = obtenerCliente();
+    if (!cliente || !cliente.uid) {
+        alertaError("Registro", "Debes registrarte para hacer pedidos");
+        mostrarModal('modal-login');
+        return;
+    }
+    try {
+        const emailSanitizado = sanitizarEmail(cliente.email);
+        const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
+        const moroso = morosoSnap.val();
+        if (moroso && moroso.activo === true) {
+            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nPara regularizar tu situación y volver a pedir, contacta con soporte:\n📧 soporteaguadulcexpress26@gmail.com`);
+            return;
+        }
+    } catch (error) { console.error("Error verificando lista negra:", error); }
+    if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
+    if (!validarZona(cliente.cp)) return;
+    if (!verificarAlcoholEnCesta()) return;
+    const tieneAlcohol = cesta.some(item => CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)));
+    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) {
+        alertaError("Verificación de edad", "Debes ser mayor de 18 años.");
+        return;
+    }
+
+    // 📌 CALCULAR TOTALES
+    const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
+    const envio = window._costoEnvioActual || 2.50;
+    const usoYServicios = window._usoPlataformaActual || 0.99;
+    const total = subtotal + envio + usoYServicios;
+
+    // 📌 VENTANA DE CONFIRMACIÓN CON BOTÓN DE POLÍTICA
+    const confirmar = await Swal.fire({
+        title: '📦 Confirmar Pedido',
+        html: `
+            <div class="text-left">
+                <p class="text-white font-bold text-lg">¿Estás seguro de crear esta orden?</p>
+                <p class="text-cyan-400 text-sm mt-2">⚠️ Una vez confirmado, <strong>NO podrás cancelarlo</strong>.</p>
+                <p class="text-white/60 text-xs mt-2">Si tienes alguna duda, <strong>vuelve a la cesta</strong> y verifica tu orden antes de continuar.</p>
+                <hr class="my-4 border-white/10">
+                <p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen del pedido</p>
+                <p class="text-sm"><span class="text-white/60">Restaurante:</span> ${escapeHTML(restauranteActivo.nombre)}</p>
+                <p class="text-sm"><span class="text-white/60">Productos:</span> ${cesta.length}</p>
+                
+                <div class="mt-3 max-h-32 overflow-y-auto bg-white/5 rounded-xl p-2 text-xs space-y-1">
+                    ${cesta.map(item => `<div class="flex justify-between"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span>${euros(item.total)}</span></div>`).join('')}
+                </div>
+                
+                <hr class="my-4 border-white/10">
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-white/60">Subtotal</span><span>${euros(subtotal)}</span></div>
+                    <div class="flex justify-between"><span class="text-white/60">🚚 Envío</span><span>${euros(envio)}</span></div>
+                    <div class="flex justify-between"><span class="text-white/60">📱 Uso de plataforma</span><span>${euros(usoYServicios)}</span></div>
+                    <div class="border-t border-white/20 my-2"></div>
+                    <div class="flex justify-between text-lg font-black">
+                        <span class="text-white">TOTAL</span>
+                        <span class="text-cyan-400 text-xl">${euros(total)}</span>
+                    </div>
+                </div>
+                
+                <button onclick="mostrarPoliticaCancelacion()" class="w-full mt-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white/50 text-xs font-bold uppercase hover:bg-white/10 transition-all">
+                    📋 Política de cancelación por ausencia
+                </button>
+            </div>
+        `,
+        icon: 'question',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#06b6d4',
+        cancelButtonColor: '#ef4444',
+        confirmButtonText: '✅ Sí, enviar pedido',
+        cancelButtonText: '🔙 Volver a la cesta',
+        showCancelButton: true,
+        reverseButtons: true,
+        width: '90%',
+        maxWidth: '450px',
+        customClass: {
+            popup: 'rounded-3xl',
+            confirmButton: 'font-black uppercase',
+            cancelButton: 'font-black uppercase'
+        }
+    });
+
+    if (!confirmar.isConfirmed) {
+        cerrarCheckout();
+        abrirRevision();
+        return;
+    }
+
+    // ✅ SI CONFIRMA, CONTINUAR CON EL ENVÍO
+    const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+    let montoPaga = null;
+    if (metodo === "Efectivo") {
+        const montoInput = document.getElementById('monto-paga');
+        if (montoInput && montoInput.value) {
+            montoPaga = parseFloat(montoInput.value);
+            if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null;
+        }
+    }
+    const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    const pedido = {
+        id: idPedido,
+        id_pedido: idPedido,
+        cliente_nombre: cliente.nombre,
+        cliente: cliente.nombre,
+        cliente_telefono: cliente.telefono,
+        cliente_email: cliente.email,
+        direccion: cliente.direccion_completa,
+        direccion_detalle: {
+            calle: cliente.calle,
+            edificio: cliente.edificio,
+            puerta: cliente.puerta,
+            instrucciones: cliente.instrucciones
+        },
+        cp: cliente.cp,
+        items: cesta.map(item => ({
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            precio_unitario: item.precio_unitario,
+            opciones: item.opciones || "",
+            extras_precio: item.extras_precio || 0,
+            total: item.total
+        })),
+        subtotal: subtotal,
+        envio: envio,
+        usoYServicios: usoYServicios,
+        total: total,
+        metodo_pago: metodo,
+        restaurante_id: restauranteActivo.id,
+        restaurante_nombre: restauranteActivo.nombre,
+        estado: "RECIBIDO",
+        huella: huellaDigitalTerminal,
+        fecha: Date.now(),
+        timestamp: Date.now(),
+        acepta_terminos: true
+    };
+    if (montoPaga) pedido.monto_paga = montoPaga;
+
+    procesandoPedidoActivo = true;
+    const btnProcesar = document.getElementById('btn-procesar-orden');
+    if (btnProcesar) {
+        btnProcesar.disabled = true;
+        btnProcesar.innerText = "PROCESANDO...";
+        btnProcesar.style.opacity = "0.5";
+    }
+    Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espera', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    try {
+        await database.ref('pedidos/' + idPedido).set(pedido);
+        cesta = [];
+        actualizarCestaVisual();
+        cerrarCheckout();
+        iniciarSeguimientoPedido(idPedido);
+        abrirModalTracking();
+        Swal.close();
+        Swal.fire({
+            title: '🎉 ¡Pedido Enviado!',
+            text: `Total: ${euros(total)}`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#020617',
+            color: 'white'
+        });
+    } catch (error) {
+        Swal.close();
+        alertaError("Error", error.message || "No se pudo enviar el pedido");
+    }
+    finally {
+        procesandoPedidoActivo = false;
+        if (btnProcesar) {
+            btnProcesar.disabled = false;
+            btnProcesar.innerText = "Procesar Orden";
+            btnProcesar.style.opacity = "1";
+        }
+    }
+}
+
+function cerrarTrackingPorRechazo() {
+    localStorage.removeItem('ae_pedido_activo');
+    localStorage.removeItem('ae_tracking_id');
+    
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    
+    document.getElementById('tracking-modal').style.display = 'none';
+    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+    
+    cesta = [];
+    actualizarCestaVisual();
+    
+    while (pantallaStack.length > 1) pantallaStack.pop();
+    renderHome();
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
+
+// ============================================================
 // 🔥 initApp() - SIN LOGIN ANÓNIMO
 // ============================================================
 async function initApp() {
-    // Los usuarios SOLO se autentican con email/contraseña
-    // al iniciar sesión o registrarse
-    
     document.getElementById('loader').style.display = 'flex';
     
     try {
@@ -1547,7 +1802,6 @@ async function initApp() {
         actualizarClienteUI();
         await cargarBaseDatos();
         
-        // FORZAR ORDENAMIENTO
         db.restaurantes.sort((a, b) => {
             const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999;
             const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999;
@@ -1579,26 +1833,6 @@ async function initApp() {
         document.getElementById('loader').style.display = 'none'; 
     }
 }
-
-function cerrarTrackingPorRechazo() {
-    localStorage.removeItem('ae_pedido_activo');
-    localStorage.removeItem('ae_tracking_id');
-    
-    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
-    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
-    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-    
-    document.getElementById('tracking-modal').style.display = 'none';
-    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-    
-    cesta = [];
-    actualizarCestaVisual();
-    
-    while (pantallaStack.length > 1) pantallaStack.pop();
-    renderHome();
-}
-
-document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>

@@ -1596,7 +1596,7 @@ if ('serviceWorker' in navigator) {
 async function enviarPedidoFinal() {
     if (procesandoPedidoActivo) return;
     
-    // 📌 OBTENER EL CLIENTE Y VERIFICAR QUE TIENE UID
+    // 📌 OBTENER EL CLIENTE
     const cliente = obtenerCliente();
     if (!cliente || !cliente.uid) {
         alertaError("Error", "No se pudo identificar al cliente. Inicia sesión nuevamente.");
@@ -1604,7 +1604,19 @@ async function enviarPedidoFinal() {
         return;
     }
     
-    // 📌 VERIFICAR SI ESTÁ EN LA LISTA NEGRA
+    // 📌 OBTENER EL UID DIRECTAMENTE DE FIREBASE (PARA ASEGURAR)
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        alertaError("Error", "No estás autenticado. Inicia sesión nuevamente.");
+        mostrarModal('modal-login');
+        return;
+    }
+    
+    const uid = user.uid;
+    console.log('📌 uid del cliente:', uid);
+    console.log('📌 uid del cliente desde localStorage:', cliente.uid);
+    
+    // 📌 VERIFICAR LISTA NEGRA
     try {
         const emailSanitizado = sanitizarEmail(cliente.email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
@@ -1615,7 +1627,6 @@ async function enviarPedidoFinal() {
         }
     } catch (error) { 
         console.error("Error verificando lista negra:", error); 
-        // Si hay error al verificar, continuar (no bloquear el pedido)
     }
     
     // 📌 VALIDACIONES BÁSICAS
@@ -1638,7 +1649,7 @@ async function enviarPedidoFinal() {
     const usoYServicios = window._usoPlataformaActual || 0.99;
     const total = subtotal + envio + usoYServicios;
 
-    // 📌 VENTANA DE CONFIRMACIÓN CON BOTÓN DE POLÍTICA
+    // 📌 VENTANA DE CONFIRMACIÓN
     const confirmar = await Swal.fire({
         title: '📦 Confirmar Pedido',
         html: `
@@ -1707,12 +1718,12 @@ async function enviarPedidoFinal() {
         }
     }
     
-    // 📌 CREAR EL PEDIDO CON uid_cliente (¡ESTO ES CLAVE!)
+    // 📌 CREAR EL PEDIDO CON EL UID CORRECTO
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const pedido = {
         id: idPedido,
         id_pedido: idPedido,
-        uid_cliente: cliente.uid,              // ← CAMPO OBLIGATORIO
+        uid_cliente: uid,  // ← USAR EL UID DIRECTAMENTE DE FIREBASE
         cliente_nombre: cliente.nombre,
         cliente: cliente.nombre,
         cliente_telefono: cliente.telefono,
@@ -1747,13 +1758,13 @@ async function enviarPedidoFinal() {
         acepta_terminos: true
     };
     
-    // 📌 AGREGAR MONTO DE PAGA SI EXISTE
     if (montoPaga) pedido.monto_paga = montoPaga;
 
-    // 🔍 VERIFICAR QUE uid_cliente EXISTE Y COINCIDE
-    console.log('📌 uid_cliente del pedido:', pedido.uid_cliente);
+    // 🔍 VERIFICACIÓN FINAL
+    console.log('📌 uid_cliente en el pedido:', pedido.uid_cliente);
     console.log('📌 auth.uid actual:', firebase.auth().currentUser.uid);
-    
+    console.log('📌 Pedido completo:', pedido);
+
     if (pedido.uid_cliente !== firebase.auth().currentUser.uid) {
         alertaError("Error", "El usuario no coincide con el pedido. Por favor, inicia sesión nuevamente.");
         return;
@@ -1806,7 +1817,6 @@ async function enviarPedidoFinal() {
         }
     }
 }
-
 function cerrarTrackingPorRechazo() {
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');

@@ -1164,13 +1164,15 @@ async function cancelarPedidoAdmin(pedidoId) {
 }
 
 async function asignarRepartidorPedido(pedidoId) {
+    // Obtener lista de repartidores activos
     const snapshot = await database.ref('repartidores').once('value');
     const repartidores = snapshot.val() || {};
     
     let optionsHtml = '';
     for (const [uid, data] of Object.entries(repartidores)) {
         if (data.activo !== false) {
-            optionsHtml += `<option value="${uid}">${escapeHTML(data.nombre || uid)}</option>`;
+            const nombre = data.nombre || uid;
+            optionsHtml += `<option value="${uid}">${escapeHTML(nombre)} (${escapeHTML(data.email || '')})</option>`;
         }
     }
     
@@ -1205,12 +1207,20 @@ async function asignarRepartidorPedido(pedidoId) {
     
     if (repartidorUid) {
         try {
+            // ✅ OBTENER EL NOMBRE DEL REPARTIDOR PARA MOSTRAR
+            const repartidorSnap = await database.ref(`repartidores/${repartidorUid}/nombre`).once('value');
+            const nombreRepartidor = repartidorSnap.val() || 'Repartidor';
+            
+            // 🔥 ACTUALIZAR EL PEDIDO CON EL UID Y EL NOMBRE DEL REPARTIDOR
             await database.ref(`pedidos/${pedidoId}`).update({
-                uid_repartidor: repartidorUid,
-                estado: 'en_camino'
+                uid_repartidor: repartidorUid,           // ← CLAVE: guardar el UID
+                repartidor_asignado: nombreRepartidor,    // ← Para mostrar en la app
+                estado: 'en_camino'                       // ← Cambiar estado
             });
+            
             Swal.fire({
                 title: '✅ Repartidor asignado',
+                text: `Pedido asignado a ${nombreRepartidor}`,
                 icon: 'success',
                 timer: 1500,
                 showConfirmButton: false,
@@ -1219,6 +1229,7 @@ async function asignarRepartidorPedido(pedidoId) {
             });
             cargarPedidosAdmin();
         } catch (error) {
+            console.error('❌ Error al asignar repartidor:', error);
             Swal.fire({
                 title: '❌ Error',
                 text: error.message,
@@ -1298,7 +1309,7 @@ async function guardarRepartidor() {
     });
     
     try {
-        const crearUsuario = firebase.functions().httpsCallable('admin-functions-crearUsuarioAdmin');
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
         const result = await crearUsuario({
             email: email,
             password: password,
@@ -1309,18 +1320,48 @@ async function guardarRepartidor() {
             vehiculo: vehiculo
         });
         
-        console.log('📌 Resultado:', result);
+        console.log('📌 Resultado de crearUsuarioAdmin:', result);
         
         if (result.data && result.data.success) {
+            // ✅ OBTENER EL UID DEL REPARTIDOR CREADO
+            const uid = result.data.uid;
+            
+            // ✅ VERIFICAR QUE EL NODO /repartidores/{uid} EXISTA
+            // Si la Cloud Function ya lo creó, solo actualizamos; si no, lo creamos
+            const repartidorSnap = await database.ref(`repartidores/${uid}`).once('value');
+            if (!repartidorSnap.exists()) {
+                // Si no existe, lo creamos con los datos
+                await database.ref(`repartidores/${uid}`).set({
+                    nombre: nombre,
+                    email: email,
+                    telefono: telefono || '',
+                    vehiculo: vehiculo || '',
+                    pedidos_entregados: 0,
+                    activo: true,
+                    creado_en: Date.now()
+                });
+                console.log('✅ Nodo repartidor creado en BD');
+            } else {
+                // Si ya existe, actualizamos los datos importantes
+                await database.ref(`repartidores/${uid}`).update({
+                    nombre: nombre,
+                    telefono: telefono || '',
+                    vehiculo: vehiculo || '',
+                    activo: true
+                });
+                console.log('✅ Nodo repartidor actualizado en BD');
+            }
+            
             cerrarModal('modalRepartidor');
             document.getElementById('repNombre').value = '';
             document.getElementById('repTelefono').value = '';
             document.getElementById('repVehiculo').value = '';
             document.getElementById('repPassword').value = '';
             await cargarRepartidores();
+            
             Swal.fire({
                 title: '✅ Repartidor creado',
-                text: `Email: ${email}\nContraseña: ${password}`,
+                text: `Email: ${email}\nContraseña: ${password}\nUID: ${uid}`,
                 icon: 'success',
                 timer: 4000,
                 background: '#0f172a',
@@ -1331,9 +1372,20 @@ async function guardarRepartidor() {
         }
     } catch (error) {
         console.error('❌ Error detallado:', error);
+        
+        let mensajeError = error.message || 'Error al crear repartidor';
+        
+        if (error.message.includes('permission-denied')) {
+            mensajeError = 'No tienes permisos para crear repartidores. Asegúrate de estar logueado como admin.';
+        } else if (error.message.includes('unauthenticated')) {
+            mensajeError = 'Debes iniciar sesión como admin para crear repartidores.';
+        } else if (error.message.includes('email-already-exists')) {
+            mensajeError = 'El email generado ya existe. Intenta de nuevo.';
+        }
+        
         Swal.fire({
             title: '❌ Error',
-            text: error.message || 'Error al crear repartidor',
+            text: mensajeError,
             icon: 'error',
             background: '#0f172a',
             color: 'white'

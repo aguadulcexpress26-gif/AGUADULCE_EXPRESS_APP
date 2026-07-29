@@ -259,28 +259,76 @@ async function loginCocina() {
         }
 
         // Iniciar escucha de pedidos
-        iniciarEscuchaPedidos();
-
-        Swal.fire({
-            title: '✅ Bienvenido',
-            text: `Cocina de ${nombreRestaurante}`,
-            icon: 'success',
-            timer: 1500,
-            showConfirmButton: false,
-            background: '#0f172a',
-            color: 'white'
-        });
-
-    } catch (error) {
-        console.error('❌ Error en login:', error);
-        Swal.fire({
-            title: '❌ Error de autenticación',
-            text: error.message || 'Credenciales incorrectas',
-            icon: 'error',
-            background: '#0f172a',
-            color: 'white'
-        });
+        function iniciarEscuchaPedidos() {
+    if (pedidosListener) {
+        try { pedidosListener.off(); } catch(e) {}
+        pedidosListener = null;
     }
+
+    if (!restauranteActual?.id_restaurante) {
+        console.warn('⚠️ No hay restaurante identificado');
+        return;
+    }
+
+    // Usar el ID del restaurante (ej: 6G4L1V)
+    const restId = restauranteActual.id_restaurante;
+    const uidRest = uidRestaurante;
+
+    console.log('📌 Buscando pedidos con restaurante_id:', restId);
+    console.log('📌 Buscando pedidos con uid_restaurante:', uidRest);
+
+    pedidosListener = database.ref('pedidos').on('value', async (snapshot) => {
+        const todosPedidos = snapshot.val() || {};
+        const pendientes = [];
+        const coccion = [];
+        const listos = [];
+        const historial = [];
+
+        for (const [id, data] of Object.entries(todosPedidos)) {
+            // 🔥 FILTRAR POR AMBOS CAMPOS
+            const coincidePorUid = data.uid_restaurante === uidRest;
+            const coincidePorId = data.restaurante_id === restId;
+            const coincidePorRestaurante = data.restaurante === restId;
+            const coincidePorNombre = data.restaurante_nombre === restauranteActual.nombre;
+            
+            if (!coincidePorUid && !coincidePorId && !coincidePorRestaurante && !coincidePorNombre) continue;
+
+            const estado = (data.estado || '').toUpperCase();
+            
+            if (estado === 'PENDIENTE' || estado === 'RECIBIDO' || estado === 'pendiente') {
+                pendientes.push({ id, ...data });
+            } else if (estado === 'COCCIÓN' || estado === 'EN PROCESO' || estado === 'preparando' || estado === 'aceptado') {
+                coccion.push({ id, ...data });
+            } else if (estado === 'LISTO' || estado === 'listo') {
+                listos.push({ id, ...data });
+            } else if (estado === 'ENTREGADO' || estado === 'CANCELADO_POR_AUSENCIA' || estado === 'RECHAZADO' || estado === 'cancelado') {
+                historial.push({ id, ...data });
+            }
+        }
+
+        console.log('📊 Pedidos encontrados - Pendientes:', pendientes.length, 'Cocción:', coccion.length, 'Listos:', listos.length);
+
+        document.getElementById('totalPendientes').innerText = pendientes.length;
+        document.getElementById('totalCoccion').innerText = coccion.length;
+        document.getElementById('totalListos').innerText = listos.length;
+        document.getElementById('totalHistorial').innerText = historial.length;
+
+        renderizarPendientes(pendientes);
+        renderizarCoccion(coccion);
+        renderizarListos(listos);
+        renderizarHistorial(historial);
+
+        const todosPedidosRestaurante = [...pendientes, ...coccion, ...listos, ...historial];
+        await calcularVentas(todosPedidosRestaurante);
+
+        if (sonidosActivados && pendientes.length > 0) {
+            audioNotif.loop = true;
+            audioNotif.play().catch(e => console.log('Sonido no disponible'));
+        } else {
+            audioNotif.pause();
+            audioNotif.currentTime = 0;
+        }
+    });
 }
 
 function cerrarSesion() {
@@ -875,7 +923,6 @@ auth.onAuthStateChanged(async (user) => {
                 let restauranteId = uid;
                 
                 try {
-                    // 🔥 SOLO LEER /restaurantes (NO usuarios_restaurante)
                     const restSnap = await database.ref('restaurantes').once('value');
                     const restaurantes = restSnap.val() || {};
                     
@@ -891,13 +938,13 @@ auth.onAuthStateChanged(async (user) => {
                     console.warn('⚠️ No se pudo obtener el nombre del restaurante:', error);
                 }
                 
-                uidRestaurante = restauranteId;
+                uidRestaurante = uid;
                 restauranteActual = {
-                    uid: restauranteId,
+                    uid: uid,
                     nombre: nombreRestaurante,
                     email: user.email,
                     foto: fotoRestaurante,
-                    id_restaurante: restauranteId
+                    id_restaurante: restauranteId  // ← ESTE ES EL VALOR QUE USA LA APP
                 };
                 
                 console.log('✅ Restaurante identificado:', restauranteActual);
@@ -930,7 +977,6 @@ auth.onAuthStateChanged(async (user) => {
         }
     }
 });
-
 // ============================================================
 // 🔄 ACTUALIZAR TEMPORIZADORES UI
 // ============================================================

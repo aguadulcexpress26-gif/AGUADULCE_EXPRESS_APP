@@ -1239,10 +1239,7 @@ function abrirRevision() {
 }
 
 // ============================================================
-// 📍 CHECKOUT MEJORADO CON GOOGLE MAPS (UN SOLO BOTÓN)
-// ============================================================
-// ============================================================
-// 📍 CHECKOUT MEJORADO CON GOOGLE MAPS (UN SOLO BOTÓN)
+// 📍 CHECKOUT - VERSIÓN CORREGIDA (SIN DUPLICADOS)
 // ============================================================
 async function abrirCheckout() {
     const cliente = obtenerCliente();
@@ -1261,8 +1258,14 @@ async function abrirCheckout() {
     document.getElementById('panel-checkout').style.display = 'block';
     actualizarClienteUI();
     
+    // 🔥 LIMPIAR CONTENEDORES ANTES DE AÑADIR NUEVO CONTENIDO
     const container = document.getElementById('lista-cesta-checkout');
     const desglose = document.getElementById('desglose-pago');
+    
+    // Vaciar los contenedores
+    if (container) container.innerHTML = '';
+    if (desglose) desglose.innerHTML = '';
+    
     const subtotal = cesta.reduce((a, i) => a + (i.total || 0), 0);
     
     const clienteDireccion = cliente.direccion_completa;
@@ -1288,57 +1291,65 @@ async function abrirCheckout() {
         descuentoHtml = `<div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-2 text-center text-blue-400 text-[10px] font-bold">💡 Añade ${falta}€ más y obtén un 10% de descuento en el envío.</div>`;
     }
     
-    container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
+    // 📌 PRODUCTOS EN EL CARRITO
+    if (container) {
+        container.innerHTML = cesta.map(item => 
+            `<div class="flex justify-between text-sm">
+                <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
+                <span class="font-bold">${euros(item.total)}</span>
+            </div>`
+        ).join('');
+    }
     
-    // 📌 DESGLOSE DE PAGO CON TODO INCLUIDO (UN SOLO BOTÓN)
-    desglose.innerHTML = `
-        <div class="border-t border-white/10 pt-4 space-y-2">
-            <div class="flex justify-between text-sm">
-                <span>Subtotal</span>
-                <span>${euros(subtotal)}</span>
+    // 📌 DESGLOSE DE PAGO (TODO EN UN SOLO innerHTML)
+    if (desglose) {
+        desglose.innerHTML = `
+            <div class="border-t border-white/10 pt-4 space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span>Subtotal</span>
+                    <span>${euros(subtotal)}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>📱 Uso de plataforma</span>
+                    <span>${euros(usoPlataforma)}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>🚚 Envío</span>
+                    <span>${euros(envio)}</span>
+                </div>
+                ${distanciaHtml}
+                ${descuentoHtml}
+                <div class="border-t border-white/20 my-2"></div>
+                <div class="flex justify-between text-xl font-black">
+                    <span>TOTAL</span>
+                    <span class="text-cyan-400">${euros(total)}</span>
+                </div>
             </div>
-            <div class="flex justify-between text-sm">
-                <span>📱 Uso de plataforma</span>
-                <span>${euros(usoPlataforma)}</span>
+            <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
+                <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 Efectivo - ¿Con cuánto pagas?</p>
+                <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
+                <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
+                <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
             </div>
-            <div class="flex justify-between text-sm">
-                <span>🚚 Envío</span>
-                <span>${euros(envio)}</span>
+            
+            <!-- 📌 MÉTODO DE PAGO -->
+            <div class="mt-4">
+                <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">Forma de Pago</p>
+                <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white">
+                    <option value="Efectivo">Efectivo (Pagar al recibir)</option>
+                    <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
+                </select>
             </div>
-            ${distanciaHtml}
-            ${descuentoHtml}
-            <div class="border-t border-white/20 my-2"></div>
-            <div class="flex justify-between text-xl font-black">
-                <span>TOTAL</span>
-                <span class="text-cyan-400">${euros(total)}</span>
+            
+            <!-- 📌 BOTÓN ÚNICO DE PROCESAR ORDEN -->
+            <div class="mt-6">
+                <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg">
+                    💳 Procesar Orden
+                </button>
+                <p class="text-white/20 text-[8px] text-center mt-2">Al procesar aceptas los términos de servicio</p>
             </div>
-        </div>
-        <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
-            <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 Efectivo - ¿Con cuánto pagas?</p>
-            <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
-            <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
-            <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
-        </div>
-        
-        <!-- 📌 MÉTODO DE PAGO -->
-        <div class="mt-4">
-            <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">Forma de Pago</p>
-            <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white">
-                <option value="Efectivo">Efectivo (Pagar al recibir)</option>
-                <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
-            </select>
-        </div>
-        
-        <!-- 📌 BOTÓN ÚNICO DE PROCESAR ORDEN -->
-        <div class="mt-6">
-            <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg">
-                💳 Procesar Orden
-            </button>
-            <p class="text-white/20 text-[8px] text-center mt-2">Al procesar aceptas los términos de servicio</p>
-        </div>
-    `;
-    
-    // ✅ ELIMINADO EL appendChild QUE CREABA EL BOTÓN DUPLICADO
+        `;
+    }
     
     window._costoEnvioActual = envio;
     window._usoPlataformaActual = usoPlataforma;

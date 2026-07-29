@@ -722,7 +722,7 @@ async function eliminarProducto(productoId) {
 }
 
 // ============================================================
-// 🛒 PEDIDOS
+// 🛒 PEDIDOS - VERSIÓN COMPLETA CON TODAS LAS FUNCIONES
 // ============================================================
 async function cargarPedidosAdmin() {
     const container = document.getElementById('listaPedidosAdmin');
@@ -735,9 +735,21 @@ async function cargarPedidosAdmin() {
             return;
         }
         
-        let html = '';
+        // Cargar lista de repartidores para asignar
+        const repartidoresSnap = await database.ref('repartidores').once('value');
+        const repartidores = repartidoresSnap.val() || {};
+        
+        let html = `
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-white/50 text-sm">📊 Total: ${Object.keys(pedidos).length} pedidos</span>
+                <button onclick="borrarTodosPedidosAdmin()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition">
+                    🗑️ BORRAR TODOS
+                </button>
+            </div>
+        `;
+        
         for (const [id, data] of Object.entries(pedidos).sort((a, b) => (b[1].fecha || 0) - (a[1].fecha || 0))) {
-            const estado = data.estado || 'pendiente';
+            const estado = data.estado || 'PENDIENTE';
             const estadoLabel = {
                 'RECIBIDO': '⏳ Recibido',
                 'PENDIENTE': '⏳ Pendiente',
@@ -751,25 +763,258 @@ async function cargarPedidosAdmin() {
                 'CANCELADO_POR_AUSENCIA': '❌ Cancelado'
             }[estado] || estado;
             
+            const estadoColor = {
+                'RECIBIDO': 'bg-yellow-500/20 text-yellow-400',
+                'PENDIENTE': 'bg-yellow-500/20 text-yellow-400',
+                'COCCIÓN': 'bg-cyan-500/20 text-cyan-400',
+                'PREPARANDO': 'bg-cyan-500/20 text-cyan-400',
+                'LISTO': 'bg-green-500/20 text-green-400',
+                'EN_REPARTO': 'bg-purple-500/20 text-purple-400',
+                'EN_PUERTA': 'bg-orange-500/20 text-orange-400',
+                'ENTREGADO': 'bg-emerald-500/20 text-emerald-400',
+                'RECHAZADO': 'bg-red-500/20 text-red-400',
+                'CANCELADO_POR_AUSENCIA': 'bg-red-500/20 text-red-400'
+            }[estado] || 'bg-gray-500/20 text-gray-400';
+            
+            // Obtener nombre del repartidor asignado
+            let nombreRepartidor = 'No asignado';
+            if (data.uid_repartidor && repartidores[data.uid_repartidor]) {
+                nombreRepartidor = repartidores[data.uid_repartidor].nombre || 'Repartidor';
+            } else if (data.repartidor_asignado) {
+                nombreRepartidor = data.repartidor_asignado;
+            }
+            
+            // Generar opciones de repartidores para el select
+            let repartidoresOptions = '<option value="">Sin repartidor</option>';
+            for (const [rid, rdata] of Object.entries(repartidores)) {
+                if (rdata.activo !== false) {
+                    const selected = rid === data.uid_repartidor ? 'selected' : '';
+                    repartidoresOptions += `<option value="${rid}" ${selected}>${escapeHTML(rdata.nombre || rid)}</option>`;
+                }
+            }
+            
+            const fecha = data.fecha ? new Date(data.fecha).toLocaleString() : 'Fecha desconocida';
+            const items = data.items || [];
+            
             html += `
-                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
-                    <div class="flex justify-between">
-                        <span class="text-cyan-400 font-bold">#${id.slice(0,8)}</span>
-                        <span class="text-emerald-400 font-bold">${(data.total || 0).toFixed(2)}€</span>
+                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10" id="pedido-${id}">
+                    <div class="flex justify-between items-start flex-wrap gap-2">
+                        <div>
+                            <span class="text-cyan-400 font-bold text-sm">#${id.slice(0,8)}</span>
+                            <span class="text-white/30 text-xs ml-2">${fecha}</span>
+                            <p class="text-white font-bold">${escapeHTML(data.cliente_nombre || 'Cliente')}</p>
+                            <p class="text-white/50 text-xs">${escapeHTML(data.direccion || 'Sin dirección')}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-emerald-400 font-bold text-lg">${(data.total || 0).toFixed(2)}€</span>
+                            <div class="${estadoColor} px-3 py-1 rounded-full text-xs font-bold mt-1">${estadoLabel}</div>
+                        </div>
                     </div>
-                    <p class="text-white/70">${escapeHTML(data.cliente_nombre || 'Cliente')}</p>
-                    <p class="text-white/50 text-xs">${escapeHTML(data.direccion || '')}</p>
-                    <span class="px-2 py-1 rounded text-xs bg-white/10">${estadoLabel}</span>
+                    
+                    <div class="mt-3">
+                        <p class="text-white/50 text-xs">📦 Productos:</p>
+                        <div class="flex flex-wrap gap-2 mt-1">
+                            ${items.map(item => `
+                                <span class="bg-slate-700 px-2 py-1 rounded text-xs">${escapeHTML(item.nombre || 'Producto')} x${item.cantidad || 1}</span>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 mt-3">
+                        <div>
+                            <p class="text-white/50 text-xs">🏪 Restaurante</p>
+                            <p class="text-sm font-bold">${escapeHTML(data.restaurante_nombre || data.restaurante_id || 'Desconocido')}</p>
+                        </div>
+                        <div>
+                            <p class="text-white/50 text-xs">🛵 Repartidor</p>
+                            <select id="repartidor-select-${id}" class="w-full p-2 rounded-xl bg-slate-700 border border-slate-600 text-white text-sm">
+                                ${repartidoresOptions}
+                            </select>
+                            <button onclick="asignarRepartidorAdmin('${id}')" class="mt-1 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg text-xs transition w-full">
+                                ✅ Asignar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <!-- Estados que admin puede cambiar -->
+                        <button onclick="cambiarEstadoPedidoAdmin('${id}', 'RECIBIDO')" class="bg-yellow-600/30 hover:bg-yellow-600/50 text-yellow-400 px-3 py-1 rounded-lg text-xs transition">⏳ Recibido</button>
+                        <button onclick="cambiarEstadoPedidoAdmin('${id}', 'COCCIÓN')" class="bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 px-3 py-1 rounded-lg text-xs transition">👨‍🍳 Cocción</button>
+                        <button onclick="cambiarEstadoPedidoAdmin('${id}', 'LISTO')" class="bg-green-600/30 hover:bg-green-600/50 text-green-400 px-3 py-1 rounded-lg text-xs transition">📦 Listo</button>
+                        <button onclick="cambiarEstadoPedidoAdmin('${id}', 'EN_REPARTO')" class="bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 px-3 py-1 rounded-lg text-xs transition">🛵 En reparto</button>
+                        <button onclick="cambiarEstadoPedidoAdmin('${id}', 'ENTREGADO')" class="bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 px-3 py-1 rounded-lg text-xs transition">✅ Entregado</button>
+                        <button onclick="cambiarEstadoPedidoAdmin('${id}', 'RECHAZADO')" class="bg-red-600/30 hover:bg-red-600/50 text-red-400 px-3 py-1 rounded-lg text-xs transition">❌ Rechazar</button>
+                        <button onclick="eliminarPedidoAdmin('${id}')" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1 rounded-lg text-xs transition">🗑️ Eliminar</button>
+                    </div>
                 </div>
             `;
         }
+        
         container.innerHTML = html;
     } catch (error) {
-        console.error('Error cargando pedidos:', error);
-        container.innerHTML = '<div class="text-center text-red-400 p-10">Error al cargar pedidos</div>';
+        console.error('❌ Error al cargar pedidos:', error);
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar pedidos: ${error.message}</div>`;
+    }
+}
+    // ============================================================
+// 🔄 ADMIN - CAMBIAR ESTADO DE PEDIDO
+// ============================================================
+async function cambiarEstadoPedidoAdmin(pedidoId, nuevoEstado) {
+    try {
+        await database.ref(`pedidos/${pedidoId}/estado`).set(nuevoEstado);
+        Swal.fire({
+            title: '✅ Estado actualizado',
+            text: `Pedido cambiado a: ${nuevoEstado}`,
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+        cargarPedidosAdmin();
+    } catch (error) {
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message,
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
     }
 }
 
+// ============================================================
+// 🗑️ ADMIN - ELIMINAR PEDIDO INDIVIDUAL
+// ============================================================
+async function eliminarPedidoAdmin(pedidoId) {
+    const confirm = await Swal.fire({
+        title: '⚠️ ¿Eliminar pedido?',
+        text: 'Esta acción no se puede deshacer',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: '✅ Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    if (confirm.isConfirmed) {
+        try {
+            await database.ref(`pedidos/${pedidoId}`).remove();
+            Swal.fire({
+                title: '🗑️ Pedido eliminado',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+            cargarPedidosAdmin();
+        } catch (error) {
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    }
+}
+
+// ============================================================
+// 🗑️ ADMIN - BORRAR TODOS LOS PEDIDOS
+// ============================================================
+async function borrarTodosPedidosAdmin() {
+    const confirm = await Swal.fire({
+        title: '⚠️ ¿BORRAR TODOS LOS PEDIDOS?',
+        text: 'Esta acción es irreversible y eliminará TODOS los pedidos',
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: '🗑️ Sí, borrar todo',
+        cancelButtonText: '❌ Cancelar',
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    if (confirm.isConfirmed) {
+        try {
+            await database.ref('pedidos').remove();
+            Swal.fire({
+                title: '🗑️ Todos los pedidos borrados',
+                icon: 'info',
+                timer: 2000,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+            cargarPedidosAdmin();
+        } catch (error) {
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    }
+}
+
+// ============================================================
+// 🛵 ADMIN - ASIGNAR REPARTIDOR A PEDIDO
+// ============================================================
+async function asignarRepartidorAdmin(pedidoId) {
+    const select = document.getElementById(`repartidor-select-${pedidoId}`);
+    if (!select) {
+        Swal.fire({ title: 'Error', text: 'No se encontró el selector de repartidor', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    const repartidorUid = select.value;
+    if (!repartidorUid) {
+        Swal.fire({ 
+            title: '⚠️ Selecciona un repartidor', 
+            text: 'Debes seleccionar un repartidor de la lista', 
+            icon: 'warning', 
+            background: '#0f172a', 
+            color: 'white' 
+        });
+        return;
+    }
+    
+    try {
+        // Obtener nombre del repartidor
+        const repartidorSnap = await database.ref(`repartidores/${repartidorUid}/nombre`).once('value');
+        const nombreRepartidor = repartidorSnap.val() || 'Repartidor';
+        
+        await database.ref(`pedidos/${pedidoId}`).update({
+            uid_repartidor: repartidorUid,
+            repartidor_asignado: nombreRepartidor
+        });
+        
+        Swal.fire({
+            title: '✅ Repartidor asignado',
+            text: `Pedido asignado a: ${nombreRepartidor}`,
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+        cargarPedidosAdmin();
+    } catch (error) {
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message,
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
 // ============================================================
 // 🛵 REPARTIDORES - CON BOTÓN ELIMINAR
 // ============================================================

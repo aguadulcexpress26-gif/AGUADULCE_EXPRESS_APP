@@ -1416,18 +1416,26 @@ async function cargarRepartidores() {
         
         let html = '';
         for (const [uid, data] of Object.entries(repartidores)) {
+            const nombre = data.nombre || 'Sin nombre';
+            const email = data.email || 'Sin email';
+            const telefono = data.telefono || 'Sin teléfono';
+            const vehiculo = data.vehiculo || 'Sin vehículo';
+            const entregas = data.pedidos_entregados || 0;
+            const activo = data.activo !== false;
+            
             html += `
                 <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
                     <div class="flex justify-between items-start">
                         <div>
-                            <p class="font-bold text-white">${escapeHTML(data.nombre || 'Sin nombre')}</p>
-                            <p class="text-white/50 text-sm">${escapeHTML(data.email || '')}</p>
-                            <p class="text-white/50 text-xs">📱 ${escapeHTML(data.telefono || 'Sin teléfono')}</p>
-                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(data.vehiculo || 'Sin vehículo')}</p>
-                            <p class="text-white/50 text-xs">📦 ${data.pedidos_entregados || 0} entregas</p>
+                            <p class="font-bold text-white">${escapeHTML(nombre)}</p>
+                            <p class="text-white/50 text-sm">${escapeHTML(email)}</p>
+                            <p class="text-white/50 text-xs">📱 ${escapeHTML(telefono)}</p>
+                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(vehiculo)}</p>
+                            <p class="text-white/50 text-xs">📦 ${entregas} entregas</p>
+                            <p class="text-white/30 text-xs">UID: ${uid.slice(0,12)}...</p>
                         </div>
                         <div>
-                            <span class="${data.activo !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${data.activo !== false ? 'ACTIVO' : 'INACTIVO'}</span>
+                            <span class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
                         </div>
                     </div>
                 </div>
@@ -1439,7 +1447,6 @@ async function cargarRepartidores() {
         container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
     }
 }
-
 // ============================================================
 // 👥 USUARIOS - FUNCIÓN COMPLETA CON CREAR RESTAURANTE
 // ============================================================
@@ -1726,25 +1733,61 @@ async function eliminarFondoCabecera(id) {
 async function cargarUsuarios() {
     const container = document.getElementById('listaUsuarios');
     try {
-        const snapshot = await database.ref('usuarios_admin').once('value');
-        const usuarios = snapshot.val() || {};
+        // 🔥 BUSCAR EN AMBOS LUGARES: /usuarios_admin Y /usuarios
+        let usuarios = {};
+        
+        // Intentar leer de usuarios_admin
+        try {
+            const snap1 = await database.ref('usuarios_admin').once('value');
+            const data1 = snap1.val() || {};
+            usuarios = { ...usuarios, ...data1 };
+        } catch (e) {
+            console.log('⚠️ No se pudo leer usuarios_admin:', e.message);
+        }
+        
+        // Intentar leer de usuarios (si existe)
+        try {
+            const snap2 = await database.ref('usuarios').once('value');
+            const data2 = snap2.val() || {};
+            usuarios = { ...usuarios, ...data2 };
+        } catch (e) {
+            console.log('⚠️ No se pudo leer usuarios:', e.message);
+        }
+        
+        // También buscar en usuarios_restaurante (para ver los restaurantes)
+        try {
+            const snap3 = await database.ref('usuarios_restaurante').once('value');
+            const data3 = snap3.val() || {};
+            usuarios = { ...usuarios, ...data3 };
+        } catch (e) {
+            console.log('⚠️ No se pudo leer usuarios_restaurante:', e.message);
+        }
         
         let html = '';
+        if (Object.keys(usuarios).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay usuarios registrados</div>';
+            return;
+        }
+        
         for (const [uid, data] of Object.entries(usuarios)) {
+            const email = data.email || uid;
+            const rol = data.rol || 'sin rol';
+            const nombre = data.nombre || data.NOMBRE_RESTAURANTE || 'Usuario';
             html += `
                 <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
-                    <p class="font-bold text-white">${escapeHTML(data.email || uid)}</p>
-                    <p class="text-white/50 text-sm">Rol: ${escapeHTML(data.rol || 'sin rol')}</p>
+                    <p class="font-bold text-white">${escapeHTML(nombre)}</p>
+                    <p class="text-white/50 text-sm">${escapeHTML(email)}</p>
+                    <p class="text-white/50 text-xs">Rol: ${escapeHTML(rol)}</p>
                     <p class="text-white/50 text-xs">UID: ${uid.slice(0,12)}...</p>
                 </div>
             `;
         }
-        container.innerHTML = html || '<div class="text-center text-white/50 p-10">No hay usuarios</div>';
+        container.innerHTML = html;
     } catch (error) {
-        container.innerHTML = '<div class="text-center text-white/50 p-10">No hay usuarios registrados</div>';
+        console.error('❌ Error al cargar usuarios:', error);
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar usuarios</div>`;
     }
 }
-
 // ============================================================
 // 📊 REPORTES
 // ============================================================

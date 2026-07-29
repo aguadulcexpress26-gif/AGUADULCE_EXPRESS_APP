@@ -1278,12 +1278,11 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 👥 USUARIOS - CON ELIMINAR Y EDITAR
+// 👥 USUARIOS - LISTAR CON BOTONES ELIMINAR/EDITAR
 // ============================================================
 async function cargarUsuarios() {
     const container = document.getElementById('listaUsuarios');
     try {
-        // Buscar en usuarios_admin
         let usuarios = {};
         try {
             const snap1 = await database.ref('usuarios_admin').once('value');
@@ -1293,7 +1292,6 @@ async function cargarUsuarios() {
             console.log('⚠️ No se pudo leer usuarios_admin:', e.message);
         }
         
-        // Buscar en usuarios_restaurante
         try {
             const snap2 = await database.ref('usuarios_restaurante').once('value');
             const data2 = snap2.val() || {};
@@ -1302,7 +1300,6 @@ async function cargarUsuarios() {
             console.log('⚠️ No se pudo leer usuarios_restaurante:', e.message);
         }
         
-        // Buscar en usuarios (si existe)
         try {
             const snap3 = await database.ref('usuarios').once('value');
             const data3 = snap3.val() || {};
@@ -1371,12 +1368,10 @@ async function eliminarUsuario(uid, email) {
     if (!confirm.isConfirmed) return;
     
     try {
-        // 1. Eliminar de Authentication usando Cloud Function
         const eliminarFunc = firebase.functions().httpsCallable('eliminarUsuario');
         const result = await eliminarFunc({ uid: uid });
         
         if (result.data.success) {
-            // 2. Eliminar de la base de datos
             await database.ref(`usuarios_admin/${uid}`).remove();
             await database.ref(`usuarios_restaurante/${uid}`).remove();
             await database.ref(`repartidores/${uid}`).remove();
@@ -1395,8 +1390,6 @@ async function eliminarUsuario(uid, email) {
         }
     } catch (error) {
         console.error('❌ Error al eliminar usuario:', error);
-        
-        // Si la Cloud Function no existe, intentar eliminar solo de la BD
         if (error.message.includes('not found') || error.message.includes('Function')) {
             await database.ref(`usuarios_admin/${uid}`).remove();
             await database.ref(`usuarios_restaurante/${uid}`).remove();
@@ -1427,7 +1420,6 @@ async function eliminarUsuario(uid, email) {
 // ✏️ EDITAR USUARIO
 // ============================================================
 async function editarUsuario(uid) {
-    // Obtener datos actuales
     let datos = {};
     try {
         const snap = await database.ref(`usuarios_admin/${uid}`).once('value');
@@ -1473,7 +1465,6 @@ async function editarUsuario(uid) {
     
     if (formData) {
         try {
-            // Actualizar en la base de datos
             const updates = {};
             if (formData.nombre) updates.nombre = formData.nombre;
             if (formData.telefono) updates.telefono = formData.telefono;
@@ -1482,7 +1473,6 @@ async function editarUsuario(uid) {
             await database.ref(`usuarios_admin/${uid}`).update(updates);
             await database.ref(`usuarios_restaurante/${uid}`).update(updates);
             
-            // Si el usuario tiene rol, actualizar custom claims
             if (formData.rol) {
                 try {
                     const asignarRol = firebase.functions().httpsCallable('asignarRol');
@@ -1661,7 +1651,7 @@ async function eliminarFondoCabecera(id) {
 }
 
 // ============================================================
-// 🛵 REPARTIDORES
+// 🛵 REPARTIDORES - LISTAR
 // ============================================================
 async function cargarRepartidores() {
     const container = document.getElementById('listaRepartidores');
@@ -1763,12 +1753,10 @@ async function guardarRepartidor() {
     });
     
     try {
-        // Crear usuario directamente en Auth
         const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
         const newUser = userCredential.user;
         console.log('✅ Repartidor creado en Auth:', newUser.uid);
         
-        // Asignar rol
         try {
             const asignarRol = firebase.functions().httpsCallable('asignarRol');
             await asignarRol({ uid: newUser.uid, rol: 'repartidor' });
@@ -1776,7 +1764,6 @@ async function guardarRepartidor() {
             console.warn('⚠️ No se pudo asignar rol:', error);
         }
         
-        // Guardar en la BD
         await database.ref(`repartidores/${newUser.uid}`).set({
             nombre: nombre,
             email: email,
@@ -1804,7 +1791,6 @@ async function guardarRepartidor() {
         
         await cargarRepartidores();
         
-        // Re-autenticar admin
         await firebase.auth().signInWithEmailAndPassword('admin@aguadulce.com', 'admin123');
         localStorage.setItem('admin_logged', 'true');
         
@@ -1819,8 +1805,6 @@ async function guardarRepartidor() {
         
     } catch (error) {
         console.error('❌ Error:', error);
-        
-        // Re-autenticar admin
         try {
             await firebase.auth().signInWithEmailAndPassword('admin@aguadulce.com', 'admin123');
             localStorage.setItem('admin_logged', 'true');
@@ -1835,17 +1819,13 @@ async function guardarRepartidor() {
         });
     }
 }
-}// ============================================================
-// ============================================================
-// 👥 USUARIOS - CREAR USUARIO (CORREGIDO PARA onRequest)
-// ============================================================
+
 // ============================================================
 // 👥 USUARIOS - CREAR USUARIO (VERSIÓN CORREGIDA)
 // ============================================================
 async function guardarUsuario() {
     console.log('📌 guardarUsuario - Iniciando...');
     
-    // 1. VERIFICAR QUE EL ADMIN ESTÉ AUTENTICADO
     const user = firebase.auth().currentUser;
     if (!user) {
         Swal.fire({ 
@@ -1859,7 +1839,6 @@ async function guardarUsuario() {
         return;
     }
     
-    // 2. VERIFICAR QUE SEA ADMIN
     if (user.email !== 'admin@aguadulce.com') {
         Swal.fire({
             title: '⛔ Acceso denegado',
@@ -1871,14 +1850,12 @@ async function guardarUsuario() {
         return;
     }
     
-    // 3. OBTENER DATOS DEL FORMULARIO
     const nombre = document.getElementById('userNombre').value.trim();
     const email = document.getElementById('userEmail').value.trim();
     const password = document.getElementById('userPassword').value.trim();
     const rol = document.getElementById('userRol').value;
     let restauranteId = document.getElementById('userRestaurante').value;
     
-    // 4. VALIDAR DATOS
     if (!email || !password) {
         Swal.fire({ 
             title: 'Error', 
@@ -1901,7 +1878,6 @@ async function guardarUsuario() {
         return;
     }
     
-    // 5. SI ELIGIÓ "CREAR NUEVO RESTAURANTE"
     if (restauranteId === 'nuevo') {
         const { value: nuevoRestaurante } = await Swal.fire({
             title: '🏪 Nuevo Restaurante',
@@ -1930,7 +1906,6 @@ async function guardarUsuario() {
         
         if (!nuevoRestaurante) return;
         
-        // Crear restaurante en la BD
         try {
             await database.ref(`restaurantes/${nuevoRestaurante.pin}`).set({
                 ID_RESTAURANTE: nuevoRestaurante.pin,
@@ -1964,7 +1939,6 @@ async function guardarUsuario() {
         }
     }
     
-    // 6. VALIDAR QUE EL RESTAURANTE EXISTA SI ES ROL RESTAURANTE
     if (rol === 'restaurante' && !restauranteId) {
         Swal.fire({ 
             title: 'Error', 
@@ -1976,7 +1950,6 @@ async function guardarUsuario() {
         return;
     }
     
-    // 7. MOSTRAR LOADING
     Swal.fire({
         title: '⏳ Creando usuario...',
         allowOutsideClick: false,
@@ -1984,13 +1957,10 @@ async function guardarUsuario() {
     });
     
     try {
-        // 8. CREAR USUARIO DIRECTAMENTE EN AUTH (NO USAR CLOUD FUNCTION)
-        // Esto evita el problema de deslogueo
         const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
         const newUser = userCredential.user;
         console.log('✅ Usuario creado en Auth:', newUser.uid);
         
-        // 9. ASIGNAR CUSTOM CLAIMS (ROL) - Necesita Cloud Function
         try {
             const asignarRol = firebase.functions().httpsCallable('asignarRol');
             await asignarRol({ uid: newUser.uid, rol: rol });
@@ -1999,7 +1969,6 @@ async function guardarUsuario() {
             console.warn('⚠️ No se pudo asignar rol:', error);
         }
         
-        // 10. GUARDAR EN LA BASE DE DATOS
         const userData = {
             email: email,
             nombre: nombre || 'Usuario',
@@ -2009,7 +1978,6 @@ async function guardarUsuario() {
             creado_en: Date.now()
         };
         
-        // Guardar según el rol
         if (rol === 'admin') {
             await database.ref(`usuarios_admin/${newUser.uid}`).set(userData);
         } else if (rol === 'restaurante') {
@@ -2024,21 +1992,15 @@ async function guardarUsuario() {
             await database.ref(`usuarios/${newUser.uid}`).set(userData);
         }
         
-        // Guardar en nodo general
         await database.ref(`usuarios/${newUser.uid}`).set(userData);
         
-        // 11. CERRAR MODAL Y LIMPIAR CAMPOS
         cerrarModal('modalUsuario');
         document.getElementById('userNombre').value = '';
         document.getElementById('userEmail').value = '';
         document.getElementById('userPassword').value = '';
         
-        // 12. RECARGAR LISTA DE USUARIOS
         await cargarUsuarios();
         
-        // 13. VOLVER A LOGUEAR AL ADMIN (por si acaso se deslogueó)
-        // NOTA: createUserWithEmailAndPassword cambia el usuario actual
-        // Así que debemos volver a loguear al admin
         await firebase.auth().signInWithEmailAndPassword('admin@aguadulce.com', 'admin123');
         localStorage.setItem('admin_logged', 'true');
         document.getElementById('adminEmailDisplay').textContent = 'admin@aguadulce.com';
@@ -2065,7 +2027,6 @@ async function guardarUsuario() {
             mensajeError = '❌ Error de red. Verifica tu conexión.';
         }
         
-        // Si hubo error, intentar volver a loguear al admin
         try {
             await firebase.auth().signInWithEmailAndPassword('admin@aguadulce.com', 'admin123');
             localStorage.setItem('admin_logged', 'true');
@@ -2082,6 +2043,7 @@ async function guardarUsuario() {
         });
     }
 }
+
 // ============================================================
 // 📊 REPORTES
 // ============================================================

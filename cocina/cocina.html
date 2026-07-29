@@ -195,12 +195,10 @@ async function loginCocina() {
     }
 
     try {
-        // 🔥 AUTENTICAR CON EMAIL Y CONTRASEÑA
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
         console.log('✅ Usuario autenticado:', email, 'UID:', uid);
 
-        // 🔍 VERIFICAR QUE EL USUARIO SEA COCINA O RESTAURANTE
         const token = await userCredential.user.getIdTokenResult();
         const rol = token.claims.rol;
 
@@ -216,7 +214,6 @@ async function loginCocina() {
             return;
         }
 
-        // 🔍 BUSCAR EL RESTAURANTE ASOCIADO (SOLO EN /restaurantes)
         let restauranteId = uid;
         let nombreRestaurante = 'Restaurante';
         let fotoRestaurante = '';
@@ -226,7 +223,6 @@ async function loginCocina() {
             const restaurantes = restSnap.val() || {};
             
             for (const [id, data] of Object.entries(restaurantes)) {
-                // Buscar por uid_restaurante o email
                 if (data.uid_restaurante === uid || data.email === email) {
                     restauranteId = id;
                     nombreRestaurante = data.NOMBRE_RESTAURANTE || data.nombre || id;
@@ -249,7 +245,6 @@ async function loginCocina() {
 
         console.log('✅ Restaurante identificado:', restauranteActual);
 
-        // Mostrar dashboard
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.remove('hidden');
         document.getElementById('restauranteNombre').innerText = nombreRestaurante;
@@ -258,77 +253,28 @@ async function loginCocina() {
             document.getElementById('restauranteFoto').src = fotoRestaurante;
         }
 
-        // Iniciar escucha de pedidos
-        function iniciarEscuchaPedidos() {
-    if (pedidosListener) {
-        try { pedidosListener.off(); } catch(e) {}
-        pedidosListener = null;
+        iniciarEscuchaPedidos();
+
+        Swal.fire({
+            title: '✅ Bienvenido',
+            text: `Cocina de ${nombreRestaurante}`,
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('❌ Error en login:', error);
+        Swal.fire({
+            title: '❌ Error de autenticación',
+            text: error.message || 'Credenciales incorrectas',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
     }
-
-    if (!restauranteActual?.id_restaurante) {
-        console.warn('⚠️ No hay restaurante identificado');
-        return;
-    }
-
-    // Usar el ID del restaurante (ej: 6G4L1V)
-    const restId = restauranteActual.id_restaurante;
-    const uidRest = uidRestaurante;
-
-    console.log('📌 Buscando pedidos con restaurante_id:', restId);
-    console.log('📌 Buscando pedidos con uid_restaurante:', uidRest);
-
-    pedidosListener = database.ref('pedidos').on('value', async (snapshot) => {
-        const todosPedidos = snapshot.val() || {};
-        const pendientes = [];
-        const coccion = [];
-        const listos = [];
-        const historial = [];
-
-        for (const [id, data] of Object.entries(todosPedidos)) {
-            // 🔥 FILTRAR POR AMBOS CAMPOS
-            const coincidePorUid = data.uid_restaurante === uidRest;
-            const coincidePorId = data.restaurante_id === restId;
-            const coincidePorRestaurante = data.restaurante === restId;
-            const coincidePorNombre = data.restaurante_nombre === restauranteActual.nombre;
-            
-            if (!coincidePorUid && !coincidePorId && !coincidePorRestaurante && !coincidePorNombre) continue;
-
-            const estado = (data.estado || '').toUpperCase();
-            
-            if (estado === 'PENDIENTE' || estado === 'RECIBIDO' || estado === 'pendiente') {
-                pendientes.push({ id, ...data });
-            } else if (estado === 'COCCIÓN' || estado === 'EN PROCESO' || estado === 'preparando' || estado === 'aceptado') {
-                coccion.push({ id, ...data });
-            } else if (estado === 'LISTO' || estado === 'listo') {
-                listos.push({ id, ...data });
-            } else if (estado === 'ENTREGADO' || estado === 'CANCELADO_POR_AUSENCIA' || estado === 'RECHAZADO' || estado === 'cancelado') {
-                historial.push({ id, ...data });
-            }
-        }
-
-        console.log('📊 Pedidos encontrados - Pendientes:', pendientes.length, 'Cocción:', coccion.length, 'Listos:', listos.length);
-
-        document.getElementById('totalPendientes').innerText = pendientes.length;
-        document.getElementById('totalCoccion').innerText = coccion.length;
-        document.getElementById('totalListos').innerText = listos.length;
-        document.getElementById('totalHistorial').innerText = historial.length;
-
-        renderizarPendientes(pendientes);
-        renderizarCoccion(coccion);
-        renderizarListos(listos);
-        renderizarHistorial(historial);
-
-        const todosPedidosRestaurante = [...pendientes, ...coccion, ...listos, ...historial];
-        await calcularVentas(todosPedidosRestaurante);
-
-        if (sonidosActivados && pendientes.length > 0) {
-            audioNotif.loop = true;
-            audioNotif.play().catch(e => console.log('Sonido no disponible'));
-        } else {
-            audioNotif.pause();
-            audioNotif.currentTime = 0;
-        }
-    });
 }
 
 function cerrarSesion() {
@@ -380,10 +326,16 @@ function iniciarEscuchaPedidos() {
         pedidosListener = null;
     }
 
-    if (!uidRestaurante) {
+    if (!restauranteActual?.id_restaurante) {
         console.warn('⚠️ No hay restaurante identificado');
         return;
     }
+
+    const restId = restauranteActual.id_restaurante;
+    const uidRest = uidRestaurante;
+
+    console.log('📌 Buscando pedidos con restaurante_id:', restId);
+    console.log('📌 Buscando pedidos con uid_restaurante:', uidRest);
 
     pedidosListener = database.ref('pedidos').on('value', async (snapshot) => {
         const todosPedidos = snapshot.val() || {};
@@ -393,8 +345,12 @@ function iniciarEscuchaPedidos() {
         const historial = [];
 
         for (const [id, data] of Object.entries(todosPedidos)) {
-            // Filtrar por restaurante
-            if (data.uid_restaurante !== uidRestaurante) continue;
+            const coincidePorUid = data.uid_restaurante === uidRest;
+            const coincidePorId = data.restaurante_id === restId;
+            const coincidePorRestaurante = data.restaurante === restId;
+            const coincidePorNombre = data.restaurante_nombre === restauranteActual.nombre;
+            
+            if (!coincidePorUid && !coincidePorId && !coincidePorRestaurante && !coincidePorNombre) continue;
 
             const estado = (data.estado || '').toUpperCase();
             
@@ -409,23 +365,21 @@ function iniciarEscuchaPedidos() {
             }
         }
 
-        // Actualizar contadores
+        console.log('📊 Pedidos encontrados - Pendientes:', pendientes.length, 'Cocción:', coccion.length, 'Listos:', listos.length);
+
         document.getElementById('totalPendientes').innerText = pendientes.length;
         document.getElementById('totalCoccion').innerText = coccion.length;
         document.getElementById('totalListos').innerText = listos.length;
         document.getElementById('totalHistorial').innerText = historial.length;
 
-        // Renderizar
         renderizarPendientes(pendientes);
         renderizarCoccion(coccion);
         renderizarListos(listos);
         renderizarHistorial(historial);
 
-        // Calcular ventas
         const todosPedidosRestaurante = [...pendientes, ...coccion, ...listos, ...historial];
         await calcularVentas(todosPedidosRestaurante);
 
-        // Sonido para nuevos pedidos
         if (sonidosActivados && pendientes.length > 0) {
             audioNotif.loop = true;
             audioNotif.play().catch(e => console.log('Sonido no disponible'));
@@ -906,7 +860,7 @@ document.getElementById('btnActivarSonido')?.addEventListener('click', () => {
 });
 
 // ============================================================
-// 🚀 VERIFICAR SESIÓN AL CARGAR (SIN LEER usuarios_restaurante)
+// 🚀 VERIFICAR SESIÓN AL CARGAR
 // ============================================================
 auth.onAuthStateChanged(async (user) => {
     if (user) {
@@ -944,7 +898,7 @@ auth.onAuthStateChanged(async (user) => {
                     nombre: nombreRestaurante,
                     email: user.email,
                     foto: fotoRestaurante,
-                    id_restaurante: restauranteId  // ← ESTE ES EL VALOR QUE USA LA APP
+                    id_restaurante: restauranteId
                 };
                 
                 console.log('✅ Restaurante identificado:', restauranteActual);
@@ -977,6 +931,7 @@ auth.onAuthStateChanged(async (user) => {
         }
     }
 });
+
 // ============================================================
 // 🔄 ACTUALIZAR TEMPORIZADORES UI
 // ============================================================

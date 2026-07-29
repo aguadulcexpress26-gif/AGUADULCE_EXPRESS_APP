@@ -775,7 +775,7 @@ async function cargarPedidosAdmin() {
 }
 
 // ============================================================
-// 🛵 REPARTIDORES
+// 🛵 REPARTIDORES - LISTAR CON BOTÓN ELIMINAR
 // ============================================================
 async function cargarRepartidores() {
     const container = document.getElementById('listaRepartidores');
@@ -784,29 +784,116 @@ async function cargarRepartidores() {
         const repartidores = snapshot.val() || {};
         
         if (Object.keys(repartidores).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores</div>';
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores registrados</div>';
             return;
         }
         
         let html = '';
         for (const [uid, data] of Object.entries(repartidores)) {
+            const nombre = data.nombre || 'Sin nombre';
+            const email = data.email || 'Sin email';
+            const telefono = data.telefono || 'Sin teléfono';
+            const vehiculo = data.vehiculo || 'Sin vehículo';
+            const entregas = data.pedidos_entregados || 0;
+            const activo = data.activo !== false;
+            
             html += `
                 <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
-                    <p class="font-bold text-white">${escapeHTML(data.nombre || 'Sin nombre')}</p>
-                    <p class="text-white/50 text-sm">${escapeHTML(data.email || '')}</p>
-                    <p class="text-white/50 text-xs">📱 ${escapeHTML(data.telefono || '')}</p>
-                    <p class="text-white/50 text-xs">🚗 ${escapeHTML(data.vehiculo || '')}</p>
-                    <p class="text-white/30 text-xs">UID: ${uid.slice(0,12)}...</p>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-white">${escapeHTML(nombre)}</p>
+                            <p class="text-white/50 text-sm">${escapeHTML(email)}</p>
+                            <p class="text-white/50 text-xs">📱 ${escapeHTML(telefono)}</p>
+                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(vehiculo)}</p>
+                            <p class="text-white/50 text-xs">📦 ${entregas} entregas</p>
+                            <p class="text-white/30 text-xs">UID: ${uid.slice(0,12)}...</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
+                            <button onclick="eliminarRepartidor('${uid}', '${escapeHTML(email)}', '${escapeHTML(nombre)}')" 
+                                    class="btn-eliminar px-3 py-1 rounded-xl text-xs font-bold">
+                                🗑️ Eliminar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             `;
         }
         container.innerHTML = html;
     } catch (error) {
-        console.error('Error cargando repartidores:', error);
-        container.innerHTML = '<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>';
+        console.error('❌ Error al cargar repartidores:', error);
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
     }
 }
-
+    
+// ============================================================
+// 🗑️ ELIMINAR REPARTIDOR
+// ============================================================
+async function eliminarRepartidor(uid, email, nombre) {
+    console.log('📌 eliminarRepartidor - UID:', uid);
+    
+    const confirm = await Swal.fire({
+        title: '⚠️ ¿Eliminar repartidor?',
+        html: `
+            <p>¿Eliminar a <strong>${escapeHTML(nombre || email)}</strong>?</p>
+            <p class="text-red-400 text-sm">⚠️ Esta acción no se puede deshacer</p>
+            <p class="text-white/50 text-xs">Se eliminará el usuario de Authentication y sus datos</p>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: '✅ Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    Swal.fire({
+        title: '⏳ Eliminando...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+    
+    try {
+        // 1. Eliminar de la base de datos
+        await database.ref(`repartidores/${uid}`).remove();
+        await database.ref(`usuarios/${uid}`).remove();
+        
+        // 2. Intentar eliminar de Authentication (Cloud Function)
+        try {
+            const eliminarFunc = firebase.functions().httpsCallable('eliminarUsuario');
+            await eliminarFunc({ uid: uid });
+            console.log('✅ Eliminado de Authentication');
+        } catch (e) {
+            console.warn('⚠️ No se pudo eliminar de Auth:', e.message);
+            // Si la función no existe, solo se elimina de la BD
+        }
+        
+        await cargarRepartidores();
+        await cargarUsuarios();
+        
+        Swal.fire({
+            title: '✅ Repartidor eliminado',
+            text: `El repartidor ${escapeHTML(nombre || email)} ha sido eliminado`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+    } catch (error) {
+        console.error('❌ Error:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message || 'No se pudo eliminar el repartidor',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
 // ============================================================
 // 📢 BANNERS
 // ============================================================

@@ -1823,6 +1823,9 @@ async function guardarRepartidor() {
 // ============================================================
 // 👥 USUARIOS - CREAR USUARIO (VERSIÓN CORREGIDA)
 // ============================================================
+// ============================================================
+// 👥 USUARIOS - CREAR USUARIO (CON REFRESCO DE TOKEN)
+// ============================================================
 async function guardarUsuario() {
     console.log('📌 guardarUsuario - Iniciando...');
     
@@ -1837,6 +1840,14 @@ async function guardarUsuario() {
         });
         logoutAdmin();
         return;
+    }
+    
+    // 🔥 FORZAR REFRESCO DEL TOKEN (¡ESTA ES LA CLAVE!)
+    try {
+        await user.getIdToken(true);
+        console.log('✅ Token refrescado correctamente');
+    } catch (error) {
+        console.warn('⚠️ No se pudo refrescar el token:', error);
     }
     
     if (user.email !== 'admin@aguadulce.com') {
@@ -1878,6 +1889,7 @@ async function guardarUsuario() {
         return;
     }
     
+    // SI ELIGIÓ "CREAR NUEVO RESTAURANTE"
     if (restauranteId === 'nuevo') {
         const { value: nuevoRestaurante } = await Swal.fire({
             title: '🏪 Nuevo Restaurante',
@@ -1957,10 +1969,12 @@ async function guardarUsuario() {
     });
     
     try {
+        // 1. CREAR USUARIO EN AUTH
         const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
         const newUser = userCredential.user;
         console.log('✅ Usuario creado en Auth:', newUser.uid);
         
+        // 2. ASIGNAR ROL (usando Cloud Function)
         try {
             const asignarRol = firebase.functions().httpsCallable('asignarRol');
             await asignarRol({ uid: newUser.uid, rol: rol });
@@ -1969,6 +1983,7 @@ async function guardarUsuario() {
             console.warn('⚠️ No se pudo asignar rol:', error);
         }
         
+        // 3. GUARDAR EN BASE DE DATOS
         const userData = {
             email: email,
             nombre: nombre || 'Usuario',
@@ -1983,6 +1998,14 @@ async function guardarUsuario() {
         } else if (rol === 'restaurante') {
             userData.restauranteId = restauranteId;
             await database.ref(`usuarios_restaurante/${newUser.uid}`).set(userData);
+            
+            if (restauranteId) {
+                await database.ref(`restaurantes/${restauranteId}`).update({
+                    uid_restaurante: newUser.uid,
+                    email_restaurante: email,
+                    usuario_creado: true
+                });
+            }
         } else if (rol === 'repartidor') {
             userData.pedidos_entregados = 0;
             userData.activo = true;
@@ -1994,6 +2017,7 @@ async function guardarUsuario() {
         
         await database.ref(`usuarios/${newUser.uid}`).set(userData);
         
+        // 4. CERRAR MODAL
         cerrarModal('modalUsuario');
         document.getElementById('userNombre').value = '';
         document.getElementById('userEmail').value = '';
@@ -2001,6 +2025,7 @@ async function guardarUsuario() {
         
         await cargarUsuarios();
         
+        // 5. RE-AUTENTICAR ADMIN
         await firebase.auth().signInWithEmailAndPassword('admin@aguadulce.com', 'admin123');
         localStorage.setItem('admin_logged', 'true');
         document.getElementById('adminEmailDisplay').textContent = 'admin@aguadulce.com';
@@ -2015,7 +2040,7 @@ async function guardarUsuario() {
         });
         
     } catch (error) {
-        console.error('❌ Error detallado:', error);
+        console.error('❌ Error:', error);
         
         let mensajeError = error.message || 'Error al crear usuario';
         
@@ -2027,6 +2052,7 @@ async function guardarUsuario() {
             mensajeError = '❌ Error de red. Verifica tu conexión.';
         }
         
+        // Re-autenticar admin en caso de error
         try {
             await firebase.auth().signInWithEmailAndPassword('admin@aguadulce.com', 'admin123');
             localStorage.setItem('admin_logged', 'true');

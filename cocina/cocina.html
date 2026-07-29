@@ -45,6 +45,8 @@
         .login-box input:focus { outline: none; border-color: #06b6d4; }
         .btn-primary { background: #06b6d4; color: #0f172a; font-weight: 700; padding: 12px 24px; border-radius: 60px; border: none; cursor: pointer; width: 100%; transition: all 0.2s; }
         .btn-primary:hover { background: #22d3ee; transform: scale(1.02); }
+        .btn-danger { background: #ef4444; color: white; font-weight: 700; padding: 12px; border-radius: 60px; border: none; cursor: pointer; width: 100%; transition: all 0.2s; }
+        .btn-danger:hover { background: #dc2626; transform: scale(1.02); }
     </style>
 </head>
 <body>
@@ -177,7 +179,7 @@ function getFinSemana() {
 }
 
 // ============================================================
-// 🔐 LOGIN CON EMAIL/CONTRASEÑA
+// 🔐 LOGIN CON EMAIL/CONTRASEÑA (CORREGIDO - NO CIERRA SESIÓN GLOBAL)
 // ============================================================
 async function loginCocina() {
     const email = document.getElementById('cocinaEmail').value.trim();
@@ -202,20 +204,20 @@ async function loginCocina() {
         const token = await userCredential.user.getIdTokenResult();
         const rol = token.claims.rol;
 
-       if (rol !== 'cocina' && rol !== 'restaurante') {
-    Swal.fire({
-        title: '⛔ Acceso denegado',
-        text: 'No tienes permisos para acceder a la cocina. Contacta con el administrador.',
-        icon: 'error',
-        background: '#0f172a',
-        color: 'white'
-    });
-    // ✅ EN LUGAR DE cerrar sesión, SOLO redirige al login de Cocina
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('dashboardPanel').classList.add('hidden');
-    // ❌ ELIMINAR auth.signOut()
-    return;
-}
+        // ✅ VERIFICAR ROL - SOLO REDIRIGE, NO CIERRA SESIÓN
+        if (rol !== 'cocina' && rol !== 'restaurante') {
+            Swal.fire({
+                title: '⛔ Acceso denegado',
+                text: 'No tienes permisos para acceder a la cocina. Contacta con el administrador.',
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+            // ✅ SOLO REDIRIGE AL LOGIN, NO CIERRA SESIÓN
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('dashboardPanel').classList.add('hidden');
+            return;
+        }
 
         let restauranteId = uid;
         let nombreRestaurante = 'Restaurante';
@@ -280,6 +282,9 @@ async function loginCocina() {
     }
 }
 
+// ============================================================
+// 🚪 CERRAR SESIÓN (SOLO LOCAL, NO AFECTA A OTRAS PESTAÑAS)
+// ============================================================
 function cerrarSesion() {
     if (pedidosListener) { 
         try { pedidosListener.off(); } catch(e) {} 
@@ -290,11 +295,10 @@ function cerrarSesion() {
     }
     intervalosTemporizador = {};
     localStorage.removeItem('restaurante_cocina');
-    auth.signOut().then(() => {
-        location.reload();
-    }).catch(() => {
-        location.reload();
-    });
+    // ✅ SOLO REDIRIGE AL LOGIN, NO CIERRA SESIÓN GLOBAL
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('dashboardPanel').classList.add('hidden');
+    // NOTA: No llamamos a auth.signOut() para no afectar a Admin
 }
 
 function cambiarTab(tab) {
@@ -321,7 +325,7 @@ function cambiarTab(tab) {
 }
 
 // ============================================================
-// 📡 ESCUCHA DE PEDIDOS (CORREGIDA)
+// 📡 ESCUCHA DE PEDIDOS
 // ============================================================
 function iniciarEscuchaPedidos() {
     if (pedidosListener) {
@@ -863,7 +867,7 @@ document.getElementById('btnActivarSonido')?.addEventListener('click', () => {
 });
 
 // ============================================================
-// 🚀 VERIFICAR SESIÓN AL CARGAR
+// 🚀 VERIFICAR SESIÓN AL CARGAR (CORREGIDO - NO CIERRA SESIÓN GLOBAL)
 // ============================================================
 auth.onAuthStateChanged(async (user) => {
     if (user) {
@@ -873,65 +877,66 @@ auth.onAuthStateChanged(async (user) => {
             
             console.log('📌 Usuario autenticado:', user.email, 'Rol:', rol);
             
-            if (rol === 'cocina' || rol === 'restaurante') {
-                const uid = user.uid;
-                let nombreRestaurante = 'Restaurante';
-                let fotoRestaurante = '';
-                let restauranteId = uid;
-                
-                try {
-                    const restSnap = await database.ref('restaurantes').once('value');
-                    const restaurantes = restSnap.val() || {};
-                    
-                    for (const [id, data] of Object.entries(restaurantes)) {
-                        if (data.uid_restaurante === uid || data.email === user.email) {
-                            restauranteId = id;
-                            nombreRestaurante = data.NOMBRE_RESTAURANTE || data.nombre || id;
-                            fotoRestaurante = data.FOTO || data.foto || '';
-                            break;
-                        }
-                    }
-                } catch (error) {
-                    console.warn('⚠️ No se pudo obtener el nombre del restaurante:', error);
-                }
-                
-                uidRestaurante = uid;
-                restauranteActual = {
-                    uid: uid,
-                    nombre: nombreRestaurante,
-                    email: user.email,
-                    foto: fotoRestaurante,
-                    id_restaurante: restauranteId
-                };
-                
-                console.log('✅ Restaurante identificado:', restauranteActual);
-                
-                document.getElementById('loginScreen').classList.add('hidden');
-                document.getElementById('dashboardPanel').classList.remove('hidden');
-                document.getElementById('restauranteNombre').innerText = nombreRestaurante;
-                
-                if (fotoRestaurante) {
-                    document.getElementById('restauranteFoto').src = fotoRestaurante;
-                }
-                
-                iniciarEscuchaPedidos();
-                console.log('✅ Sesión restaurada para:', nombreRestaurante);
-            } else {
+            // ✅ SOLO REDIRIGE AL LOGIN, NO CIERRA SESIÓN
+            if (rol !== 'cocina' && rol !== 'restaurante') {
                 console.warn('⚠️ Usuario sin permisos de cocina:', user.email);
-                Swal.fire({
-                    title: '⛔ Acceso denegado',
-                    text: 'No tienes permisos para acceder a la cocina.',
-                    icon: 'error',
-                    background: '#0f172a',
-                    color: 'white'
-                });
-                auth.signOut();
+                document.getElementById('loginScreen').classList.remove('hidden');
+                document.getElementById('dashboardPanel').classList.add('hidden');
+                return;
             }
+            
+            const uid = user.uid;
+            let nombreRestaurante = 'Restaurante';
+            let fotoRestaurante = '';
+            let restauranteId = uid;
+            
+            try {
+                const restSnap = await database.ref('restaurantes').once('value');
+                const restaurantes = restSnap.val() || {};
+                
+                for (const [id, data] of Object.entries(restaurantes)) {
+                    if (data.uid_restaurante === uid || data.email === user.email) {
+                        restauranteId = id;
+                        nombreRestaurante = data.NOMBRE_RESTAURANTE || data.nombre || id;
+                        fotoRestaurante = data.FOTO || data.foto || '';
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ No se pudo obtener el nombre del restaurante:', error);
+            }
+            
+            uidRestaurante = uid;
+            restauranteActual = {
+                uid: uid,
+                nombre: nombreRestaurante,
+                email: user.email,
+                foto: fotoRestaurante,
+                id_restaurante: restauranteId
+            };
+            
+            console.log('✅ Restaurante identificado:', restauranteActual);
+            
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardPanel').classList.remove('hidden');
+            document.getElementById('restauranteNombre').innerText = nombreRestaurante;
+            
+            if (fotoRestaurante) {
+                document.getElementById('restauranteFoto').src = fotoRestaurante;
+            }
+            
+            iniciarEscuchaPedidos();
+            console.log('✅ Sesión restaurada para:', nombreRestaurante);
+            
         } catch (error) {
             console.error('❌ Error restaurando sesión:', error);
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('dashboardPanel').classList.add('hidden');
         }
+    } else {
+        console.log('📌 No hay usuario autenticado');
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('dashboardPanel').classList.add('hidden');
     }
 });
 

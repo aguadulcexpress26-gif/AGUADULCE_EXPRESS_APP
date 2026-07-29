@@ -42,6 +42,10 @@
         .swal2-input:focus, .swal2-textarea:focus { border-color: #f59e0b !important; }
         .swal2-popup { border-radius: 16px !important; }
         .user-email-display { font-size: 12px; color: #94a3b8; padding: 4px 12px; background: #1e293b; border-radius: 20px; border: 1px solid #334155; }
+        .btn-eliminar { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+        .btn-eliminar:hover { background: rgba(239,68,68,0.4); }
+        .btn-editar { background: rgba(6,182,212,0.2); color: #06b6d4; border: 1px solid rgba(6,182,212,0.3); }
+        .btn-editar:hover { background: rgba(6,182,212,0.4); }
     </style>
 </head>
 <body class="bg-slate-900 text-white">
@@ -755,17 +759,14 @@ function actualizarSelectsRestaurantes() {
             optionsHtmlConNuevo += `<option value="${id}">${escapeHTML(nombre)}</option>`;
         }
         
-        // Agregar opción "Crear nuevo" solo para el modal de usuarios
         optionsHtmlConNuevo += `<option value="nuevo">➕ Crear nuevo restaurante</option>`;
         
-        // Selectores que solo muestran restaurantes existentes
         const selects = ['horarioRestauranteSelect', 'menuRestauranteSelect', 'prodRestaurante', 'filtroRestaurantePedido'];
         selects.forEach(id => { 
             const select = document.getElementById(id); 
             if (select) select.innerHTML = optionsHtml; 
         });
         
-        // Selector de usuarios (con opción "Crear nuevo")
         const userSelect = document.getElementById('userRestaurante');
         if (userSelect) userSelect.innerHTML = optionsHtmlConNuevo;
     });
@@ -1000,7 +1001,6 @@ async function cargarPedidosAdmin() {
     }
     
     try {
-        // 🔥 El admin lee pedidos usando las mismas reglas
         const snapshot = await database.ref('pedidos').once('value');
         const pedidos = snapshot.val() || {};
         
@@ -1055,8 +1055,8 @@ async function cargarPedidosAdmin() {
             
             const total = data.total || 0;
             const items = data.items || [];
-            const cliente = data.cliente_nombre || data.cliente || 'Cliente anónimo';
-            const direccion = data.direccion || 'Sin dirección';
+            const cliente = data.uid_cliente || 'Cliente anónimo';
+            const direccion = data.direccion_entrega || 'Sin dirección';
             
             html += `
                 <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
@@ -1113,6 +1113,7 @@ async function cargarPedidosAdmin() {
         container.innerHTML = `<div class="text-center text-red-400 p-10">⚠️ Error al cargar pedidos: ${error.message}</div>`;
     }
 }
+
 async function actualizarPedidoAdmin(pedidoId, nuevoEstado) {
     try {
         await database.ref(`pedidos/${pedidoId}/estado`).set(nuevoEstado);
@@ -1174,15 +1175,13 @@ async function cancelarPedidoAdmin(pedidoId) {
 }
 
 async function asignarRepartidorPedido(pedidoId) {
-    // Obtener lista de repartidores activos
     const snapshot = await database.ref('repartidores').once('value');
     const repartidores = snapshot.val() || {};
     
     let optionsHtml = '';
     for (const [uid, data] of Object.entries(repartidores)) {
         if (data.activo !== false) {
-            const nombre = data.nombre || uid;
-            optionsHtml += `<option value="${uid}">${escapeHTML(nombre)} (${escapeHTML(data.email || '')})</option>`;
+            optionsHtml += `<option value="${uid}">${escapeHTML(data.nombre || uid)}</option>`;
         }
     }
     
@@ -1217,20 +1216,12 @@ async function asignarRepartidorPedido(pedidoId) {
     
     if (repartidorUid) {
         try {
-            // ✅ OBTENER EL NOMBRE DEL REPARTIDOR PARA MOSTRAR
-            const repartidorSnap = await database.ref(`repartidores/${repartidorUid}/nombre`).once('value');
-            const nombreRepartidor = repartidorSnap.val() || 'Repartidor';
-            
-            // 🔥 ACTUALIZAR EL PEDIDO CON EL UID Y EL NOMBRE DEL REPARTIDOR
             await database.ref(`pedidos/${pedidoId}`).update({
-                uid_repartidor: repartidorUid,           // ← CLAVE: guardar el UID
-                repartidor_asignado: nombreRepartidor,    // ← Para mostrar en la app
-                estado: 'en_camino'                       // ← Cambiar estado
+                uid_repartidor: repartidorUid,
+                estado: 'en_camino'
             });
-            
             Swal.fire({
                 title: '✅ Repartidor asignado',
-                text: `Pedido asignado a ${nombreRepartidor}`,
                 icon: 'success',
                 timer: 1500,
                 showConfirmButton: false,
@@ -1239,7 +1230,6 @@ async function asignarRepartidorPedido(pedidoId) {
             });
             cargarPedidosAdmin();
         } catch (error) {
-            console.error('❌ Error al asignar repartidor:', error);
             Swal.fire({
                 title: '❌ Error',
                 text: error.message,
@@ -1288,157 +1278,64 @@ async function borrarTodosPedidos() {
 }
 
 // ============================================================
-// 🛵 REPARTIDORES - FUNCIÓN CORREGIDA
+// 👥 USUARIOS - CON ELIMINAR Y EDITAR
 // ============================================================
-async function guardarRepartidor() {
-    console.log('📌 guardarRepartidor - Iniciando...');
-    
-    const user = firebase.auth().currentUser;
-    if (!user) {
-        Swal.fire({ title: '⚠️ Sesión expirada', text: 'Debes iniciar sesión nuevamente', icon: 'warning', background: '#0f172a', color: 'white' });
-        logoutAdmin();
-        return;
-    }
-    
-    const nombre = document.getElementById('repNombre').value.trim();
-    const telefono = document.getElementById('repTelefono').value.trim();
-    const vehiculo = document.getElementById('repVehiculo').value.trim();
-    const password = document.getElementById('repPassword').value.trim() || '123456';
-    
-    if (!nombre) {
-        Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    const email = `repartidor_${Date.now()}@aguadulce.com`;
-    
-    Swal.fire({
-        title: '⏳ Creando repartidor...',
-        allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); }
-    });
-    
+async function cargarUsuarios() {
+    const container = document.getElementById('listaUsuarios');
     try {
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
-        const result = await crearUsuario({
-            email: email,
-            password: password,
-            rol: 'repartidor',
-            nombre: nombre,
-            restauranteId: '',
-            telefono: telefono,
-            vehiculo: vehiculo
-        });
-        
-        console.log('📌 Resultado de crearUsuarioAdmin:', result);
-        
-        if (result.data && result.data.success) {
-            // ✅ OBTENER EL UID DEL REPARTIDOR CREADO
-            const uid = result.data.uid;
-            
-            // ✅ VERIFICAR QUE EL NODO /repartidores/{uid} EXISTA
-            // Si la Cloud Function ya lo creó, solo actualizamos; si no, lo creamos
-            const repartidorSnap = await database.ref(`repartidores/${uid}`).once('value');
-            if (!repartidorSnap.exists()) {
-                // Si no existe, lo creamos con los datos
-                await database.ref(`repartidores/${uid}`).set({
-                    nombre: nombre,
-                    email: email,
-                    telefono: telefono || '',
-                    vehiculo: vehiculo || '',
-                    pedidos_entregados: 0,
-                    activo: true,
-                    creado_en: Date.now()
-                });
-                console.log('✅ Nodo repartidor creado en BD');
-            } else {
-                // Si ya existe, actualizamos los datos importantes
-                await database.ref(`repartidores/${uid}`).update({
-                    nombre: nombre,
-                    telefono: telefono || '',
-                    vehiculo: vehiculo || '',
-                    activo: true
-                });
-                console.log('✅ Nodo repartidor actualizado en BD');
-            }
-            
-            cerrarModal('modalRepartidor');
-            document.getElementById('repNombre').value = '';
-            document.getElementById('repTelefono').value = '';
-            document.getElementById('repVehiculo').value = '';
-            document.getElementById('repPassword').value = '';
-            await cargarRepartidores();
-            
-            Swal.fire({
-                title: '✅ Repartidor creado',
-                text: `Email: ${email}\nContraseña: ${password}\nUID: ${uid}`,
-                icon: 'success',
-                timer: 4000,
-                background: '#0f172a',
-                color: 'white'
-            });
-        } else {
-            throw new Error(result.data?.message || 'Error al crear repartidor');
-        }
-    } catch (error) {
-        console.error('❌ Error detallado:', error);
-        
-        let mensajeError = error.message || 'Error al crear repartidor';
-        
-        if (error.message.includes('permission-denied')) {
-            mensajeError = 'No tienes permisos para crear repartidores. Asegúrate de estar logueado como admin.';
-        } else if (error.message.includes('unauthenticated')) {
-            mensajeError = 'Debes iniciar sesión como admin para crear repartidores.';
-        } else if (error.message.includes('email-already-exists')) {
-            mensajeError = 'El email generado ya existe. Intenta de nuevo.';
+        // Buscar en usuarios_admin
+        let usuarios = {};
+        try {
+            const snap1 = await database.ref('usuarios_admin').once('value');
+            const data1 = snap1.val() || {};
+            usuarios = { ...usuarios, ...data1 };
+        } catch (e) {
+            console.log('⚠️ No se pudo leer usuarios_admin:', e.message);
         }
         
-        Swal.fire({
-            title: '❌ Error',
-            text: mensajeError,
-            icon: 'error',
-            background: '#0f172a',
-            color: 'white'
-        });
-    }
-}
-
-async function cargarRepartidores() {
-    const container = document.getElementById('listaRepartidores');
-    try {
-        // 🔥 El admin lee repartidores usando las mismas reglas
-        // Pero como las reglas actuales no permiten leer /repartidores directamente,
-        // vamos a usar una consulta con el UID del admin (si es admin, debería poder leer)
-        const snapshot = await database.ref('repartidores').once('value');
-        const repartidores = snapshot.val() || {};
+        // Buscar en usuarios_restaurante
+        try {
+            const snap2 = await database.ref('usuarios_restaurante').once('value');
+            const data2 = snap2.val() || {};
+            usuarios = { ...usuarios, ...data2 };
+        } catch (e) {
+            console.log('⚠️ No se pudo leer usuarios_restaurante:', e.message);
+        }
         
-        if (Object.keys(repartidores).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores registrados</div>';
-            return;
+        // Buscar en usuarios (si existe)
+        try {
+            const snap3 = await database.ref('usuarios').once('value');
+            const data3 = snap3.val() || {};
+            usuarios = { ...usuarios, ...data3 };
+        } catch (e) {
+            console.log('⚠️ No se pudo leer usuarios:', e.message);
         }
         
         let html = '';
-        for (const [uid, data] of Object.entries(repartidores)) {
-            const nombre = data.nombre || 'Sin nombre';
-            const email = data.email || 'Sin email';
-            const telefono = data.telefono || 'Sin teléfono';
-            const vehiculo = data.vehiculo || 'Sin vehículo';
-            const entregas = data.pedidos_entregados || 0;
-            const activo = data.activo !== false;
+        if (Object.keys(usuarios).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay usuarios registrados</div>';
+            return;
+        }
+        
+        for (const [uid, data] of Object.entries(usuarios)) {
+            const email = data.email || uid;
+            const rol = data.rol || 'sin rol';
+            const nombre = data.nombre || data.NOMBRE_RESTAURANTE || 'Usuario';
+            const telefono = data.telefono || '';
             
             html += `
                 <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
                     <div class="flex justify-between items-start">
-                        <div>
+                        <div class="flex-1">
                             <p class="font-bold text-white">${escapeHTML(nombre)}</p>
                             <p class="text-white/50 text-sm">${escapeHTML(email)}</p>
-                            <p class="text-white/50 text-xs">📱 ${escapeHTML(telefono)}</p>
-                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(vehiculo)}</p>
-                            <p class="text-white/50 text-xs">📦 ${entregas} entregas</p>
+                            <p class="text-white/50 text-xs">Rol: <span class="text-cyan-400">${escapeHTML(rol)}</span></p>
+                            ${telefono ? `<p class="text-white/50 text-xs">📱 ${escapeHTML(telefono)}</p>` : ''}
                             <p class="text-white/30 text-xs">UID: ${uid.slice(0,12)}...</p>
                         </div>
-                        <div>
-                            <span class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
+                        <div class="flex gap-2">
+                            <button onclick="editarUsuario('${uid}')" class="btn-editar px-3 py-1 rounded-xl text-xs font-bold">✏️ Editar</button>
+                            <button onclick="eliminarUsuario('${uid}', '${escapeHTML(email)}')" class="btn-eliminar px-3 py-1 rounded-xl text-xs font-bold">🗑️ Eliminar</button>
                         </div>
                     </div>
                 </div>
@@ -1446,144 +1343,177 @@ async function cargarRepartidores() {
         }
         container.innerHTML = html;
     } catch (error) {
-        console.error('❌ Error al cargar repartidores:', error);
-        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
+        console.error('❌ Error al cargar usuarios:', error);
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar usuarios</div>`;
     }
 }
+
 // ============================================================
-// 👥 USUARIOS - FUNCIÓN COMPLETA CON CREAR RESTAURANTE
+// 🗑️ ELIMINAR USUARIO
 // ============================================================
-async function guardarUsuario() {
-    console.log('📌 guardarUsuario - Iniciando...');
-    
-    const user = firebase.auth().currentUser;
-    if (!user) {
-        Swal.fire({ title: '⚠️ Sesión expirada', text: 'Debes iniciar sesión nuevamente', icon: 'warning', background: '#0f172a', color: 'white' });
-        logoutAdmin();
-        return;
-    }
-    
-    const nombre = document.getElementById('userNombre').value.trim();
-    const email = document.getElementById('userEmail').value.trim();
-    const password = document.getElementById('userPassword').value.trim();
-    const rol = document.getElementById('userRol').value;
-    let restauranteId = document.getElementById('userRestaurante').value;
-    
-    if (!email || !password) {
-        Swal.fire({ title: 'Error', text: 'Email y contraseña son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    // Si el usuario eligió "Crear nuevo restaurante"
-    if (restauranteId === 'nuevo') {
-        const { value: nuevoRestaurante } = await Swal.fire({
-            title: '🏪 Nuevo Restaurante',
-            html: `
-                <input id="nuevoRestNombre" class="swal2-input" placeholder="Nombre del restaurante *">
-                <input id="nuevoRestPIN" class="swal2-input" placeholder="PIN (ej: AB10DE) *">
-                <input id="nuevoRestDireccion" class="swal2-input" placeholder="Dirección">
-                <input id="nuevoRestTelefono" class="swal2-input" placeholder="Teléfono">
-            `,
-            focusConfirm: false,
-            showCancelButton: true,
-            confirmButtonText: '✅ Crear Restaurante',
-            cancelButtonText: 'Cancelar',
-            background: '#0f172a',
-            color: 'white',
-            preConfirm: () => {
-                const nombreRest = document.getElementById('nuevoRestNombre').value.trim();
-                const pin = document.getElementById('nuevoRestPIN').value.toUpperCase().trim();
-                const direccion = document.getElementById('nuevoRestDireccion').value.trim();
-                const telefono = document.getElementById('nuevoRestTelefono').value.trim();
-                if (!nombreRest || !pin) {
-                    Swal.showValidationMessage('Nombre y PIN son obligatorios');
-                    return false;
-                }
-                return { nombre: nombreRest, pin: pin, direccion, telefono };
-            }
-        });
-        
-        if (!nuevoRestaurante) return;
-        
-        // Crear el restaurante en la base de datos
-        const { pin, nombre: nombreRest, direccion, telefono } = nuevoRestaurante;
-        await database.ref(`restaurantes/${pin}`).set({
-            ID_RESTAURANTE: pin,
-            NOMBRE_RESTAURANTE: nombreRest,
-            nombre: nombreRest,
-            id_restaurante: pin,
-            direccion: direccion || '',
-            telefono: telefono || '',
-            activo: true,
-            comision: 10,
-            creado_en: Date.now()
-        });
-        
-        restauranteId = pin;
-        
-        Swal.fire({
-            title: '✅ Restaurante creado',
-            text: `Restaurante "${nombreRest}" creado con PIN ${pin}`,
-            icon: 'success',
-            timer: 2000,
-            showConfirmButton: false,
-            background: '#0f172a',
-            color: 'white'
-        });
-    }
-    
-    if (rol === 'restaurante' && !restauranteId) {
-        Swal.fire({ title: 'Error', text: 'Debes seleccionar un restaurante', icon: 'error', background: '#0f172a', color: 'white' });
-        return;
-    }
-    
-    Swal.fire({
-        title: '⏳ Creando usuario...',
-        allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); }
+async function eliminarUsuario(uid, email) {
+    const confirm = await Swal.fire({
+        title: '⚠️ ¿Eliminar usuario?',
+        html: `
+            <p>¿Estás seguro de eliminar al usuario <strong>${escapeHTML(email)}</strong>?</p>
+            <p class="text-red-400 text-sm mt-2">⚠️ Esta acción no se puede deshacer.</p>
+            <p class="text-white/50 text-xs mt-2">Se eliminará el usuario de Authentication y sus datos en la base de datos.</p>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: '✅ Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white'
     });
     
+    if (!confirm.isConfirmed) return;
+    
     try {
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
-        const result = await crearUsuario({
-            email: email,
-            password: password,
-            rol: rol,
-            nombre: nombre || 'Usuario',
-            restauranteId: restauranteId || '',
-            telefono: '',
-            vehiculo: ''
-        });
+        // 1. Eliminar de Authentication usando Cloud Function
+        const eliminarFunc = firebase.functions().httpsCallable('eliminarUsuario');
+        const result = await eliminarFunc({ uid: uid });
         
-        if (result.data && result.data.success) {
-            cerrarModal('modalUsuario');
-            document.getElementById('userNombre').value = '';
-            document.getElementById('userEmail').value = '';
-            document.getElementById('userPassword').value = '';
+        if (result.data.success) {
+            // 2. Eliminar de la base de datos
+            await database.ref(`usuarios_admin/${uid}`).remove();
+            await database.ref(`usuarios_restaurante/${uid}`).remove();
+            await database.ref(`repartidores/${uid}`).remove();
+            await database.ref(`clientes/${uid}`).remove();
+            
             await cargarUsuarios();
             Swal.fire({
-                title: '✅ Usuario creado',
-                text: `${email} ahora es ${rol}`,
+                title: '✅ Usuario eliminado',
+                text: `El usuario ${escapeHTML(email)} ha sido eliminado correctamente.`,
                 icon: 'success',
+                timer: 2000,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error al eliminar usuario:', error);
+        
+        // Si la Cloud Function no existe, intentar eliminar solo de la BD
+        if (error.message.includes('not found') || error.message.includes('Function')) {
+            await database.ref(`usuarios_admin/${uid}`).remove();
+            await database.ref(`usuarios_restaurante/${uid}`).remove();
+            await database.ref(`repartidores/${uid}`).remove();
+            await database.ref(`clientes/${uid}`).remove();
+            await cargarUsuarios();
+            Swal.fire({
+                title: '⚠️ Usuario eliminado de la BD',
+                text: `El usuario ${escapeHTML(email)} ha sido eliminado de la base de datos, pero no de Authentication.`,
+                icon: 'warning',
                 timer: 3000,
-                showConfirmButton: true,
                 background: '#0f172a',
                 color: 'white'
             });
         } else {
-            throw new Error(result.data?.message || 'Error al crear usuario');
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
         }
-    } catch (error) {
-        console.error('❌ Error detallado:', error);
-        Swal.fire({
-            title: '❌ Error',
-            text: error.message || 'Error al crear usuario',
-            icon: 'error',
-            background: '#0f172a',
-            color: 'white'
-        });
     }
 }
+
+// ============================================================
+// ✏️ EDITAR USUARIO
+// ============================================================
+async function editarUsuario(uid) {
+    // Obtener datos actuales
+    let datos = {};
+    try {
+        const snap = await database.ref(`usuarios_admin/${uid}`).once('value');
+        if (snap.exists()) datos = snap.val();
+    } catch (e) {}
+    
+    if (!datos || Object.keys(datos).length === 0) {
+        try {
+            const snap = await database.ref(`usuarios_restaurante/${uid}`).once('value');
+            if (snap.exists()) datos = snap.val();
+        } catch (e) {}
+    }
+    
+    const { value: formData } = await Swal.fire({
+        title: `✏️ Editar usuario`,
+        html: `
+            <input id="editNombre" class="swal2-input" placeholder="Nombre" value="${datos.nombre || datos.NOMBRE_RESTAURANTE || ''}">
+            <input id="editEmail" class="swal2-input" placeholder="Email" value="${datos.email || ''}">
+            <input id="editTelefono" class="swal2-input" placeholder="Teléfono" value="${datos.telefono || ''}">
+            <select id="editRol" class="swal2-select">
+                <option value="admin" ${datos.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+                <option value="restaurante" ${datos.rol === 'restaurante' ? 'selected' : ''}>Restaurante</option>
+                <option value="cocina" ${datos.rol === 'cocina' ? 'selected' : ''}>Cocina</option>
+                <option value="repartidor" ${datos.rol === 'repartidor' ? 'selected' : ''}>Repartidor</option>
+            </select>
+            <div class="mt-2 text-left text-xs text-white/50">📌 UID: ${uid}</div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '✅ Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('editNombre').value,
+                email: document.getElementById('editEmail').value,
+                telefono: document.getElementById('editTelefono').value,
+                rol: document.getElementById('editRol').value
+            };
+        }
+    });
+    
+    if (formData) {
+        try {
+            // Actualizar en la base de datos
+            const updates = {};
+            if (formData.nombre) updates.nombre = formData.nombre;
+            if (formData.telefono) updates.telefono = formData.telefono;
+            if (formData.rol) updates.rol = formData.rol;
+            
+            await database.ref(`usuarios_admin/${uid}`).update(updates);
+            await database.ref(`usuarios_restaurante/${uid}`).update(updates);
+            
+            // Si el usuario tiene rol, actualizar custom claims
+            if (formData.rol) {
+                try {
+                    const asignarRol = firebase.functions().httpsCallable('asignarRol');
+                    await asignarRol({ uid: uid, rol: formData.rol });
+                } catch (e) {
+                    console.warn('⚠️ No se pudo asignar rol en Authentication:', e);
+                }
+            }
+            
+            await cargarUsuarios();
+            Swal.fire({
+                title: '✅ Usuario actualizado',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+        } catch (error) {
+            console.error('❌ Error al actualizar usuario:', error);
+            Swal.fire({
+                title: '❌ Error',
+                text: error.message,
+                icon: 'error',
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+    }
+}
+
 // ============================================================
 // 📢 BANNERS
 // ============================================================
@@ -1731,66 +1661,246 @@ async function eliminarFondoCabecera(id) {
 }
 
 // ============================================================
-// 👥 USUARIOS - LISTAR
+// 🛵 REPARTIDORES
 // ============================================================
-async function cargarUsuarios() {
-    const container = document.getElementById('listaUsuarios');
+async function cargarRepartidores() {
+    const container = document.getElementById('listaRepartidores');
     try {
-        // 🔥 BUSCAR EN AMBOS LUGARES: /usuarios_admin Y /usuarios
-        let usuarios = {};
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
         
-        // Intentar leer de usuarios_admin
-        try {
-            const snap1 = await database.ref('usuarios_admin').once('value');
-            const data1 = snap1.val() || {};
-            usuarios = { ...usuarios, ...data1 };
-        } catch (e) {
-            console.log('⚠️ No se pudo leer usuarios_admin:', e.message);
-        }
-        
-        // Intentar leer de usuarios (si existe)
-        try {
-            const snap2 = await database.ref('usuarios').once('value');
-            const data2 = snap2.val() || {};
-            usuarios = { ...usuarios, ...data2 };
-        } catch (e) {
-            console.log('⚠️ No se pudo leer usuarios:', e.message);
-        }
-        
-        // También buscar en usuarios_restaurante (para ver los restaurantes)
-        try {
-            const snap3 = await database.ref('usuarios_restaurante').once('value');
-            const data3 = snap3.val() || {};
-            usuarios = { ...usuarios, ...data3 };
-        } catch (e) {
-            console.log('⚠️ No se pudo leer usuarios_restaurante:', e.message);
-        }
-        
-        let html = '';
-        if (Object.keys(usuarios).length === 0) {
-            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay usuarios registrados</div>';
+        if (Object.keys(repartidores).length === 0) {
+            container.innerHTML = '<div class="text-center text-white/50 p-10">No hay repartidores registrados</div>';
             return;
         }
         
-        for (const [uid, data] of Object.entries(usuarios)) {
-            const email = data.email || uid;
-            const rol = data.rol || 'sin rol';
-            const nombre = data.nombre || data.NOMBRE_RESTAURANTE || 'Usuario';
+        let html = '';
+        for (const [uid, data] of Object.entries(repartidores)) {
+            const nombre = data.nombre || 'Sin nombre';
+            const email = data.email || 'Sin email';
+            const telefono = data.telefono || 'Sin teléfono';
+            const vehiculo = data.vehiculo || 'Sin vehículo';
+            const entregas = data.pedidos_entregados || 0;
+            const activo = data.activo !== false;
+            
             html += `
                 <div class="bg-slate-800 rounded-2xl p-4 border border-white/10">
-                    <p class="font-bold text-white">${escapeHTML(nombre)}</p>
-                    <p class="text-white/50 text-sm">${escapeHTML(email)}</p>
-                    <p class="text-white/50 text-xs">Rol: ${escapeHTML(rol)}</p>
-                    <p class="text-white/50 text-xs">UID: ${uid.slice(0,12)}...</p>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-white">${escapeHTML(nombre)}</p>
+                            <p class="text-white/50 text-sm">${escapeHTML(email)}</p>
+                            <p class="text-white/50 text-xs">📱 ${escapeHTML(telefono)}</p>
+                            <p class="text-white/50 text-xs">🚗 ${escapeHTML(vehiculo)}</p>
+                            <p class="text-white/50 text-xs">📦 ${entregas} entregas</p>
+                            <p class="text-white/30 text-xs">UID: ${uid.slice(0,12)}...</p>
+                        </div>
+                        <div>
+                            <span class="${activo ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} px-2 py-1 rounded text-xs">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
+                        </div>
+                    </div>
                 </div>
             `;
         }
         container.innerHTML = html;
     } catch (error) {
-        console.error('❌ Error al cargar usuarios:', error);
-        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar usuarios</div>`;
+        console.error('❌ Error al cargar repartidores:', error);
+        container.innerHTML = `<div class="text-center text-red-400 p-10">Error al cargar repartidores</div>`;
     }
 }
+
+async function guardarRepartidor() {
+    const nombre = document.getElementById('repNombre').value.trim();
+    const telefono = document.getElementById('repTelefono').value.trim();
+    const vehiculo = document.getElementById('repVehiculo').value.trim();
+    const password = document.getElementById('repPassword').value.trim() || '123456';
+    
+    if (!nombre) {
+        Swal.fire({ title: 'Error', text: 'El nombre es obligatorio', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    const email = `repartidor_${Date.now()}@aguadulce.com`;
+    
+    Swal.fire({
+        title: '⏳ Creando repartidor...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+    
+    try {
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const result = await crearUsuario({
+            email: email,
+            password: password,
+            rol: 'repartidor',
+            nombre: nombre,
+            restauranteId: '',
+            telefono: telefono,
+            vehiculo: vehiculo
+        });
+        
+        if (result.data && result.data.success) {
+            cerrarModal('modalRepartidor');
+            document.getElementById('repNombre').value = '';
+            document.getElementById('repTelefono').value = '';
+            document.getElementById('repVehiculo').value = '';
+            document.getElementById('repPassword').value = '';
+            await cargarRepartidores();
+            Swal.fire({
+                title: '✅ Repartidor creado',
+                text: `Email: ${email}\nContraseña: ${password}`,
+                icon: 'success',
+                timer: 4000,
+                background: '#0f172a',
+                color: 'white'
+            });
+        } else {
+            throw new Error(result.data?.message || 'Error al crear repartidor');
+        }
+    } catch (error) {
+        console.error('❌ Error:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message || 'Error al crear repartidor',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
+
+// ============================================================
+// 👥 USUARIOS - CREAR USUARIO (CORREGIDO)
+// ============================================================
+async function guardarUsuario() {
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        Swal.fire({ title: '⚠️ Sesión expirada', text: 'Debes iniciar sesión nuevamente', icon: 'warning', background: '#0f172a', color: 'white' });
+        logoutAdmin();
+        return;
+    }
+    
+    const nombre = document.getElementById('userNombre').value.trim();
+    const email = document.getElementById('userEmail').value.trim();
+    const password = document.getElementById('userPassword').value.trim();
+    const rol = document.getElementById('userRol').value;
+    let restauranteId = document.getElementById('userRestaurante').value;
+    
+    if (!email || !password) {
+        Swal.fire({ title: 'Error', text: 'Email y contraseña son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    // Si el usuario eligió "Crear nuevo restaurante"
+    if (restauranteId === 'nuevo') {
+        const { value: nuevoRestaurante } = await Swal.fire({
+            title: '🏪 Nuevo Restaurante',
+            html: `
+                <input id="nuevoRestNombre" class="swal2-input" placeholder="Nombre del restaurante *">
+                <input id="nuevoRestPIN" class="swal2-input" placeholder="PIN (ej: AB10DE) *">
+                <input id="nuevoRestDireccion" class="swal2-input" placeholder="Dirección">
+                <input id="nuevoRestTelefono" class="swal2-input" placeholder="Teléfono">
+            `,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: '✅ Crear Restaurante',
+            cancelButtonText: 'Cancelar',
+            background: '#0f172a',
+            color: 'white',
+            preConfirm: () => {
+                const nombreRest = document.getElementById('nuevoRestNombre').value.trim();
+                const pin = document.getElementById('nuevoRestPIN').value.toUpperCase().trim();
+                const direccion = document.getElementById('nuevoRestDireccion').value.trim();
+                const telefono = document.getElementById('nuevoRestTelefono').value.trim();
+                if (!nombreRest || !pin) {
+                    Swal.showValidationMessage('Nombre y PIN son obligatorios');
+                    return false;
+                }
+                return { nombre: nombreRest, pin: pin, direccion, telefono };
+            }
+        });
+        
+        if (!nuevoRestaurante) return;
+        
+        const { pin, nombre: nombreRest, direccion, telefono } = nuevoRestaurante;
+        await database.ref(`restaurantes/${pin}`).set({
+            ID_RESTAURANTE: pin,
+            NOMBRE_RESTAURANTE: nombreRest,
+            nombre: nombreRest,
+            id_restaurante: pin,
+            direccion: direccion || '',
+            telefono: telefono || '',
+            activo: true,
+            comision: 10,
+            creado_en: Date.now()
+        });
+        
+        restauranteId = pin;
+        
+        Swal.fire({
+            title: '✅ Restaurante creado',
+            text: `Restaurante "${nombreRest}" creado con PIN ${pin}`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+    
+    if (rol === 'restaurante' && !restauranteId) {
+        Swal.fire({ title: 'Error', text: 'Debes seleccionar un restaurante', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    Swal.fire({
+        title: '⏳ Creando usuario...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+    
+    try {
+        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
+        const result = await crearUsuario({
+            email: email,
+            password: password,
+            rol: rol,
+            nombre: nombre || 'Usuario',
+            restauranteId: restauranteId || '',
+            telefono: '',
+            vehiculo: ''
+        });
+        
+        if (result.data && result.data.success) {
+            cerrarModal('modalUsuario');
+            document.getElementById('userNombre').value = '';
+            document.getElementById('userEmail').value = '';
+            document.getElementById('userPassword').value = '';
+            await cargarUsuarios();
+            Swal.fire({
+                title: '✅ Usuario creado',
+                text: `${email} ahora es ${rol}`,
+                icon: 'success',
+                timer: 3000,
+                showConfirmButton: true,
+                background: '#0f172a',
+                color: 'white'
+            });
+        } else {
+            throw new Error(result.data?.message || 'Error al crear usuario');
+        }
+    } catch (error) {
+        console.error('❌ Error detallado:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message || 'Error al crear usuario',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+}
+
 // ============================================================
 // 📊 REPORTES
 // ============================================================

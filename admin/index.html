@@ -531,15 +531,63 @@ function logoutAdmin() {
         });
 }
 
-// Verificar sesión al cargar
-auth.onAuthStateChanged((user) => {
-    if (user && user.email === 'admin@aguadulce.com' && localStorage.getItem('admin_logged') === 'true') {
-        document.getElementById('loginScreen').classList.add('hidden');
-        document.getElementById('adminPanel').classList.remove('hidden');
-        document.getElementById('adminEmailDisplay').textContent = user.email;
-        cargarTodosLosDatos();
-    } else if (localStorage.getItem('admin_logged') === 'true') {
+// ============================================================
+// 🔐 VERIFICAR SESIÓN AL CARGAR (VERSIÓN CORREGIDA)
+// ============================================================
+auth.onAuthStateChanged(async (user) => {
+    console.log('📌 onAuthStateChanged - Usuario:', user?.email);
+    
+    if (user) {
+        try {
+            // 🔥 FORZAR ACTUALIZACIÓN DEL TOKEN
+            await user.getIdToken(true);
+            const tokenResult = await user.getIdTokenResult();
+            console.log('📌 Claims del usuario:', tokenResult.claims);
+            
+            // ✅ VERIFICAR QUE SEA ADMIN (por email o por claim)
+            const esAdmin = user.email === 'admin@aguadulce.com' || tokenResult.claims.rol === 'admin';
+            
+            if (esAdmin) {
+                console.log('✅ Admin autenticado correctamente');
+                
+                // Guardar en la base de datos con rol admin (por si no existe)
+                try {
+                    await database.ref(`usuarios_admin/${user.uid}`).set({
+                        email: user.email,
+                        nombre: 'Administrador',
+                        rol: 'admin',
+                        uid: user.uid,
+                        creado_en: Date.now()
+                    });
+                    console.log('✅ Admin registrado en base de datos');
+                } catch (error) {
+                    console.warn('⚠️ No se pudo guardar admin en BD:', error.message);
+                }
+                
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('adminPanel').classList.remove('hidden');
+                document.getElementById('adminEmailDisplay').textContent = user.email;
+                localStorage.setItem('admin_logged', 'true');
+                
+                cargarTodosLosDatos();
+            } else {
+                console.warn('⚠️ Usuario no es admin:', user.email);
+                localStorage.removeItem('admin_logged');
+                auth.signOut();
+                location.reload();
+            }
+        } catch (error) {
+            console.error('❌ Error al verificar token:', error);
+            localStorage.removeItem('admin_logged');
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('adminPanel').classList.add('hidden');
+        }
+    } else {
+        // No hay usuario autenticado
+        console.log('📌 No hay usuario autenticado');
         localStorage.removeItem('admin_logged');
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('adminPanel').classList.add('hidden');
     }
 });
 

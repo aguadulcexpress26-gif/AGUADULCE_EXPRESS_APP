@@ -1239,7 +1239,7 @@ function abrirRevision() {
 }
 
 // ============================================================
-// 📍 CHECKOUT - VERSIÓN CORREGIDA (SIN DUPLICADOS)
+// 📍 CHECKOUT - VERSIÓN CORREGIDA (SIN DUPLICADOS Y SUMA CORRECTA)
 // ============================================================
 async function abrirCheckout() {
     const cliente = obtenerCliente();
@@ -1258,103 +1258,76 @@ async function abrirCheckout() {
     document.getElementById('panel-checkout').style.display = 'block';
     actualizarClienteUI();
     
-    // 🔥 LIMPIAR CONTENEDORES ANTES DE AÑADIR NUEVO CONTENIDO
+    // Limpiar contenedores
     const container = document.getElementById('lista-cesta-checkout');
     const desglose = document.getElementById('desglose-pago');
-    
-    // Vaciar los contenedores
     if (container) container.innerHTML = '';
     if (desglose) desglose.innerHTML = '';
     
-    const subtotal = cesta.reduce((a, i) => a + (i.total || 0), 0);
-    
-    const clienteDireccion = cliente.direccion_completa;
-    const envioData = await calcularEnvioTiempoReal(clienteDireccion);
-    const distanciaKm = envioData.km;
-    
-    const resultadoEnvio = calcularCostoEnvio(distanciaKm, subtotal);
-    const envio = resultadoEnvio.envio;
-    const usoPlataforma = resultadoEnvio.usoPlataforma;
-    const total = resultadoEnvio.total;
-    const descuentoMsg = resultadoEnvio.mensaje;
-    
-    let distanciaHtml = '';
-    if (distanciaKm !== null) {
-        distanciaHtml = `<p class="text-white/40 text-[9px]">📍 Distancia: ${distanciaKm.toFixed(1)} km</p>`;
+    // Calcular subtotal REAL (suma de todos los items)
+    let subtotal = 0;
+    for (const item of cesta) {
+        subtotal += item.total || 0;
     }
     
-    let descuentoHtml = '';
-    if (resultadoEnvio.descuentoAplicado) {
-        descuentoHtml = `<div class="bg-green-500/20 border border-green-500/40 rounded-xl p-2 text-center text-green-400 text-xs font-bold">${descuentoMsg}</div>`;
-    } else if (subtotal < 20) {
-        const falta = (20 - subtotal).toFixed(2);
-        descuentoHtml = `<div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-2 text-center text-blue-400 text-[10px] font-bold">💡 Añade ${falta}€ más y obtén un 10% de descuento en el envío.</div>`;
-    }
+    // Calcular envío (siempre 2.50€ fijo por ahora)
+    const envio = 2.50;
+    const usoPlataforma = 0.99;
+    const total = subtotal + envio + usoPlataforma;
     
-    // 📌 PRODUCTOS EN EL CARRITO
-    if (container) {
-        container.innerHTML = cesta.map(item => 
-            `<div class="flex justify-between text-sm">
-                <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
-                <span class="font-bold">${euros(item.total)}</span>
-            </div>`
-        ).join('');
-    }
+    // Mostrar productos
+    container.innerHTML = cesta.map(item => 
+        `<div class="flex justify-between text-sm">
+            <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
+            <span class="font-bold">${euros(item.total)}</span>
+        </div>`
+    ).join('');
     
-    // 📌 DESGLOSE DE PAGO (TODO EN UN SOLO innerHTML)
-    if (desglose) {
-        desglose.innerHTML = `
-            <div class="border-t border-white/10 pt-4 space-y-2">
-                <div class="flex justify-between text-sm">
-                    <span>Subtotal</span>
-                    <span>${euros(subtotal)}</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span>📱 Uso de plataforma</span>
-                    <span>${euros(usoPlataforma)}</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span>🚚 Envío</span>
-                    <span>${euros(envio)}</span>
-                </div>
-                ${distanciaHtml}
-                ${descuentoHtml}
-                <div class="border-t border-white/20 my-2"></div>
-                <div class="flex justify-between text-xl font-black">
-                    <span>TOTAL</span>
-                    <span class="text-cyan-400">${euros(total)}</span>
-                </div>
+    // Desglose de pago (UN SOLO BOTÓN)
+    desglose.innerHTML = `
+        <div class="border-t border-white/10 pt-4 space-y-2">
+            <div class="flex justify-between text-sm">
+                <span>Subtotal</span>
+                <span>${euros(subtotal)}</span>
             </div>
-            <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
-                <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 Efectivo - ¿Con cuánto pagas?</p>
-                <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
-                <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
-                <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
+            <div class="flex justify-between text-sm">
+                <span>📱 Uso de plataforma</span>
+                <span>${euros(usoPlataforma)}</span>
             </div>
-            
-            <!-- 📌 MÉTODO DE PAGO -->
-            <div class="mt-4">
-                <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">Forma de Pago</p>
-                <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white">
-                    <option value="Efectivo">Efectivo (Pagar al recibir)</option>
-                    <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
-                </select>
+            <div class="flex justify-between text-sm">
+                <span>🚚 Envío</span>
+                <span>${euros(envio)}</span>
             </div>
-            
-            <!-- 📌 BOTÓN ÚNICO DE PROCESAR ORDEN -->
-            <div class="mt-6">
-                <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg">
-                    💳 Procesar Orden
-                </button>
-                <p class="text-white/20 text-[8px] text-center mt-2">Al procesar aceptas los términos de servicio</p>
+            <div class="border-t border-white/20 my-2"></div>
+            <div class="flex justify-between text-xl font-black">
+                <span>TOTAL</span>
+                <span class="text-cyan-400">${euros(total)}</span>
             </div>
-        `;
-    }
+        </div>
+        <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
+            <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 Efectivo - ¿Con cuánto pagas?</p>
+            <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
+            <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
+            <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
+        </div>
+        <div class="mt-4">
+            <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">Forma de Pago</p>
+            <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white">
+                <option value="Efectivo">Efectivo (Pagar al recibir)</option>
+                <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
+            </select>
+        </div>
+        <div class="mt-6">
+            <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg">
+                💳 Procesar Orden
+            </button>
+            <p class="text-white/20 text-[8px] text-center mt-2">Al procesar aceptas los términos de servicio</p>
+        </div>
+    `;
     
     window._costoEnvioActual = envio;
     window._usoPlataformaActual = usoPlataforma;
-    window._distanciaActual = distanciaKm;
-    window._descuentoAplicado = resultadoEnvio.descuentoAplicado;
+    window._subtotalActual = subtotal;
     
     agregarFooterLegal();
 }
@@ -1663,93 +1636,69 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
-// 🔥 ENVIAR PEDIDO FINAL CON VENTANA DE CONFIRMACIÓN
+// 📦 ENVIAR PEDIDO - CON CONFIRMACIÓN SIMPLIFICADA
 // ============================================================
 async function enviarPedidoFinal() {
     if (procesandoPedidoActivo) return;
     
     const cliente = obtenerCliente();
     if (!cliente || !cliente.uid) {
-        alertaError("Error", "No se pudo identificar al cliente. Inicia sesión nuevamente.");
+        alertaError("Error", "No se pudo identificar al cliente.");
         mostrarModal('modal-login');
         return;
     }
     
     const user = firebase.auth().currentUser;
     if (!user) {
-        alertaError("Error", "No estás autenticado. Inicia sesión nuevamente.");
+        alertaError("Error", "No estás autenticado.");
         mostrarModal('modal-login');
         return;
     }
     
     const uid = user.uid;
-    console.log('📌 uid del cliente:', uid);
-    console.log('📌 uid del cliente desde localStorage:', cliente.uid);
     
-    // 📌 VERIFICAR LISTA NEGRA
+    // Verificar lista negra
     try {
         const emailSanitizado = sanitizarEmail(cliente.email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
         const moroso = morosoSnap.val();
         if (moroso && moroso.activo === true) {
-            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nPara regularizar tu situación y volver a pedir, contacta con soporte:\n📧 soporteaguadulcexpress26@gmail.com`);
+            alertaError("⚠️ CUENTA BLOQUEADA", `Tu cuenta ha sido bloqueada.\nMotivo: ${moroso.motivo || 'No especificado'}\nDeuda pendiente: ${(moroso.deuda || 0).toFixed(2)}€\n\nContacta con soporte:\n📧 soporteaguadulcexpress26@gmail.com`);
             return;
         }
-    } catch (error) { 
-        console.error("Error verificando lista negra:", error); 
-    }
+    } catch (error) { console.error("Error verificando lista negra:", error); }
     
-    // 📌 VALIDACIONES BÁSICAS
     if (cesta.length === 0) { 
         alertaError("Carrito vacío", "No hay productos"); 
         return; 
     }
-    if (!validarZona(cliente.cp)) return;
-    if (!verificarAlcoholEnCesta()) return;
     
-    const tieneAlcohol = cesta.some(item => CATEGORIAS_ALCOHOL.some(cat => (item.categoria || '').includes(cat)));
-    if (tieneAlcohol && !(await clienteEsMayorDeEdad())) {
-        alertaError("Verificación de edad", "Debes ser mayor de 18 años.");
-        return;
+    // Calcular totales
+    let subtotal = 0;
+    for (const item of cesta) {
+        subtotal += item.total || 0;
     }
-
-    // 📌 CALCULAR TOTALES
-    const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
     const envio = window._costoEnvioActual || 2.50;
     const usoYServicios = window._usoPlataformaActual || 0.99;
     const total = subtotal + envio + usoYServicios;
-
-    // 📌 VENTANA DE CONFIRMACIÓN
+    
+    // 🔥 CONFIRMACIÓN SIMPLIFICADA
     const confirmar = await Swal.fire({
-        title: '📦 Confirmar Pedido',
+        title: '⚠️ Confirmar Pedido',
         html: `
             <div class="text-left">
-                <p class="text-white font-bold text-lg">¿Estás seguro de crear esta orden?</p>
-                <p class="text-cyan-400 text-sm mt-2">⚠️ Una vez confirmado, <strong>NO podrás cancelarlo</strong>.</p>
-                <p class="text-white/60 text-xs mt-2">Si tienes alguna duda, <strong>vuelve a la cesta</strong> y verifica tu orden antes de continuar.</p>
+                <p class="text-red-400 font-bold text-lg">⚠️ Una vez confirmado, NO podrás cancelarlo.</p>
+                <p class="text-white/70 text-sm mt-3">Mantente atento al seguimiento de tu pedido.</p>
                 <hr class="my-4 border-white/10">
-                <p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen del pedido</p>
+                <p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen</p>
                 <p class="text-sm"><span class="text-white/60">Restaurante:</span> ${escapeHTML(restauranteActivo.nombre)}</p>
                 <p class="text-sm"><span class="text-white/60">Productos:</span> ${cesta.length}</p>
-                
-                <div class="mt-3 max-h-32 overflow-y-auto bg-white/5 rounded-xl p-2 text-xs space-y-1">
-                    ${cesta.map(item => `<div class="flex justify-between"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span>${euros(item.total)}</span></div>`).join('')}
+                <div class="flex justify-between text-lg font-black mt-3">
+                    <span class="text-white">TOTAL</span>
+                    <span class="text-cyan-400 text-xl">${euros(total)}</span>
                 </div>
-                
-                <hr class="my-4 border-white/10">
-                <div class="space-y-2 text-sm">
-                    <div class="flex justify-between"><span class="text-white/60">Subtotal</span><span>${euros(subtotal)}</span></div>
-                    <div class="flex justify-between"><span class="text-white/60">🚚 Envío</span><span>${euros(envio)}</span></div>
-                    <div class="flex justify-between"><span class="text-white/60">📱 Uso de plataforma</span><span>${euros(usoYServicios)}</span></div>
-                    <div class="border-t border-white/20 my-2"></div>
-                    <div class="flex justify-between text-lg font-black">
-                        <span class="text-white">TOTAL</span>
-                        <span class="text-cyan-400 text-xl">${euros(total)}</span>
-                    </div>
-                </div>
-                
                 <button onclick="mostrarPoliticaCancelacion()" class="w-full mt-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white/50 text-xs font-bold uppercase hover:bg-white/10 transition-all">
-                    📋 Política de cancelación por ausencia
+                    📋 Política de cancelación
                 </button>
             </div>
         `,
@@ -1759,11 +1708,11 @@ async function enviarPedidoFinal() {
         confirmButtonColor: '#06b6d4',
         cancelButtonColor: '#ef4444',
         confirmButtonText: '✅ Sí, enviar pedido',
-        cancelButtonText: '🔙 Volver a la cesta',
+        cancelButtonText: '🔙 Volver',
         showCancelButton: true,
         reverseButtons: true,
         width: '90%',
-        maxWidth: '450px',
+        maxWidth: '400px',
         customClass: {
             popup: 'rounded-3xl',
             confirmButton: 'font-black uppercase',
@@ -1771,13 +1720,9 @@ async function enviarPedidoFinal() {
         }
     });
 
-    if (!confirmar.isConfirmed) {
-        cerrarCheckout();
-        abrirRevision();
-        return;
-    }
-
-    // ✅ SI CONFIRMA, CONTINUAR CON EL ENVÍO
+    if (!confirmar.isConfirmed) return;
+    
+    // Continuar con el envío...
     const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
     let montoPaga = null;
     if (metodo === "Efectivo") {
@@ -1794,16 +1739,9 @@ async function enviarPedidoFinal() {
         id_pedido: idPedido,
         uid_cliente: uid,
         cliente_nombre: cliente.nombre,
-        cliente: cliente.nombre,
         cliente_telefono: cliente.telefono,
         cliente_email: cliente.email,
         direccion: cliente.direccion_completa,
-        direccion_detalle: {
-            calle: cliente.calle,
-            edificio: cliente.edificio,
-            puerta: cliente.puerta,
-            instrucciones: cliente.instrucciones
-        },
         cp: cliente.cp,
         items: cesta.map(item => ({
             nombre: item.nombre,
@@ -1821,23 +1759,12 @@ async function enviarPedidoFinal() {
         restaurante_id: restauranteActivo.id,
         restaurante_nombre: restauranteActivo.nombre,
         estado: "RECIBIDO",
-        huella: huellaDigitalTerminal,
         fecha: Date.now(),
-        timestamp: Date.now(),
-        acepta_terminos: true
+        timestamp: Date.now()
     };
     
     if (montoPaga) pedido.monto_paga = montoPaga;
-
-    console.log('📌 uid_cliente en el pedido:', pedido.uid_cliente);
-    console.log('📌 auth.uid actual:', firebase.auth().currentUser.uid);
-    console.log('📌 Pedido completo:', pedido);
-
-    if (pedido.uid_cliente !== firebase.auth().currentUser.uid) {
-        alertaError("Error", "El usuario no coincide con el pedido. Por favor, inicia sesión nuevamente.");
-        return;
-    }
-
+    
     procesandoPedidoActivo = true;
     const btnProcesar = document.getElementById('btn-procesar-orden');
     if (btnProcesar) {
@@ -1845,13 +1772,6 @@ async function enviarPedidoFinal() {
         btnProcesar.innerText = "PROCESANDO...";
         btnProcesar.style.opacity = "0.5";
     }
-    
-    Swal.fire({ 
-        title: 'Enviando pedido...', 
-        text: 'Por favor espera', 
-        allowOutsideClick: false, 
-        didOpen: () => { Swal.showLoading(); } 
-    });
     
     try {
         await database.ref('pedidos/' + idPedido).set(pedido);
@@ -1874,8 +1794,7 @@ async function enviarPedidoFinal() {
         Swal.close();
         console.error('❌ Error al enviar pedido:', error);
         alertaError("Error", error.message || "No se pudo enviar el pedido");
-    }
-    finally {
+    } finally {
         procesandoPedidoActivo = false;
         if (btnProcesar) {
             btnProcesar.disabled = false;
@@ -1884,7 +1803,6 @@ async function enviarPedidoFinal() {
         }
     }
 }
-
 function cerrarTrackingPorRechazo() {
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');

@@ -25,7 +25,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <!-- Firebase Auth -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <!-- ✅ Firebase Functions (NECESARIO PARA NOTIFICACIONES) -->
+    <!-- ✅ Firebase Functions -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
@@ -153,7 +153,7 @@ if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
 const database = firebase.database();
 const auth = firebase.auth();
-const functions = firebase.functions(); // ✅ FUNCTIONS INICIALIZADO
+const functions = firebase.functions();
 
 console.log('✅ Firebase inicializado - Cocina');
 console.log('✅ Firebase Functions disponible:', !!functions);
@@ -232,7 +232,6 @@ async function loginCocina() {
                 background: '#0f172a',
                 color: 'white'
             });
-            // ✅ SOLO REDIRIGE, NO CIERRA SESIÓN GLOBAL
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('dashboardPanel').classList.add('hidden');
             return;
@@ -315,7 +314,6 @@ function cerrarSesion() {
     }
     intervalosTemporizador = {};
     localStorage.removeItem('restaurante_cocina');
-    // ✅ SOLO REDIRIGE AL LOGIN, NO CIERRA SESIÓN GLOBAL
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('dashboardPanel').classList.add('hidden');
 }
@@ -591,7 +589,7 @@ function renderizarHistorial(pedidos) {
 }
 
 // ============================================================
-// ✅ ACEPTAR PEDIDO CON NOTIFICACIÓN PUSH (CORREGIDO)
+// 🔄 ACCIONES DE PEDIDOS
 // ============================================================
 async function aceptarPedido(id) {
     // Buscar repartidor activo disponible
@@ -629,7 +627,7 @@ async function aceptarPedido(id) {
                 var pedidoSnap = await database.ref('pedidos/' + id).once('value');
                 var pedido = pedidoSnap.val();
                 
-                // ✅ NOMBRE CORRECTO: enviarNotificationPedido (con "N" mayúscula)
+                // ✅ NOMBRE CORRECTO: enviarNotificationPedido
                 var enviarNotificacion = firebase.functions().httpsCallable('enviarNotificationPedido');
                 
                 var result = await enviarNotificacion({
@@ -651,17 +649,6 @@ async function aceptarPedido(id) {
             console.error('❌ Error al enviar notificación:', error);
         }
     }
-    
-    Swal.fire({ 
-        title: '✅ Pedido aceptado', 
-        text: repartidorAsignado ? 'Asignado a: ' + repartidorAsignado : 'Sin repartidores disponibles', 
-        icon: 'success', 
-        timer: 2000, 
-        showConfirmButton: false, 
-        background: '#0f172a', 
-        color: 'white' 
-    });
-}
     
     Swal.fire({ 
         title: '✅ Pedido aceptado', 
@@ -799,11 +786,45 @@ async function marcarListo(id) {
     });
     
     if (confirm.isConfirmed) {
+        // Actualizar pedido a LISTO
         await database.ref('pedidos/' + id).update({ 
             estado: 'LISTO', 
             timestamp_listo: Date.now() 
         });
         
+        // 🔥 NOTIFICACIÓN DE "PEDIDO LISTO" AL REPARTIDOR
+        try {
+            var pedidoSnap = await database.ref('pedidos/' + id).once('value');
+            var pedido = pedidoSnap.val();
+            
+            if (pedido.uid_repartidor) {
+                var tokenSnap = await database.ref('repartidores/' + pedido.uid_repartidor + '/token').once('value');
+                var token = tokenSnap.val();
+                
+                if (token) {
+                    console.log('📱 Enviando notificación de "LISTO" al repartidor...');
+                    
+                    var enviarNotificacion = firebase.functions().httpsCallable('enviarNotificationPedido');
+                    await enviarNotificacion({
+                        token: token,
+                        titulo: '🍽️ Pedido listo para recoger',
+                        mensaje: 'El pedido de ' + (pedido.cliente_nombre || 'cliente') + ' ya está listo en ' + (pedido.restaurante_nombre || 'el restaurante'),
+                        data: { 
+                            tipo: 'pedido_listo',
+                            uid: pedido.uid_repartidor,
+                            pedidoId: id
+                        }
+                    });
+                    console.log('✅ Notificación de "LISTO" enviada');
+                } else {
+                    console.warn('⚠️ Repartidor sin token:', pedido.uid_repartidor);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error enviando notificación de "LISTO":', error);
+        }
+        
+        // Limpiar temporizador
         if (intervalosTemporizador[id]) { 
             clearInterval(intervalosTemporizador[id]); 
             delete intervalosTemporizador[id]; 
@@ -943,7 +964,6 @@ auth.onAuthStateChanged(async function(user) {
             
             if (rol !== 'cocina' && rol !== 'restaurante') {
                 console.warn('⚠️ Usuario sin permisos de cocina:', user.email);
-                // ✅ SOLO REDIRIGE AL LOGIN, NO CIERRA SESIÓN GLOBAL
                 document.getElementById('loginScreen').classList.remove('hidden');
                 document.getElementById('dashboardPanel').classList.add('hidden');
                 return;

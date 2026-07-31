@@ -565,35 +565,58 @@ function renderizarHistorial(pedidos) {
 }
 
 // ============================================================
-// 🔄 ACCIONES DE PEDIDOS
+// ✅ ACEPTAR PEDIDO - CON ASIGNACIÓN AUTOMÁTICA DE REPARTIDOR
 // ============================================================
 async function aceptarPedido(id) {
+    // 🔥 Buscar repartidor activo disponible
     const repartidoresSnap = await database.ref('repartidores').once('value');
     const repartidores = repartidoresSnap.val() || {};
     let repartidorAsignado = null;
+    let uidRepartidor = null;
     
-    for (const [rid, rdata] of Object.entries(repartidores)) {
+    // Buscar el primer repartidor activo
+    for (const [uid, rdata] of Object.entries(repartidores)) {
         if (rdata.activo !== false) { 
-            repartidorAsignado = rdata.nombre; 
+            uidRepartidor = uid;
+            repartidorAsignado = rdata.nombre || uid;
             break; 
         }
     }
     
-    if (!repartidorAsignado) {
-        Swal.fire({ 
-            title: '⚠️ Sin repartidores', 
-            text: 'No hay repartidores activos. El pedido quedará pendiente.', 
-            icon: 'warning', 
-            background: '#0f172a', 
-            color: 'white' 
-        });
-    }
-    
+    // Actualizar pedido con repartidor asignado
     await database.ref(`pedidos/${id}`).update({ 
-        estado: 'COCCIÓN', 
-        repartidor_asignado: repartidorAsignado, 
+        estado: 'COCCIÓN',
+        uid_repartidor: uidRepartidor,
+        repartidor_asignado: repartidorAsignado || 'Sin repartidor',
         timestamp_aceptado: Date.now() 
     });
+    
+    // 🔥 Enviar notificación push al repartidor
+    if (uidRepartidor) {
+        try {
+            const tokenSnap = await database.ref(`repartidores/${uidRepartidor}/token`).once('value');
+            const token = tokenSnap.val();
+            if (token) {
+                const pedidoSnap = await database.ref(`pedidos/${id}`).once('value');
+                const pedido = pedidoSnap.val();
+                
+                const enviarNotificacion = firebase.functions().httpsCallable('enviarNotificacionPush');
+                await enviarNotificacion({
+                    token: token,
+                    titulo: '🛵 Nuevo pedido disponible',
+                    mensaje: `Recoge el pedido de ${pedido.cliente_nombre || 'cliente'} en ${pedido.restaurante_nombre || 'el restaurante'}`,
+                    data: { 
+                        tipo: 'pedido', 
+                        uid: uidRepartidor,
+                        pedidoId: id
+                    }
+                });
+                console.log('✅ Notificación push enviada al repartidor');
+            }
+        } catch (error) {
+            console.error('❌ Error al enviar notificación:', error);
+        }
+    }
     
     Swal.fire({ 
         title: '✅ Pedido aceptado', 

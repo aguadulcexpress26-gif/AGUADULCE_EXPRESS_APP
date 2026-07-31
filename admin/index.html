@@ -1715,6 +1715,90 @@ async function guardarUsuario() {
         });
     }
 }
+    // ============================================================
+// 🔔 NOTIFICACIONES PUSH - ADMIN
+// ============================================================
+
+// 📌 ENVIAR NOTIFICACIÓN A UN REPARTIDOR ESPECÍFICO
+async function enviarNotificacionRepartidor(uidRepartidor, titulo, mensaje) {
+    try {
+        // Obtener el token del repartidor
+        const tokenSnap = await database.ref(`repartidores/${uidRepartidor}/token`).once('value');
+        const token = tokenSnap.val();
+        
+        if (!token) {
+            console.warn('⚠️ Repartidor sin token:', uidRepartidor);
+            return false;
+        }
+        
+        // Llamar a la Cloud Function para enviar la notificación
+        const enviarNotificacion = firebase.functions().httpsCallable('enviarNotificacionPush');
+        const result = await enviarNotificacion({
+            token: token,
+            titulo: titulo,
+            mensaje: mensaje,
+            data: { tipo: 'pedido', uid: uidRepartidor }
+        });
+        
+        console.log('✅ Notificación enviada:', result.data);
+        return true;
+    } catch (error) {
+        console.error('❌ Error al enviar notificación:', error);
+        return false;
+    }
+}
+
+// 📌 NOTIFICAR A TODOS LOS REPARTIDORES ACTIVOS
+async function notificarTodosRepartidores(titulo, mensaje) {
+    try {
+        const repartidoresSnap = await database.ref('repartidores').once('value');
+        const repartidores = repartidoresSnap.val() || {};
+        let enviados = 0;
+        
+        for (const [uid, data] of Object.entries(repartidores)) {
+            if (data.activo !== false && data.token) {
+                const ok = await enviarNotificacionRepartidor(uid, titulo, mensaje);
+                if (ok) enviados++;
+            }
+        }
+        
+        Swal.fire({
+            title: '📨 Notificaciones enviadas',
+            text: `Enviadas a ${enviados} repartidores`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+        
+        return enviados;
+    } catch (error) {
+        console.error('❌ Error al notificar repartidores:', error);
+        return 0;
+    }
+}
+
+// 📌 NOTIFICAR CUANDO UN PEDIDO ESTÁ LISTO (desde Admin)
+async function notificarPedidoListo(pedidoId) {
+    try {
+        const pedidoSnap = await database.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = pedidoSnap.val();
+        if (!pedido) return false;
+        
+        // Si el pedido tiene repartidor asignado
+        if (pedido.uid_repartidor) {
+            const titulo = `🍽️ Pedido #${pedidoId.slice(0,8)} listo`;
+            const mensaje = `El pedido de ${pedido.cliente_nombre} está listo para recoger en ${pedido.restaurante_nombre}`;
+            return await enviarNotificacionRepartidor(pedido.uid_repartidor, titulo, mensaje);
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return false;
+    }
+}
 
 // ============================================================
 // 📌 CARGA INICIAL

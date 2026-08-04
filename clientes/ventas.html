@@ -1221,7 +1221,7 @@ function abrirRevision() {
 }
 
 // ============================================================
-// 📍 CHECKOUT - VERSIÓN QUE DIBUJA EL CAJÓN CORRECTAMENTE
+// 📍 CHECKOUT - VERSIÓN CON PROTECCIÓN CONTRA PANTALLA EN BLANCO
 // ============================================================
 async function abrirCheckout() {
     const cliente = obtenerCliente();
@@ -1243,6 +1243,14 @@ async function abrirCheckout() {
     // Limpiar contenedores
     const container = document.getElementById('lista-cesta-checkout');
     const desglose = document.getElementById('desglose-pago');
+    
+    // ✅ PROTECCIÓN: Si el carrito está vacío, mostramos un mensaje
+    if (!cesta || cesta.length === 0) {
+        if (container) container.innerHTML = '<div class="text-center text-white/50 py-10">🛒 El carrito está vacío.</div>';
+        if (desglose) desglose.innerHTML = '';
+        return;
+    }
+    
     if (container) container.innerHTML = '';
     if (desglose) desglose.innerHTML = '';
     
@@ -1258,67 +1266,71 @@ async function abrirCheckout() {
     const total = subtotal + envio + usoPlataforma;
     
     // 📋 Mostrar productos
-    container.innerHTML = cesta.map(item => 
-        `<div class="flex justify-between text-sm">
-            <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
-            <span class="font-bold">${euros(item.total)}</span>
-        </div>`
-    ).join('');
+    if (container) {
+        container.innerHTML = cesta.map(item => 
+            `<div class="flex justify-between text-sm">
+                <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
+                <span class="font-bold">${euros(item.total)}</span>
+            </div>`
+        ).join('');
+    }
     
     // 📋 Desglose de pago (GENERA EL CAJÓN COMPLETO)
-    desglose.innerHTML = `
-        <!-- Resumen de precios -->
-        <div class="border-t border-white/10 pt-4 space-y-2">
-            <div class="flex justify-between text-sm">
-                <span>Subtotal</span>
-                <span>${euros(subtotal)}</span>
+    if (desglose) {
+        desglose.innerHTML = `
+            <!-- Resumen de precios -->
+            <div class="border-t border-white/10 pt-4 space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span>Subtotal</span>
+                    <span>${euros(subtotal)}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>📱 Uso de plataforma</span>
+                    <span>${euros(usoPlataforma)}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>🚚 Envío</span>
+                    <span>${euros(envio)}</span>
+                </div>
+                <div class="border-t border-white/20 my-2"></div>
+                <div class="flex justify-between text-xl font-black">
+                    <span>TOTAL</span>
+                    <span class="text-cyan-400">${euros(total)}</span>
+                </div>
             </div>
-            <div class="flex justify-between text-sm">
-                <span>📱 Uso de plataforma</span>
-                <span>${euros(usoPlataforma)}</span>
-            </div>
-            <div class="flex justify-between text-sm">
-                <span>🚚 Envío</span>
-                <span>${euros(envio)}</span>
-            </div>
-            <div class="border-t border-white/20 my-2"></div>
-            <div class="flex justify-between text-xl font-black">
-                <span>TOTAL</span>
-                <span class="text-cyan-400">${euros(total)}</span>
-            </div>
-        </div>
 
-        <!-- 💵 EFECTIVO - Campo para monto -->
-        <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
-            <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 EFECTIVO - ¿CON CUÁNTO PAGAS?</p>
-            <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
-            <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
-            <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
-        </div>
-
-        <!-- 💳 FORMA DE PAGO - UN SOLO SELECTOR -->
-        <div class="mt-4">
-            <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">💳 FORMA DE PAGO</p>
-            <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white">
-                <option value="Efectivo">Efectivo (Pagar al recibir)</option>
-                <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
-            </select>
-        </div>
-
-        <!-- 🔘 PROCESAR ORDEN - UN SOLO BOTÓN + LINKS LEGALES -->
-        <div class="mt-8">
-            <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg hover:bg-cyan-300 transition-all">
-                💳 PROCESAR ORDEN
-            </button>
-            <div class="flex flex-wrap justify-center gap-3 mt-3 text-[9px] text-white/30">
-                <button onclick="mostrarPoliticaCancelacion()" class="underline hover:text-white/60 transition-colors">📋 Política de cancelación</button>
-                <span class="text-white/20">•</span>
-                <button onclick="verTerminos('terminos')" class="underline hover:text-white/60 transition-colors">📜 Términos</button>
-                <span class="text-white/20">•</span>
-                <button onclick="verTerminos('privacidad')" class="underline hover:text-white/60 transition-colors">🔒 Privacidad</button>
+            <!-- 💵 EFECTIVO - Campo para monto -->
+            <div class="mt-4 p-4 bg-white/5 rounded-2xl border border-white/10">
+                <p class="text-cyan-400 text-[11px] font-black uppercase mb-2">💵 EFECTIVO - ¿CON CUÁNTO PAGAS?</p>
+                <p class="text-white/50 text-[9px] mb-2">📌 Si pagas en efectivo, indica el importe que entregas al repartidor.</p>
+                <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej: 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg font-bold">
+                <p class="text-white/30 text-[8px] mt-1">💡 Deja en blanco si pagas con tarjeta o quieres pagar el importe exacto.</p>
             </div>
-        </div>
-    `;
+
+            <!-- 💳 FORMA DE PAGO - UN SOLO SELECTOR -->
+            <div class="mt-4">
+                <p class="text-cyan-400 text-[10px] font-black uppercase mb-2">💳 FORMA DE PAGO</p>
+                <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white">
+                    <option value="Efectivo">Efectivo (Pagar al recibir)</option>
+                    <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
+                </select>
+            </div>
+
+            <!-- 🔘 PROCESAR ORDEN - UN SOLO BOTÓN + LINKS LEGALES -->
+            <div class="mt-8">
+                <button id="btn-procesar-orden" onclick="enviarPedidoFinal()" class="w-full py-5 bg-cyan-400 text-black font-black italic uppercase rounded-2xl shadow-[0_0_20px_rgba(0,210,255,0.3)] text-lg hover:bg-cyan-300 transition-all">
+                    💳 PROCESAR ORDEN
+                </button>
+                <div class="flex flex-wrap justify-center gap-3 mt-3 text-[9px] text-white/30">
+                    <button onclick="mostrarPoliticaCancelacion()" class="underline hover:text-white/60 transition-colors">📋 Política de cancelación</button>
+                    <span class="text-white/20">•</span>
+                    <button onclick="verTerminos('terminos')" class="underline hover:text-white/60 transition-colors">📜 Términos</button>
+                    <span class="text-white/20">•</span>
+                    <button onclick="verTerminos('privacidad')" class="underline hover:text-white/60 transition-colors">🔒 Privacidad</button>
+                </div>
+            </div>
+        `;
+    }
     
     window._costoEnvioActual = envio;
     window._usoPlataformaActual = usoPlataforma;

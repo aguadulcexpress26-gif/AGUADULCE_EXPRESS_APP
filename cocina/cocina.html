@@ -57,6 +57,57 @@
         .btn-primary:hover { background: #22d3ee; transform: scale(1.02); }
         .btn-danger { background: #ef4444; color: white; font-weight: 700; padding: 12px; border-radius: 60px; border: none; cursor: pointer; width: 100%; transition: all 0.2s; }
         .btn-danger:hover { background: #dc2626; transform: scale(1.02); }
+        
+        /* ✅ NUEVO: Estilo para cabecera de días en historial */
+        .dia-header {
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.15);
+            border-radius: 16px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .dia-header .fecha {
+            color: #f59e0b;
+            font-weight: 800;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        .dia-header .total-dia {
+            color: rgba(255,255,255,0.4);
+            font-size: 12px;
+        }
+        .dia-header .subtotal-dia {
+            color: #22c55e;
+            font-weight: 800;
+            font-size: 16px;
+        }
+        
+        /* ✅ NUEVO: Indicador de subtotal en stats */
+        .subtotal-indicator {
+            color: rgba(255,255,255,0.2);
+            font-size: 8px;
+            text-align: center;
+            margin-top: 4px;
+        }
+        
+        /* ✅ NUEVO: Botón recogido por cocina */
+        .btn-recogido-cocina {
+            background: #8b5cf6;
+            color: white;
+            transition: all 0.2s;
+        }
+        .btn-recogido-cocina:hover {
+            background: #7c3aed;
+            transform: scale(1.02);
+        }
+        
+        /* Scrollbar personalizado */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -108,6 +159,10 @@
                 <div class="card-venta"><p class="label text-cyan-400">📊 VENTAS SEMANA</p><p class="monto text-cyan-400" id="ventasSemana">0.00€</p></div>
                 <button id="btnActivarSonido" class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full hover:bg-yellow-500/30 transition-all">🔊 ACTIVAR SONIDO</button>
             </div>
+        </div>
+        <!-- ✅ NUEVO: Indicador de que los acumulados son SOLO subtotal -->
+        <div class="text-center text-white/20 text-[9px] mb-3">
+            📌 Los acumulados suman SOLO el subtotal (sin envío ni comisiones)
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -211,7 +266,8 @@ async function loginCocina() {
             text: 'Completa email y contraseña', 
             icon: 'error', 
             background: '#0f172a', 
-            color: 'white' 
+            color: 'white',
+            width: '90%'
         });
         return;
     }
@@ -230,7 +286,8 @@ async function loginCocina() {
                 text: 'No tienes permisos para acceder a la cocina. Contacta con el administrador.',
                 icon: 'error',
                 background: '#0f172a',
-                color: 'white'
+                color: 'white',
+                width: '90%'
             });
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('dashboardPanel').classList.add('hidden');
@@ -296,7 +353,8 @@ async function loginCocina() {
             text: error.message || 'Credenciales incorrectas',
             icon: 'error',
             background: '#0f172a',
-            color: 'white'
+            color: 'white',
+            width: '90%'
         });
     }
 }
@@ -416,7 +474,7 @@ function iniciarEscuchaPedidos() {
 }
 
 // ============================================================
-// 📊 CÁLCULO DE VENTAS
+// 📊 CÁLCULO DE VENTAS (SOLO SUBTOTAL - MEJORADO)
 // ============================================================
 async function calcularVentas(pedidos) {
     var hoyInicio = new Date();
@@ -426,6 +484,8 @@ async function calcularVentas(pedidos) {
     
     var ventasHoy = 0;
     var ventasSemana = 0;
+    var pedidosHoy = 0;
+    var pedidosSemana = 0;
     
     for (var i = 0; i < pedidos.length; i++) {
         var p = pedidos[i];
@@ -433,10 +493,18 @@ async function calcularVentas(pedidos) {
         if (!estadoValido) continue;
         
         var fechaPedido = new Date(p.fecha || p.timestamp_entregado || p.timestamp_cancelacion || 0);
-        var subtotalPedido = p.subtotal || (p.total ? p.total - (p.envio || 2.50) - (p.usoYServicios || 0.99) : p.total || 0);
         
-        if (fechaPedido >= hoyInicio) ventasHoy += subtotalPedido;
-        if (fechaPedido >= semanaInicio && fechaPedido <= semanaFin) ventasSemana += subtotalPedido;
+        // ✅ MEJORADO: Usar SOLO el subtotal (sin envío ni comisiones)
+        var subtotalPedido = p.subtotal || p.total_base || 0;
+        
+        if (fechaPedido >= hoyInicio) {
+            ventasHoy += subtotalPedido;
+            pedidosHoy++;
+        }
+        if (fechaPedido >= semanaInicio && fechaPedido <= semanaFin) {
+            ventasSemana += subtotalPedido;
+            pedidosSemana++;
+        }
     }
     
     document.getElementById('ventasHoy').innerText = ventasHoy.toFixed(2) + '€';
@@ -465,6 +533,7 @@ function renderizarPendientes(pedidos) {
                     </div>
                     <div class="text-right">
                         <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
+                        <span class="text-white/30 text-[8px] block">(subtotal: ${(p.subtotal || p.total_base || 0).toFixed(2)}€)</span>
                     </div>
                 </div>
                 <div class="bg-slate-800/50 rounded-xl p-2 my-2">
@@ -501,6 +570,7 @@ function renderizarCoccion(pedidos) {
                     </div>
                     <div class="text-right">
                         <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
+                        <span class="text-white/30 text-[8px] block">(subtotal: ${(p.subtotal || p.total_base || 0).toFixed(2)}€)</span>
                     </div>
                 </div>
                 <div class="bg-slate-800/50 rounded-xl p-2 my-2">
@@ -523,6 +593,9 @@ function renderizarCoccion(pedidos) {
     }
 }
 
+// ============================================================
+// ✅ RENDERIZAR LISTOS (CON BOTÓN RECOGIDO POR COCINA - MEJORADO)
+// ============================================================
 function renderizarListos(pedidos) {
     var container = document.getElementById('listaListos');
     if (pedidos.length === 0) {
@@ -533,11 +606,12 @@ function renderizarListos(pedidos) {
     for (var i = 0; i < pedidos.length; i++) {
         var p = pedidos[i];
         container.innerHTML += `
-            <div class="card-pedido border-l-4 border-emerald-400 opacity-80">
+            <div class="card-pedido border-l-4 border-emerald-400">
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="text-emerald-400 font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
                         <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
+                        <p class="text-white/50 text-xs">${escapeHTML(p.direccion || 'Sin dirección')}</p>
                     </div>
                     <div class="text-right">
                         <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
@@ -545,47 +619,120 @@ function renderizarListos(pedidos) {
                     </div>
                 </div>
                 <div class="mt-2 text-center text-white/40 text-[10px]">⚠️ Esperando repartidor...</div>
+                <!-- ✅ NUEVO: Botón Recogido por Cocina -->
+                <div class="mt-3">
+                    <button onclick="marcarRecogidoPorCocina('${p.id}')" class="w-full btn-recogido-cocina py-2 rounded-xl text-sm font-bold transition">
+                        🛵 Marcar Recogido (por cocina)
+                    </button>
+                    <p class="text-white/20 text-[8px] text-center mt-1">📌 Solo si el repartidor NO lo marcó</p>
+                </div>
             </div>
         `;
     }
 }
 
+// ============================================================
+// 📜 RENDERIZAR HISTORIAL (AGRUPADO POR DÍAS - NUEVO)
+// ============================================================
 function renderizarHistorial(pedidos) {
     var container = document.getElementById('listaHistorial');
     if (!container) return;
+    
     if (pedidos.length === 0) {
         container.innerHTML = '<div class="text-center text-white/50 p-10">📜 No hay pedidos en el historial</div>';
         return;
     }
-    container.innerHTML = '';
+    
+    // 📦 AGRUPAR POR DÍA
+    var grupos = {};
+    
     for (var i = 0; i < pedidos.length; i++) {
         var p = pedidos[i];
-        var esEntregado = p.estado === 'ENTREGADO' || p.estado === 'entregado';
-        var estadoTexto = esEntregado ? '✅ Entregado' : (p.estado === 'CANCELADO_POR_AUSENCIA' ? '❌ Cancelado por ausencia' : '❌ Rechazado');
-        var estadoColor = esEntregado ? 'text-emerald-400' : 'text-red-400';
-        var borderColor = esEntregado ? 'border-emerald-400' : 'border-red-400';
+        var fecha = new Date(p.fecha || p.timestamp_entregado || p.timestamp_cancelacion || 0);
+        var fechaKey = fecha.toISOString().split('T')[0]; // "2026-08-01"
+        var fechaDisplay = fecha.toLocaleDateString('es-ES', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
         
-        container.innerHTML += `
-            <div class="historial-card border-l-4 ${borderColor}">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <span class="${estadoColor} font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
-                        <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
-                    </div>
-                    <div class="text-right">
-                        <span class="text-emerald-400 font-bold">${(p.total || 0).toFixed(2)}€</span>
-                        <div class="px-2 py-0.5 rounded text-xs mt-1 ${estadoColor}">${estadoTexto}</div>
-                    </div>
+        if (!grupos[fechaKey]) {
+            grupos[fechaKey] = {
+                display: fechaDisplay,
+                pedidos: [],
+                total: 0,
+                subtotal: 0
+            };
+        }
+        grupos[fechaKey].pedidos.push(p);
+        grupos[fechaKey].total += p.total || 0;
+        grupos[fechaKey].subtotal += p.subtotal || p.total_base || 0;
+    }
+    
+    // Ordenar días (más reciente primero)
+    var fechasOrdenadas = Object.keys(grupos).sort().reverse();
+    
+    var html = '';
+    
+    for (var j = 0; j < fechasOrdenadas.length; j++) {
+        var fechaKey = fechasOrdenadas[j];
+        var grupo = grupos[fechaKey];
+        
+        // 📅 CABECERA DEL DÍA
+        html += `
+            <div class="dia-header">
+                <div>
+                    <span class="fecha">📅 ${grupo.display}</span>
+                    <span class="total-dia ml-3">${grupo.pedidos.length} pedidos</span>
                 </div>
-                ${p.estado === 'CANCELADO_POR_AUSENCIA' ? `<p class="text-red-400 text-xs mt-2">⚠️ Motivo: Cliente no se presentó</p>` : ''}
-                ${p.motivo_rechazo ? `<p class="text-red-400 text-xs mt-2">⚠️ ${escapeHTML(p.motivo_rechazo)}</p>` : ''}
-                <div class="flex gap-2 mt-3">
-                    <button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 Ver detalle</button>
-                    ${esEntregado ? `<button onclick="imprimirTicket('${p.id}')" class="bg-amber-600/80 text-white px-3 py-2 rounded-xl text-xs">🖨️ Imprimir</button>` : ''}
+                <div>
+                    <span class="subtotal-dia">💰 ${grupo.subtotal.toFixed(2)}€</span>
+                    <span class="total-dia block text-right text-[9px]">(sin envío)</span>
                 </div>
             </div>
         `;
+        
+        // 📋 PEDIDOS DEL DÍA
+        for (var k = 0; k < grupo.pedidos.length; k++) {
+            var p = grupo.pedidos[k];
+            var esEntregado = p.estado === 'ENTREGADO' || p.estado === 'entregado';
+            var estadoTexto = esEntregado ? '✅ Entregado' : (p.estado === 'CANCELADO_POR_AUSENCIA' ? '❌ Cancelado por ausencia' : '❌ Rechazado');
+            var estadoColor = esEntregado ? 'text-emerald-400' : 'text-red-400';
+            var borderColor = esEntregado ? 'border-emerald-400' : 'border-red-400';
+            
+            var hora = new Date(p.fecha || p.timestamp_entregado || p.timestamp_cancelacion || 0)
+                .toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            
+            html += `
+                <div class="historial-card border-l-4 ${borderColor}">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="${estadoColor} font-bold text-sm">#${p.id_pedido || p.id.substring(0, 8)}</span>
+                                <span class="text-white/30 text-[9px]">${hora}</span>
+                            </div>
+                            <p class="text-white font-bold text-sm mt-1">${escapeHTML(p.cliente_nombre || 'Cliente')}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-emerald-400 font-bold">${(p.subtotal || p.total_base || 0).toFixed(2)}€</span>
+                            <span class="text-white/20 text-[8px] block">subtotal</span>
+                            <span class="text-white/30 text-[8px] block">total: ${(p.total || 0).toFixed(2)}€</span>
+                            <div class="px-2 py-0.5 rounded text-xs mt-1 ${estadoColor}">${estadoTexto}</div>
+                        </div>
+                    </div>
+                    ${p.estado === 'CANCELADO_POR_AUSENCIA' ? `<p class="text-red-400 text-xs mt-2">⚠️ Motivo: Cliente no se presentó</p>` : ''}
+                    ${p.motivo_rechazo ? `<p class="text-red-400 text-xs mt-2">⚠️ ${escapeHTML(p.motivo_rechazo)}</p>` : ''}
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="verDetallePedido('${p.id}')" class="bg-white/10 text-white px-3 py-2 rounded-xl text-xs">📋 Ver detalle</button>
+                        ${esEntregado ? `<button onclick="imprimirTicket('${p.id}')" class="bg-amber-600/80 text-white px-3 py-2 rounded-xl text-xs">🖨️ Imprimir</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
     }
+    
+    container.innerHTML = html;
 }
 
 // ============================================================
@@ -670,7 +817,8 @@ async function rechazarPedido(id) {
         confirmButtonColor: '#ef4444',
         confirmButtonText: 'Sí, rechazar',
         background: '#0f172a', 
-        color: 'white'
+        color: 'white',
+        width: '90%'
     });
     
     if (confirm.isConfirmed) {
@@ -679,7 +827,7 @@ async function rechazarPedido(id) {
             var pedido = pedidoSnap.val();
             
             if (!pedido) {
-                Swal.fire({ title: 'Error', text: 'Pedido no encontrado', icon: 'error', background: '#0f172a', color: 'white' });
+                Swal.fire({ title: 'Error', text: 'Pedido no encontrado', icon: 'error', background: '#0f172a', color: 'white', width: '90%' });
                 return;
             }
             
@@ -712,7 +860,7 @@ async function rechazarPedido(id) {
             
         } catch (error) {
             console.error("Error al rechazar pedido:", error);
-            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+            Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white', width: '90%' });
         }
     }
 }
@@ -782,7 +930,8 @@ async function marcarListo(id) {
         showCancelButton: true,
         confirmButtonText: '✅ Sí, marcar listo',
         background: '#0f172a', 
-        color: 'white'
+        color: 'white',
+        width: '90%'
     });
     
     if (confirm.isConfirmed) {
@@ -843,7 +992,61 @@ async function marcarListo(id) {
 }
 
 // ============================================================
-// 📋 DETALLE Y TICKET
+// 🛵 MARCAR RECOGIDO POR COCINA (NUEVO)
+// ============================================================
+async function marcarRecogidoPorCocina(pedidoId) {
+    var confirm = await Swal.fire({
+        title: '⚠️ ¿Marcar como recogido?',
+        html: `
+            <div class="text-left">
+                <p class="text-yellow-400 font-bold">⚠️ Solo usa esta opción si el repartidor <strong>NO</strong> marcó el pedido como recogido.</p>
+                <p class="text-white/60 text-sm mt-2">El pedido pasará a estado <strong>"EN_REPARTO"</strong>.</p>
+                <p class="text-white/40 text-xs mt-2">📌 Esto evita que el pedido quede olvidado si el repartidor no lo marcó.</p>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#8b5cf6',
+        confirmButtonText: '✅ Sí, marcar recogido',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        width: '90%'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    try {
+        await database.ref('pedidos/' + pedidoId).update({
+            estado: 'EN_REPARTO',
+            timestamp_recogido_cocina: Date.now(),
+            recogido_por: 'cocina'
+        });
+        
+        Swal.fire({ 
+            title: '✅ Recogido marcado', 
+            text: 'El pedido pasó a estado EN_REPARTO',
+            icon: 'success', 
+            timer: 1500, 
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+    } catch (error) {
+        console.error('❌ Error:', error);
+        Swal.fire({ 
+            title: '❌ Error', 
+            text: error.message, 
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white',
+            width: '90%'
+        });
+    }
+}
+
+// ============================================================
+// 📋 DETALLE Y TICKET (CON CORRECCIÓN DE SweetAlert2)
 // ============================================================
 async function verDetallePedido(id) {
     var snapshot = await database.ref('pedidos/' + id).once('value');
@@ -858,6 +1061,7 @@ async function verDetallePedido(id) {
         }
     }
     
+    // ✅ CORREGIDO: maxWidth → width
     Swal.fire({
         title: 'Pedido #' + (p.id_pedido || id.substring(0, 8)),
         html: `
@@ -872,7 +1076,10 @@ async function verDetallePedido(id) {
                     <p class="text-cyan-400 text-xs font-bold">INFORMACIÓN DEL PEDIDO</p>
                     <p><strong>🏪 Restaurante:</strong> ${escapeHTML(p.restaurante_nombre || p.restaurante_id)}</p>
                     <p><strong>💳 Pago:</strong> ${p.metodo_pago || 'Efectivo'}</p>
-                    <p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p>
+                    <p><strong>💰 Subtotal:</strong> ${(p.subtotal || p.total_base || 0).toFixed(2)}€</p>
+                    <p><strong>🚚 Envío:</strong> ${(p.envio || 0).toFixed(2)}€</p>
+                    <p><strong>📱 Comisión:</strong> ${(p.usoYServicios || p.usoPlataforma || 0).toFixed(2)}€</p>
+                    <p><strong>💵 Total:</strong> ${(p.total || 0).toFixed(2)}€</p>
                 </div>
                 <div class="p-3 bg-slate-700/50 rounded-xl">
                     <p class="text-cyan-400 text-xs font-bold mb-2">PRODUCTOS</p>
@@ -884,7 +1091,6 @@ async function verDetallePedido(id) {
         color: 'white',
         confirmButtonColor: '#f59e0b',
         width: '95%',
-        maxWidth: '500px',
         showCancelButton: true,
         confirmButtonText: '🖨️ Imprimir',
         cancelButtonText: 'Cerrar'
@@ -899,6 +1105,9 @@ async function imprimirTicket(pedidoId) {
     if (!p) return;
     
     var total = parseFloat(p.total) || 0;
+    var subtotal = parseFloat(p.subtotal || p.total_base || 0);
+    var envio = parseFloat(p.envio || 0);
+    var comision = parseFloat(p.usoYServicios || p.usoPlataforma || 0);
     var metodoPago = p.metodo_pago || 'Efectivo';
     var fecha = new Date(p.fecha || Date.now());
     
@@ -913,7 +1122,7 @@ async function imprimirTicket(pedidoId) {
     }
     
     var contenidoTicket = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ticket #' + (p.id_pedido || pedidoId.substring(0, 8)) + '</title>';
-    contenidoTicket += '<style>body { font-family: "Courier New", monospace; width: 80mm; margin: 0 auto; padding: 10px; } .text-center { text-align: center; } .separator { border-top: 1px dashed #000; margin: 8px 0; } .logo { font-size: 16px; font-weight: bold; text-align: center; } .total { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; } .footer { text-align: center; font-size: 10px; margin-top: 15px; }</style></head><body>';
+    contenidoTicket += '<style>body { font-family: "Courier New", monospace; width: 80mm; margin: 0 auto; padding: 10px; } .text-center { text-align: center; } .separator { border-top: 1px dashed #000; margin: 8px 0; } .logo { font-size: 16px; font-weight: bold; text-align: center; } .total { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; } .footer { text-align: center; font-size: 10px; margin-top: 15px; } .subtotal-line { color: #555; font-size: 11px; }</style></head><body>';
     contenidoTicket += '<div class="logo">AGUADULCE EXPRESS</div><div class="text-center">Pedido a domicilio</div><div class="separator"></div>';
     contenidoTicket += '<div>Pedido: #' + (p.id_pedido || pedidoId.substring(0, 8)) + '</div>';
     contenidoTicket += '<div>Fecha: ' + fecha.toLocaleString() + '</div>';
@@ -923,7 +1132,10 @@ async function imprimirTicket(pedidoId) {
     contenidoTicket += '<div><strong>PRODUCTOS</strong></div>';
     contenidoTicket += detalleFormateado;
     contenidoTicket += '<div class="separator"></div>';
-    contenidoTicket += '<div>Total: ' + total.toFixed(2) + '€</div>';
+    contenidoTicket += '<div>Subtotal: ' + subtotal.toFixed(2) + '€</div>';
+    contenidoTicket += '<div class="subtotal-line">+ Envío: ' + envio.toFixed(2) + '€</div>';
+    contenidoTicket += '<div class="subtotal-line">+ Comisión: ' + comision.toFixed(2) + '€</div>';
+    contenidoTicket += '<div class="total">TOTAL: ' + total.toFixed(2) + '€</div>';
     contenidoTicket += '<div>Pago: ' + metodoPago + '</div>';
     contenidoTicket += '<div class="separator"></div>';
     contenidoTicket += '<div class="footer">¡Gracias por tu pedido!</div>';

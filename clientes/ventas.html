@@ -1663,7 +1663,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
-// 📦 ENVIAR PEDIDO - VERSIÓN CON SISTEMA ANTIFRAUDE (DUPLICIDAD)
+// 📦 ENVIAR PEDIDO - VERSIÓN FINAL (SIN DOBLE CONFIRMACIÓN)
 // ============================================================
 async function enviarPedidoFinal() {
     if (procesandoPedidoActivo) return;
@@ -1686,7 +1686,7 @@ async function enviarPedidoFinal() {
     const email = cliente.email;
     const telefono = cliente.telefono;
 
-    // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (UID + EMAIL + TELÉFONO)
+    // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (UID + EMAIL + TELÉFONO) - ANTIFRAUDE
     const pedidosSnap = await database.ref('pedidos').once('value');
     const todosLosPedidos = pedidosSnap.val() || {};
     
@@ -1705,61 +1705,45 @@ async function enviarPedidoFinal() {
             if (p.uid_cliente === uid || p.cliente_email === email || p.cliente_telefono === telefono) {
                 pedidoActivoEncontrado = p;
                 idPedidoActivo = id;
-                break; // Dejamos de buscar, ya encontramos un conflicto
+                break;
             }
         }
     }
 
-    // 🚨 2. SI SE ENCUENTRA UN CONFLICTO: BLOQUEO AUTOMÁTICO (MALINTENCIONADO)
+    // 🚨 2. SI SE ENCUENTRA UN CONFLICTO: BLOQUEO AUTOMÁTICO
     if (pedidoActivoEncontrado) {
         const emailSanitizado = sanitizarEmail(email);
         const motivoBloqueo = `Intento de pedido duplicado durante pedido activo #${idPedidoActivo}`;
         
-        // Marcamos al usuario en la lista negra de inmediato
         await database.ref(`clientes_morosos/${emailSanitizado}`).set({
             email_original: email,
             email: emailSanitizado,
             nombre: cliente.nombre || email.split('@')[0],
             motivo: motivoBloqueo,
-            deuda: 0, // No hay deuda, es un bloqueo por seguridad/duplicidad
+            deuda: 0,
             fecha: Date.now(),
             activo: true
         });
 
-        // Mostramos el mensaje de bloqueo (Corto y preciso)
         Swal.fire({
             title: '⛔ CUENTA BLOQUEADA',
             html: `
                 <div class="text-left">
                     <p class="text-red-400 font-bold text-lg">⚠️ Pedido Duplicado Detectado</p>
                     <p class="text-white/70 text-sm mt-3">Ya tienes un pedido en curso <strong>(${idPedidoActivo.substring(0,8)})</strong>.</p>
-                    <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mt-4">
-                        <p class="text-red-400 font-bold text-sm">🔴 Se ha bloqueado tu cuenta por seguridad:</p>
-                        <ul class="text-white/80 text-sm mt-2 space-y-2 list-disc pl-4">
-                            <li>❌ No puedes crear un segundo pedido hasta que el primero se entregue.</li>
-                            <li>📋 Tu cuenta queda en la <strong>lista negra preventiva</strong>.</li>
-                        </ul>
-                    </div>
-                    <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mt-4">
-                        <p class="text-cyan-400 font-bold text-sm">✅ ¿Cómo resolverlo?</p>
-                        <p class="text-white/70 text-sm mt-2">Espera a que tu pedido actual se entregue o cancele.</p>
-                        <p class="text-white text-sm font-medium mt-2">📧 Contacta con soporte si crees que es un error:</p>
-                        <p class="text-white text-sm font-medium">soporteaguadulcexpress26@gmail.com</p>
-                    </div>
+                    <p class="text-white/70 text-sm mt-3">Para proteger el sistema, tu cuenta ha sido bloqueada. Contacta con soporte.</p>
                 </div>
             `,
             icon: 'warning',
             background: '#020617',
             color: 'white',
             confirmButtonColor: '#06b6d4',
-            confirmButtonText: '✅ Entendido, contactaré con soporte'
+            confirmButtonText: '✅ Entendido'
         });
-        return; // 🛑 DETENEMOS EL PROCESO AQUÍ
+        return;
     }
 
-    // ✅ 3. SI NO HAY CONFLICTO: CONTINUAR CON EL PEDIDO NORMAL
-    
-    // Verificar lista negra tradicional (por deuda)
+    // ✅ 3. VERIFICACIÓN DE DEUDA (LISTA NEGRA TRADICIONAL)
     try {
         const emailSanitizado = sanitizarEmail(cliente.email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
@@ -1771,28 +1755,23 @@ async function enviarPedidoFinal() {
     } catch (error) { console.error("Error verificando lista negra:", error); }
     
     if (cesta.length === 0) { alertaError("Carrito vacío", "No hay productos"); return; }
-    
+
+    // ✅ 4. CÁLCULO DE TOTALES
     let subtotal = 0;
     for (const item of cesta) subtotal += item.total || 0;
     const envio = window._costoEnvioActual || 2.50;
     const usoYServicios = window._usoPlataformaActual || 0.99;
     const total = subtotal + envio + usoYServicios;
     
-    const confirmar = await Swal.fire({
-        title: '⚠️ Confirmar Pedido',
-        html: `<div class="text-left"><p class="text-red-400 font-bold text-lg">⚠️ Una vez confirmado, NO podrás cancelarlo.</p><hr class="my-4 border-white/10"><p class="text-cyan-400 text-xs font-bold uppercase">📋 Resumen</p><p class="text-sm"><span class="text-white/60">Restaurante:</span> ${escapeHTML(restauranteActivo.nombre)}</p><p class="text-sm"><span class="text-white/60">Productos:</span> ${cesta.length}</p><div class="flex justify-between text-lg font-black mt-3"><span class="text-white">TOTAL</span><span class="text-cyan-400 text-xl">${euros(total)}</span></div></div>`,
-        icon: 'question', background: '#020617', color: 'white',
-        confirmButtonColor: '#06b6d4', cancelButtonColor: '#ef4444',
-        confirmButtonText: '✅ Sí, enviar pedido', cancelButtonText: '🔙 Volver',
-        showCancelButton: true, reverseButtons: true
-    });
-    if (!confirmar.isConfirmed) return;
-    
+    // 📌 PROCESO DE ENVÍO (SIN DOBLE CONFIRMACIÓN, CON LOADER)
     const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
     let montoPaga = null;
     if (metodo === "Efectivo") {
         const montoInput = document.getElementById('monto-paga');
-        if (montoInput && montoInput.value) { montoPaga = parseFloat(montoInput.value); if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null; }
+        if (montoInput && montoInput.value) { 
+            montoPaga = parseFloat(montoInput.value); 
+            if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null; 
+        }
     }
     
     const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
@@ -1806,22 +1785,48 @@ async function enviarPedidoFinal() {
     
     procesandoPedidoActivo = true;
     const btnProcesar = document.getElementById('btn-procesar-orden');
-    if (btnProcesar) { btnProcesar.disabled = true; btnProcesar.innerText = "PROCESANDO..."; btnProcesar.style.opacity = "0.5"; }
+    if (btnProcesar) { 
+        btnProcesar.disabled = true; 
+        btnProcesar.innerHTML = `<span class="spinner-border spinner-border-sm mr-2"></span> PROCESANDO...`; 
+        btnProcesar.style.opacity = "0.7"; 
+    }
     
     try {
+        // Creamos el pedido en Firebase
         await database.ref('pedidos/' + idPedido).set(pedido);
-        cesta = []; actualizarCestaVisual(); cerrarCheckout();
-        iniciarSeguimientoPedido(idPedido); abrirModalTracking();
-        Swal.close();
-        Swal.fire({ title: '🎉 ¡Pedido Enviado!', text: `Total: ${euros(total)}`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#020617', color: 'white' });
+        
+        // Limpiamos el carrito y la interfaz
+        cesta = []; 
+        actualizarCestaVisual(); 
+        cerrarCheckout();
+        
+        // Iniciamos el seguimiento y cerramos el loader
+        iniciarSeguimientoPedido(idPedido); 
+        abrirModalTracking();
+        
+        // Feedback rápido de éxito (se cierra solo tras 2 segundos)
+        Swal.fire({
+            title: '🎉 ¡Pedido Enviado!',
+            text: `Total: ${euros(total)}`,
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#020617',
+            color: 'white'
+        });
+        
     } catch (error) {
-        Swal.close(); console.error('❌ Error al enviar pedido:', error); alertaError("Error", error.message || "No se pudo enviar el pedido");
+        console.error('❌ Error al enviar pedido:', error);
+        alertaError("Error", error.message || "No se pudo enviar el pedido. Inténtalo de nuevo.");
     } finally {
         procesandoPedidoActivo = false;
-        if (btnProcesar) { btnProcesar.disabled = false; btnProcesar.innerText = "Procesar Orden"; btnProcesar.style.opacity = "1"; }
+        if (btnProcesar) { 
+            btnProcesar.disabled = false; 
+            btnProcesar.innerText = "💳 PROCESAR ORDEN"; 
+            btnProcesar.style.opacity = "1"; 
+        }
     }
 }
-
 function cerrarTrackingPorRechazo() {
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');

@@ -276,17 +276,40 @@
 <div id="modalRestaurante" class="modal">
     <div>
         <h3 class="text-xl font-bold mb-4">🏪 Restaurante</h3>
-        <input type="text" id="restPin" placeholder="PIN (ej: AB10DE)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3 uppercase">
-        <input type="text" id="restNombre" placeholder="Nombre" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="text" id="restDireccion" placeholder="Dirección física (ej: Avda. de la Playa 15)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="url" id="restFoto" placeholder="URL Foto (opcional)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <div class="flex gap-3">
+        
+        <label class="block text-sm text-white/70 mb-1">PIN (Identificador único) *</label>
+        <input type="text" id="restPin" placeholder="Ej: AB10DE" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3 uppercase">
+
+        <label class="block text-sm text-white/70 mb-1">Nombre del Restaurante *</label>
+        <input type="text" id="restNombre" placeholder="Ej: Pizzería La Esquina" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+
+        <div class="mb-3 border-t border-white/10 pt-3 mt-3">
+            <p class="text-cyan-400 text-xs font-bold uppercase mb-2">📍 Dirección del Local (Para calcular el envío)</p>
+            
+            <label class="block text-sm text-white/70 mb-1">Calle y Número *</label>
+            <input type="text" id="restCalle" placeholder="Ej: Avenida de la Playa 15" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-2">
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">Ciudad</label>
+                    <input type="text" id="restCiudad" value="Roquetas de Mar" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">Código Postal *</label>
+                    <input type="text" id="restCp" placeholder="04740" maxlength="5" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                </div>
+            </div>
+        </div>
+
+        <label class="block text-sm text-white/70 mb-1">URL de la Foto (Opcional)</label>
+        <input type="url" id="restFoto" placeholder="https://ejemplo.com/logo.jpg" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+
+        <div class="flex gap-3 mt-4">
             <button onclick="guardarRestaurante()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
             <button onclick="cerrarModal('modalRestaurante')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
         </div>
     </div>
 </div>
-
 <div id="modalBanner" class="modal">
     <div>
         <h3 class="text-xl font-bold mb-4">📢 Banner</h3>
@@ -504,40 +527,115 @@ async function actualizarOrdenRestaurante(id, orden) {
 async function guardarRestaurante() {
     const pin = document.getElementById('restPin').value.toUpperCase().trim();
     const nombre = document.getElementById('restNombre').value.trim();
-    const direccion = document.getElementById('restDireccion').value.trim();
+    const calle = document.getElementById('restCalle').value.trim();
+    const ciudad = document.getElementById('restCiudad').value.trim() || 'Roquetas de Mar';
+    const cp = document.getElementById('restCp').value.trim();
     const foto = document.getElementById('restFoto').value.trim();
-    if (!pin || !nombre) { Swal.fire({ title: 'Error', text: 'PIN y Nombre son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+
+    if (!pin || !nombre || !calle || !cp) { 
+        Swal.fire({ title: 'Error', text: 'PIN, Nombre, Calle y Código Postal son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); 
+        return; 
+    }
+    
+    // 📌 Construimos la dirección completa para Google Maps
+    const direccionCompleta = `${calle}, ${ciudad}, ${cp}`;
+
     try {
-        await database.ref(`restaurantes/${pin}`).set({ ID_RESTAURANTE: pin, NOMBRE_RESTAURANTE: nombre, DIRECCION: direccion || '', FOTO: foto || '', activo: true, comision: 10, creado_en: Date.now() });
-        document.getElementById('restPin').value = ''; document.getElementById('restNombre').value = ''; document.getElementById('restDireccion').value = ''; document.getElementById('restFoto').value = '';
+        await database.ref(`restaurantes/${pin}`).set({ 
+            ID_RESTAURANTE: pin, 
+            NOMBRE_RESTAURANTE: nombre, 
+            DIRECCION: direccionCompleta, // <-- Guardamos la dirección completa formateada
+            FOTO: foto || '', 
+            activo: true, 
+            comision: 10, 
+            creado_en: Date.now() 
+        });
+        
+        // Limpiamos el formulario
+        document.getElementById('restPin').value = '';
+        document.getElementById('restNombre').value = '';
+        document.getElementById('restCalle').value = '';
+        document.getElementById('restCiudad').value = 'Roquetas de Mar';
+        document.getElementById('restCp').value = '';
+        document.getElementById('restFoto').value = '';
+        
         cerrarModal('modalRestaurante');
         await cargarRestaurantes();
         Swal.fire({ title: 'Éxito', text: `Restaurante "${nombre}" guardado`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    } catch (error) { Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' }); }
+    } catch (error) { 
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' }); 
+    }
 }
 
 async function editarRestaurante(pin) {
     const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
     const data = snapshot.val();
     if (!data) return;
+
+    // Intentamos desglosar la dirección si está guardada en una sola línea
+    let calle = data.DIRECCION || data.direccion || '';
+    let ciudad = 'Roquetas de Mar';
+    let cp = '04740';
+    
+    // Si la dirección viene separada por comas, intentamos dividirla (para edición)
+    if (calle.includes(',')) {
+        const partes = calle.split(',');
+        calle = partes[0].trim();
+        if (partes[1]) ciudad = partes[1].trim();
+        if (partes[2]) cp = partes[2].trim().replace(/ /g, '');
+    }
+
     const result = await Swal.fire({
         title: `✏️ Editar ${data.NOMBRE_RESTAURANTE || pin}`,
-        html: `<input id="editNombre" class="swal2-input" placeholder="Nombre" value="${data.NOMBRE_RESTAURANTE || ''}"><input id="editDireccion" class="swal2-input" placeholder="Dirección" value="${data.direccion || data.DIRECCION || ''}"><input id="editFoto" class="swal2-input" placeholder="URL foto" value="${data.FOTO || ''}"><input id="editComision" class="swal2-input" placeholder="Comisión (%)" value="${data.comision || '10'}">`,
-        focusConfirm: false, showCancelButton: true, confirmButtonText: '✅ Guardar', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white',
-        preConfirm: () => { return { nombre: document.getElementById('editNombre').value, direccion: document.getElementById('editDireccion').value, foto: document.getElementById('editFoto').value, comision: document.getElementById('editComision').value }; }
+        html: `
+            <input id="editNombre" class="swal2-input" placeholder="Nombre" value="${data.NOMBRE_RESTAURANTE || ''}">
+            
+            <div class="text-left text-xs text-cyan-400 font-bold mt-2 mb-1">📍 Dirección</div>
+            <input id="editCalle" class="swal2-input" placeholder="Calle y Número" value="${calle}">
+            <div class="flex gap-2">
+                <input id="editCiudad" class="swal2-input" placeholder="Ciudad" value="${ciudad}" style="width: 60%;">
+                <input id="editCp" class="swal2-input" placeholder="CP" value="${cp}" style="width: 40%;">
+            </div>
+            
+            <input id="editFoto" class="swal2-input" placeholder="URL foto" value="${data.FOTO || ''}">
+            <input id="editComision" class="swal2-input" placeholder="Comisión (%)" value="${data.comision || '10'}">
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '✅ Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('editNombre').value,
+                calle: document.getElementById('editCalle').value,
+                ciudad: document.getElementById('editCiudad').value,
+                cp: document.getElementById('editCp').value,
+                foto: document.getElementById('editFoto').value,
+                comision: document.getElementById('editComision').value
+            };
+        }
     });
+    
     if (result.value) {
         const updates = {};
         if (result.value.nombre) updates.NOMBRE_RESTAURANTE = result.value.nombre;
-        if (result.value.direccion) updates.direccion = result.value.direccion;
         if (result.value.foto) updates.FOTO = result.value.foto;
         if (result.value.comision && !isNaN(parseFloat(result.value.comision))) updates.comision = parseFloat(result.value.comision);
+        
+        // 🔥 Reconstruimos la dirección completa si el usuario la cambió
+        if (result.value.calle) {
+            const dirCompleta = `${result.value.calle}, ${result.value.ciudad || 'Roquetas de Mar'}, ${result.value.cp || '04740'}`;
+            updates.direccion = dirCompleta;
+            updates.DIRECCION = dirCompleta;
+        }
+
         await database.ref(`restaurantes/${pin}`).update(updates);
         await cargarRestaurantes();
         Swal.fire({ title: '✅ Actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
     }
 }
-
 async function toggleRestaurante(id, activo) { await database.ref(`restaurantes/${id}/activo`).set(activo); await cargarRestaurantes(); }
 async function eliminarRestaurante(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`restaurantes/${id}`).remove(); await cargarRestaurantes(); } }
 

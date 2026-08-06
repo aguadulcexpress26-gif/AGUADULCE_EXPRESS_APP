@@ -362,20 +362,35 @@ const ZONAS_ROQUETAS = {
 };
 
 async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
-    const apiKey = 'AIzaSyAumnuMnQuFTTqz2McE3R2CBzejnr92nIE';
+    // Si alguna de las dos direcciones está vacía, no hacemos la llamada
+    if (!direccionCliente || !direccionRestaurante) {
+        console.warn("⚠️ Falta dirección del cliente o del restaurante. Usando tarifa fija.");
+        return null;
+    }
+
+    const apiKey = 'AIzaSyAumnuMnQuFTTqz2McE3R2CBzejnr92nIE'; // Tu Browser Key
     const origen = encodeURIComponent(direccionRestaurante);
     const destino = encodeURIComponent(direccionCliente);
     const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
+    
     try {
         const response = await fetch(url);
         const data = await response.json();
+        
+        // Verificamos que Google responda correctamente
         if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
             const distanciaMetros = data.rows[0].elements[0].distance.value;
             const distanciaKm = distanciaMetros / 1000;
             const tiempoTexto = data.rows[0].elements[0].duration.text;
             return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
-        } else { return null; }
-    } catch (error) { return null; }
+        } else {
+            console.warn('⚠️ Google Maps no pudo calcular la ruta:', data.status);
+            return null;
+        }
+    } catch (error) {
+        console.error('❌ Error de red en Google Maps:', error);
+        return null;
+    }
 }
 
 function calcularCostoEnvio(distanciaKm, subtotalPedido) {

@@ -876,21 +876,17 @@ function abrirRevision() {
 // ============================================================
 async function abrirCheckout() {
     try {
-        // ✅ 1. FORZAMOS LA APERTURA VISUAL DEL CAJÓN CON UN PLAN B (Tarifa fija 2.50€)
-        // Esto garantiza que el usuario vea el cajón aunque Google Maps tarde o falle.
-        const panelCheckout = document.getElementById('panel-checkout');
+        // ✅ 1. FORZAMOS LA APERTURA INMEDIATA Y MOSTRAMOS UN MENSAJE DE CARGA
+        document.getElementById('panel-checkout').style.display = 'block';
+        document.getElementById('panel-revision').style.display = 'none';
+
         const contenedorProductos = document.getElementById('lista-cesta-checkout');
         const contenedorDesglose = document.getElementById('desglose-pago');
         
-        panelCheckout.style.display = 'block';
-        document.getElementById('panel-revision').style.display = 'none';
-        document.getElementById('panel-checkout').style.display = 'block';
-
-        // Limpiamos y ponemos un "cargando" rápido para evitar el parpadeo
-        if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-4 text-sm">Cargando tu pedido...</div>';
+        // Mensaje de carga mientras el cerebro de la app calcula los precios
+        if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-10">🔄 Calculando precios y envío...</div>';
         if (contenedorDesglose) contenedorDesglose.innerHTML = '';
 
-        // ✅ 2. VALIDACIONES DEL USUARIO Y CESTA
         const cliente = obtenerCliente();
         if (!cliente || !cliente.uid) { 
             alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión."); 
@@ -908,17 +904,16 @@ async function abrirCheckout() {
 
         pushPantalla('checkout');
 
-        // ✅ 3. CÁLCULO DE TOTALES CON PLAN B
+        // ✅ 2. CALCULAMOS LOS PRECIOS (Esto podría tardar un poco si Google Maps se demora)
         let subtotal = 0;
         cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
         
-        // Intentamos obtener la distancia real, pero si falla, usamos el plan B inmediato
+        // Usamos el try/catch para que si Google Maps falla, no rompa la app
         let envioData = null;
         try {
             envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
         } catch (error) {
-            console.warn("⚠️ La API de Maps falló, usando tarifa fija de emergencia (Plan B).");
-            envioData = null;
+            console.warn("Google Maps tardó mucho, usando tarifa fija.");
         }
 
         const envioCalculado = calcularCostoEnvio(envioData ? envioData.km : null, subtotal);
@@ -932,7 +927,7 @@ async function abrirCheckout() {
         window._usoPlataformaActual = usoPlataforma;
         window._subtotalActual = subtotal;
 
-        // ✅ 4. RENDERIZAR PRODUCTOS Y DESGLOSE (CON EL PLAN B)
+        // ✅ 3. RENDERIZAMOS EL CONTENIDO FINAL (Reemplaza el mensaje de carga)
         if (contenedorProductos) {
             contenedorProductos.innerHTML = cesta.map(item => `
                 <div class="flex justify-between text-sm py-2 border-b border-white/10">
@@ -1016,8 +1011,7 @@ async function abrirCheckout() {
             `;
         }
     }
-}
-// 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
+}// 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
 async function cambiarDireccionCliente() {
     const { value: nuevaDireccion } = await Swal.fire({
         title: '📝 Cambiar dirección de entrega',

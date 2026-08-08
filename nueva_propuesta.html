@@ -345,8 +345,8 @@ async function clienteEsMayorDeEdad() {
     return false;
 }
 
-// ==================== FUNCIÓN CORREGIDA DE HORARIOS ====================
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
+    // Los horarios están directamente en restaurant.horarios_dias
     const horariosRest = restaurant.horarios_dias;
     
     if (!horariosRest) {
@@ -573,11 +573,13 @@ function cerrarModal(modalId) { document.getElementById(modalId).style.display =
 async function cargarBaseDatos() {
     try {
         console.log("🔄 Cargando datos desde Firebase...");
+        
+        // ==================== RESTAURANTES ====================
         const restaurantesSnap = await database.ref('restaurantes').once('value');
         const restaurantesRaw = restaurantesSnap.val() || {};
         
-        db.restaurantes = Object.entries(restaurantesRaw).map(([id, data]) => ({
-            id: id,
+        db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
+            pin: pin,
             ...data,
             horarios_dias: data.horarios_dias || null,
             orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999
@@ -592,12 +594,14 @@ async function cargarBaseDatos() {
             return nombreA.localeCompare(nombreB);
         });
         
-        console.log("✅ Restaurantes ordenados:", db.restaurantes.map(r => `${r.orden_manual} - ${r.NOMBRE_RESTAURANTE || r.nombre}`));
+        console.log("✅ Restaurantes ordenados:", db.restaurantes.length);
         
+        // ==================== MENÚ ====================
         const menuSnap = await database.ref('menu_general').once('value');
         db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         console.log("✅ Menú:", db.menu.length);
         
+        // ==================== HORARIOS RESPALDO ====================
         const horariosSnap = await database.ref('horarios_restaurantes').once('value');
         const horariosRaw = horariosSnap.val();
         db.horariosPorDia = {};
@@ -606,41 +610,84 @@ async function cargarBaseDatos() {
                 db.horariosPorDia[idRest] = horariosDias;
             }
         }
-        console.log("✅ Horarios antiguos:", Object.keys(db.horariosPorDia).length);
         
-        const configSnap = await database.ref('config').once('value');
-        const configData = configSnap.val();
-        if (configData && Array.isArray(configData) && configData[0]) {
-            db.config = configData[0];
-            const headerBg = document.getElementById('header-bg');
-            if (headerBg && db.config.FONDO_CABECERA) {
-                headerBg.style.backgroundImage = `url(${db.config.FONDO_CABECERA})`;
-                headerBg.style.backgroundSize = 'cover';
-                headerBg.style.backgroundPosition = 'center';
+        // ==================== FONDO CABECERA ====================
+        // Buscar fondo activo en fondos_cabecera
+        const fondosSnap = await database.ref('fondos_cabecera').once('value');
+        const fondos = fondosSnap.val() || {};
+        let fondoActivo = null;
+        for (const [id, data] of Object.entries(fondos)) {
+            if (data.activo === true) {
+                fondoActivo = data;
+                break;
             }
-            const appLogo = document.getElementById('app-logo');
-            if (appLogo && db.config.LOGO_URL) { appLogo.src = db.config.LOGO_URL; }
         }
         
+        const headerBg = document.getElementById('header-bg');
+        if (headerBg && fondoActivo) {
+            headerBg.style.backgroundImage = `url(${fondoActivo.url})`;
+            headerBg.style.backgroundSize = 'cover';
+            headerBg.style.backgroundPosition = 'center';
+            console.log("✅ Fondo activo cargado desde fondos_cabecera:", fondoActivo.nombre);
+        } else if (headerBg) {
+            // Fallback: intentar desde config
+            const configSnapTemp = await database.ref('config').once('value');
+            const configDataTemp = configSnapTemp.val();
+            if (configDataTemp && configDataTemp.FONDO_CABECERA) {
+                headerBg.style.backgroundImage = `url(${configDataTemp.FONDO_CABECERA})`;
+                headerBg.style.backgroundSize = 'cover';
+                headerBg.style.backgroundPosition = 'center';
+                console.log("✅ Fondo cargado desde config (fallback)");
+            }
+        }
+        
+        // ==================== LOGO ====================
+        const appLogo = document.getElementById('app-logo');
+        if (appLogo) {
+            const configSnapTemp = await database.ref('config').once('value');
+            const configDataTemp = configSnapTemp.val();
+            
+            if (configDataTemp && configDataTemp.LOGO_URL) {
+                appLogo.src = configDataTemp.LOGO_URL;
+            } else if (configDataTemp && Array.isArray(configDataTemp) && configDataTemp[0] && configDataTemp[0].LOGO_URL) {
+                appLogo.src = configDataTemp[0].LOGO_URL;
+            } else {
+                appLogo.src = "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg";
+            }
+            console.log("✅ Logo cargado:", appLogo.src);
+        }
+        
+        // ==================== ANUNCIOS ====================
         const anunciosSnap = await database.ref('anuncios').once('value');
         const anunciosData = anunciosSnap.val();
         if (anunciosData && Array.isArray(anunciosData)) {
             db.anuncios = anunciosData;
             const textoAnuncio = document.getElementById('texto-anuncio');
             const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI');
-            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { textoAnuncio.innerText = anuncioActivo.TEXTO; }
+            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { 
+                textoAnuncio.innerText = anuncioActivo.TEXTO; 
+            }
         }
+        
         console.log("🎉 Carga completa!");
-    } catch (error) { console.error("❌ Error:", error); throw error; }
+    } catch (error) { 
+        console.error("❌ Error:", error); 
+        throw error; 
+    }
 }
-
 function renderHome() {
     const app = document.getElementById("app-container");
     if (!app) return;
     
     const restaurantesOrdenados = [...db.restaurantes];
     
-    let html = `<div id="banner-container" class="mb-4"></div><p class="step-tag mb-6 ml-2 text-left text-white/50">Selecciona un restaurante</p>`;
+    let html = `<div id="banner-container" class="mb-4"></div>
+                <div class="flex items-center justify-between mb-4 mt-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-cyan-400 text-sm font-black uppercase tracking-wider">🍽️ SELECCIONA UN RESTAURANTE</span>
+                        <div class="h-px flex-1 bg-gradient-to-r from-cyan-500/50 to-transparent ml-4 w-20"></div>
+                    </div>
+                </div>`;
     
     restaurantesOrdenados.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
@@ -648,7 +695,6 @@ function renderHome() {
                     <img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-100">
                     <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
                     <div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>
-                    <div class="absolute bottom-6 right-6 bg-black/80 px-3 py-1 rounded-xl"><p class="text-[10px] font-black uppercase italic ${!abierto ? 'text-red-400' : 'text-cyan-400'}">${abierto ? 'ABIERTO' : horario}</p></div>
                     ${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}
                 </div>`;
     });
@@ -656,7 +702,6 @@ function renderHome() {
     agregarFooterLegal();
     cargarBanners();
 }
-
 async function cargarBanners() {
     const snapshot = await database.ref('banners').once('value');
     const banners = snapshot.val() || {};
@@ -674,7 +719,7 @@ async function cargarBanners() {
 }
 
 function abrirRestaurante(id, nombre, foto, estado) {
-    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === id);
+    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE == id);
     if (restaurante) {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(restaurante);
         if (!abierto) { alertaInfo("RESTAURANTE CERRADO", horario); return; }
@@ -914,9 +959,11 @@ function abrirCheckout() {
     const container = document.getElementById('lista-cesta-checkout');
     const desglose = document.getElementById('desglose-pago');
     const subtotal = cesta.reduce((a, i) => a + (i.total || 0), 0);
-    const envio = 2.50, usoApp = 0.99, total = subtotal + envio + usoApp;
+    const envio = 0.99;
+    const usoYServicios = 2.50;
+    const total = subtotal + envio + usoYServicios;
     container.innerHTML = cesta.map(item => `<div class="flex justify-between text-sm"><span>${item.cantidad}x ${escapeHTML(item.nombre)}</span><span class="font-bold">${euros(item.total)}</span></div>`).join('');
-    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2"><div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div><div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div><div class="flex justify-between text-sm"><span>📱 Uso de App</span><span>${euros(usoApp)}</span></div><div class="border-t border-white/20 my-2"></div><div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div></div>`;
+    desglose.innerHTML = `<div class="border-t border-white/10 pt-4 space-y-2"><div class="flex justify-between text-sm"><span>Subtotal</span><span>${euros(subtotal)}</span></div><div class="flex justify-between text-sm"><span>🚚 Envío</span><span>${euros(envio)}</span></div><div class="flex justify-between text-sm"><span>📱 Uso y Servicios</span><span>${euros(usoYServicios)}</span></div><div class="border-t border-white/20 my-2"></div><div class="flex justify-between text-xl font-black"><span>TOTAL</span><span class="text-cyan-400">${euros(total)}</span></div></div>`;
     let montoDiv = document.getElementById('monto-paga-container');
     if (!montoDiv) {
         montoDiv = document.createElement('div');
@@ -949,17 +996,26 @@ function iniciarSeguimientoPedido(idPedido) {
     if (!idPedido) return false;
     localStorage.setItem('ae_pedido_activo', idPedido);
     localStorage.setItem('ae_tracking_id', idPedido);
+    
+    // 🔥 Limpiar área de mensajes
+    const container = document.getElementById('mensajes-repartidor');
+    if (container) {
+        container.innerHTML = '';
+    }
+    
     if (trackingListenerRef) trackingListenerRef.off();
     trackingListenerRef = database.ref('pedidos/' + idPedido);
     trackingListenerRef.on('value', (snap) => { if (snap.val()) actualizarInterfazSeguimiento(snap.val()); });
+    
     if (window.mensajesListenerRef) window.mensajesListenerRef.off();
     window.mensajesListenerRef = database.ref('mensajes/' + idPedido);
     window.mensajesListenerRef.on('child_added', (snap) => {
         const mensaje = snap.val();
-        if (mensaje && mensaje.emisor === 'repartidor') {
+        if (mensaje && (mensaje.emisor === 'repartidor' || mensaje.emisor === 'sistema')) {
             mostrarMensajeRepartidor(mensaje);
         }
     });
+    
     document.getElementById('btn-reabrir-seguimiento').style.display = 'flex';
     return true;
 }
@@ -974,6 +1030,7 @@ function actualizarInterfazSeguimiento(data) {
         'EN_REPARTO': { w: '70%', txt: 'EN CAMINO', msg: '🛵 Tu pedido está en camino', emoji: '🛵', paso: 3 },
         'EN_PUERTA': { w: '85%', txt: '¡LLEGÓ!', msg: '🔔 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
         'ENTREGADO': { w: '100%', txt: 'ENTREGADO', msg: '🎉 Pedido entregado. ¡Gracias!', emoji: '✅', paso: 4 },
+        'RECHAZADO': { w: '100%', txt: 'RECHAZADO', msg: '❌ Pedido rechazado por el restaurante', emoji: '❌', paso: 0 },
         'CANCELADO_POR_AUSENCIA': { w: '100%', txt: 'CANCELADO', msg: '❌ Pedido cancelado por ausencia', emoji: '❌', paso: 0 }
     };
     
@@ -989,6 +1046,20 @@ function actualizarInterfazSeguimiento(data) {
         if (stepElement) stepElement.classList.toggle('active', i <= config.paso);
     }
     
+    if (estado === 'RECHAZADO') {
+    document.getElementById('tracking-info').innerHTML = `
+        <div style="text-align:center; color: #ef4444;">
+            <p style="font-size:18px;">❌ PEDIDO RECHAZADO</p>
+            <p>El restaurante no pudo preparar tu pedido.</p>
+            <p>✅ No se ha realizado ningún cargo.</p>
+            <hr style="margin:15px 0; border-color:#ef4444;">
+            <p>Puedes realizar un nuevo pedido cuando lo desees.</p>
+            <button onclick="cerrarTrackingPorRechazo()" class="mt-4 bg-cyan-500 text-black px-6 py-2 rounded-xl font-bold">✅ ACEPTAR Y VOLVER</button>
+        </div>
+    `;
+    return;
+}
+    
     if (estado === 'CANCELADO_POR_AUSENCIA') {
         const deuda = data.deuda_generada || data.total || 0;
         mostrarCancelacionConContacto(data.id || data.id_pedido, deuda);
@@ -1001,7 +1072,6 @@ function actualizarInterfazSeguimiento(data) {
                 <p style="color:#f97316;">📞 Tu cuenta ha sido bloqueada</p>
                 <p>Para resolver tu situación, contacta con soporte:</p>
                 <p>📧 soporteaguadulcexpress26@gmail.com</p>
-                <p>📞 643 261 881 (solo llamadas)</p>
                 <button onclick="window.location.href='mailto:soporteaguadulcexpress26@gmail.com'" class="mt-3 bg-cyan-500 text-black px-4 py-2 rounded-xl text-sm font-bold">📧 Contactar soporte</button>
             </div>
         `;
@@ -1048,25 +1118,52 @@ function actualizarInterfazSeguimiento(data) {
 
 function mostrarMensajeRepartidor(mensaje) {
     const container = document.getElementById('mensajes-repartidor');
-    if (container) {
-        const mensajeHtml = `
-            <div class="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-3 mb-2 animate-pulse">
-                <div class="flex items-center gap-2">
-                    <span class="text-cyan-400 text-xl">🛵</span>
-                    <div class="flex-1">
-                        <p class="text-cyan-400 text-xs font-bold">REPARTIDOR</p>
-                        <p class="text-white text-sm">${escapeHTML(mensaje.texto)}</p>
-                        <p class="text-white/40 text-[10px] mt-1">${new Date(mensaje.timestamp).toLocaleTimeString()}</p>
-                    </div>
+    if (!container) return;
+    
+    let bgColor, borderColor, textColor, icono, titulo;
+    
+    if (mensaje.emisor === 'repartidor') {
+        bgColor = 'bg-cyan-500/10';
+        borderColor = 'border-cyan-500/30';
+        textColor = 'text-cyan-400';
+        icono = '🛵';
+        titulo = 'REPARTIDOR';
+    } else if (mensaje.emisor === 'sistema') {
+        bgColor = 'bg-red-500/20';
+        borderColor = 'border-red-500/50';
+        textColor = 'text-red-400';
+        icono = '⚠️';
+        titulo = 'SISTEMA';
+    } else {
+        bgColor = 'bg-white/10';
+        borderColor = 'border-white/20';
+        textColor = 'text-white/70';
+        icono = '📱';
+        titulo = 'MENSAJE';
+    }
+    
+    const mensajeHtml = `
+        <div class="${bgColor} border ${borderColor} rounded-xl p-3 mb-2">
+            <div class="flex items-start gap-2">
+                <span class="${textColor} text-xl">${icono}</span>
+                <div class="flex-1">
+                    <p class="${textColor} text-xs font-bold">${titulo}</p>
+                    <p class="text-white text-sm whitespace-pre-line">${escapeHTML(mensaje.texto)}</p>
+                    <p class="text-white/40 text-[10px] mt-1">${new Date(mensaje.timestamp).toLocaleTimeString()}</p>
                 </div>
             </div>
-        `;
-        container.insertAdjacentHTML('afterbegin', mensajeHtml);
+        </div>
+    `;
+    
+    container.insertAdjacentHTML('afterbegin', mensajeHtml);
+    
+    // Solo sonido y vibración para mensajes del repartidor
+    if (mensaje.emisor === 'repartidor') {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.play().catch(e => console.log);
+        if (navigator.vibrate) navigator.vibrate(200);
+        mostrarToast("📱 El repartidor te ha enviado un mensaje", "🔔");
     }
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    audio.play().catch(e => console.log);
-    if (navigator.vibrate) navigator.vibrate(200);
-    mostrarToast("📱 El repartidor te ha enviado un mensaje", "🔔");
 }
 
 function abrirModalTracking() { pushPantalla('tracking'); document.getElementById('tracking-modal').style.display = 'block'; setTimeout(() => agregarFooterLegal(), 100); }
@@ -1090,7 +1187,9 @@ async function enviarPedidoFinal() {
     if (tieneAlcohol && !(await clienteEsMayorDeEdad())) { alertaError("Verificación de edad", "Debes ser mayor de 18 años."); return; }
     const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
     const subtotal = cesta.reduce((acc, item) => acc + item.total, 0);
-    const envio = 2.50, usoApp = 0.99, total = subtotal + envio + usoApp;
+    const envio = 0.99;
+    const usoYServicios = 2.50;
+    const total = subtotal + envio + usoYServicios;
     let montoPaga = null;
     if (metodo === "Efectivo") {
         const montoInput = document.getElementById('monto-paga');
@@ -1101,7 +1200,7 @@ async function enviarPedidoFinal() {
         id: idPedido, id_pedido: idPedido, cliente_nombre: cliente.nombre, cliente: cliente.nombre, cliente_telefono: cliente.telefono, cliente_email: cliente.email,
         direccion: cliente.direccion_completa, direccion_detalle: { calle: cliente.calle, edificio: cliente.edificio, puerta: cliente.puerta, instrucciones: cliente.instrucciones },
         cp: cliente.cp, items: cesta.map(item => ({ nombre: item.nombre, cantidad: item.cantidad, precio_unitario: item.precio_unitario, opciones: item.opciones || "", extras_precio: item.extras_precio || 0, total: item.total })),
-        subtotal: cesta.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0), envio: envio, usoApp: usoApp, total: total, metodo_pago: metodo,
+        subtotal: cesta.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0), envio: envio, usoYServicios: usoYServicios, total: total, metodo_pago: metodo,
         restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, estado: "RECIBIDO", huella: huellaDigitalTerminal, fecha: Date.now(), timestamp: Date.now()
     };
     if (montoPaga) pedido.monto_paga = montoPaga;
@@ -1125,7 +1224,8 @@ function iniciarEscuchaMensajesGlobal() {
     mensajesGlobalListener = database.ref('mensajes/' + pedidoId);
     mensajesGlobalListener.on('child_added', (snap) => {
         const mensaje = snap.val();
-        if (mensaje && mensaje.emisor === 'repartidor') {
+        // 🔥 CORREGIDO: También mostrar mensajes del sistema
+        if (mensaje && (mensaje.emisor === 'repartidor' || mensaje.emisor === 'sistema')) {
             mostrarMensajeRepartidor(mensaje);
             const modal = document.getElementById('tracking-modal');
             if (modal && modal.style.display !== 'flex') {
@@ -1173,16 +1273,20 @@ Gracias por tu comprensión.`;
     
     await database.ref(`mensajes/${pedidoId}`).push({ emisor: 'sistema', texto: mensaje, tipo: 'cancelacion', timestamp: Date.now(), leido: false });
     
+    // 🔥 CERRAR EL MODAL DE SEGUIMIENTO PRIMERO
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     
+    // Limpiar listeners
     if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
     if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
     if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
     
+    // Limpiar localStorage
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
     
+    // Mostrar alerta de cancelación (ahora sí, sin modal de fondo)
     Swal.fire({
         title: '❌ Pedido Cancelado',
         html: `<div class="text-left">
@@ -1208,13 +1312,16 @@ Gracias por tu comprensión.`;
         if (result.dismiss === Swal.DismissReason.cancel) {
             window.location.href = 'mailto:soporteaguadulcexpress26@gmail.com';
         }
+        // 🔥 Volver al home después de aceptar
         while (pantallaStack.length > 1) pantallaStack.pop();
         renderHome();
     });
 }
 
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').then(reg => console.log('✅ Service Worker registrado', reg)).catch(err => console.error('❌ Error al registrar SW', err));
+    navigator.serviceWorker.register('/AGUADULCE_EXPRESS_APP/sw.js')
+        .then(reg => console.log('✅ Service Worker registrado', reg))
+        .catch(err => console.error('❌ Error al registrar SW', err));
 }
 
 async function initApp() {
@@ -1229,6 +1336,7 @@ async function initApp() {
         actualizarClienteUI();
         await cargarBaseDatos();
         
+        // 🔥 FORZAR ORDENAMIENTO ANTES DE RENDERIZAR
         db.restaurantes.sort((a, b) => {
             const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999;
             const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999;
@@ -1247,6 +1355,23 @@ async function initApp() {
         if (appContainer) observer.observe(appContainer, { childList: true, subtree: true });
     } catch (e) { console.error("Fallo en la carga inicial:", e); alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); }
     finally { document.getElementById('loader').style.display = 'none'; }
+}
+    function cerrarTrackingPorRechazo() {
+    localStorage.removeItem('ae_pedido_activo');
+    localStorage.removeItem('ae_tracking_id');
+    
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    
+    document.getElementById('tracking-modal').style.display = 'none';
+    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+    
+    cesta = [];
+    actualizarCestaVisual();
+    
+    while (pantallaStack.length > 1) pantallaStack.pop();
+    renderHome();
 }
 document.addEventListener('DOMContentLoaded', initApp);
 </script>

@@ -889,29 +889,47 @@ function abrirRevision() {
 }
 
 // ============================================================
-// 💳 CAJÓN DE PAGO - VERSIÓN CON PLAN B FORZADO (SIN PANTALLA EN BLANCO)
+// 💳 NUEVO CAJÓN DE PAGO - VERSIÓN CON FUERZA ABSOLUTA
 // ============================================================
 async function abrirCheckout() {
     try {
-        // ✅ 1. FORZAMOS LA APERTURA INMEDIATA Y MOSTRAMOS UN MENSAJE DE CARGA
-        document.getElementById('panel-checkout').style.display = 'block';
-        document.getElementById('panel-revision').style.display = 'none';
-
+        console.log("🚀 Abriendo cajón con fuerza absoluta...");
+        const panel = document.getElementById('panel-checkout');
         const contenedorProductos = document.getElementById('lista-cesta-checkout');
         const contenedorDesglose = document.getElementById('desglose-pago');
-        
-        // Mensaje de carga mientras el cerebro de la app calcula los precios
-        if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-10">🔄 Calculando precios y envío...</div>';
-        if (contenedorDesglose) contenedorDesglose.innerHTML = '';
 
+        if (!panel) {
+            alertaError("Error crítico", "No se encontró el panel de pago.");
+            return;
+        }
+
+        // ✅ 1. FORZAMOS LOS ESTILOS PARA QUE EL CAJÓN APAREZCA (Igual que en la consola)
+        panel.className = ''; 
+        panel.setAttribute('style', '');
+        panel.style.cssText = `
+            display: block !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: #0a0a0a !important;
+            z-index: 99999999 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            padding: 20px !important;
+            overflow-y: auto !important;
+            margin: 0 !important;
+        `;
+        
+        // Ocultamos el panel de revisión
+        document.getElementById('panel-revision').style.display = 'none';
+
+        // ✅ 2. VERIFICAMOS EL ESTADO DEL CLIENTE Y LA CESTA
         const cliente = obtenerCliente();
         if (!cliente || !cliente.uid) { 
             alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión."); 
             mostrarModal('modal-login'); 
-            return; 
-        }
-        if (localStorage.getItem('ae_pedido_activo')) { 
-            alertaInfo("Pedido en curso", "Ya tienes un pedido activo. Finalízalo antes de hacer otro."); 
             return; 
         }
         if (!cesta || cesta.length === 0) { 
@@ -919,30 +937,24 @@ async function abrirCheckout() {
             return; 
         }
 
-        // ✅ 2. CALCULAMOS LOS PRECIOS (Esto podría tardar un poco si Google Maps se demora)
+        // ✅ 3. CALCULAMOS LOS PRECIOS (CON PLAN B SI MAPS FALLA)
         let subtotal = 0;
         cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
         
-        // Usamos el try/catch para que si Google Maps falla, no rompa la app
         let envioData = null;
         try {
             envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
-        } catch (error) {
-            console.warn("Google Maps tardó mucho, usando tarifa fija.");
-        }
+        } catch (error) { /* Silencioso, usará el plan B */ }
 
         const envioCalculado = calcularCostoEnvio(envioData ? envioData.km : null, subtotal);
         const envio = envioCalculado.envio || 2.50;
-        const descuentoAplicado = envioCalculado.descuentoAplicado;
-        const mensajeDescuento = envioCalculado.mensaje || '';
         const usoPlataforma = 0.99;
         const total = subtotal + envio + usoPlataforma;
-
         window._costoEnvioActual = envio;
         window._usoPlataformaActual = usoPlataforma;
         window._subtotalActual = subtotal;
 
-        // ✅ 3. RENDERIZAMOS EL CONTENIDO FINAL (Reemplaza el mensaje de carga)
+        // ✅ 4. DIBUJAMOS EL CONTENIDO DEL CAJÓN
         if (contenedorProductos) {
             contenedorProductos.innerHTML = cesta.map(item => `
                 <div class="flex justify-between text-sm py-2 border-b border-white/10">
@@ -954,23 +966,9 @@ async function abrirCheckout() {
 
         if (contenedorDesglose) {
             contenedorDesglose.innerHTML = `
-                <!-- Datos del Cliente -->
-                <div class="bg-slate-800/50 rounded-2xl p-4 border border-white/10 mb-4 flex justify-between items-start">
-                    <div>
-                        <p class="text-cyan-400 text-xs font-black uppercase mb-1">Entregar a:</p>
-                        <p class="font-bold text-white text-base">${escapeHTML(cliente.nombre)}</p>
-                        <p class="text-sm text-white/80">${escapeHTML(cliente.direccion_completa)}</p>
-                        <p class="text-[10px] text-white/50 mt-1">📞 ${escapeHTML(cliente.telefono)}</p>
-                    </div>
-                    <button onclick="cambiarDireccionCliente()" class="bg-cyan-600/20 text-cyan-400 px-3 py-1 rounded-xl text-xs font-bold hover:bg-cyan-600/30 transition">
-                        📝 Cambiar
-                    </button>
-                </div>
-
                 <!-- Resumen de Precios -->
-                <div class="mt-2 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
+                <div class="mt-4 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
                     <div class="flex justify-between text-sm"><span class="text-white/70">Subtotal</span><span>${euros(subtotal)}</span></div>
-                    ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span>- ${euros(envioCalculado.envio - envio)}</span></div>` : ''}
                     <div class="flex justify-between text-sm"><span class="text-white/70">📱 Uso de plataforma</span><span>${euros(usoPlataforma)}</span></div>
                     <div class="flex justify-between text-sm"><span class="text-white/70">🚚 Envío</span><span>${euros(envio)}</span></div>
                     <div class="border-t border-white/20 my-2 pt-2"></div>
@@ -1012,19 +1010,11 @@ async function abrirCheckout() {
             `;
         }
         agregarFooterLegal();
+        console.log("✅ Cajón dibujado y visible correctamente.");
 
     } catch (error) {
-        console.error("❌ ERROR CRÍTICO EN abrirCheckout:", error);
-        const contenedorDesglose = document.getElementById('desglose-pago');
-        if (contenedorDesglose) {
-            contenedorDesglose.innerHTML = `
-                <div class="bg-red-900/50 border border-red-500 rounded-xl p-6 text-center text-red-400">
-                    <p class="font-bold text-lg">⚠️ Error al cargar el cajón</p>
-                    <p class="text-sm text-white/70 mt-2">${error.message}</p>
-                    <p class="text-xs text-white/40 mt-4">Revisa la consola (F12) para más detalles.</p>
-                </div>
-            `;
-        }
+        console.error("❌ ERROR EN abrirCheckout:", error);
+        alertaError("Error", "El cajón de pago no pudo cargarse. Revisa la consola.");
     }
 }
 

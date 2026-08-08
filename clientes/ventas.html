@@ -362,37 +362,40 @@ const ZONAS_ROQUETAS = {
 };
 
 async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
-    // Si alguna de las dos direcciones está vacía, no hacemos la llamada
-    if (!direccionCliente || !direccionRestaurante) {
-        console.warn("⚠️ Falta dirección del cliente o del restaurante. Usando tarifa fija.");
-        return null;
-    }
+    if (!direccionCliente || !direccionRestaurante) return null;
 
-    const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc'; // Tu Browser Key
+    // ⚠️ IMPORTANTE: Usaremos un servicio proxy público para evitar el CORS
+    // Este servicio recibe la petición y la reenvía a Google Maps desde un servidor.
+    const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc';
     const origen = encodeURIComponent(direccionRestaurante);
     const destino = encodeURIComponent(direccionCliente);
     const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
     
     try {
-        const response = await fetch(url);
+        // ✅ USAMOS UN PROXY PÚBLICO PARA SALTAR EL CORS (CORS Anywhere)
+        const proxyUrl = 'https://corsproxy.io/?'; 
+        const response = await fetch(proxyUrl + encodeURIComponent(url));
+        
+        if (!response.ok) {
+            console.warn(`⚠️ Proxy respondió con estado ${response.status}. Usando tarifa fija.`);
+            return null;
+        }
+
         const data = await response.json();
         
-        // Verificamos que Google responda correctamente
         if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
             const distanciaMetros = data.rows[0].elements[0].distance.value;
             const distanciaKm = distanciaMetros / 1000;
             const tiempoTexto = data.rows[0].elements[0].duration.text;
             return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
         } else {
-            console.warn('⚠️ Google Maps no pudo calcular la ruta:', data.status);
             return null;
         }
     } catch (error) {
-        console.error('❌ Error de red en Google Maps:', error);
+        console.error('❌ Error de red en Maps (Proxy):', error);
         return null;
     }
 }
-
 function calcularCostoEnvio(distanciaKm, subtotalPedido) {
     if (distanciaKm === null || distanciaKm === undefined) {
         return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };

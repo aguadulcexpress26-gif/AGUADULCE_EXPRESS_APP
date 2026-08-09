@@ -889,72 +889,63 @@ function abrirRevision() {
 }
 
 // ============================================================
-// 💳 NUEVO CAJÓN DE PAGO - VERSIÓN CON FUERZA ABSOLUTA
+// 💳 CAJÓN DE PAGO - VERSIÓN LIGERA Y A PRUEBA DE FALLOS
 // ============================================================
 async function abrirCheckout() {
     try {
-        console.log("🚀 Abriendo cajón con fuerza absoluta...");
+        // ✅ 1. FORZAMOS LA APERTURA DEL CAJÓN Y MOSTRAMOS CARGA
         const panel = document.getElementById('panel-checkout');
         const contenedorProductos = document.getElementById('lista-cesta-checkout');
         const contenedorDesglose = document.getElementById('desglose-pago');
 
-        if (!panel) {
-            alertaError("Error crítico", "No se encontró el panel de pago.");
-            return;
-        }
-
-        // ✅ 1. FORZAMOS LOS ESTILOS PARA QUE EL CAJÓN APAREZCA (Igual que en la consola)
-        panel.className = ''; 
+        // Configuración visual forzada
+        panel.className = '';
         panel.setAttribute('style', '');
         panel.style.cssText = `
-            display: block !important;
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            background: #0a0a0a !important;
-            z-index: 99999999 !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            padding: 20px !important;
-            overflow-y: auto !important;
-            margin: 0 !important;
+            display: block !important; position: fixed !important; top: 0 !important; left: 0 !important;
+            width: 100vw !important; height: 100vh !important; background: #0a0a0a !important;
+            z-index: 99999999 !important; visibility: visible !important; opacity: 1 !important;
+            padding: 20px !important; overflow-y: auto !important; margin: 0 !important;
         `;
-        
-        // Ocultamos el panel de revisión
+
         document.getElementById('panel-revision').style.display = 'none';
+        if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-10">🔄 Cargando tu pedido...</div>';
+        if (contenedorDesglose) contenedorDesglose.innerHTML = '';
 
-        // ✅ 2. VERIFICAMOS EL ESTADO DEL CLIENTE Y LA CESTA
+        // ✅ 2. VALIDACIONES INICIALES
         const cliente = obtenerCliente();
-        if (!cliente || !cliente.uid) { 
-            alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión."); 
-            mostrarModal('modal-login'); 
-            return; 
+        if (!cliente || !cliente.uid) {
+            alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión.");
+            mostrarModal('modal-login'); return;
         }
-        if (!cesta || cesta.length === 0) { 
-            mostrarToast("🛒 Tu carrito está vacío", "⚠️"); 
-            return; 
+        if (localStorage.getItem('ae_pedido_activo')) {
+            alertaInfo("Pedido en curso", "Ya tienes un pedido activo. Finalízalo antes de hacer otro."); return;
+        }
+        if (!cesta || cesta.length === 0) {
+            mostrarToast("🛒 Tu carrito está vacío", "⚠️"); return;
         }
 
-        // ✅ 3. CALCULAMOS LOS PRECIOS (CON PLAN B SI MAPS FALLA)
+        // ✅ 3. CÁLCULO DE PRECIOS (Plan B + Google Maps en segundo plano)
         let subtotal = 0;
         cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
-        
-        let envioData = null;
-        try {
-            envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
-        } catch (error) { /* Silencioso, usará el plan B */ }
 
-        const envioCalculado = calcularCostoEnvio(envioData ? envioData.km : null, subtotal);
-        const envio = envioCalculado.envio || 2.50;
+        // Precio base (Plan B: 2.50€)
+        let envio = 2.50;
+        let descuentoAplicado = false;
+        let mensajeDescuento = '';
+        let envioCalculado = calcularCostoEnvio(null, subtotal);
+        envio = envioCalculado.envio || 2.50;
+        descuentoAplicado = envioCalculado.descuentoAplicado;
+        mensajeDescuento = envioCalculado.mensaje || '';
         const usoPlataforma = 0.99;
         const total = subtotal + envio + usoPlataforma;
+
+        // Guardamos para el envío final
         window._costoEnvioActual = envio;
         window._usoPlataformaActual = usoPlataforma;
         window._subtotalActual = subtotal;
 
-        // ✅ 4. DIBUJAMOS EL CONTENIDO DEL CAJÓN
+        // ✅ 4. RENDERIZADO DEL CAJÓN (CON PLAN B)
         if (contenedorProductos) {
             contenedorProductos.innerHTML = cesta.map(item => `
                 <div class="flex justify-between text-sm py-2 border-b border-white/10">
@@ -966,9 +957,23 @@ async function abrirCheckout() {
 
         if (contenedorDesglose) {
             contenedorDesglose.innerHTML = `
+                <!-- Datos del Cliente -->
+                <div class="bg-slate-800/50 rounded-2xl p-4 border border-white/10 mb-4 flex justify-between items-start">
+                    <div>
+                        <p class="text-cyan-400 text-xs font-black uppercase mb-1">Entregar a:</p>
+                        <p class="font-bold text-white text-base">${escapeHTML(cliente.nombre)}</p>
+                        <p class="text-sm text-white/80">${escapeHTML(cliente.direccion_completa)}</p>
+                        <p class="text-[10px] text-white/50 mt-1">📞 ${escapeHTML(cliente.telefono)}</p>
+                    </div>
+                    <button onclick="cambiarDireccionCliente()" class="bg-cyan-600/20 text-cyan-400 px-3 py-1 rounded-xl text-xs font-bold hover:bg-cyan-600/30 transition">
+                        📝 Cambiar
+                    </button>
+                </div>
+
                 <!-- Resumen de Precios -->
-                <div class="mt-4 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
+                <div class="mt-2 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
                     <div class="flex justify-between text-sm"><span class="text-white/70">Subtotal</span><span>${euros(subtotal)}</span></div>
+                    ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span>- ${euros(envioCalculado.envio - envio)}</span></div>` : ''}
                     <div class="flex justify-between text-sm"><span class="text-white/70">📱 Uso de plataforma</span><span>${euros(usoPlataforma)}</span></div>
                     <div class="flex justify-between text-sm"><span class="text-white/70">🚚 Envío</span><span>${euros(envio)}</span></div>
                     <div class="border-t border-white/20 my-2 pt-2"></div>
@@ -1010,6 +1015,21 @@ async function abrirCheckout() {
             `;
         }
         agregarFooterLegal();
+
+        // ✅ 5. ACTUALIZACIÓN EN SEGUNDO PLANO CON GOOGLE MAPS
+        // Se ejecuta sin esperar, para no bloquear la visualización
+        setTimeout(async () => {
+            try {
+                const envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
+                if (envioData && envioData.km !== null) {
+                    const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
+                    window._costoEnvioActual = nuevoCalculo.envio || 2.50;
+                    // Aquí podrías añadir una función para actualizar el precio en la interfaz si quisieras
+                    console.log("✅ Costo de envío actualizado con Google Maps:", window._costoEnvioActual);
+                }
+            } catch (e) { /* Silencioso, el plan B ya está activo */ }
+        }, 100);
+
         console.log("✅ Cajón dibujado y visible correctamente.");
 
     } catch (error) {
@@ -1018,37 +1038,9 @@ async function abrirCheckout() {
     }
 }
 
-// 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
-async function cambiarDireccionCliente() {
-    const { value: nuevaDireccion } = await Swal.fire({
-        title: '📝 Cambiar dirección de entrega',
-        html: `
-            <p class="text-sm text-white/70 mb-3">Indica la dirección donde quieres recibir el pedido.</p>
-            <input id="nueva-calle" class="swal2-input" placeholder="Calle y número (Ej: Avda. de la Playa 15)">
-            <input id="nueva-puerta" class="swal2-input" placeholder="Piso, puerta o apartamento (opcional)">
-            <input id="nuevo-cp" class="swal2-input" placeholder="Código Postal (Ej: 04740)" value="04740">
-        `,
-        focusConfirm: false, showCancelButton: true, confirmButtonText: '✅ Actualizar y recalcular', cancelButtonText: 'Cancelar', background: '#020617', color: 'white',
-        preConfirm: () => {
-            const calle = document.getElementById('nueva-calle').value.trim();
-            const puerta = document.getElementById('nueva-puerta').value.trim();
-            const cp = document.getElementById('nuevo-cp').value.trim();
-            if (!calle) { Swal.showValidationMessage('La dirección es obligatoria'); return false; }
-            if (!ZONAS_PERMITIDAS.includes(cp)) { Swal.showValidationMessage('Solo entregamos en Roquetas de Mar (04740)'); return false; }
-            return calle + (puerta ? ', ' + puerta : '') + ', ' + cp;
-        }
-    });
-
-    if (nuevaDireccion) {
-        const cliente = obtenerCliente();
-        cliente.direccion_completa = nuevaDireccion;
-        guardarCliente(cliente);
-        mostrarToast("Recalculando costo de envío...", "🔄");
-        await abrirCheckout();
-    }
-}
-
+// ============================================================
 // 🛡️ PROCESAR PEDIDO (SEGURIDAD Y ENVÍO)
+// ============================================================
 async function nuevoProcesarPedido() {
     if (procesandoPedidoActivo) return;
     procesandoPedidoActivo = true;
@@ -1127,6 +1119,36 @@ async function nuevoProcesarPedido() {
         if (btnProcesar) { btnProcesar.disabled = false; btnProcesar.innerHTML = "💳 PROCESAR ORDEN"; btnProcesar.style.opacity = "1"; }
     }
 }
+// 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
+async function cambiarDireccionCliente() {
+    const { value: nuevaDireccion } = await Swal.fire({
+        title: '📝 Cambiar dirección de entrega',
+        html: `
+            <p class="text-sm text-white/70 mb-3">Indica la dirección donde quieres recibir el pedido.</p>
+            <input id="nueva-calle" class="swal2-input" placeholder="Calle y número (Ej: Avda. de la Playa 15)">
+            <input id="nueva-puerta" class="swal2-input" placeholder="Piso, puerta o apartamento (opcional)">
+            <input id="nuevo-cp" class="swal2-input" placeholder="Código Postal (Ej: 04740)" value="04740">
+        `,
+        focusConfirm: false, showCancelButton: true, confirmButtonText: '✅ Actualizar y recalcular', cancelButtonText: 'Cancelar', background: '#020617', color: 'white',
+        preConfirm: () => {
+            const calle = document.getElementById('nueva-calle').value.trim();
+            const puerta = document.getElementById('nueva-puerta').value.trim();
+            const cp = document.getElementById('nuevo-cp').value.trim();
+            if (!calle) { Swal.showValidationMessage('La dirección es obligatoria'); return false; }
+            if (!ZONAS_PERMITIDAS.includes(cp)) { Swal.showValidationMessage('Solo entregamos en Roquetas de Mar (04740)'); return false; }
+            return calle + (puerta ? ', ' + puerta : '') + ', ' + cp;
+        }
+    });
+
+    if (nuevaDireccion) {
+        const cliente = obtenerCliente();
+        cliente.direccion_completa = nuevaDireccion;
+        guardarCliente(cliente);
+        mostrarToast("Recalculando costo de envío...", "🔄");
+        await abrirCheckout();
+    }
+}
+
 
 // ============================================================
 // 🎯 SEGUIMIENTO Y NOTIFICACIONES
@@ -1274,8 +1296,12 @@ async function initApp() {
         if (appContainer) observer.observe(appContainer, { childList: true, subtree: true });
         console.log("✅ App iniciada correctamente");
     } catch (e) { console.error("❌ Fallo en la carga inicial:", e); alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); }
-    finally { document.getElementById('loader').style.display = 'none'; }
+   finally { 
+        document.getElementById('loader').style.display = 'none'; 
+    }
 }
+
+document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>

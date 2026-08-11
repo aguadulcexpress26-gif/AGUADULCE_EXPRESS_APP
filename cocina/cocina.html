@@ -186,36 +186,36 @@
         /* ============================================
            MENÚ HAMBURGUESA
            ============================================ */
-        #menu-toggle {
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            z-index: 50;
-            background: white;
-            border: none;
-            border-radius: 0.75rem;
-            padding: 0.75rem;
-            font-size: 1.5rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            transition: all 0.3s;
-            display: none !important;
-        }
-        
-        #app:not(.hidden) #menu-toggle {
-            display: block !important;
-        }
-        
-        #menu-toggle:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        }
-        
-        #menu-toggle.active {
-            background: #ef4444;
-            color: white;
-        }
-        
+      #menu-toggle {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 50;
+    background: white;
+    border: none;
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    font-size: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.3s;
+    display: none !important;  /* ← NUEVO: oculto por defecto */
+}
+
+/* NUEVO: Solo se muestra cuando la app está visible */
+#app:not(.hidden) #menu-toggle {
+    display: block !important;
+}
+
+#menu-toggle:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+#menu-toggle.active {
+    background: #ef4444;
+    color: white;
+}
         /* ============================================
            MENÚ DESPLEGABLE
            ============================================ */
@@ -821,110 +821,141 @@
         // ============================================
         // 13. RENDERIZAR VISTA
         // ============================================
-        function renderizarVista() {
-            const container = document.getElementById('lista-pedidos');
+       function renderizarVista() {
+    const container = document.getElementById('lista-pedidos');
+    
+    // Mostrar estado de carga
+    container.innerHTML = `
+        <div class="col-span-full text-center py-12 text-gray-500">
+            <div class="text-4xl mb-4 animate-pulse">⏳</div>
+            <p class="text-lg">Cargando pedidos...</p>
+        </div>
+    `;
+    
+    db.ref('pedidos').once('value')
+        .then((snapshot) => {
+            const pedidos = snapshot.val();
             
-            db.ref('pedidos').once('value', (snapshot) => {
-                const pedidos = snapshot.val();
-                if (!pedidos) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12 text-gray-500">
-                            <div class="text-6xl mb-4">🍽️</div>
-                            <p class="text-lg">No hay pedidos disponibles</p>
-                        </div>
-                    `;
-                    return;
-                }
+            if (!pedidos) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-gray-500">
+                        <div class="text-6xl mb-4">🍽️</div>
+                        <p class="text-lg">No hay pedidos disponibles</p>
+                        <p class="text-sm text-gray-400 mt-2">Los pedidos aparecerán aquí cuando lleguen</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Filtrar pedidos según vista
+            let pedidosFiltrados = [];
+            const pedidosArray = Object.entries(pedidos);
+            
+            for (const [id, data] of pedidosArray) {
+                // Solo pedidos de este restaurante (compatibilidad con ambos campos)
+                if (data.restauranteId !== restauranteId && data.restaurante_id !== restauranteId) continue;
                 
-                // Filtrar pedidos según vista
-                let pedidosFiltrados = [];
-                const pedidosArray = Object.entries(pedidos);
-                
-                for (const [id, data] of pedidosArray) {
-                    // Solo pedidos de este restaurante
-                    if (data.restauranteId !== restauranteId) continue;
-                    
-                    if (currentView === 'activos') {
-                        if (data.estado === 'pendiente' || data.estado === 'coccion' || data.estado === 'listo' || data.estado === 'reparto') {
-                            pedidosFiltrados.push({ id, ...data });
-                        }
-                    } else if (currentView === 'historial') {
-                        if (data.estado === 'entregado' || data.estado === 'cancelado') {
-                            pedidosFiltrados.push({ id, ...data });
-                        }
-                    } else if (currentView === 'demoras') {
-                        if (data.demora && data.demora > 0) {
-                            pedidosFiltrados.push({ id, ...data });
-                        }
+                if (currentView === 'activos') {
+                    if (data.estado === 'pendiente' || data.estado === 'coccion' || data.estado === 'listo' || data.estado === 'reparto') {
+                        pedidosFiltrados.push({ id, ...data });
+                    }
+                } else if (currentView === 'historial') {
+                    if (data.estado === 'entregado' || data.estado === 'cancelado') {
+                        pedidosFiltrados.push({ id, ...data });
+                    }
+                } else if (currentView === 'demoras') {
+                    if (data.demora && data.demora > 0) {
+                        pedidosFiltrados.push({ id, ...data });
                     }
                 }
-                
-                // Ordenar: pendiente > coccion > listo > reparto
-                const ordenEstados = { pendiente: 0, coccion: 1, listo: 2, reparto: 3 };
-                pedidosFiltrados.sort((a, b) => (ordenEstados[a.estado] || 99) - (ordenEstados[b.estado] || 99));
-                
-                // Actualizar contador
-                document.getElementById('contador-activos').textContent = pedidosFiltrados.filter(p => 
-                    p.estado === 'pendiente' || p.estado === 'coccion' || p.estado === 'listo' || p.estado === 'reparto'
-                ).length;
-                
-                // Renderizar
-                if (pedidosFiltrados.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12 text-gray-500">
-                            <div class="text-6xl mb-4">📭</div>
-                            <p class="text-lg">No hay pedidos en esta vista</p>
+            }
+            
+            // Ordenar por estado y tiempo
+            const ordenEstados = { pendiente: 0, coccion: 1, listo: 2, reparto: 3 };
+            pedidosFiltrados.sort((a, b) => {
+                const estadoA = ordenEstados[a.estado] !== undefined ? ordenEstados[a.estado] : 99;
+                const estadoB = ordenEstados[b.estado] !== undefined ? ordenEstados[b.estado] : 99;
+                if (estadoA !== estadoB) return estadoA - estadoB;
+                return (a.timestamp || 0) - (b.timestamp || 0);
+            });
+            
+            // Actualizar contador
+            const activos = pedidosFiltrados.filter(p => 
+                p.estado === 'pendiente' || p.estado === 'coccion' || p.estado === 'listo' || p.estado === 'reparto'
+            );
+            document.getElementById('contador-activos').textContent = activos.length;
+            
+            // Renderizar
+            if (pedidosFiltrados.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-gray-500">
+                        <div class="text-6xl mb-4">📭</div>
+                        <p class="text-lg">No hay pedidos en esta vista</p>
+                        ${currentView === 'activos' ? '<p class="text-sm text-gray-400 mt-2">Esperando nuevos pedidos...</p>' : ''}
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = pedidosFiltrados.map(pedido => `
+                <div class="pedido-card">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <span class="font-bold text-lg">#${pedido.id.slice(-6)}</span>
+                            <span class="estado estado-${pedido.estado} ml-2">${pedido.estado}</span>
                         </div>
-                    `;
-                    return;
-                }
-                
-                container.innerHTML = pedidosFiltrados.map(pedido => `
-                    <div class="pedido-card">
-                        <div class="flex justify-between items-start mb-3">
-                            <div>
-                                <span class="font-bold text-lg">#${pedido.id.slice(-6)}</span>
-                                <span class="estado estado-${pedido.estado} ml-2">${pedido.estado}</span>
-                            </div>
-                            <span class="text-sm text-gray-500">${new Date(pedido.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="font-medium">${pedido.clienteNombre || 'Cliente'}</div>
-                            <div class="text-sm text-gray-500">${pedido.direccion || 'Sin dirección'}</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="text-sm font-medium">Productos:</div>
-                            ${pedido.productos ? Object.entries(pedido.productos).map(([id, prod]) => `
-                                <div class="text-sm text-gray-600">${prod.cantidad || 1}x ${prod.nombre}</div>
-                            `).join('') : '<div class="text-sm text-gray-400">Sin productos</div>'}
-                        </div>
-                        
-                        <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
-                            <div class="font-bold text-lg">${pedido.total ? `$${pedido.total.toFixed(2)}` : '$0.00'}</div>
-                            <div class="space-x-2">
-                                ${pedido.estado === 'pendiente' ? `
-                                    <button onclick="cambiarEstado('${pedido.id}', 'coccion')" class="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">
-                                        Iniciar Cocción
-                                    </button>
-                                ` : ''}
-                                ${pedido.estado === 'coccion' ? `
-                                    <button onclick="cambiarEstado('${pedido.id}', 'listo')" class="px-3 py-1 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600">
-                                        Marcar Listo
-                                    </button>
-                                ` : ''}
-                                ${pedido.estado === 'listo' ? `
-                                    <button onclick="cambiarEstado('${pedido.id}', 'reparto')" class="px-3 py-1 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600">
-                                        Enviar a Reparto
-                                    </button>
-                                ` : ''}
-                            </div>
+                        <span class="text-sm text-gray-500">${pedido.timestamp ? new Date(pedido.timestamp).toLocaleTimeString() : '--:--'}</span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="font-medium">${pedido.clienteNombre || 'Cliente'}</div>
+                        <div class="text-sm text-gray-500">${pedido.direccion || 'Sin dirección'}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="text-sm font-medium">Productos:</div>
+                        ${pedido.productos ? Object.entries(pedido.productos).map(([id, prod]) => `
+                            <div class="text-sm text-gray-600">${prod.cantidad || 1}x ${prod.nombre}</div>
+                        `).join('') : '<div class="text-sm text-gray-400">Sin productos</div>'}
+                    </div>
+                    
+                    <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+                        <div class="font-bold text-lg">${pedido.total ? `$${pedido.total.toFixed(2)}` : '$0.00'}</div>
+                        <div class="space-x-2">
+                            ${pedido.estado === 'pendiente' ? `
+                                <button onclick="cambiarEstado('${pedido.id}', 'coccion')" class="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">
+                                    Iniciar Cocción
+                                </button>
+                            ` : ''}
+                            ${pedido.estado === 'coccion' ? `
+                                <button onclick="cambiarEstado('${pedido.id}', 'listo')" class="px-3 py-1 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600">
+                                    Marcar Listo
+                                </button>
+                            ` : ''}
+                            ${pedido.estado === 'listo' ? `
+                                <button onclick="cambiarEstado('${pedido.id}', 'reparto')" class="px-3 py-1 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600">
+                                    Enviar a Reparto
+                                </button>
+                            ` : ''}
                         </div>
                     </div>
-                `).join('');
-            });
-        }
+                </div>
+            `).join('');
+        })
+        .catch((error) => {
+            console.error('Error al cargar pedidos:', error);
+            container.innerHTML = `
+                <div class="col-span-full text-center py-12 text-red-500">
+                    <div class="text-4xl mb-4">❌</div>
+                    <p class="text-lg">Error al cargar pedidos</p>
+                    <p class="text-sm text-gray-400 mt-2">${error.message}</p>
+                    <button onclick="renderizarVista()" class="mt-4 px-4 py-2 bg-amber-500 text-black rounded-lg font-bold">
+                        🔄 Reintentar
+                    </button>
+                </div>
+            `;
+        });
+}
 
         // ============================================
         // 14. CAMBIAR ESTADO DE PEDIDO

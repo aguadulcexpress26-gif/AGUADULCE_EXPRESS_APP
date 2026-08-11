@@ -9,6 +9,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <title>Aguadulce Express - Cocina</title>
     
+    <!-- Link al manifest.json -->
+    <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json">
+    
+    <!-- Para iOS -->
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -20,7 +26,7 @@
 
     <style>
         /* ============================================
-           ESTILOS GLOBALES
+           ESTILOS GLOBALES - (TODOS LOS ESTILOS DE ANTES)
            ============================================ */
         * {
             margin: 0;
@@ -526,7 +532,7 @@
     </div>
 
     <!-- ============================================
-    JAVASCRIPT COMPLETO
+    JAVASCRIPT PRINCIPAL
     ============================================ -->
     <script>
         // ============================================
@@ -538,8 +544,8 @@
             databaseURL: "https://aguadulce-express-v2-default-rtdb.firebaseio.com",
             projectId: "aguadulce-express-v2",
             storageBucket: "aguadulce-express-v2.appspot.com",
-            messagingSenderId: "TU_MESSAGING_SENDER_ID",
-            appId: "TU_APP_ID"
+            messagingSenderId: "103953800507",
+            appId: "1:103953800507:web:tu_app_id"
         };
 
         firebase.initializeApp(firebaseConfig);
@@ -725,6 +731,9 @@
                 if (window.matchMedia('(display-mode: standalone)').matches) {
                     document.getElementById('install-btn').style.display = 'none';
                 }
+                
+                // SOLICITAR PERMISO DE NOTIFICACIONES DESPUÉS DEL LOGIN
+                setTimeout(solicitarPermisoNotificaciones, 3000);
                 
             } else {
                 // Mostrar login, ocultar app
@@ -980,7 +989,71 @@
         }
 
         // ============================================
-        // 16. INICIALIZAR
+        // 16. SOLICITAR PERMISO PARA NOTIFICACIONES PUSH
+        // ============================================
+        async function solicitarPermisoNotificaciones() {
+            if (!('Notification' in window)) {
+                console.log('❌ Este navegador no soporta notificaciones');
+                return false;
+            }
+            
+            if (Notification.permission === 'granted') {
+                console.log('✅ Permiso de notificaciones ya concedido');
+                // Registrar el token FCM
+                await registrarTokenFCM();
+                return true;
+            }
+            
+            if (Notification.permission === 'denied') {
+                console.log('❌ Permiso de notificaciones denegado');
+                return false;
+            }
+            
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    console.log('✅ Permiso de notificaciones concedido');
+                    await registrarTokenFCM();
+                    return true;
+                } else {
+                    console.log('❌ Permiso de notificaciones denegado');
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ Error al solicitar permiso:', error);
+                return false;
+            }
+        }
+
+        // ============================================
+        // 17. REGISTRAR TOKEN FCM PARA NOTIFICACIONES
+        // ============================================
+        async function registrarTokenFCM() {
+            try {
+                const messaging = firebase.messaging();
+                
+                // Solicitar token
+                const token = await messaging.getToken({
+                    vapidKey: 'TU_VAPID_KEY_AQUI'
+                });
+                
+                console.log('📨 Token FCM obtenido:', token);
+                
+                // Guardar token en Firebase
+                if (currentUser) {
+                    await db.ref(`restaurantes/${currentUser.uid}/fcmTokens/${token}`).set(true);
+                    console.log('✅ Token FCM guardado en Firebase');
+                }
+                
+                return token;
+            } catch (error) {
+                console.error('❌ Error al obtener token FCM:', error);
+                return null;
+            }
+        }
+
+        // ============================================
+        // 18. INICIALIZAR
         // ============================================
         document.addEventListener('DOMContentLoaded', () => {
             // Forzar detección de orientación
@@ -995,7 +1068,7 @@
         });
 
         // ============================================
-        // 17. LOGS DE SEGURIDAD (Opcional)
+        // 19. LOGS DE SEGURIDAD (Opcional)
         // ============================================
         async function registrarLogSeguridad(evento, detalles = {}) {
             try {
@@ -1024,5 +1097,37 @@
         console.log('📱 Versión 2.0 - Optimizado para tabletas');
     </script>
 
+    <!-- ============================================
+    CÓDIGO PARA REGISTRAR SERVICE WORKER
+    (ANEXADO AL FINAL - JUSTO ANTES DE CERRAR BODY)
+    ============================================ -->
+    <script>
+        // ============================================
+        // REGISTRAR SERVICE WORKER
+        // ============================================
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker
+                    .register('/AGUADULCE_EXPRESS_APP/cocina/sw-cocina.js')
+                    .then(registration => {
+                        console.log('✅ Service Worker registrado:', registration);
+                        
+                        // Verificar actualizaciones cada 24 horas
+                        setInterval(() => {
+                            registration.update();
+                            console.log('🔄 Buscando actualizaciones del SW...');
+                        }, 24 * 60 * 60 * 1000);
+                        
+                        // Escuchar mensajes del SW
+                        navigator.serviceWorker.addEventListener('message', event => {
+                            console.log('💬 Mensaje del SW:', event.data);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('❌ Error al registrar SW:', error);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

@@ -183,13 +183,39 @@
             <div id="listaFondos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
         
-        <!-- ==================== USUARIOS ==================== -->
+               <!-- ==================== USUARIOS (TABLA TIPO EXCEL) ==================== -->
         <div id="seccion-usuarios" class="seccion hidden">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold">👥 Usuarios</h2>
-                <button onclick="mostrarModal('modalUsuario')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Usuario</button>
+                <div class="flex gap-3">
+                    <select id="filtroRolUsuarios" class="p-3 rounded-xl bg-slate-700 border border-slate-600 text-sm" onchange="cargarUsuarios()">
+                        <option value="todos">Todos los roles</option>
+                        <option value="admin">Administradores</option>
+                        <option value="restaurante">Restaurantes</option>
+                        <option value="cocina">Cocina</option>
+                        <option value="repartidor">Repartidores</option>
+                    </select>
+                    <button onclick="mostrarModal('modalUsuario')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Usuario</button>
+                </div>
             </div>
-            <div id="listaUsuarios" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            
+            <div class="bg-slate-800 rounded-2xl p-4 overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="border-b border-white/10 text-white/70 text-xs uppercase">
+                        <tr>
+                            <th class="p-3">Nombre</th>
+                            <th class="p-3">Email</th>
+                            <th class="p-3">Teléfono</th>
+                            <th class="p-3">Rol</th>
+                            <th class="p-3">🔑 Contraseña</th>
+                            <th class="p-3 text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaUsuarios">
+                        <tr><td colspan="6" class="text-center text-white/50 p-6">Cargando usuarios...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
         
         <!-- ==================== REPORTES ==================== -->
@@ -912,48 +938,73 @@ async function seleccionarFondoCabecera(id) {
 async function eliminarFondoCabecera(id) { const confirm = await Swal.fire({ title: '¿Eliminar fondo?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`fondos_cabecera/${id}`).remove(); cargarFondosCabecera(); } }
 
 // ============================================================
-// 👥 USUARIOS (CON VISUALIZACIÓN DE CONTRASEÑA)
+// 👥 USUARIOS - VERSIÓN TABLA TIPO EXCEL
 // ============================================================
 async function cargarUsuarios() {
-    const container = document.getElementById('listaUsuarios');
+    const container = document.getElementById('tablaUsuarios');
+    const filtroRol = document.getElementById('filtroRolUsuarios')?.value || 'todos';
+    
+    if (!container) return;
+    container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">Cargando usuarios...</td></tr>';
+
     try {
         let usuarios = {};
         try { usuarios = (await database.ref('usuarios').once('value')).val() || {}; } catch(e){}
         try { Object.assign(usuarios, (await database.ref('usuarios_admin').once('value')).val() || {}); } catch(e){}
         try { Object.assign(usuarios, (await database.ref('usuarios_restaurante').once('value')).val() || {}); } catch(e){}
+        try { Object.assign(usuarios, (await database.ref('usuarios_cocina').once('value')).val() || {}); } catch(e){}
         
-        if (Object.keys(usuarios).length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-10">No hay usuarios</div>'; return; }
-        
+        const keys = Object.keys(usuarios);
+        if (keys.length === 0) {
+            container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">No hay usuarios registrados</td></tr>';
+            return;
+        }
+
         let html = '';
-        for (const uid in usuarios) {
+        for (const uid of keys) {
             const data = usuarios[uid];
             const email = data.email || uid;
             const rol = data.rol || 'sin rol';
-            const nombre = data.nombre || data.NOMBRE_RESTAURANTE || 'Usuario';
-            // 🔥 AGREGAMOS LA LÍNEA PARA BUSCAR LA CONTRASEÑA
-            const password = data.password || 'No disponible';
-            
-            const badgeClass = { 'admin': 'badge-admin', 'restaurante': 'badge-restaurante', 'cocina': 'badge-cocina', 'repartidor': 'badge-repartidor', 'sin rol': 'badge-sin-rol' }[rol] || 'badge-sin-rol';
-            
+            const nombre = data.nombre || data.NOMBRE_RESTAURANTE || 'Sin nombre';
+            const telefono = data.telefono || '-';
+            const password = data.password || '❌ No disponible';
+
+            // Aplicar filtro
+            if (filtroRol !== 'todos' && rol !== filtroRol) continue;
+
+            const badgeClass = {
+                'admin': 'bg-blue-600/20 text-blue-400',
+                'restaurante': 'bg-amber-600/20 text-amber-400',
+                'cocina': 'bg-cyan-600/20 text-cyan-400',
+                'repartidor': 'bg-purple-600/20 text-purple-400'
+            }[rol] || 'bg-slate-600/20 text-slate-400';
+
             html += `
-                <div class="bg-slate-800 rounded-2xl p-4 border border-white/10 flex justify-between items-center">
-                    <div class="flex-1">
-                        <p class="font-bold text-white text-lg">${escapeHTML(nombre)}</p>
-                        <p class="text-white/50 text-sm">📧 ${escapeHTML(email)}</p>
-                        <p class="text-white/50 text-sm">🔑 Contraseña: <span class="text-yellow-400 font-mono font-bold">${escapeHTML(password)}</span></p>
-                        <p><span class="badge ${badgeClass}">${escapeHTML(rol)}</span></p>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="editarUsuario('${uid}')" class="btn-editar px-4 py-2 rounded-xl text-xs font-bold">✏️ Editar</button>
-                        <button onclick="eliminarUsuario('${uid}', '${escapeHTML(email)}')" class="btn-eliminar px-4 py-2 rounded-xl text-xs font-bold">🗑️ Eliminar</button>
-                    </div>
-                </div>
+                <tr class="border-b border-white/10 hover:bg-white/5 transition">
+                    <td class="p-3 font-medium">${escapeHTML(nombre)}</td>
+                    <td class="p-3">${escapeHTML(email)}</td>
+                    <td class="p-3">${escapeHTML(telefono)}</td>
+                    <td class="p-3"><span class="px-2 py-1 rounded text-xs ${badgeClass}">${escapeHTML(rol)}</span></td>
+                    <td class="p-3 font-mono text-yellow-400">${escapeHTML(password)}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="editarUsuario('${uid}')" class="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-3 py-1 rounded text-xs font-bold transition">✏️ Editar</button>
+                        <button onclick="eliminarUsuario('${uid}', '${escapeHTML(email)}')" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1 rounded text-xs font-bold transition ml-2">🗑️ Eliminar</button>
+                    </td>
+                </tr>
             `;
         }
-        container.innerHTML = html;
-    } catch (error) { console.error('Error al cargar usuarios:', error); container.innerHTML = '<div class="text-center text-red-400 p-10">Error al cargar usuarios</div>'; }
-}
 
+        if (!html) {
+            container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">No hay usuarios con el rol seleccionado</td></tr>';
+        } else {
+            container.innerHTML = html;
+        }
+
+    } catch (error) {
+        console.error('Error al cargar usuarios:', error);
+        container.innerHTML = '<tr><td colspan="6" class="text-center text-red-400 p-6">Error al cargar usuarios</td></tr>';
+    }
+}
 async function guardarUsuario() {
     if (firebase.auth().currentUser?.email !== 'admin@aguadulce.com') { Swal.fire({ title: '⛔ Acceso denegado', text: 'Solo el administrador puede crear usuarios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
     const nombre = document.getElementById('userNombre').value.trim(); const email = document.getElementById('userEmail').value.trim(); const password = document.getElementById('userPassword').value.trim(); const rol = document.getElementById('userRol').value;

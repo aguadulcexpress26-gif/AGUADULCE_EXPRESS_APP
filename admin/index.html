@@ -1014,29 +1014,28 @@ async function seleccionarFondoCabecera(id) {
 async function eliminarFondoCabecera(id) { const confirm = await Swal.fire({ title: '¿Eliminar fondo?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`fondos_cabecera/${id}`).remove(); cargarFondosCabecera(); } }
 
 // ============================================================
-// 👥 USUARIOS - VERSIÓN TABLA TIPO EXCEL
+// 👥 CARGAR USUARIOS - VERSIÓN MEJORADA
 // ============================================================
 async function cargarUsuarios() {
     const container = document.getElementById('tablaUsuarios');
     const filtroRol = document.getElementById('filtroRolUsuarios')?.value || 'todos';
     
     if (!container) return;
-    container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">Cargando usuarios...</td></tr>';
+    container.innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-6">Cargando usuarios...</td></tr>';
 
     try {
-        let usuarios = {};
-        try { usuarios = (await database.ref('usuarios').once('value')).val() || {}; } catch(e){}
-        try { Object.assign(usuarios, (await database.ref('usuarios_admin').once('value')).val() || {}); } catch(e){}
-        try { Object.assign(usuarios, (await database.ref('usuarios_restaurante').once('value')).val() || {}); } catch(e){}
-        try { Object.assign(usuarios, (await database.ref('usuarios_cocina').once('value')).val() || {}); } catch(e){}
-        
+        const snapshot = await database.ref('usuarios').once('value');
+        const usuarios = snapshot.val() || {};
         const keys = Object.keys(usuarios);
+        
         if (keys.length === 0) {
-            container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">No hay usuarios registrados</td></tr>';
+            container.innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-6">No hay usuarios registrados</td></tr>';
             return;
         }
 
         let html = '';
+        let encontrados = 0;
+        
         for (const uid of keys) {
             const data = usuarios[uid];
             const email = data.email || uid;
@@ -1047,6 +1046,20 @@ async function cargarUsuarios() {
 
             // Aplicar filtro
             if (filtroRol !== 'todos' && rol !== filtroRol) continue;
+            encontrados++;
+
+            // Obtener restaurante asociado si es restaurante o cocina
+            let restauranteInfo = '';
+            if (rol === 'restaurante' || rol === 'cocina') {
+                try {
+                    const restSnap = await database.ref(`usuarios_restaurante/${uid}/restauranteId`).once('value');
+                    const restId = restSnap.val();
+                    if (restId) {
+                        const restNameSnap = await database.ref(`restaurantes/${restId}/NOMBRE_RESTAURANTE`).once('value');
+                        restauranteInfo = `<span class="text-cyan-400 text-xs">🏪 ${restNameSnap.val() || restId}</span>`;
+                    }
+                } catch(e) {}
+            }
 
             const badgeClass = {
                 'admin': 'bg-blue-600/20 text-blue-400',
@@ -1060,8 +1073,11 @@ async function cargarUsuarios() {
                     <td class="p-3 font-medium">${escapeHTML(nombre)}</td>
                     <td class="p-3">${escapeHTML(email)}</td>
                     <td class="p-3">${escapeHTML(telefono)}</td>
-                    <td class="p-3"><span class="px-2 py-1 rounded text-xs ${badgeClass}">${escapeHTML(rol)}</span></td>
-                    <td class="p-3 font-mono text-yellow-400">${escapeHTML(password)}</td>
+                    <td class="p-3">
+                        <span class="px-2 py-1 rounded text-xs ${badgeClass}">${escapeHTML(rol)}</span>
+                        ${restauranteInfo}
+                    </td>
+                    <td class="p-3 font-mono text-yellow-400 text-xs">${escapeHTML(password)}</td>
                     <td class="p-3 text-center">
                         <button onclick="editarUsuario('${uid}')" class="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-3 py-1 rounded text-xs font-bold transition">✏️ Editar</button>
                         <button onclick="eliminarUsuario('${uid}', '${escapeHTML(email)}')" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1 rounded text-xs font-bold transition ml-2">🗑️ Eliminar</button>
@@ -1070,46 +1086,185 @@ async function cargarUsuarios() {
             `;
         }
 
-        if (!html) {
-            container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">No hay usuarios con el rol seleccionado</td></tr>';
+        if (encontrados === 0) {
+            container.innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-6">No hay usuarios con el rol seleccionado</td></tr>';
         } else {
             container.innerHTML = html;
         }
 
     } catch (error) {
         console.error('Error al cargar usuarios:', error);
-        container.innerHTML = '<tr><td colspan="6" class="text-center text-red-400 p-6">Error al cargar usuarios</td></tr>';
+        container.innerHTML = '<tr><td colspan="7" class="text-center text-red-400 p-6">Error al cargar usuarios</td></tr>';
     }
 }
+// ============================================================
+// 👥 GUARDAR USUARIO - VERSIÓN COMPLETA CON RESTAURANTE
+// ============================================================
 async function guardarUsuario() {
-    if (firebase.auth().currentUser?.email !== 'admin@aguadulce.com') { Swal.fire({ title: '⛔ Acceso denegado', text: 'Solo el administrador puede crear usuarios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
-    const nombre = document.getElementById('userNombre').value.trim(); const email = document.getElementById('userEmail').value.trim(); const password = document.getElementById('userPassword').value.trim(); const rol = document.getElementById('userRol').value;
-    const telefono = document.getElementById('userTelefono')?.value.trim() || ''; const vehiculo = document.getElementById('userVehiculo')?.value.trim() || '';
+    if (firebase.auth().currentUser?.email !== 'admin@aguadulce.com') { 
+        Swal.fire({ title: '⛔ Acceso denegado', text: 'Solo el administrador puede crear usuarios', icon: 'error', background: '#0f172a', color: 'white' }); 
+        return; 
+    }
+    
+    const nombre = document.getElementById('userNombre').value.trim(); 
+    const email = document.getElementById('userEmail').value.trim(); 
+    const password = document.getElementById('userPassword').value.trim(); 
+    const rol = document.getElementById('userRol').value;
+    const telefono = document.getElementById('userTelefono')?.value.trim() || ''; 
+    const vehiculo = document.getElementById('userVehiculo')?.value.trim() || '';
     let restauranteId = document.getElementById('userRestaurante')?.value || '';
-    if (!nombre || !email || !password || password.length < 6) { Swal.fire({ title: 'Error', text: 'Nombre, Email y Contraseña (mín. 6 caracteres) son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
-    if ((rol === 'restaurante' || rol === 'cocina') && !restauranteId) { Swal.fire({ title: 'Error', text: 'Debes seleccionar un restaurante para este rol', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+    
+    // Validaciones básicas
+    if (!nombre || !email || !password || password.length < 6) { 
+        Swal.fire({ title: 'Error', text: 'Nombre, Email y Contraseña (mín. 6 caracteres) son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); 
+        return; 
+    }
+    
+    if ((rol === 'restaurante' || rol === 'cocina') && !restauranteId) { 
+        Swal.fire({ title: 'Error', text: 'Debes seleccionar un restaurante para este rol', icon: 'error', background: '#0f172a', color: 'white' }); 
+        return; 
+    }
+    
+    // Si el usuario seleccionó "Crear nuevo restaurante"
     if (restauranteId === 'nuevo') {
         const result = await Swal.fire({
-            title: '🏪 Nuevo Restaurante', html: `<input id="nuevoRestNombre" class="swal2-input" placeholder="Nombre del restaurante *"><input id="nuevoRestPIN" class="swal2-input" placeholder="PIN (ej: AB10DE) *">`,
-            confirmButtonText: '✅ Crear Restaurante', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white',
-            preConfirm: () => { const nombreRest = document.getElementById('nuevoRestNombre').value.trim(); const pin = document.getElementById('nuevoRestPIN').value.toUpperCase().trim(); if (!nombreRest || !pin) { Swal.showValidationMessage('Nombre y PIN son obligatorios'); return false; } return { nombre: nombreRest, pin: pin }; }
+            title: '🏪 Nuevo Restaurante', 
+            html: `
+                <input id="nuevoRestNombre" class="swal2-input" placeholder="Nombre del restaurante *">
+                <input id="nuevoRestPIN" class="swal2-input" placeholder="PIN (ej: AB10DE) *">
+                <input id="nuevoRestDireccion" class="swal2-input" placeholder="Dirección (ej: Calle Principal 123)">
+            `,
+            confirmButtonText: '✅ Crear Restaurante', 
+            cancelButtonText: 'Cancelar', 
+            background: '#0f172a', 
+            color: 'white',
+            preConfirm: () => { 
+                const nombreRest = document.getElementById('nuevoRestNombre').value.trim(); 
+                const pin = document.getElementById('nuevoRestPIN').value.toUpperCase().trim(); 
+                const direccion = document.getElementById('nuevoRestDireccion').value.trim();
+                if (!nombreRest || !pin) { 
+                    Swal.showValidationMessage('Nombre y PIN son obligatorios'); 
+                    return false; 
+                }
+                return { nombre: nombreRest, pin: pin, direccion: direccion }; 
+            }
         });
+        
         if (!result.value) return;
-        await database.ref(`restaurantes/${result.value.pin}`).set({ ID_RESTAURANTE: result.value.pin, NOMBRE_RESTAURANTE: result.value.nombre, activo: true, comision: 10, creado_en: Date.now() });
-        restauranteId = result.value.pin; Swal.fire({ title: '✅ Restaurante creado', text: 'PIN: ' + result.value.pin, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        
+        // Guardar el restaurante en la base de datos
+        await database.ref(`restaurantes/${result.value.pin}`).set({ 
+            ID_RESTAURANTE: result.value.pin, 
+            NOMBRE_RESTAURANTE: result.value.nombre, 
+            DIRECCION: result.value.direccion || '',
+            activo: true, 
+            comision: 10, 
+            creado_en: Date.now() 
+        });
+        
+        restauranteId = result.value.pin; 
+        Swal.fire({ title: '✅ Restaurante creado', text: 'PIN: ' + result.value.pin, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }
+
+    // Mostrar loading
     Swal.fire({ title: '⏳ Creando usuario...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    
     try {
-        const crearUsuario = firebase.functions().httpsCallable('crearUsuarioAdmin');
-        const result = await crearUsuario({ email, password, rol, nombre, restauranteId, telefono, vehiculo });
-        if (result.data && result.data.success) {
-            document.getElementById('userNombre').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userPassword').value = ''; document.getElementById('userTelefono').value = ''; document.getElementById('userVehiculo').value = '';
-            cerrarModal('modalUsuario'); await cargarUsuarios(); await cargarRepartidores();
-            Swal.fire({ title: '✅ Usuario creado', text: `${email} ahora es ${rol}`, icon: 'success', timer: 4000, background: '#0f172a', color: 'white' });
-        } else throw new Error(result.data?.message || 'Error al crear usuario');
+        // 1. Crear usuario en Firebase Authentication
+        const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+        
+        // 2. Preparar datos del usuario
+        const usuarioData = {
+            email: email,
+            nombre: nombre,
+            telefono: telefono || '',
+            rol: rol,
+            uid: uid,
+            creadoEn: Date.now(),
+            activo: true,
+            password: password // Guardamos la contraseña en texto plano para mostrar en tabla
+        };
+        
+        // 3. Guardar en nodo general "usuarios"
+        await database.ref(`usuarios/${uid}`).set(usuarioData);
+        
+        // 4. Guardar en nodo específico según el rol
+        if (rol === 'restaurante' || rol === 'cocina') {
+            // Guardar en nodo "restaurantes" si es restaurante
+            await database.ref(`restaurantes/${restauranteId}/usuarios/${uid}`).set({
+                nombre: nombre,
+                email: email,
+                telefono: telefono || '',
+                rol: rol,
+                creadoEn: Date.now()
+            });
+            
+            // También guardar referencia en usuarios_restaurante
+            await database.ref(`usuarios_restaurante/${uid}`).set({
+                ...usuarioData,
+                restauranteId: restauranteId
+            });
+            
+        } else if (rol === 'repartidor') {
+            // Guardar en nodo "repartidores"
+            await database.ref(`repartidores/${uid}`).set({
+                nombre: nombre,
+                email: email,
+                telefono: telefono || '',
+                vehiculo: vehiculo || '',
+                entregas: 0,
+                estado: 'inactivo',
+                activo: true,
+                creadoEn: Date.now(),
+                password: password,
+                uid: uid
+            });
+            
+        } else if (rol === 'admin') {
+            // Guardar en nodo "admins"
+            await database.ref(`admins/${uid}`).set(usuarioData);
+            await database.ref(`usuarios_admin/${uid}`).set(usuarioData);
+        }
+        
+        // 5. Limpiar formulario
+        document.getElementById('userNombre').value = ''; 
+        document.getElementById('userEmail').value = ''; 
+        document.getElementById('userPassword').value = ''; 
+        document.getElementById('userTelefono').value = ''; 
+        document.getElementById('userVehiculo').value = '';
+        
+        cerrarModal('modalUsuario');
+        
+        // 6. Recargar datos
+        await cargarUsuarios(); 
+        await cargarRepartidores();
+        await cargarRestaurantes();
+        
+        Swal.fire({ 
+            title: '✅ Usuario creado', 
+            html: `
+                <p><strong>${email}</strong> ahora es <strong>${rol}</strong></p>
+                ${rol === 'restaurante' ? `<p class="text-amber-400 text-sm">🏪 Restaurante asociado: ${restauranteId}</p>` : ''}
+                <p class="text-white/50 text-xs mt-2">UID: ${uid.substring(0, 12)}...</p>
+            `,
+            icon: 'success', 
+            timer: 4000,
+            background: '#0f172a', 
+            color: 'white' 
+        });
+        
     } catch (error) {
+        console.error('Error al crear usuario:', error);
         const mensaje = error.message.includes('already-exists') ? '❌ Este email ya está registrado.' : error.message;
-        Swal.fire({ title: '❌ Error', text: mensaje, icon: 'error', background: '#0f172a', color: 'white' });
+        Swal.fire({ 
+            title: '❌ Error', 
+            text: mensaje, 
+            icon: 'error', 
+            background: '#0f172a', 
+            color: 'white' 
+        });
     }
 }
 

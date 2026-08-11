@@ -998,17 +998,71 @@ async function eliminarUsuario(uid, email) {
 }
 
 async function editarUsuario(uid) {
-    let datos = {}; try { datos = (await database.ref('usuarios/' + uid).once('value')).val() || {}; } catch(e) {}
-    if (!datos || Object.keys(datos).length === 0) { try { datos = (await database.ref('usuarios_restaurante/' + uid).once('value')).val() || {}; } catch(e) {} }
+    // 1. Obtenemos los datos actuales del usuario desde Firebase
+    let datos = {};
+    try { datos = (await database.ref('usuarios/' + uid).once('value')).val() || {}; } catch(e) {}
+    if (!datos || Object.keys(datos).length === 0) { 
+        try { datos = (await database.ref('usuarios_restaurante/' + uid).once('value')).val() || {}; } catch(e) {}
+    }
+    if (!datos || Object.keys(datos).length === 0) { 
+        try { datos = (await database.ref('usuarios_admin/' + uid).once('value')).val() || {}; } catch(e) {}
+    }
+
+    // 2. Mostramos el formulario de edición con los datos actuales
     const result = await Swal.fire({
-        title: '✏️ Editar usuario', html: `<input id="editNombre" class="swal2-input" placeholder="Nombre" value="${datos.nombre || ''}"><input id="editEmail" class="swal2-input" placeholder="Email" value="${datos.email || ''}"><select id="editRol" class="swal2-select"><option value="admin" ${datos.rol === 'admin' ? 'selected' : ''}>Administrador</option><option value="restaurante" ${datos.rol === 'restaurante' ? 'selected' : ''}>Restaurante</option><option value="cocina" ${datos.rol === 'cocina' ? 'selected' : ''}>Cocina</option><option value="repartidor" ${datos.rol === 'repartidor' ? 'selected' : ''}>Repartidor</option></select>`,
-        confirmButtonText: '✅ Guardar', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white',
-        preConfirm: () => { return { nombre: document.getElementById('editNombre').value, email: document.getElementById('editEmail').value, rol: document.getElementById('editRol').value }; }
+        title: '✏️ Editar usuario',
+        html: `
+            <input id="editNombre" class="swal2-input" placeholder="Nombre" value="${datos.nombre || ''}">
+            <input id="editEmail" class="swal2-input" placeholder="Email" value="${datos.email || ''}">
+            <input id="editPassword" class="swal2-input" placeholder="Nueva contraseña (dejar en blanco para no cambiar)">
+            <select id="editRol" class="swal2-select">
+                <option value="admin" ${datos.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+                <option value="restaurante" ${datos.rol === 'restaurante' ? 'selected' : ''}>Restaurante</option>
+                <option value="cocina" ${datos.rol === 'cocina' ? 'selected' : ''}>Cocina</option>
+                <option value="repartidor" ${datos.rol === 'repartidor' ? 'selected' : ''}>Repartidor</option>
+            </select>
+        `,
+        confirmButtonText: '✅ Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('editNombre').value,
+                email: document.getElementById('editEmail').value,
+                password: document.getElementById('editPassword').value,
+                rol: document.getElementById('editRol').value
+            };
+        }
     });
+
+    // 3. Si el usuario confirmó los cambios, los guardamos en Firebase
     if (result.value) {
-        const updates = {}; if (result.value.nombre) updates.nombre = result.value.nombre; if (result.value.email) updates.email = result.value.email; if (result.value.rol) updates.rol = result.value.rol;
-        await database.ref('usuarios/' + uid).update(updates); await database.ref('usuarios_restaurante/' + uid).update(updates).catch(()=>{});
-        await cargarUsuarios(); Swal.fire({ title: '✅ Usuario actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+        const updates = {};
+        if (result.value.nombre) updates.nombre = result.value.nombre;
+        if (result.value.email) updates.email = result.value.email;
+        if (result.value.rol) updates.rol = result.value.rol;
+        
+        // Si se ingresó una nueva contraseña, la guardamos y actualizamos en Auth
+        if (result.value.password && result.value.password.trim() !== '') {
+            updates.password = result.value.password.trim();
+            try {
+                await auth.currentUser.updatePassword(result.value.password.trim());
+            } catch (error) {
+                console.warn("No se pudo actualizar la contraseña en Auth:", error);
+            }
+        }
+
+        // Guardamos en los distintos nodos donde pueda estar el usuario
+        await database.ref('usuarios/' + uid).update(updates);
+        await database.ref('usuarios_admin/' + uid).update(updates).catch(()=>{});
+        await database.ref('usuarios_restaurante/' + uid).update(updates).catch(()=>{});
+        await database.ref('usuarios_cocina/' + uid).update(updates).catch(()=>{});
+        await database.ref('repartidores/' + uid).update(updates).catch(()=>{});
+
+        // Recargamos la lista de usuarios
+        await cargarUsuarios();
+        Swal.fire({ title: '✅ Usuario actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
     }
 }
 

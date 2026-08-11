@@ -709,48 +709,52 @@
         // ============================================
         // 8. ESTADO DE AUTENTICACIÓN
         // ============================================
-        auth.onAuthStateChanged(async (user) => {
-            const app = document.getElementById('app');
-            const loginContainer = document.getElementById('login-container');
-            
-            if (user) {
-                currentUser = user;
-                restauranteId = user.uid;
-                
-                // Ocultar login, mostrar app
-                loginContainer.classList.add('hidden');
-                app.classList.remove('hidden');
-                
-                // Cargar datos del restaurante
-                await cargarDatosRestaurante();
-                
-                // Escuchar pedidos
-                escucharPedidos();
-                
-                // Ocultar botón de instalación si ya está instalado
-                if (window.matchMedia('(display-mode: standalone)').matches) {
-                    document.getElementById('install-btn').style.display = 'none';
-                }
-                
-                // SOLICITAR PERMISO DE NOTIFICACIONES DESPUÉS DEL LOGIN
-                setTimeout(solicitarPermisoNotificaciones, 3000);
-                
-            } else {
-                // Mostrar login, ocultar app
-                app.classList.add('hidden');
-                loginContainer.classList.remove('hidden');
-                
-                // Limpiar listeners
-                pedidosListeners.forEach(ref => ref.off());
-                pedidosListeners = [];
-                
-                // Resetear formulario
-                loginBtn.disabled = false;
-                loginText.classList.remove('hidden');
-                loginLoading.classList.add('hidden');
-                loginError.classList.add('hidden');
-            }
-        });
+      auth.onAuthStateChanged(async (user) => {
+    const app = document.getElementById('app');
+    const loginContainer = document.getElementById('login-container');
+    
+    if (user) {
+        currentUser = user;
+        restauranteId = user.uid;
+        
+        // 🔥 AGREGAR ESTAS LÍNEAS PARA VERIFICAR
+        console.log('✅ Usuario autenticado:', user.uid, user.email);
+        console.log('✅ restauranteId asignado:', restauranteId);
+        
+        // Ocultar login, mostrar app
+        loginContainer.classList.add('hidden');
+        app.classList.remove('hidden');
+        
+        // Cargar datos del restaurante
+        await cargarDatosRestaurante();
+        
+        // Escuchar pedidos
+        escucharPedidos();
+        
+        // Ocultar botón de instalación si ya está instalado
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            document.getElementById('install-btn').style.display = 'none';
+        }
+        
+        // SOLICITAR PERMISO DE NOTIFICACIONES DESPUÉS DEL LOGIN
+        setTimeout(solicitarPermisoNotificaciones, 3000);
+        
+    } else {
+        // Mostrar login, ocultar app
+        app.classList.add('hidden');
+        loginContainer.classList.remove('hidden');
+        
+        // Limpiar listeners
+        pedidosListeners.forEach(ref => ref.off());
+        pedidosListeners = [];
+        
+        // Resetear formulario
+        loginBtn.disabled = false;
+        loginText.classList.remove('hidden');
+        loginLoading.classList.add('hidden');
+        loginError.classList.add('hidden');
+    }
+});
 
         // ============================================
         // 9. CERRAR SESIÓN
@@ -821,7 +825,7 @@
         // ============================================
         // 13. RENDERIZAR VISTA
         // ============================================
-       function renderizarVista() {
+      function renderizarVista() {
     const container = document.getElementById('lista-pedidos');
     
     // Mostrar estado de carga
@@ -832,9 +836,13 @@
         </div>
     `;
     
+    console.log('🔄 Cargando pedidos para restaurante:', restauranteId);
+    
     db.ref('pedidos').once('value')
         .then((snapshot) => {
             const pedidos = snapshot.val();
+            
+            console.log('📦 Pedidos obtenidos:', pedidos ? Object.keys(pedidos).length : 0);
             
             if (!pedidos) {
                 container.innerHTML = `
@@ -851,24 +859,17 @@
             let pedidosFiltrados = [];
             const pedidosArray = Object.entries(pedidos);
             
+            console.log('🔍 Buscando pedidos para restaurante:', restauranteId);
+            
             for (const [id, data] of pedidosArray) {
                 // Solo pedidos de este restaurante (compatibilidad con ambos campos)
-                if (data.restauranteId !== restauranteId && data.restaurante_id !== restauranteId) continue;
-                
-                if (currentView === 'activos') {
-                    if (data.estado === 'pendiente' || data.estado === 'coccion' || data.estado === 'listo' || data.estado === 'reparto') {
-                        pedidosFiltrados.push({ id, ...data });
-                    }
-                } else if (currentView === 'historial') {
-                    if (data.estado === 'entregado' || data.estado === 'cancelado') {
-                        pedidosFiltrados.push({ id, ...data });
-                    }
-                } else if (currentView === 'demoras') {
-                    if (data.demora && data.demora > 0) {
-                        pedidosFiltrados.push({ id, ...data });
-                    }
+                const restId = data.restauranteId || data.restaurante_id;
+                if (restId === restauranteId) {
+                    pedidosFiltrados.push({ id, ...data });
                 }
             }
+            
+            console.log('📋 Pedidos del restaurante:', pedidosFiltrados.length);
             
             // Ordenar por estado y tiempo
             const ordenEstados = { pendiente: 0, coccion: 1, listo: 2, reparto: 3 };
@@ -943,6 +944,19 @@
             `).join('');
         })
         .catch((error) => {
+            console.error('❌ Error al cargar pedidos:', error);
+            container.innerHTML = `
+                <div class="col-span-full text-center py-12 text-red-500">
+                    <div class="text-4xl mb-4">❌</div>
+                    <p class="text-lg">Error al cargar pedidos</p>
+                    <p class="text-sm text-gray-400 mt-2">${error.message}</p>
+                    <button onclick="renderizarVista()" class="mt-4 px-4 py-2 bg-amber-500 text-black rounded-lg font-bold">
+                        🔄 Reintentar
+                    </button>
+                </div>
+            `;
+        });
+}        .catch((error) => {
             console.error('Error al cargar pedidos:', error);
             container.innerHTML = `
                 <div class="col-span-full text-center py-12 text-red-500">

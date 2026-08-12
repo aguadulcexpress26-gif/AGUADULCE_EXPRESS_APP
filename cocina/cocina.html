@@ -206,6 +206,7 @@
             padding: 0.5rem 2rem;
             flex-shrink: 0;
             border-bottom: 1px solid #334155;
+            flex-wrap: wrap;
         }
         
         .contador-item {
@@ -255,6 +256,7 @@
             flex-direction: column;
             overflow: hidden;
             border: 1px solid #334155;
+            transition: all 0.3s ease;
         }
         
         .columna-header {
@@ -362,6 +364,8 @@
             margin-top: 0.75rem;
             padding-top: 0.75rem;
             border-top: 1px solid #334155;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
         
         .pedido-card .footer .precio {
@@ -732,7 +736,7 @@
         <div class="columnas-container" id="columnas-container">
             
             <!-- COLUMNA: ENTRADA -->
-            <div class="columna columna-pendiente">
+            <div class="columna columna-pendiente" id="columna-pendiente">
                 <div class="columna-header">
                     <span class="titulo">📥 Entrada</span>
                     <span class="cantidad" id="col-count-pendiente">0</span>
@@ -743,7 +747,7 @@
             </div>
             
             <!-- COLUMNA: EN PROCESO -->
-            <div class="columna columna-coccion">
+            <div class="columna columna-coccion" id="columna-coccion">
                 <div class="columna-header">
                     <span class="titulo">👨‍🍳 En Proceso</span>
                     <span class="cantidad" id="col-count-coccion">0</span>
@@ -754,7 +758,7 @@
             </div>
             
             <!-- COLUMNA: LISTO -->
-            <div class="columna columna-listo">
+            <div class="columna columna-listo" id="columna-listo">
                 <div class="columna-header">
                     <span class="titulo">✅ Listo</span>
                     <span class="cantidad" id="col-count-listo">0</span>
@@ -1021,6 +1025,12 @@
                 item.classList.add('active');
                 
                 currentView = item.dataset.view;
+                
+                // Si es Activos, restaurar las 3 columnas
+                if (currentView === 'activos') {
+                    restaurarVistaColumnas();
+                }
+                
                 renderizarVista();
                 
                 menuDesplegable.classList.remove('open');
@@ -1067,7 +1077,7 @@
         }
 
         // ============================================
-        // 13. RENDERIZAR VISTA - CON 3 COLUMNAS
+        // 13. RENDERIZAR VISTA PRINCIPAL
         // ============================================
         function renderizarVista() {
             db.ref('pedidos').once('value')
@@ -1084,6 +1094,19 @@
                     let countListo = 0;
                     let countReparto = 0;
                     
+                    // Si es Historial
+                    if (currentView === 'historial') {
+                        mostrarVistaHistorial(pedidos);
+                        return;
+                    }
+                    
+                    // Si es Demoras
+                    if (currentView === 'demoras') {
+                        mostrarVistaDemoras(pedidos);
+                        return;
+                    }
+                    
+                    // Si es Activos (vista normal)
                     if (!pedidos) {
                         mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
                         mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
@@ -1093,36 +1116,34 @@
                     }
                     
                     const pedidosArray = Object.entries(pedidos);
+                    let hayPedidosActivos = false;
                     
                     for (const [id, data] of pedidosArray) {
                         const restId = data.restauranteId || data.restaurante_id;
                         if (restId !== restauranteId) continue;
                         
-                        // Filtrar según vista
-                        if (currentView === 'activos') {
-                            if (data.estado === 'pendiente' || data.estado === 'coccion' || data.estado === 'listo' || data.estado === 'reparto') {
-                                agregarPedidoAColumna(id, data);
-                            }
-                        } else if (currentView === 'historial') {
-                            if (data.estado === 'entregado' || data.estado === 'cancelado') {
-                                // Mostrar en historial (en todas las columnas o en una especial)
-                            }
-                        } else if (currentView === 'demoras') {
-                            if (data.demora && data.demora > 0) {
-                                // Mostrar en demoras
-                            }
+                        if (data.estado === 'pendiente' || data.estado === 'coccion' || data.estado === 'listo' || data.estado === 'reparto') {
+                            hayPedidosActivos = true;
+                            agregarPedidoAColumna(id, data);
                         }
                     }
                     
-                    // Si las columnas quedaron vacías, mostrar mensajes
-                    if (document.getElementById('col-pendiente').children.length === 0) {
+                    // Si no hay pedidos activos, mostrar mensajes
+                    if (!hayPedidosActivos) {
                         mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                    }
-                    if (document.getElementById('col-coccion').children.length === 0) {
                         mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                    }
-                    if (document.getElementById('col-listo').children.length === 0) {
                         mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                    } else {
+                        // Si hay pedidos, actualizar mensajes de columnas vacías
+                        if (document.getElementById('col-pendiente').children.length === 0) {
+                            mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                        }
+                        if (document.getElementById('col-coccion').children.length === 0) {
+                            mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                        }
+                        if (document.getElementById('col-listo').children.length === 0) {
+                            mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                        }
                     }
                     
                     actualizarContadores(countPendiente, countCoccion, countListo, countReparto);
@@ -1263,6 +1284,197 @@
             
             // Actualizar contador del menú
             document.getElementById('contador-activos').textContent = pendiente + coccion + listo + reparto;
+        }
+
+        // ============================================
+        // MOSTRAR VISTA HISTORIAL
+        // ============================================
+        function mostrarVistaHistorial(pedidos) {
+            const columna = document.getElementById('col-pendiente');
+            const columna2 = document.getElementById('col-coccion');
+            const columna3 = document.getElementById('col-listo');
+            
+            // Limpiar todas las columnas
+            columna.innerHTML = '';
+            columna2.innerHTML = '';
+            columna3.innerHTML = '';
+            
+            // Ocultar las otras columnas y mostrar solo una
+            columna2.parentElement.style.display = 'none';
+            columna3.parentElement.style.display = 'none';
+            columna.parentElement.style.display = 'flex';
+            columna.parentElement.style.maxWidth = '100%';
+            
+            // Cambiar título de la columna
+            const header = columna.parentElement.querySelector('.columna-header .titulo');
+            if (header) header.innerHTML = '📜 Historial de Pedidos';
+            
+            const contador = columna.parentElement.querySelector('.columna-header .cantidad');
+            
+            if (!pedidos) {
+                mostrarMensajeVacio('col-pendiente', '📜', 'No hay pedidos en el historial');
+                if (contador) contador.textContent = '0';
+                return;
+            }
+            
+            let pedidosHistorial = [];
+            const pedidosArray = Object.entries(pedidos);
+            
+            for (const [id, data] of pedidosArray) {
+                const restId = data.restauranteId || data.restaurante_id;
+                if (restId !== restauranteId) continue;
+                
+                if (data.estado === 'entregado' || data.estado === 'cancelado' || data.estado === 'ENTREGADO') {
+                    pedidosHistorial.push({ id, ...data });
+                }
+            }
+            
+            // Ordenar por fecha (más reciente primero)
+            pedidosHistorial.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            
+            if (pedidosHistorial.length === 0) {
+                mostrarMensajeVacio('col-pendiente', '📜', 'No hay pedidos en el historial');
+                if (contador) contador.textContent = '0';
+                return;
+            }
+            
+            if (contador) contador.textContent = pedidosHistorial.length;
+            
+            for (const pedido of pedidosHistorial) {
+                const card = document.createElement('div');
+                card.className = 'pedido-card';
+                card.style.borderLeftColor = '#64748b';
+                
+                const productosHtml = pedido.productos ? 
+                    Object.entries(pedido.productos).map(([pid, prod]) => 
+                        `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('') : 
+                    '<span>Sin productos</span>';
+                
+                const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
+                const estadoIcon = pedido.estado === 'entregado' || pedido.estado === 'ENTREGADO' ? '✅' : '❌';
+                
+                card.innerHTML = `
+                    <div class="cliente">${pedido.clienteNombre || 'Cliente'}</div>
+                    <div class="detalle">${pedido.direccion || 'Sin dirección'} • ${estadoIcon} ${pedido.estado}</div>
+                    <div class="productos">${productosHtml}</div>
+                    <div class="footer">
+                        <span class="precio">$${(pedido.total || 0).toFixed(2)}</span>
+                        <span class="tiempo">${fecha}</span>
+                    </div>
+                `;
+                
+                columna.appendChild(card);
+            }
+        }
+
+        // ============================================
+        // MOSTRAR VISTA DEMORAS
+        // ============================================
+        function mostrarVistaDemoras(pedidos) {
+            const columna = document.getElementById('col-pendiente');
+            const columna2 = document.getElementById('col-coccion');
+            const columna3 = document.getElementById('col-listo');
+            
+            // Limpiar todas las columnas
+            columna.innerHTML = '';
+            columna2.innerHTML = '';
+            columna3.innerHTML = '';
+            
+            // Ocultar las otras columnas y mostrar solo una
+            columna2.parentElement.style.display = 'none';
+            columna3.parentElement.style.display = 'none';
+            columna.parentElement.style.display = 'flex';
+            columna.parentElement.style.maxWidth = '100%';
+            
+            // Cambiar título de la columna
+            const header = columna.parentElement.querySelector('.columna-header .titulo');
+            if (header) header.innerHTML = '⏱️ Registro de Demoras';
+            
+            const contador = columna.parentElement.querySelector('.columna-header .cantidad');
+            
+            if (!pedidos) {
+                mostrarMensajeVacio('col-pendiente', '⏱️', 'No hay registros de demoras');
+                if (contador) contador.textContent = '0';
+                return;
+            }
+            
+            let pedidosDemora = [];
+            const pedidosArray = Object.entries(pedidos);
+            
+            for (const [id, data] of pedidosArray) {
+                const restId = data.restauranteId || data.restaurante_id;
+                if (restId !== restauranteId) continue;
+                
+                if (data.demora && data.demora > 0) {
+                    pedidosDemora.push({ id, ...data });
+                }
+            }
+            
+            // Ordenar por demora (mayor primero)
+            pedidosDemora.sort((a, b) => (b.demora || 0) - (a.demora || 0));
+            
+            if (pedidosDemora.length === 0) {
+                mostrarMensajeVacio('col-pendiente', '⏱️', 'No hay registros de demoras');
+                if (contador) contador.textContent = '0';
+                return;
+            }
+            
+            if (contador) contador.textContent = pedidosDemora.length;
+            
+            for (const pedido of pedidosDemora) {
+                const card = document.createElement('div');
+                card.className = 'pedido-card';
+                card.style.borderLeftColor = '#ef4444';
+                
+                const productosHtml = pedido.productos ? 
+                    Object.entries(pedido.productos).map(([pid, prod]) => 
+                        `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('') : 
+                    '<span>Sin productos</span>';
+                
+                const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
+                const minutosDemora = pedido.demora || 0;
+                const demoraColor = minutosDemora > 30 ? '#ef4444' : minutosDemora > 15 ? '#f59e0b' : '#10b981';
+                
+                card.innerHTML = `
+                    <div class="cliente">${pedido.clienteNombre || 'Cliente'}</div>
+                    <div class="detalle" style="color: ${demoraColor};">
+                        ⏱️ Demora: ${minutosDemora} minutos • ${pedido.estado || 'Finalizado'}
+                    </div>
+                    <div class="productos">${productosHtml}</div>
+                    <div class="footer">
+                        <span class="precio">$${(pedido.total || 0).toFixed(2)}</span>
+                        <span class="tiempo">${fecha}</span>
+                    </div>
+                `;
+                
+                columna.appendChild(card);
+            }
+        }
+
+        // ============================================
+        // RESTAURAR VISTA DE 3 COLUMNAS
+        // ============================================
+        function restaurarVistaColumnas() {
+            const col1 = document.getElementById('col-pendiente').parentElement;
+            const col2 = document.getElementById('col-coccion').parentElement;
+            const col3 = document.getElementById('col-listo').parentElement;
+            
+            col1.style.display = 'flex';
+            col2.style.display = 'flex';
+            col3.style.display = 'flex';
+            col1.style.maxWidth = '400px';
+            col2.style.maxWidth = '400px';
+            col3.style.maxWidth = '400px';
+            
+            // Restaurar títulos
+            const header1 = col1.querySelector('.columna-header .titulo');
+            const header2 = col2.querySelector('.columna-header .titulo');
+            const header3 = col3.querySelector('.columna-header .titulo');
+            if (header1) header1.innerHTML = '📥 Entrada';
+            if (header2) header2.innerHTML = '👨‍🍳 En Proceso';
+            if (header3) header3.innerHTML = '✅ Listo';
         }
 
         // ============================================

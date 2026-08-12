@@ -1144,80 +1144,87 @@
             window.acumuladoTotal = totalGeneral;
         }
 
-        // ============================================
-        // 14. RENDERIZAR VISTA PRINCIPAL
-        // ============================================
         function renderizarVista() {
-            db.ref('pedidos').once('value')
-                .then((snapshot) => {
-                    const pedidos = snapshot.val();
-                    
-                    calcularAcumulados(pedidos);
-                    
-                    document.getElementById('col-pendiente').innerHTML = '';
-                    document.getElementById('col-coccion').innerHTML = '';
-                    document.getElementById('col-listo').innerHTML = '';
-                    
-                    let countPendiente = 0;
-                    let countCoccion = 0;
-                    let countListo = 0;
-                    let countReparto = 0;
-                    
-                    if (currentView === 'historial') {
-                        mostrarVistaHistorial(pedidos);
-                        return;
-                    }
-                    
-                    if (currentView === 'demoras') {
-                        mostrarVistaDemoras(pedidos);
-                        return;
-                    }
-                    
-                    if (!pedidos) {
-                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                        actualizarContadores(0, 0, 0, 0);
-                        return;
-                    }
-                    
-                    const pedidosArray = Object.entries(pedidos);
-                    let hayPedidosActivos = false;
-                    
-                    for (const [id, data] of pedidosArray) {
-                        const restId = data.restauranteId || data.restaurante_id;
-                        if (restId !== restauranteId) continue;
-                        
-// 🔥 ACEPTAR AMBOS FORMATOS (mayúsculas y minúsculas)
-const estado = data.estado ? data.estado.toLowerCase() : '';
-if (estado === 'pendiente' || estado === 'recibido' || estado === 'coccion' || estado === 'listo' || estado === 'reparto')                            hayPedidosActivos = true;
-                            agregarPedidoAColumna(id, data);
-                        }
-                    }
-                    
-                    if (!hayPedidosActivos) {
-                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                    } else {
-                        if (document.getElementById('col-pendiente').children.length === 0) {
-                            mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                        }
-                        if (document.getElementById('col-coccion').children.length === 0) {
-                            mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                        }
-                        if (document.getElementById('col-listo').children.length === 0) {
-                            mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                        }
-                    }
-                    
-                    actualizarContadores(countPendiente, countCoccion, countListo, countReparto);
-                    
-                })
-                .catch((error) => {
-                    console.error('Error al cargar pedidos:', error);
-                });
-        }
+    const container = document.getElementById('lista-pedidos');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="mensaje-sin-pedidos">
+            <div class="icono">⏳</div>
+            <div class="titulo">Cargando pedidos...</div>
+        </div>
+    `;
+    
+    db.ref('pedidos').once('value')
+        .then((snapshot) => {
+            const pedidos = snapshot.val();
+            
+            if (!pedidos) {
+                container.innerHTML = `
+                    <div class="mensaje-sin-pedidos">
+                        <div class="icono">🍽️</div>
+                        <div class="titulo">No hay pedidos disponibles</div>
+                        <div class="subtitulo">Los pedidos aparecerán aquí cuando lleguen</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Limpiar columnas
+            document.getElementById('col-pendiente').innerHTML = '';
+            document.getElementById('col-coccion').innerHTML = '';
+            document.getElementById('col-listo').innerHTML = '';
+            
+            let countPendiente = 0;
+            let countCoccion = 0;
+            let countListo = 0;
+            let countReparto = 0;
+            
+            const pedidosArray = Object.entries(pedidos);
+            let hayPedidosActivos = false;
+            
+            for (const [id, data] of pedidosArray) {
+                const restId = data.restauranteId || data.restaurante_id;
+                if (restId !== restauranteId) continue;
+                
+                // 🔥 NORMALIZAR ESTADO (convertir a minúsculas)
+                const estado = data.estado ? data.estado.toLowerCase() : '';
+                
+                // 🔥 MAPA DE ESTADOS: RECIBIDO → pendiente
+                let estadoNormalizado = estado;
+                if (estado === 'recibido' || estado === 'recibido') estadoNormalizado = 'pendiente';
+                
+                if (estadoNormalizado === 'pendiente' || estadoNormalizado === 'coccion' || 
+                    estadoNormalizado === 'listo' || estadoNormalizado === 'reparto') {
+                    hayPedidosActivos = true;
+                    // 🔥 PASAR ESTADO NORMALIZADO A LA TARJETA
+                    agregarPedidoAColumna(id, { ...data, estado: estadoNormalizado });
+                }
+            }
+            
+            if (!hayPedidosActivos) {
+                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+            }
+            
+            actualizarContadores(countPendiente, countCoccion, countListo, countReparto);
+            
+        })
+        .catch((error) => {
+            console.error('Error al cargar pedidos:', error);
+            container.innerHTML = `
+                <div class="mensaje-sin-pedidos" style="border: 2px solid #ef4444;">
+                    <div class="icono">❌</div>
+                    <div class="titulo" style="color: #ef4444;">Error al cargar pedidos</div>
+                    <div class="subtitulo">${error.message}</div>
+                    <button onclick="renderizarVista()" class="mt-4 px-4 py-2 bg-amber-500 text-black rounded-lg font-bold">
+                        🔄 Reintentar
+                    </button>
+                </div>
+            `;
+        });
+}
 
         // ============================================
         // 15. AGREGAR PEDIDO A COLUMNA (COMPLETO)

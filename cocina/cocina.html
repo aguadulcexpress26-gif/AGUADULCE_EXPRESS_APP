@@ -197,7 +197,7 @@
         }
         
         /* ============================================
-           CONTADORES DE ESTADO
+           CONTADORES DE ESTADO Y ACUMULADO
            ============================================ */
         .contadores {
             display: flex;
@@ -207,6 +207,7 @@
             flex-shrink: 0;
             border-bottom: 1px solid #334155;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         .contador-item {
@@ -219,18 +220,23 @@
         }
         
         .contador-item .badge {
-            background: #f59e0b;
-            color: #0f172a;
             padding: 0.125rem 0.75rem;
             border-radius: 9999px;
             font-weight: 700;
             font-size: 0.75rem;
         }
         
-        .contador-item .badge.pendiente { background: #f59e0b; }
+        .contador-item .badge.pendiente { background: #f59e0b; color: #0f172a; }
         .contador-item .badge.coccion { background: #3b82f6; color: white; }
         .contador-item .badge.listo { background: #10b981; color: white; }
         .contador-item .badge.reparto { background: #8b5cf6; color: white; }
+        .contador-item .badge.acumulado-semanal { background: #8b5cf6; color: white; }
+        .contador-item .badge.acumulado-total { background: #f59e0b; color: #0f172a; }
+        
+        .contador-item.separador {
+            border-left: 1px solid #334155;
+            padding-left: 1rem;
+        }
         
         /* ============================================
            COLUMNAS DE PEDIDOS
@@ -730,6 +736,14 @@
                 🛵 En Reparto
                 <span class="badge reparto" id="count-reparto">0</span>
             </div>
+            <div class="contador-item separador">
+                📊 Semana
+                <span class="badge acumulado-semanal" id="count-semanal">$0.00</span>
+            </div>
+            <div class="contador-item">
+                💰 Total
+                <span class="badge acumulado-total" id="count-total">$0.00</span>
+            </div>
         </div>
         
         <!-- COLUMNAS -->
@@ -1026,7 +1040,6 @@
                 
                 currentView = item.dataset.view;
                 
-                // Si es Activos, restaurar las 3 columnas
                 if (currentView === 'activos') {
                     restaurarVistaColumnas();
                 }
@@ -1077,14 +1090,70 @@
         }
 
         // ============================================
-        // 13. RENDERIZAR VISTA PRINCIPAL
+        // 13. CALCULAR ACUMULADOS (SOLO SUBTOTAL)
+        // ============================================
+        function calcularAcumulados(pedidos) {
+            let totalSemanal = 0;
+            let totalGeneral = 0;
+            
+            // Obtener inicio de semana (Lunes)
+            const ahora = new Date();
+            const diaSemana = ahora.getDay();
+            const inicioSemana = new Date(ahora);
+            inicioSemana.setDate(ahora.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
+            inicioSemana.setHours(0, 0, 0, 0);
+            
+            if (!pedidos) {
+                document.getElementById('count-semanal').textContent = '$0.00';
+                document.getElementById('count-total').textContent = '$0.00';
+                return;
+            }
+            
+            const pedidosArray = Object.entries(pedidos);
+            
+            for (const [id, data] of pedidosArray) {
+                const restId = data.restauranteId || data.restaurante_id;
+                if (restId !== restauranteId) continue;
+                
+                if (data.estado === 'entregado' || data.estado === 'ENTREGADO' || data.estado === 'completado') {
+                    let subtotal = 0;
+                    
+                    if (data.subtotal !== undefined && data.subtotal !== null) {
+                        subtotal = data.subtotal;
+                    } else if (data.productos) {
+                        for (const [prodId, prod] of Object.entries(data.productos)) {
+                            const precio = prod.precio || prod.PRECIO || 0;
+                            const cantidad = prod.cantidad || 1;
+                            subtotal += precio * cantidad;
+                        }
+                    }
+                    
+                    const fechaPedido = data.timestamp ? new Date(data.timestamp) : null;
+                    totalGeneral += subtotal;
+                    
+                    if (fechaPedido && fechaPedido >= inicioSemana) {
+                        totalSemanal += subtotal;
+                    }
+                }
+            }
+            
+            document.getElementById('count-semanal').textContent = `$${totalSemanal.toFixed(2)}`;
+            document.getElementById('count-total').textContent = `$${totalGeneral.toFixed(2)}`;
+            
+            window.acumuladoSemanal = totalSemanal;
+            window.acumuladoTotal = totalGeneral;
+        }
+
+        // ============================================
+        // 14. RENDERIZAR VISTA PRINCIPAL
         // ============================================
         function renderizarVista() {
             db.ref('pedidos').once('value')
                 .then((snapshot) => {
                     const pedidos = snapshot.val();
                     
-                    // Limpiar columnas
+                    calcularAcumulados(pedidos);
+                    
                     document.getElementById('col-pendiente').innerHTML = '';
                     document.getElementById('col-coccion').innerHTML = '';
                     document.getElementById('col-listo').innerHTML = '';
@@ -1094,19 +1163,16 @@
                     let countListo = 0;
                     let countReparto = 0;
                     
-                    // Si es Historial
                     if (currentView === 'historial') {
                         mostrarVistaHistorial(pedidos);
                         return;
                     }
                     
-                    // Si es Demoras
                     if (currentView === 'demoras') {
                         mostrarVistaDemoras(pedidos);
                         return;
                     }
                     
-                    // Si es Activos (vista normal)
                     if (!pedidos) {
                         mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
                         mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
@@ -1128,13 +1194,11 @@
                         }
                     }
                     
-                    // Si no hay pedidos activos, mostrar mensajes
                     if (!hayPedidosActivos) {
                         mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
                         mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
                         mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
                     } else {
-                        // Si hay pedidos, actualizar mensajes de columnas vacías
                         if (document.getElementById('col-pendiente').children.length === 0) {
                             mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
                         }
@@ -1155,7 +1219,7 @@
         }
 
         // ============================================
-        // AGREGAR PEDIDO A COLUMNA
+        // 15. AGREGAR PEDIDO A COLUMNA (COMPLETO)
         // ============================================
         function agregarPedidoAColumna(id, data) {
             const estado = data.estado || 'pendiente';
@@ -1187,13 +1251,30 @@
             const container = document.getElementById(columnaId);
             if (!container) return;
             
-            // Incrementar contador
             const contador = document.getElementById(contadorRef);
             if (contador) {
                 contador.textContent = parseInt(contador.textContent) + 1;
             }
             
-            // Crear tarjeta
+            // Calcular subtotal
+            let subtotal = 0;
+            if (data.subtotal !== undefined && data.subtotal !== null) {
+                subtotal = data.subtotal;
+            } else if (data.productos) {
+                for (const [prodId, prod] of Object.entries(data.productos)) {
+                    const precio = prod.precio || prod.PRECIO || 0;
+                    const cantidad = prod.cantidad || 1;
+                    subtotal += precio * cantidad;
+                }
+            }
+            
+            // Tiempo de preparación y demora
+            const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
+            const tiempoActual = Date.now();
+            const tiempoTranscurrido = Math.floor((tiempoActual - tiempoInicio) / 60000);
+            const tiempoEstimado = data.tiempoEstimado || 30;
+            const demora = Math.max(0, tiempoTranscurrido - tiempoEstimado);
+            
             const card = document.createElement('div');
             card.className = 'pedido-card';
             card.dataset.pedidoId = id;
@@ -1211,19 +1292,47 @@
                 ).join('') : 
                 '<span>Sin productos</span>';
             
-            const total = data.total || 0;
-            const tiempo = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
-            
-            // Botones según estado
             let botones = '';
+            
+            // ENTRADA: Aceptar / Rechazar
             if (estado === 'pendiente') {
-                botones = `<button class="btn-accion primary" onclick="cambiarEstado('${id}', 'coccion')">Iniciar Cocción</button>`;
-            } else if (estado === 'coccion') {
-                botones = `<button class="btn-accion success" onclick="cambiarEstado('${id}', 'listo')">Marcar Listo</button>`;
-            } else if (estado === 'listo') {
-                botones = `<button class="btn-accion warning" onclick="cambiarEstado('${id}', 'reparto')">Enviar a Reparto</button>`;
-            } else if (estado === 'reparto') {
-                botones = `<span style="color: #8b5cf6; font-size: 0.7rem;">🛵 En camino</span>`;
+                botones = `
+                    <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
+                    <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
+                `;
+            }
+            // EN PROCESO: Marcar Listo + Detalle + Imprimir
+            else if (estado === 'coccion') {
+                const tiempoLabel = tiempoTranscurrido > 0 ? 
+                    `<span style="color: ${tiempoTranscurrido > tiempoEstimado ? '#ef4444' : '#10b981'}">⏱️ ${tiempoTranscurrido} min</span>` : '';
+                const demoraLabel = demora > 0 ? 
+                    `<span style="color: #ef4444; font-weight: bold;">⚠️ Demora: ${demora} min</span>` : '';
+                
+                botones = `
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
+                        <div style="display: flex; gap: 0.5rem; font-size: 0.7rem; color: #94a3b8; width: 100%;">
+                            ${tiempoLabel}
+                            ${demoraLabel}
+                        </div>
+                        <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
+                        <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                        <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
+                    </div>
+                `;
+            }
+            // LISTO: Recogido + Detalle
+            else if (estado === 'listo') {
+                botones = `
+                    <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
+                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                `;
+            }
+            // REPARTO: Solo información
+            else if (estado === 'reparto') {
+                botones = `
+                    <span style="color: #8b5cf6; font-size: 0.7rem;">🛵 En camino con ${data.repartidorNombre || 'repartidor'}</span>
+                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                `;
             }
             
             card.innerHTML = `
@@ -1231,8 +1340,8 @@
                 <div class="detalle">${data.direccion || 'Sin dirección'} • ${estadoDisplay}</div>
                 <div class="productos">${productosHtml}</div>
                 <div class="footer">
-                    <span class="precio">$${total.toFixed(2)}</span>
-                    <span class="tiempo">${tiempo}</span>
+                    <span class="precio">$${subtotal.toFixed(2)}</span>
+                    <span class="tiempo">${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : ''}</span>
                     ${botones}
                 </div>
             `;
@@ -1241,13 +1350,11 @@
         }
 
         // ============================================
-        // MOSTRAR MENSAJE DE VACÍO
+        // 16. MOSTRAR MENSAJE DE VACÍO
         // ============================================
         function mostrarMensajeVacio(columnaId, icono, mensaje) {
             const container = document.getElementById(columnaId);
             if (!container) return;
-            
-            // Solo mostrar si no hay hijos
             if (container.children.length > 0) return;
             
             const empty = document.createElement('div');
@@ -1271,7 +1378,7 @@
         }
 
         // ============================================
-        // ACTUALIZAR CONTADORES
+        // 17. ACTUALIZAR CONTADORES
         // ============================================
         function actualizarContadores(pendiente, coccion, listo, reparto) {
             document.getElementById('count-pendiente').textContent = pendiente;
@@ -1281,31 +1388,26 @@
             document.getElementById('col-count-pendiente').textContent = pendiente;
             document.getElementById('col-count-coccion').textContent = coccion;
             document.getElementById('col-count-listo').textContent = listo;
-            
-            // Actualizar contador del menú
             document.getElementById('contador-activos').textContent = pendiente + coccion + listo + reparto;
         }
 
         // ============================================
-        // MOSTRAR VISTA HISTORIAL
+        // 18. MOSTRAR VISTA HISTORIAL
         // ============================================
         function mostrarVistaHistorial(pedidos) {
             const columna = document.getElementById('col-pendiente');
             const columna2 = document.getElementById('col-coccion');
             const columna3 = document.getElementById('col-listo');
             
-            // Limpiar todas las columnas
             columna.innerHTML = '';
             columna2.innerHTML = '';
             columna3.innerHTML = '';
             
-            // Ocultar las otras columnas y mostrar solo una
             columna2.parentElement.style.display = 'none';
             columna3.parentElement.style.display = 'none';
             columna.parentElement.style.display = 'flex';
             columna.parentElement.style.maxWidth = '100%';
             
-            // Cambiar título de la columna
             const header = columna.parentElement.querySelector('.columna-header .titulo');
             if (header) header.innerHTML = '📜 Historial de Pedidos';
             
@@ -1329,7 +1431,6 @@
                 }
             }
             
-            // Ordenar por fecha (más reciente primero)
             pedidosHistorial.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             
             if (pedidosHistorial.length === 0) {
@@ -1369,25 +1470,22 @@
         }
 
         // ============================================
-        // MOSTRAR VISTA DEMORAS
+        // 19. MOSTRAR VISTA DEMORAS
         // ============================================
         function mostrarVistaDemoras(pedidos) {
             const columna = document.getElementById('col-pendiente');
             const columna2 = document.getElementById('col-coccion');
             const columna3 = document.getElementById('col-listo');
             
-            // Limpiar todas las columnas
             columna.innerHTML = '';
             columna2.innerHTML = '';
             columna3.innerHTML = '';
             
-            // Ocultar las otras columnas y mostrar solo una
             columna2.parentElement.style.display = 'none';
             columna3.parentElement.style.display = 'none';
             columna.parentElement.style.display = 'flex';
             columna.parentElement.style.maxWidth = '100%';
             
-            // Cambiar título de la columna
             const header = columna.parentElement.querySelector('.columna-header .titulo');
             if (header) header.innerHTML = '⏱️ Registro de Demoras';
             
@@ -1411,7 +1509,6 @@
                 }
             }
             
-            // Ordenar por demora (mayor primero)
             pedidosDemora.sort((a, b) => (b.demora || 0) - (a.demora || 0));
             
             if (pedidosDemora.length === 0) {
@@ -1454,7 +1551,7 @@
         }
 
         // ============================================
-        // RESTAURAR VISTA DE 3 COLUMNAS
+        // 20. RESTAURAR VISTA DE 3 COLUMNAS
         // ============================================
         function restaurarVistaColumnas() {
             const col1 = document.getElementById('col-pendiente').parentElement;
@@ -1468,7 +1565,6 @@
             col2.style.maxWidth = '400px';
             col3.style.maxWidth = '400px';
             
-            // Restaurar títulos
             const header1 = col1.querySelector('.columna-header .titulo');
             const header2 = col2.querySelector('.columna-header .titulo');
             const header3 = col3.querySelector('.columna-header .titulo');
@@ -1478,32 +1574,270 @@
         }
 
         // ============================================
-        // 14. CAMBIAR ESTADO DE PEDIDO
+        // 21. FUNCIONES DE BOTONES
         // ============================================
-        window.cambiarEstado = async function(pedidoId, nuevoEstado) {
+
+        // 21.1 ACEPTAR PEDIDO
+        window.aceptarPedido = async function(pedidoId) {
             try {
-                await db.ref(`pedidos/${pedidoId}/estado`).set(nuevoEstado);
+                await db.ref(`pedidos/${pedidoId}/estado`).set('coccion');
+                await db.ref(`pedidos/${pedidoId}/timestamp_inicio`).set(Date.now());
                 await db.ref(`pedidos/${pedidoId}/historial`).push({
-                    estado: nuevoEstado,
+                    estado: 'coccion',
                     timestamp: Date.now(),
-                    usuario: currentUser.uid
+                    usuario: currentUser.uid,
+                    accion: 'aceptado'
                 });
                 
-                showToast(`✅ Pedido actualizado a ${nuevoEstado}`, 'success');
+                showToast('✅ Pedido aceptado, en preparación', 'success');
+                await notificarRepartidor(pedidoId);
                 renderizarVista();
                 
-                if (nuevoEstado === 'reparto') {
-                    await notificarRepartidor(pedidoId);
-                }
-                
             } catch (error) {
-                console.error('Error al cambiar estado:', error);
-                showToast('❌ Error al actualizar pedido', 'error');
+                console.error('Error al aceptar pedido:', error);
+                showToast('❌ Error al aceptar pedido', 'error');
             }
         };
 
+        // 21.2 RECHAZAR PEDIDO
+        window.rechazarPedido = async function(pedidoId) {
+            try {
+                const confirm = await Swal.fire({
+                    title: '❌ ¿Rechazar pedido?',
+                    text: 'El cliente recibirá una notificación de rechazo',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, rechazar',
+                    cancelButtonText: 'Cancelar',
+                    background: '#0f172a',
+                    color: 'white'
+                });
+                
+                if (!confirm.isConfirmed) return;
+                
+                await db.ref(`pedidos/${pedidoId}/estado`).set('rechazado');
+                await db.ref(`pedidos/${pedidoId}/motivo_rechazo`).set('Rechazado por el restaurante');
+                await db.ref(`pedidos/${pedidoId}/historial`).push({
+                    estado: 'rechazado',
+                    timestamp: Date.now(),
+                    usuario: currentUser.uid,
+                    accion: 'rechazado'
+                });
+                
+                showToast('❌ Pedido rechazado', 'error');
+                renderizarVista();
+                
+            } catch (error) {
+                console.error('Error al rechazar pedido:', error);
+                showToast('❌ Error al rechazar pedido', 'error');
+            }
+        };
+
+        // 21.3 MARCAR LISTO
+        window.marcarListo = async function(pedidoId) {
+            try {
+                const snapshot = await db.ref(`pedidos/${pedidoId}`).once('value');
+                const data = snapshot.val();
+                const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
+                const tiempoPreparacion = Math.floor((Date.now() - tiempoInicio) / 60000);
+                
+                await db.ref(`pedidos/${pedidoId}/estado`).set('listo');
+                await db.ref(`pedidos/${pedidoId}/tiempo_preparacion`).set(tiempoPreparacion);
+                await db.ref(`pedidos/${pedidoId}/timestamp_listo`).set(Date.now());
+                await db.ref(`pedidos/${pedidoId}/historial`).push({
+                    estado: 'listo',
+                    timestamp: Date.now(),
+                    usuario: currentUser.uid,
+                    accion: 'marcado_listo',
+                    tiempo_preparacion: tiempoPreparacion
+                });
+                
+                showToast(`✅ Pedido listo (${tiempoPreparacion} min)`, 'success');
+                renderizarVista();
+                await notificarRepartidor(pedidoId);
+                
+            } catch (error) {
+                console.error('Error al marcar listo:', error);
+                showToast('❌ Error al marcar listo', 'error');
+            }
+        };
+
+        // 21.4 MARCAR RECOGIDO
+        window.marcarRecogido = async function(pedidoId) {
+            try {
+                const confirm = await Swal.fire({
+                    title: '🛵 ¿Pedido recogido?',
+                    text: 'Confirmar que el repartidor ya recogió el pedido',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, recogido',
+                    cancelButtonText: 'Cancelar',
+                    background: '#0f172a',
+                    color: 'white'
+                });
+                
+                if (!confirm.isConfirmed) return;
+                
+                await db.ref(`pedidos/${pedidoId}/estado`).set('entregado');
+                await db.ref(`pedidos/${pedidoId}/timestamp_entregado`).set(Date.now());
+                await db.ref(`pedidos/${pedidoId}/historial`).push({
+                    estado: 'entregado',
+                    timestamp: Date.now(),
+                    usuario: currentUser.uid,
+                    accion: 'recogido'
+                });
+                
+                showToast('✅ Pedido entregado al repartidor', 'success');
+                renderizarVista();
+                
+            } catch (error) {
+                console.error('Error al marcar recogido:', error);
+                showToast('❌ Error al marcar recogido', 'error');
+            }
+        };
+
+        // 21.5 VER DETALLE DEL PEDIDO
+        window.verDetallePedido = function(pedidoId) {
+            db.ref(`pedidos/${pedidoId}`).once('value')
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    if (!data) {
+                        showToast('❌ Pedido no encontrado', 'error');
+                        return;
+                    }
+                    
+                    let productosList = '';
+                    if (data.productos) {
+                        for (const [id, prod] of Object.entries(data.productos)) {
+                            const precio = prod.precio || prod.PRECIO || 0;
+                            const cantidad = prod.cantidad || 1;
+                            productosList += `
+                                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #334155;">
+                                    <span>${cantidad}x ${prod.nombre}</span>
+                                    <span>$${(precio * cantidad).toFixed(2)}</span>
+                                </div>
+                            `;
+                        }
+                    }
+                    
+                    Swal.fire({
+                        title: `📋 Pedido #${pedidoId.slice(-6)}`,
+                        html: `
+                            <div style="text-align: left; max-height: 400px; overflow-y: auto;">
+                                <p><strong>👤 Cliente:</strong> ${data.clienteNombre || 'Sin nombre'}</p>
+                                <p><strong>📍 Dirección:</strong> ${data.direccion || 'Sin dirección'}</p>
+                                <p><strong>📱 Teléfono:</strong> ${data.telefono || 'Sin teléfono'}</p>
+                                <hr style="border-color: #334155; margin: 8px 0;">
+                                <p><strong>📦 Productos:</strong></p>
+                                ${productosList || '<p style="color: #94a3b8;">Sin productos</p>'}
+                                <hr style="border-color: #334155; margin: 8px 0;">
+                                <div style="display: flex; justify-content: space-between; font-weight: bold; color: #f59e0b; border-top: 2px solid #f59e0b; padding-top: 8px; margin-top: 8px;">
+                                    <span>💰 Total:</span>
+                                    <span>$${(data.total || 0).toFixed(2)}</span>
+                                </div>
+                                <hr style="border-color: #334155; margin: 8px 0;">
+                                <div style="font-size: 0.8rem; color: #94a3b8;">
+                                    <p><strong>⏱️ Estado:</strong> ${data.estado}</p>
+                                    <p><strong>📅 Fecha:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha'}</p>
+                                </div>
+                            </div>
+                        `,
+                        width: '90%',
+                        maxWidth: '600px',
+                        confirmButtonText: '✅ Cerrar',
+                        background: '#0f172a',
+                        color: 'white',
+                        confirmButtonColor: '#f59e0b'
+                    });
+                })
+                .catch((error) => {
+                    console.error('Error al ver detalle:', error);
+                    showToast('❌ Error al cargar detalle', 'error');
+                });
+        };
+
+        // 21.6 IMPRIMIR COMANDA
+        window.imprimirComanda = function(pedidoId) {
+            db.ref(`pedidos/${pedidoId}`).once('value')
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    if (!data) {
+                        showToast('❌ Pedido no encontrado', 'error');
+                        return;
+                    }
+                    
+                    let productosList = '';
+                    if (data.productos) {
+                        for (const [id, prod] of Object.entries(data.productos)) {
+                            productosList += `
+                                <tr>
+                                    <td style="padding: 4px 8px;">${prod.cantidad || 1}x</td>
+                                    <td style="padding: 4px 8px;">${prod.nombre}</td>
+                                    <td style="padding: 4px 8px; text-align: right;">$${((prod.precio || 0) * (prod.cantidad || 1)).toFixed(2)}</td>
+                                </tr>
+                            `;
+                        }
+                    }
+                    
+                    const comandaHTML = `
+                        <html>
+                        <head>
+                            <title>Comanda #${pedidoId.slice(-6)}</title>
+                            <style>
+                                body { font-family: 'Courier New', monospace; padding: 20px; max-width: 300px; margin: 0 auto; }
+                                h1 { font-size: 18px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; }
+                                .cliente { margin: 12px 0; padding: 8px; background: #f5f5f5; }
+                                table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+                                th { border-bottom: 2px solid #000; text-align: left; padding: 4px 8px; }
+                                td { padding: 4px 8px; border-bottom: 1px solid #ddd; }
+                                .total { font-weight: bold; border-top: 2px solid #000; padding-top: 8px; margin-top: 8px; }
+                                .footer { margin-top: 20px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 8px; }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>🍳 COMANDA #${pedidoId.slice(-6)}</h1>
+                            <div class="cliente">
+                                <div><strong>👤 Cliente:</strong> ${data.clienteNombre || 'Sin nombre'}</div>
+                                <div><strong>📍 Dirección:</strong> ${data.direccion || 'Sin dirección'}</div>
+                                <div><strong>⏱️ Hora:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '--:--'}</div>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr><th>Cant</th><th>Producto</th><th>Precio</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${productosList}
+                                </tbody>
+                            </table>
+                            <div class="total">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>💰 TOTAL:</span>
+                                    <span>$${(data.total || 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                            <div class="footer">
+                                <p>${new Date().toLocaleString()}</p>
+                                <p>¡Gracias por tu pedido! 🍕</p>
+                            </div>
+                            <script>
+                                window.onload = function() { window.print(); }
+                            <\/script>
+                        </body>
+                        </html>
+                    `;
+                    
+                    const ventana = window.open('', '_blank', 'width=400,height=600');
+                    ventana.document.write(comandaHTML);
+                    ventana.document.close();
+                })
+                .catch((error) => {
+                    console.error('Error al imprimir comanda:', error);
+                    showToast('❌ Error al imprimir', 'error');
+                });
+        };
+
         // ============================================
-        // 15. NOTIFICAR REPARTIDOR
+        // 22. NOTIFICAR REPARTIDOR (EXISTENTE - MANTENER)
         // ============================================
         async function notificarRepartidor(pedidoId) {
             try {
@@ -1534,7 +1868,7 @@
         }
 
         // ============================================
-        // 16. SOLICITAR PERMISO NOTIFICACIONES
+        // 23. SOLICITAR PERMISO NOTIFICACIONES
         // ============================================
         async function solicitarPermisoNotificaciones() {
             if (!('Notification' in window)) {
@@ -1570,13 +1904,13 @@
         }
 
         // ============================================
-        // 17. REGISTRAR TOKEN FCM
+        // 24. REGISTRAR TOKEN FCM (CON VAPID KEY)
         // ============================================
         async function registrarTokenFCM() {
             try {
                 const messaging = firebase.messaging();
                 const token = await messaging.getToken({
-                    vapidKey: 'TU_VAPID_KEY_AQUI'
+                    vapidKey: 'TU_VAPID_KEY_AQUI'  // 🔥 REEMPLAZA CON TU VAPID KEY REAL
                 });
                 
                 console.log('📨 Token FCM obtenido:', token);
@@ -1594,7 +1928,7 @@
         }
 
         // ============================================
-        // 18. INICIALIZAR
+        // 25. INICIALIZAR
         // ============================================
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(detectarOrientacion, 500);
@@ -1607,7 +1941,7 @@
         });
 
         // ============================================
-        // 19. LOGS DE SEGURIDAD
+        // 26. LOGS DE SEGURIDAD
         // ============================================
         async function registrarLogSeguridad(evento, detalles = {}) {
             try {

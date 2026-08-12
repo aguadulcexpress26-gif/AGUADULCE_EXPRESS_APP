@@ -1144,7 +1144,7 @@
             window.acumuladoTotal = totalGeneral;
         }
 
-        function renderizarVista() {
+       function renderizarVista() {
     const container = document.getElementById('lista-pedidos');
     if (!container) return;
     
@@ -1175,40 +1175,68 @@
             document.getElementById('col-coccion').innerHTML = '';
             document.getElementById('col-listo').innerHTML = '';
             
+            // Resetear contadores
             let countPendiente = 0;
             let countCoccion = 0;
             let countListo = 0;
             let countReparto = 0;
             
             const pedidosArray = Object.entries(pedidos);
-            let hayPedidosActivos = false;
+            console.log('🔍 Procesando', pedidosArray.length, 'pedidos');
             
             for (const [id, data] of pedidosArray) {
                 const restId = data.restauranteId || data.restaurante_id;
-                if (restId !== restauranteId) continue;
+                console.log(`🔍 Pedido ${id}: restId=${restId}, restauranteId=${restauranteId}`);
                 
-                // 🔥 NORMALIZAR ESTADO (convertir a minúsculas)
-                const estado = data.estado ? data.estado.toLowerCase() : '';
+                if (restId !== restauranteId) {
+                    console.log(`⏭️ Saltando pedido ${id} (restId diferente)`);
+                    continue;
+                }
                 
-                // 🔥 MAPA DE ESTADOS: RECIBIDO → pendiente
-                let estadoNormalizado = estado;
-                if (estado === 'recibido' || estado === 'recibido') estadoNormalizado = 'pendiente';
+                // 🔥 NORMALIZAR ESTADO
+                let estado = data.estado ? data.estado.toLowerCase() : '';
+                if (estado === 'recibido') estado = 'pendiente';
                 
-                if (estadoNormalizado === 'pendiente' || estadoNormalizado === 'coccion' || 
-                    estadoNormalizado === 'listo' || estadoNormalizado === 'reparto') {
-                    hayPedidosActivos = true;
-                    // 🔥 PASAR ESTADO NORMALIZADO A LA TARJETA
-                    agregarPedidoAColumna(id, { ...data, estado: estadoNormalizado });
+                console.log(`✅ Pedido ${id}: estado normalizado = ${estado}`);
+                
+                // Contar según estado
+                if (estado === 'pendiente') {
+                    countPendiente++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                } else if (estado === 'coccion') {
+                    countCoccion++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                } else if (estado === 'listo') {
+                    countListo++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                } else if (estado === 'reparto') {
+                    countReparto++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                } else {
+                    console.log(`⏭️ Estado no manejado: ${estado}`);
                 }
             }
             
-            if (!hayPedidosActivos) {
+            // Si no hay pedidos activos, mostrar mensajes
+            if (countPendiente === 0 && countCoccion === 0 && countListo === 0 && countReparto === 0) {
                 mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
                 mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
                 mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+            } else {
+                // Si algunas columnas quedaron vacías
+                if (document.getElementById('col-pendiente').children.length === 0) {
+                    mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                }
+                if (document.getElementById('col-coccion').children.length === 0) {
+                    mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                }
+                if (document.getElementById('col-listo').children.length === 0) {
+                    mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                }
             }
             
             actualizarContadores(countPendiente, countCoccion, countListo, countReparto);
+            console.log('📊 Contadores actualizados:', { countPendiente, countCoccion, countListo, countReparto });
             
         })
         .catch((error) => {
@@ -1225,7 +1253,6 @@
             `;
         });
 }
-
         // ============================================
         // 15. AGREGAR PEDIDO A COLUMNA (COMPLETO)
         // ============================================

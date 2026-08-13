@@ -1953,8 +1953,8 @@
                 });
         };
 
-       // ============================================
-// 24. IMPRIMIR TICKET - VERSIÓN 50mm
+     // ============================================
+// 24. IMPRIMIR TICKET - VERSIÓN IMPRESORA TÉRMICA 50mm
 // ============================================
 window.imprimirComanda = function(pedidoId) {
     db.ref(`pedidos/${pedidoId}`).once('value')
@@ -1975,208 +1975,162 @@ window.imprimirComanda = function(pedidoId) {
             const usoApp = data.usoYServicios || data.uso_plataforma || 0;
             const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString();
             const restauranteNombre = data.restaurante_nombre || data.restaurante || 'Restaurante';
+            const metodoPago = data.metodo_pago || 'Efectivo';
             
-            // Productos
-            let productosList = '';
+            // Generar línea de separación
+            const sep = '--------------------------------\n';
+            const sepCorta = '----------------\n';
+            
+            // Productos - formato para impresora térmica
+            let productosStr = '';
             if (data.items && data.items.length > 0) {
-                productosList = data.items.map(item => `
-                    <tr>
-                        <td style="padding: 4px 6px; text-align: center; font-size: 11px;">${item.cantidad || 1}x</td>
-                        <td style="padding: 4px 6px; font-size: 11px;">${item.nombre}</td>
-                        <td style="padding: 4px 6px; text-align: right; font-size: 11px;">$${(item.total || (item.precio_unitario * item.cantidad) || 0).toFixed(2)}</td>
-                    </tr>
-                `).join('');
+                productosStr = data.items.map(item => {
+                    const nombre = item.nombre || 'Producto';
+                    const cantidad = item.cantidad || 1;
+                    const precio = item.total || (item.precio_unitario * cantidad) || 0;
+                    // Formato: "1x PIZZA 4 QUESOS     $12.00"
+                    const nombreTruncado = nombre.length > 20 ? nombre.substring(0, 18) + '..' : nombre;
+                    const espacios = 22 - nombreTruncado.length;
+                    return `${cantidad}x ${nombreTruncado}${' '.repeat(espacios > 0 ? espacios : 0)}$${precio.toFixed(2)}`;
+                }).join('\n');
             } else if (data.productos) {
-                productosList = Object.entries(data.productos).map(([pid, prod]) => `
-                    <tr>
-                        <td style="padding: 4px 6px; text-align: center; font-size: 11px;">${prod.cantidad || 1}x</td>
-                        <td style="padding: 4px 6px; font-size: 11px;">${prod.nombre}</td>
-                        <td style="padding: 4px 6px; text-align: right; font-size: 11px;">$${((prod.precio || prod.PRECIO || 0) * (prod.cantidad || 1)).toFixed(2)}</td>
-                    </tr>
-                `).join('');
+                productosStr = Object.entries(data.productos).map(([pid, prod]) => {
+                    const nombre = prod.nombre || prod.PLATO || 'Producto';
+                    const cantidad = prod.cantidad || 1;
+                    const precio = (prod.precio || prod.PRECIO || 0) * cantidad;
+                    const nombreTruncado = nombre.length > 20 ? nombre.substring(0, 18) + '..' : nombre;
+                    const espacios = 22 - nombreTruncado.length;
+                    return `${cantidad}x ${nombreTruncado}${' '.repeat(espacios > 0 ? espacios : 0)}$${precio.toFixed(2)}`;
+                }).join('\n');
             } else {
-                productosList = '<tr><td colspan="3" style="padding: 8px; text-align: center; color: #94a3b8; font-size: 11px;">Sin productos</td></tr>';
+                productosStr = '  Sin productos';
             }
             
-            const comandaHTML = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Ticket #${idPedido}</title>
-                    <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body { 
-                            font-family: 'Courier New', 'Lucida Console', monospace; 
-                            padding: 8px; 
-                            max-width: 50mm; 
-                            margin: 0 auto; 
-                            background: white;
-                            color: #1e293b;
-                            font-size: 11px;
-                            line-height: 1.4;
-                        }
-                        .ticket {
-                            padding: 12px 10px;
-                            background: white;
-                        }
-                        .header {
-                            text-align: center;
-                            border-bottom: 2px solid #f59e0b;
-                            padding-bottom: 8px;
-                            margin-bottom: 10px;
-                        }
-                        .header h1 {
-                            font-size: 16px;
-                            font-weight: 900;
-                            color: #f59e0b;
-                            letter-spacing: 1px;
-                        }
-                        .header p {
-                            font-size: 10px;
-                            color: #64748b;
-                            margin-top: 2px;
-                        }
-                        .header .ticket-id {
-                            font-size: 10px;
-                            color: #94a3b8;
-                            margin-top: 2px;
-                        }
-                        .info {
-                            background: #f8fafc;
-                            border-radius: 6px;
-                            padding: 8px 10px;
-                            margin-bottom: 10px;
-                            font-size: 10px;
-                            line-height: 1.6;
-                        }
-                        .info .label { color: #64748b; }
-                        .info strong { color: #0f172a; }
-                        table {
-                            width: 100%;
-                            border-collapse: collapse;
-                            margin: 8px 0;
-                        }
-                        th {
-                            text-align: left;
-                            padding: 4px 6px;
-                            border-bottom: 1px solid #334155;
-                            font-size: 9px;
-                            text-transform: uppercase;
-                            letter-spacing: 0.5px;
-                            color: #64748b;
-                        }
-                        td {
-                            padding: 3px 6px;
-                            border-bottom: 1px solid #e2e8f0;
-                            font-size: 10px;
-                        }
-                        .totales {
-                            margin-top: 8px;
-                            padding-top: 8px;
-                            border-top: 1px solid #334155;
-                            font-size: 11px;
-                        }
-                        .totales .row {
-                            display: flex;
-                            justify-content: space-between;
-                            padding: 2px 0;
-                        }
-                        .totales .row .label-text { color: #64748b; }
-                        .totales .row .value { font-weight: 600; }
-                        .totales .total {
-                            font-size: 14px;
-                            font-weight: 900;
-                            color: #f59e0b;
-                            padding-top: 4px;
-                            border-top: 2px solid #f59e0b;
-                            margin-top: 4px;
-                        }
-                        .totales .total .label-text { color: #0f172a; }
-                        .footer {
-                            text-align: center;
-                            margin-top: 12px;
-                            padding-top: 10px;
-                            border-top: 1px dashed #e2e8f0;
-                            font-size: 9px;
-                            color: #94a3b8;
-                        }
-                        .footer .gracias {
-                            font-size: 12px;
-                            font-weight: 900;
-                            color: #f59e0b;
-                            margin-bottom: 2px;
-                        }
-                        /* Ajustes para impresión */
-                        @media print {
-                            body { padding: 0; margin: 0; }
-                            .ticket { padding: 8px 6px; }
-                            .no-print { display: none; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="ticket">
-                        <div class="header">
-                            <h1>🍳 Aguadulce</h1>
-                            <p>${restauranteNombre}</p>
-                            <div class="ticket-id">Ticket #${idPedido}</div>
-                        </div>
-                        
-                        <div class="info">
-                            <div><span class="label">👤</span> <strong>${clienteNombre}</strong></div>
-                            <div><span class="label">📞</span> <strong>${telefono}</strong></div>
-                            <div><span class="label">📍</span> <strong style="font-size:9px;">${direccion}</strong></div>
-                            <div><span class="label">📅</span> <strong>${fecha}</strong></div>
-                        </div>
-                        
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="text-align:center;width:15%;">Cant</th>
-                                    <th style="text-align:left;width:55%;">Producto</th>
-                                    <th style="text-align:right;width:30%;">Precio</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${productosList}
-                            </tbody>
-                        </table>
-                        
-                        <div class="totales">
-                            <div class="row">
-                                <span class="label-text">Subtotal</span>
-                                <span class="value">$${subtotal.toFixed(2)}</span>
-                            </div>
-                            <div class="row">
-                                <span class="label-text">🚚 Envío</span>
-                                <span class="value">$${envio.toFixed(2)}</span>
-                            </div>
-                            <div class="row">
-                                <span class="label-text">📱 Uso App</span>
-                                <span class="value">$${usoApp.toFixed(2)}</span>
-                            </div>
-                            <div class="row total">
-                                <span class="label-text">💰 TOTAL</span>
-                                <span class="value">$${total.toFixed(2)}</span>
-                            </div>
-                        </div>
-                        
-                        <div class="footer">
-                            <div class="gracias">✨ ¡Gracias! ✨</div>
-                            <p>${new Date().toLocaleString()}</p>
-                            <p style="font-size:8px;color:#94a3b8;margin-top:2px;">Aguadulce Express - Comida a domicilio</p>
-                        </div>
-                    </div>
-                    <script>
-                        window.onload = function() { 
-                            setTimeout(function() { window.print(); }, 500);
-                        }
-                    <\/script>
-                </body>
-                </html>
-            `;
+            // Formatear fecha para impresión
+            const fechaStr = new Date().toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                year: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
             
-            const ventana = window.open('', '_blank', 'width=200,height=600,menubar=no,toolbar=no');
+            // Construir ticket en texto plano (ideal para impresoras térmicas)
+            const ticketTexto = `
+${'='.repeat(32)}
+🍳 AGUADULCE EXPRESS
+${'='.repeat(32)}
+${restauranteNombre}
+Ticket #${idPedido}
+${'-'.repeat(32)}
+👤 ${clienteNombre}
+📞 ${telefono}
+📍 ${direccion}
+📅 ${fechaStr}
+${'-'.repeat(32)}
+CANT  PRODUCTO              PRECIO
+${'-'.repeat(32)}
+${productosStr}
+${'-'.repeat(32)}
+${' '.repeat(18)}Subtotal  $${subtotal.toFixed(2)}
+${' '.repeat(18)}Envío     $${envio.toFixed(2)}
+${' '.repeat(18)}Uso App   $${usoApp.toFixed(2)}
+${'='.repeat(32)}
+${' '.repeat(18)}TOTAL     $${total.toFixed(2)}
+${'='.repeat(32)}
+💳 Pago: ${metodoPago}
+${'-'.repeat(32)}
+✨ ¡Gracias por tu pedido! ✨
+${fechaStr}
+Aguadulce Express
+${'='.repeat(32)}`;
+
+            // Crear ventana de impresión con estilo optimizado para térmica
+            const comandaHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ticket #${idPedido}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Courier New', 'Lucida Console', monospace; 
+            width: 50mm;
+            margin: 0 auto;
+            padding: 4px;
+            background: white;
+            color: #000;
+            font-size: 10px;
+            line-height: 1.3;
+        }
+        .ticket {
+            width: 100%;
+            padding: 4px 2px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .ticket .line {
+            display: block;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            letter-spacing: 0px;
+            white-space: pre;
+        }
+        @media print {
+            body { padding: 0; margin: 0; width: 50mm; }
+            .ticket { padding: 2px; }
+            .no-print { display: none; }
+        }
+        /* Estilos para impresora térmica */
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .double { font-size: 14px; font-weight: bold; }
+        .sep { border-top: 1px dashed #000; margin: 4px 0; }
+        .sep-double { border-top: 2px solid #000; margin: 4px 0; }
+    </style>
+</head>
+<body>
+    <div class="ticket">
+        <pre style="font-family:'Courier New',monospace;font-size:10px;line-height:1.3;margin:0;padding:0;white-space:pre-wrap;">
+${'='.repeat(32)}
+🍳 AGUADULCE EXPRESS
+${'='.repeat(32)}
+${restauranteNombre}
+Ticket #${idPedido}
+${'-'.repeat(32)}
+👤 ${clienteNombre}
+📞 ${telefono}
+📍 ${direccion}
+📅 ${fechaStr}
+${'-'.repeat(32)}
+CANT  PRODUCTO              PRECIO
+${'-'.repeat(32)}
+${productosStr}
+${'-'.repeat(32)}
+${' '.repeat(18)}Subtotal  $${subtotal.toFixed(2)}
+${' '.repeat(18)}Envío     $${envio.toFixed(2)}
+${' '.repeat(18)}Uso App   $${usoApp.toFixed(2)}
+${'='.repeat(32)}
+${' '.repeat(18)}TOTAL     $${total.toFixed(2)}
+${'='.repeat(32)}
+💳 Pago: ${metodoPago}
+${'-'.repeat(32)}
+✨ ¡Gracias por tu pedido! ✨
+${fechaStr}
+Aguadulce Express
+${'='.repeat(32)}
+        </pre>
+    </div>
+    <script>
+        window.onload = function() { 
+            setTimeout(function() { window.print(); }, 800);
+        }
+    <\/script>
+</body>
+</html>`;
+
+            // Abrir ventana de impresión
+            const ventana = window.open('', '_blank', 'width=200,height=600,menubar=no,toolbar=no,scrollbars=yes');
             if (ventana) {
                 ventana.document.write(comandaHTML);
                 ventana.document.close();

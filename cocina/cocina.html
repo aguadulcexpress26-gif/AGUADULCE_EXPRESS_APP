@@ -990,34 +990,33 @@
         // ============================================
         // 8. ESTADO DE AUTENTICACIÓN
         // ============================================
-        auth.onAuthStateChanged(async (user) => {
-            const app = document.getElementById('app');
-            const loginContainer = document.getElementById('login-container');
-            
-            if (user) {
-                console.log('✅ Usuario autenticado:', user.uid);
-                currentUser = user;
-                restauranteId = user.uid;
-                
-                loginContainer.classList.add('hidden');
-                app.classList.remove('hidden');
-                
-                await cargarDatosRestaurante();
-                escucharPedidos();
-                renderizarVista();
-                
-                setTimeout(solicitarPermisoNotificaciones, 3000);
-                
-            } else {
-                console.log('❌ Sin usuario autenticado');
-                app.classList.add('hidden');
-                loginContainer.classList.remove('hidden');
-                
-                pedidosListeners.forEach(ref => ref.off());
-                pedidosListeners = [];
-            }
-        });
-
+       auth.onAuthStateChanged(async (user) => {
+    const app = document.getElementById('app');
+    const loginContainer = document.getElementById('login-container');
+    
+    if (user) {
+        console.log('✅ Usuario autenticado:', user.uid);
+        currentUser = user;
+        restauranteId = user.uid;
+        
+        loginContainer.classList.add('hidden');
+        app.classList.remove('hidden');
+        
+        await cargarDatosRestaurante();
+        escucharPedidos();
+        renderizarVista();  // ← 🔥 ESTO YA ESTÁ, PERO PUEDE NO ESTAR EJECUTÁNDOSE
+        
+        setTimeout(solicitarPermisoNotificaciones, 3000);
+        
+    } else {
+        console.log('❌ Sin usuario autenticado');
+        app.classList.add('hidden');
+        loginContainer.classList.remove('hidden');
+        
+        pedidosListeners.forEach(ref => ref.off());
+        pedidosListeners = [];
+    }
+});
         // ============================================
         // 9. CERRAR SESIÓN
         // ============================================
@@ -1256,133 +1255,140 @@
         // ============================================
         // 15. AGREGAR PEDIDO A COLUMNA (COMPLETO)
         // ============================================
-        function agregarPedidoAColumna(id, data) {
-            const estado = data.estado || 'pendiente';
-            let columnaId = '';
-            let contadorRef = '';
-            
-            switch(estado) {
-                case 'pendiente':
-                    columnaId = 'col-pendiente';
-                    contadorRef = 'count-pendiente';
-                    break;
-                case 'coccion':
-                    columnaId = 'col-coccion';
-                    contadorRef = 'count-coccion';
-                    break;
-                case 'listo':
-                    columnaId = 'col-listo';
-                    contadorRef = 'count-listo';
-                    break;
-                case 'reparto':
-                    columnaId = 'col-listo';
-                    contadorRef = 'count-reparto';
-                    break;
-                default:
-                    columnaId = 'col-pendiente';
-                    contadorRef = 'count-pendiente';
-            }
-            
-            const container = document.getElementById(columnaId);
-            if (!container) return;
-            
-            const contador = document.getElementById(contadorRef);
-            if (contador) {
-                contador.textContent = parseInt(contador.textContent) + 1;
-            }
-            
-            // Calcular subtotal
-            let subtotal = 0;
-            if (data.subtotal !== undefined && data.subtotal !== null) {
-                subtotal = data.subtotal;
-            } else if (data.productos) {
-                for (const [prodId, prod] of Object.entries(data.productos)) {
-                    const precio = prod.precio || prod.PRECIO || 0;
-                    const cantidad = prod.cantidad || 1;
-                    subtotal += precio * cantidad;
-                }
-            }
-            
-            // Tiempo de preparación y demora
-            const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
-            const tiempoActual = Date.now();
-            const tiempoTranscurrido = Math.floor((tiempoActual - tiempoInicio) / 60000);
-            const tiempoEstimado = data.tiempoEstimado || 30;
-            const demora = Math.max(0, tiempoTranscurrido - tiempoEstimado);
-            
-            const card = document.createElement('div');
-            card.className = 'pedido-card';
-            card.dataset.pedidoId = id;
-            
-            const estadoDisplay = {
-                'pendiente': '📥 Pendiente',
-                'coccion': '👨‍🍳 En Cocción',
-                'listo': '✅ Listo',
-                'reparto': '🛵 En Reparto'
-            }[estado] || estado;
-            
-            const productosHtml = data.productos ? 
-                Object.entries(data.productos).map(([pid, prod]) => 
-                    `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-                ).join('') : 
-                '<span>Sin productos</span>';
-            
-            let botones = '';
-            
-            // ENTRADA: Aceptar / Rechazar
-            if (estado === 'pendiente') {
-                botones = `
-                    <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
-                    <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
-                `;
-            }
-            // EN PROCESO: Marcar Listo + Detalle + Imprimir
-            else if (estado === 'coccion') {
-                const tiempoLabel = tiempoTranscurrido > 0 ? 
-                    `<span style="color: ${tiempoTranscurrido > tiempoEstimado ? '#ef4444' : '#10b981'}">⏱️ ${tiempoTranscurrido} min</span>` : '';
-                const demoraLabel = demora > 0 ? 
-                    `<span style="color: #ef4444; font-weight: bold;">⚠️ Demora: ${demora} min</span>` : '';
-                
-                botones = `
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
-                        <div style="display: flex; gap: 0.5rem; font-size: 0.7rem; color: #94a3b8; width: 100%;">
-                            ${tiempoLabel}
-                            ${demoraLabel}
-                        </div>
-                        <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
-                        <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-                        <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
-                    </div>
-                `;
-            }
-            // LISTO: Recogido + Detalle
-            else if (estado === 'listo') {
-                botones = `
-                    <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
-                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-                `;
-            }
-            // REPARTO: Solo información
-            else if (estado === 'reparto') {
-                botones = `
-                    <span style="color: #8b5cf6; font-size: 0.7rem;">🛵 En camino con ${data.repartidorNombre || 'repartidor'}</span>
-                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-                `;
-            }
-            
-            card.innerHTML = `
-                <div class="cliente">${data.clienteNombre || 'Cliente'}</div>
-                <div class="detalle">${data.direccion || 'Sin dirección'} • ${estadoDisplay}</div>
-                <div class="productos">${productosHtml}</div>
-                <div class="footer">
-                    <span class="precio">$${subtotal.toFixed(2)}</span>
-                    <span class="tiempo">${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : ''}</span>
-                    ${botones}
-                </div>
-            `;
-            
-            container.appendChild(card);
+       // ============================================================
+// AGREGAR PEDIDO A COLUMNA - CORREGIDO
+// ============================================================
+function agregarPedidoAColumna(id, data) {
+    // 🔥 NORMALIZAR ESTADO
+    let estado = data.estado || 'pendiente';
+    estado = estado.toLowerCase();
+    if (estado === 'recibido') estado = 'pendiente';
+    
+    console.log(`📌 agregarPedidoAColumna: ${id} -> estado=${estado}`);
+    
+    let columnaId = '';
+    let contadorRef = '';
+    
+    switch(estado) {
+        case 'pendiente':
+            columnaId = 'col-pendiente';
+            contadorRef = 'count-pendiente';
+            break;
+        case 'coccion':
+            columnaId = 'col-coccion';
+            contadorRef = 'count-coccion';
+            break;
+        case 'listo':
+            columnaId = 'col-listo';
+            contadorRef = 'count-listo';
+            break;
+        case 'reparto':
+            columnaId = 'col-listo';
+            contadorRef = 'count-reparto';
+            break;
+        default:
+            columnaId = 'col-pendiente';
+            contadorRef = 'count-pendiente';
+    }
+    
+    const container = document.getElementById(columnaId);
+    if (!container) {
+        console.error(`❌ Columna ${columnaId} no encontrada`);
+        return;
+    }
+    
+    // 🔥 INCREMENTAR CONTADOR
+   // 🔥 INCREMENTAR CONTADOR
+const contador = document.getElementById(contadorRef);
+if (contador) {
+    const valorActual = parseInt(contador.textContent) || 0;
+    contador.textContent = valorActual + 1;
+    console.log(`✅ Contador ${contadorRef}: ${valorActual} → ${contador.textContent}`);
+}
+    
+    // Calcular subtotal
+    let subtotal = 0;
+    if (data.subtotal !== undefined && data.subtotal !== null) {
+        subtotal = data.subtotal;
+    } else if (data.items) {
+        for (const item of data.items) {
+            subtotal += item.total || (item.precio_unitario * item.cantidad) || 0;
         }
+    } else if (data.productos) {
+        for (const [prodId, prod] of Object.entries(data.productos)) {
+            const precio = prod.precio || prod.PRECIO || 0;
+            const cantidad = prod.cantidad || 1;
+            subtotal += precio * cantidad;
+        }
+    }
+    
+    // Crear tarjeta
+    const card = document.createElement('div');
+    card.className = 'pedido-card';
+    card.dataset.pedidoId = id;
+    
+    const estadoDisplay = {
+        'pendiente': '📥 Pendiente',
+        'coccion': '👨‍🍳 En Cocción',
+        'listo': '✅ Listo',
+        'reparto': '🛵 En Reparto'
+    }[estado] || estado;
+    
+    // Productos HTML - soporta items y productos
+    let productosHtml = '';
+    if (data.items) {
+        productosHtml = data.items.map(item => 
+            `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+        ).join('');
+    } else if (data.productos) {
+        productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+            `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+        ).join('');
+    } else {
+        productosHtml = '<span>Sin productos</span>';
+    }
+    
+    // Botones según estado
+    let botones = '';
+    if (estado === 'pendiente') {
+        botones = `
+            <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
+            <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
+        `;
+    } else if (estado === 'coccion') {
+        botones = `
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
+                <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
+                <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
+            </div>
+        `;
+    } else if (estado === 'listo') {
+        botones = `
+            <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
+            <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+        `;
+    } else if (estado === 'reparto') {
+        botones = `
+            <span style="color: #8b5cf6; font-size: 0.7rem;">🛵 En camino con ${data.repartidorNombre || 'repartidor'}</span>
+            <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+        `;
+    }
+    
+    card.innerHTML = `
+        <div class="cliente">${data.cliente_nombre || data.clienteNombre || 'Cliente'}</div>
+        <div class="detalle">${data.direccion || 'Sin dirección'} • ${estadoDisplay}</div>
+        <div class="productos">${productosHtml}</div>
+        <div class="footer">
+            <span class="precio">$${subtotal.toFixed(2)}</span>
+            <span class="tiempo">${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : ''}</span>
+            ${botones}
+        </div>
+    `;
+    
+    container.appendChild(card);
+    console.log(`✅ Tarjeta agregada a ${columnaId} para pedido ${id}`);
+}
 
         // ============================================
         // 16. MOSTRAR MENSAJE DE VACÍO

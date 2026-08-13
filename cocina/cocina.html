@@ -1,15 +1,18 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="screen-orientation" content="landscape">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Aguadulce Express - Cocina</title>
     
     <link rel="manifest" href="/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 🔥 AGREGAR ESTA LÍNEA -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -195,7 +198,32 @@
         }
         
         /* ============================================
-           CONTADORES DE ESTADO Y ACUMULADO
+           ESTADO DE PAUSA
+           ============================================ */
+        .pausa-banner {
+            background: #dc2626;
+            color: white;
+            text-align: center;
+            padding: 8px 16px;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 2px;
+            display: none;
+            flex-shrink: 0;
+        }
+        
+        .pausa-banner.active {
+            display: block;
+            animation: pulse-banner 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-banner {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        /* ============================================
+           CONTADORES DE ESTADO
            ============================================ */
         .contadores {
             display: flex;
@@ -234,6 +262,35 @@
         .contador-item.separador {
             border-left: 1px solid #334155;
             padding-left: 1rem;
+        }
+        
+        .btn-pausa {
+            padding: 4px 16px;
+            border-radius: 20px;
+            border: none;
+            font-weight: 700;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-left: auto;
+        }
+        
+        .btn-pausa.activo {
+            background: #dc2626;
+            color: white;
+        }
+        
+        .btn-pausa.activo:hover {
+            background: #b91c1c;
+        }
+        
+        .btn-pausa.inactivo {
+            background: #22c55e;
+            color: white;
+        }
+        
+        .btn-pausa.inactivo:hover {
+            background: #16a34a;
         }
         
         /* ============================================
@@ -381,6 +438,17 @@
         .pedido-card .footer .tiempo {
             color: #64748b;
             font-size: 0.7rem;
+        }
+        
+        .pedido-card .id-pedido {
+            font-size: 0.65rem;
+            color: #64748b;
+            font-family: monospace;
+        }
+        
+        .pedido-card .telefono {
+            color: #94a3b8;
+            font-size: 0.75rem;
         }
         
         .btn-accion {
@@ -679,6 +747,7 @@
             <div class="mb-6 pb-4 border-b border-gray-700">
                 <div class="font-bold text-lg text-white" id="restaurante-nombre">Cargando...</div>
                 <div class="text-sm text-gray-400" id="restaurante-email"></div>
+                <div class="text-xs text-gray-500 mt-2" id="estado-pausa-menu">● Activo</div>
             </div>
             
             <button class="menu-item active" data-view="activos">
@@ -695,10 +764,19 @@
             </button>
             
             <div class="mt-4 pt-4 border-t border-gray-700">
+                <button class="menu-item" id="btn-pausa" onclick="togglePausa()">
+                    <span id="icono-pausa">⏸️</span>
+                    <span id="texto-pausa">Pausar Pedidos</span>
+                </button>
                 <button class="menu-item danger" id="btn-cerrar-sesion">
                     <span>🚪</span> Cerrar Sesión
                 </button>
             </div>
+        </div>
+        
+        <!-- BANNER DE PAUSA -->
+        <div class="pausa-banner" id="pausa-banner">
+            ⏸️ RESTAURANTE EN PAUSA - NO SE RECIBEN NUEVOS PEDIDOS
         </div>
         
         <!-- HEADER CON BANNER -->
@@ -730,10 +808,6 @@
                 ✅ Listo
                 <span class="badge listo" id="count-listo">0</span>
             </div>
-            <div class="contador-item">
-                🛵 En Reparto
-                <span class="badge reparto" id="count-reparto">0</span>
-            </div>
             <div class="contador-item separador">
                 📊 Semana
                 <span class="badge acumulado-semanal" id="count-semanal">$0.00</span>
@@ -742,6 +816,9 @@
                 💰 Total
                 <span class="badge acumulado-total" id="count-total">$0.00</span>
             </div>
+            <button id="btn-pausa-header" onclick="togglePausa()" class="btn-pausa inactivo">
+                ⏸️ Pausar
+            </button>
         </div>
         
         <!-- COLUMNAS -->
@@ -838,6 +915,7 @@
         let pedidosListeners = [];
         let restauranteId = null;
         let deferredPrompt = null;
+        let estaPausado = false;
 
         // ============================================
         // 3. DETECCIÓN DE ORIENTACIÓN
@@ -988,48 +1066,38 @@
         // ============================================
         // 8. ESTADO DE AUTENTICACIÓN
         // ============================================
-    auth.onAuthStateChanged(async (user) => {
-    const app = document.getElementById('app');
-    const loginContainer = document.getElementById('login-container');
-    
-    if (user) {
-        console.log('✅ Usuario autenticado:', user.uid);
-        currentUser = user;
-        restauranteId = user.uid;
-        
-        // Ocultar login, mostrar app
-        loginContainer.classList.add('hidden');
-        app.classList.remove('hidden');
-        
-        // Cargar datos del restaurante
-        await cargarDatosRestaurante();
-        
-        // 🔥 LO MÁS IMPORTANTE: ESCUCHAR PEDIDOS EN TIEMPO REAL
-        escucharPedidos();
-        
-        // 🔥 FORZAR RENDERIZADO INICIAL
-        console.log('🔄 Renderizando vista inicial...');
-        renderizarVista();
-        
-        // 🔥 SEGUNDA PASADA POR SI ACASO (después de que todo cargue)
-        setTimeout(() => {
-            console.log('🔄 Renderizando vista (segunda pasada)...');
-            renderizarVista();
-        }, 1000);
-        
-        // Solicitar permisos de notificaciones
-        setTimeout(solicitarPermisoNotificaciones, 3000);
-        
-    } else {
-        console.log('❌ Sin usuario autenticado');
-        app.classList.add('hidden');
-        loginContainer.classList.remove('hidden');
-        
-        // Limpiar listeners
-        pedidosListeners.forEach(ref => ref.off());
-        pedidosListeners = [];
-    }
-});
+        auth.onAuthStateChanged(async (user) => {
+            const app = document.getElementById('app');
+            const loginContainer = document.getElementById('login-container');
+            
+            if (user) {
+                console.log('✅ Usuario autenticado:', user.uid);
+                currentUser = user;
+                restauranteId = user.uid;
+                
+                loginContainer.classList.add('hidden');
+                app.classList.remove('hidden');
+                
+                await cargarDatosRestaurante();
+                await cargarEstadoPausa();
+                escucharPedidos();
+                
+                setTimeout(() => {
+                    renderizarVista();
+                }, 500);
+                
+                setTimeout(solicitarPermisoNotificaciones, 3000);
+                
+            } else {
+                console.log('❌ Sin usuario autenticado');
+                app.classList.add('hidden');
+                loginContainer.classList.remove('hidden');
+                
+                pedidosListeners.forEach(ref => ref.off());
+                pedidosListeners = [];
+            }
+        });
+
         // ============================================
         // 9. CERRAR SESIÓN
         // ============================================
@@ -1087,32 +1155,84 @@
         }
 
         // ============================================
-        // 12. ESCUCHAR PEDIDOS
+        // 12. ESTADO DE PAUSA
         // ============================================
-    function escucharPedidos() {
-    // Limpiar listeners anteriores
-    pedidosListeners.forEach(ref => ref.off());
-    pedidosListeners = [];
-    
-    const pedidosRef = db.ref('pedidos');
-    
-    // 🔥 ESCUCHAR CAMBIOS EN TIEMPO REAL
-    pedidosRef.on('value', (snapshot) => {
-        console.log('🔄 Cambio detectado en pedidos');
-        renderizarVista();
-    });
-    
-    pedidosListeners.push(pedidosRef);
-    console.log('✅ Listener de pedidos activado');
-}
+        async function cargarEstadoPausa() {
+            try {
+                const snapshot = await db.ref(`restaurantes/${restauranteId}/pausado`).once('value');
+                estaPausado = snapshot.val() === true;
+                actualizarUIEstadoPausa();
+            } catch (error) {
+                console.error('Error al cargar estado de pausa:', error);
+            }
+        }
+
+        function actualizarUIEstadoPausa() {
+            const banner = document.getElementById('pausa-banner');
+            const btnPausa = document.getElementById('btn-pausa');
+            const btnPausaHeader = document.getElementById('btn-pausa-header');
+            const icono = document.getElementById('icono-pausa');
+            const texto = document.getElementById('texto-pausa');
+            const estadoMenu = document.getElementById('estado-pausa-menu');
+
+            if (estaPausado) {
+                banner.classList.add('active');
+                if (btnPausa) { btnPausa.classList.add('active'); btnPausa.classList.remove('inactive'); }
+                if (btnPausaHeader) { btnPausaHeader.classList.add('activo'); btnPausaHeader.classList.remove('inactivo'); btnPausaHeader.textContent = '▶️ Reanudar'; }
+                if (icono) icono.textContent = '▶️';
+                if (texto) texto.textContent = 'Reanudar Pedidos';
+                if (estadoMenu) estadoMenu.textContent = '⏸️ PAUSADO';
+            } else {
+                banner.classList.remove('active');
+                if (btnPausa) { btnPausa.classList.remove('active'); btnPausa.classList.add('inactive'); }
+                if (btnPausaHeader) { btnPausaHeader.classList.remove('activo'); btnPausaHeader.classList.add('inactivo'); btnPausaHeader.textContent = '⏸️ Pausar'; }
+                if (icono) icono.textContent = '⏸️';
+                if (texto) texto.textContent = 'Pausar Pedidos';
+                if (estadoMenu) estadoMenu.textContent = '● Activo';
+            }
+        }
+
+        async function togglePausa() {
+            try {
+                const nuevoEstado = !estaPausado;
+                await db.ref(`restaurantes/${restauranteId}/pausado`).set(nuevoEstado);
+                estaPausado = nuevoEstado;
+                actualizarUIEstadoPausa();
+                
+                if (nuevoEstado) {
+                    showToast('⏸️ Restaurante en PAUSA - No se recibirán nuevos pedidos', 'warning');
+                } else {
+                    showToast('▶️ Restaurante ACTIVO - Se reanudan los pedidos', 'success');
+                }
+            } catch (error) {
+                console.error('Error al cambiar estado de pausa:', error);
+                showToast('❌ Error al cambiar estado de pausa', 'error');
+            }
+        }
+
         // ============================================
-        // 13. CALCULAR ACUMULADOS (SOLO SUBTOTAL)
+        // 13. ESCUCHAR PEDIDOS
+        // ============================================
+        function escucharPedidos() {
+            pedidosListeners.forEach(ref => ref.off());
+            pedidosListeners = [];
+            
+            const pedidosRef = db.ref('pedidos');
+            pedidosRef.on('value', () => {
+                renderizarVista();
+            });
+            
+            pedidosListeners.push(pedidosRef);
+            console.log('✅ Listener de pedidos activado');
+        }
+
+        // ============================================
+        // 14. CALCULAR ACUMULADOS
         // ============================================
         function calcularAcumulados(pedidos) {
             let totalSemanal = 0;
             let totalGeneral = 0;
             
-            // Obtener inicio de semana (Lunes)
             const ahora = new Date();
             const diaSemana = ahora.getDay();
             const inicioSemana = new Date(ahora);
@@ -1128,14 +1248,18 @@
             const pedidosArray = Object.entries(pedidos);
             
             for (const [id, data] of pedidosArray) {
-                const restId = data.restauranteId || data.restaurante_id;
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
                 if (restId !== restauranteId) continue;
                 
-                if (data.estado === 'entregado' || data.estado === 'ENTREGADO' || data.estado === 'completado') {
+                const estado = data.estado ? data.estado.toLowerCase() : '';
+                if (estado === 'entregado' || estado === 'listo') {
                     let subtotal = 0;
-                    
                     if (data.subtotal !== undefined && data.subtotal !== null) {
                         subtotal = data.subtotal;
+                    } else if (data.items) {
+                        for (const item of data.items) {
+                            subtotal += item.total || (item.precio_unitario * item.cantidad) || 0;
+                        }
                     } else if (data.productos) {
                         for (const [prodId, prod] of Object.entries(data.productos)) {
                             const precio = prod.precio || prod.PRECIO || 0;
@@ -1155,257 +1279,193 @@
             
             document.getElementById('count-semanal').textContent = `$${totalSemanal.toFixed(2)}`;
             document.getElementById('count-total').textContent = `$${totalGeneral.toFixed(2)}`;
-            
-            window.acumuladoSemanal = totalSemanal;
-            window.acumuladoTotal = totalGeneral;
         }
 
-      function renderizarVista() {
-    console.log('🔄 renderizarVista() ejecutada');
-    console.log('📌 restauranteId:', restauranteId);
-    
-    // Limpiar columnas
-    const colPendiente = document.getElementById('col-pendiente');
-    const colCoccion = document.getElementById('col-coccion');
-    const colListo = document.getElementById('col-listo');
-    
-    if (colPendiente) colPendiente.innerHTML = '';
-    if (colCoccion) colCoccion.innerHTML = '';
-    if (colListo) colListo.innerHTML = '';
-    
-    // Resetear contadores
-    document.getElementById('count-pendiente').textContent = '0';
-    document.getElementById('count-coccion').textContent = '0';
-    document.getElementById('count-listo').textContent = '0';
-    document.getElementById('count-reparto').textContent = '0';
-    document.getElementById('col-count-pendiente').textContent = '0';
-    document.getElementById('col-count-coccion').textContent = '0';
-    document.getElementById('col-count-listo').textContent = '0';
-    
-    // Obtener pedidos
-    db.ref('pedidos').once('value')
-        .then((snapshot) => {
-            const pedidos = snapshot.val();
+        // ============================================
+        // 15. RENDERIZAR VISTA PRINCIPAL
+        // ============================================
+        function renderizarVista() {
+            console.log('🔄 renderizarVista() ejecutada');
             
-            if (!pedidos) {
-                console.log('📭 No hay pedidos en la BD');
-                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                return;
-            }
-            
-            let countPendiente = 0;
-            let countCoccion = 0;
-            let countListo = 0;
-            let countReparto = 0;
-            
-            const pedidosArray = Object.entries(pedidos);
-            console.log(`📦 Procesando ${pedidosArray.length} pedidos`);
-            
-            for (const [id, data] of pedidosArray) {
-                // 🔥 BUSCAR RESTAURANTE ID EN CUALQUIER FORMATO
-                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                
-                console.log(`🔍 Pedido ${id}: restId=${restId}, restauranteId=${restauranteId}`);
-                
-                // 🔥 COMPARAR SIN CASE SENSITIVE
-                if (restId && restId.toString() === restauranteId.toString()) {
-                    console.log(`✅ Pedido ${id} coincide!`);
+            db.ref('pedidos').once('value')
+                .then((snapshot) => {
+                    const pedidos = snapshot.val();
                     
-                    // Normalizar estado
-                    let estado = data.estado ? data.estado.toLowerCase() : '';
-                    if (estado === 'recibido') estado = 'pendiente';
+                    calcularAcumulados(pedidos);
                     
-                    console.log(`📌 Estado normalizado: ${estado}`);
+                    // Limpiar columnas
+                    document.getElementById('col-pendiente').innerHTML = '';
+                    document.getElementById('col-coccion').innerHTML = '';
+                    document.getElementById('col-listo').innerHTML = '';
                     
-                    // Contar
-                    if (estado === 'pendiente') {
-                        countPendiente++;
-                        agregarPedidoAColumna(id, { ...data, estado: estado });
-                    } else if (estado === 'coccion') {
-                        countCoccion++;
-                        agregarPedidoAColumna(id, { ...data, estado: estado });
-                    } else if (estado === 'listo') {
-                        countListo++;
-                        agregarPedidoAColumna(id, { ...data, estado: estado });
-                    } else if (estado === 'reparto') {
-                        countReparto++;
-                        agregarPedidoAColumna(id, { ...data, estado: estado });
-                    } else {
-                        console.log(`⏭️ Estado no manejado: ${estado}`);
+                    let countPendiente = 0;
+                    let countCoccion = 0;
+                    let countListo = 0;
+                    
+                    // Si es Historial
+                    if (currentView === 'historial') {
+                        mostrarVistaHistorial(pedidos);
+                        return;
                     }
-                }
-            }
-            
-            // Actualizar contadores
-            document.getElementById('count-pendiente').textContent = countPendiente;
-            document.getElementById('count-coccion').textContent = countCoccion;
-            document.getElementById('count-listo').textContent = countListo;
-            document.getElementById('count-reparto').textContent = countReparto;
-            document.getElementById('col-count-pendiente').textContent = countPendiente;
-            document.getElementById('col-count-coccion').textContent = countCoccion;
-            document.getElementById('col-count-listo').textContent = countListo;
-            document.getElementById('contador-activos').textContent = countPendiente + countCoccion + countListo + countReparto;
-            
-            console.log(`📊 RESULTADOS:`);
-            console.log(`  📥 Entrada: ${countPendiente}`);
-            console.log(`  👨‍🍳 En Proceso: ${countCoccion}`);
-            console.log(`  ✅ Listo: ${countListo}`);
-            console.log(`  🛵 En Reparto: ${countReparto}`);
-            
-            // Si no hay pedidos, mostrar mensajes
-            if (countPendiente === 0 && countCoccion === 0 && countListo === 0 && countReparto === 0) {
-                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-            }
-            
-        })
-        .catch((error) => {
-            console.error('❌ Error al cargar pedidos:', error);
-        });
-}
-        // ============================================
-        // 15. AGREGAR PEDIDO A COLUMNA (COMPLETO)
-        // ============================================
-       // ============================================================
-// AGREGAR PEDIDO A COLUMNA - CORREGIDO
-// ============================================================
-function agregarPedidoAColumna(id, data) {
-    // 🔥 NORMALIZAR ESTADO
-    let estado = data.estado || 'pendiente';
-    estado = estado.toLowerCase();
-    if (estado === 'recibido') estado = 'pendiente';
-    
-    console.log(`📌 agregarPedidoAColumna: ${id} -> estado=${estado}`);
-    
-    let columnaId = '';
-    let contadorRef = '';
-    
-    switch(estado) {
-        case 'pendiente':
-            columnaId = 'col-pendiente';
-            contadorRef = 'count-pendiente';
-            break;
-        case 'coccion':
-            columnaId = 'col-coccion';
-            contadorRef = 'count-coccion';
-            break;
-        case 'listo':
-            columnaId = 'col-listo';
-            contadorRef = 'count-listo';
-            break;
-        case 'reparto':
-            columnaId = 'col-listo';
-            contadorRef = 'count-reparto';
-            break;
-        default:
-            columnaId = 'col-pendiente';
-            contadorRef = 'count-pendiente';
-    }
-    
-    const container = document.getElementById(columnaId);
-    if (!container) {
-        console.error(`❌ Columna ${columnaId} no encontrada`);
-        return;
-    }
-    
-    // 🔥 INCREMENTAR CONTADOR
-   // 🔥 INCREMENTAR CONTADOR
-const contador = document.getElementById(contadorRef);
-if (contador) {
-    const valorActual = parseInt(contador.textContent) || 0;
-    contador.textContent = valorActual + 1;
-    console.log(`✅ Contador ${contadorRef}: ${valorActual} → ${contador.textContent}`);
-}
-    
-    // Calcular subtotal
-    let subtotal = 0;
-    if (data.subtotal !== undefined && data.subtotal !== null) {
-        subtotal = data.subtotal;
-    } else if (data.items) {
-        for (const item of data.items) {
-            subtotal += item.total || (item.precio_unitario * item.cantidad) || 0;
+                    
+                    // Si es Demoras
+                    if (currentView === 'demoras') {
+                        mostrarVistaDemoras(pedidos);
+                        return;
+                    }
+                    
+                    // Si es Activos
+                    if (!pedidos) {
+                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                        actualizarContadores(0, 0, 0);
+                        return;
+                    }
+                    
+                    const pedidosArray = Object.entries(pedidos);
+                    let hayPedidosActivos = false;
+                    
+                    for (const [id, data] of pedidosArray) {
+                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                        if (restId !== restauranteId) continue;
+                        
+                        let estado = data.estado ? data.estado.toLowerCase() : '';
+                        if (estado === 'recibido') estado = 'pendiente';
+                        
+                        if (estado === 'pendiente' || estado === 'coccion' || estado === 'listo') {
+                            hayPedidosActivos = true;
+                            agregarPedidoAColumna(id, { ...data, estado: estado });
+                        }
+                    }
+                    
+                    if (!hayPedidosActivos) {
+                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                    } else {
+                        if (document.getElementById('col-pendiente').children.length === 0) {
+                            mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                        }
+                        if (document.getElementById('col-coccion').children.length === 0) {
+                            mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                        }
+                        if (document.getElementById('col-listo').children.length === 0) {
+                            mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                        }
+                    }
+                    
+                    actualizarContadores(countPendiente, countCoccion, countListo);
+                    
+                })
+                .catch((error) => {
+                    console.error('Error al cargar pedidos:', error);
+                });
         }
-    } else if (data.productos) {
-        for (const [prodId, prod] of Object.entries(data.productos)) {
-            const precio = prod.precio || prod.PRECIO || 0;
-            const cantidad = prod.cantidad || 1;
-            subtotal += precio * cantidad;
-        }
-    }
-    
-    // Crear tarjeta
-    const card = document.createElement('div');
-    card.className = 'pedido-card';
-    card.dataset.pedidoId = id;
-    
-    const estadoDisplay = {
-        'pendiente': '📥 Pendiente',
-        'coccion': '👨‍🍳 En Cocción',
-        'listo': '✅ Listo',
-        'reparto': '🛵 En Reparto'
-    }[estado] || estado;
-    
-    // Productos HTML - soporta items y productos
-    let productosHtml = '';
-    if (data.items) {
-        productosHtml = data.items.map(item => 
-            `<span>${item.cantidad || 1}x ${item.nombre}</span>`
-        ).join('');
-    } else if (data.productos) {
-        productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
-            `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-        ).join('');
-    } else {
-        productosHtml = '<span>Sin productos</span>';
-    }
-    
-    // Botones según estado
-    let botones = '';
-    if (estado === 'pendiente') {
-        botones = `
-            <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
-            <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
-        `;
-    } else if (estado === 'coccion') {
-        botones = `
-            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
-                <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
-                <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-                <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
-            </div>
-        `;
-    } else if (estado === 'listo') {
-        botones = `
-            <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
-            <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-        `;
-    } else if (estado === 'reparto') {
-        botones = `
-            <span style="color: #8b5cf6; font-size: 0.7rem;">🛵 En camino con ${data.repartidorNombre || 'repartidor'}</span>
-            <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-        `;
-    }
-    
-    card.innerHTML = `
-        <div class="cliente">${data.cliente_nombre || data.clienteNombre || 'Cliente'}</div>
-        <div class="detalle">${data.direccion || 'Sin dirección'} • ${estadoDisplay}</div>
-        <div class="productos">${productosHtml}</div>
-        <div class="footer">
-            <span class="precio">$${subtotal.toFixed(2)}</span>
-            <span class="tiempo">${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : ''}</span>
-            ${botones}
-        </div>
-    `;
-    
-    container.appendChild(card);
-    console.log(`✅ Tarjeta agregada a ${columnaId} para pedido ${id}`);
-}
 
         // ============================================
-        // 16. MOSTRAR MENSAJE DE VACÍO
+        // 16. AGREGAR PEDIDO A COLUMNA
+        // ============================================
+        function agregarPedidoAColumna(id, data) {
+            let estado = data.estado || 'pendiente';
+            estado = estado.toLowerCase();
+            if (estado === 'recibido') estado = 'pendiente';
+            
+            let columnaId = '';
+            let contadorRef = '';
+            
+            switch(estado) {
+                case 'pendiente':
+                    columnaId = 'col-pendiente';
+                    contadorRef = 'count-pendiente';
+                    break;
+                case 'coccion':
+                    columnaId = 'col-coccion';
+                    contadorRef = 'count-coccion';
+                    break;
+                case 'listo':
+                    columnaId = 'col-listo';
+                    contadorRef = 'count-listo';
+                    break;
+                default:
+                    columnaId = 'col-pendiente';
+                    contadorRef = 'count-pendiente';
+            }
+            
+            const container = document.getElementById(columnaId);
+            if (!container) return;
+            
+            // Incrementar contador
+            const contador = document.getElementById(contadorRef);
+            if (contador) {
+                contador.textContent = parseInt(contador.textContent) + 1;
+            }
+            
+            // Obtener datos del pedido
+            const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+            const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+            const direccion = data.direccion || 'Sin dirección';
+            const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+            const total = data.total || 0;
+            const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+            
+            // Productos
+            let productosHtml = '';
+            if (data.items && data.items.length > 0) {
+                productosHtml = data.items.map(item => 
+                    `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+                ).join('');
+            } else if (data.productos) {
+                productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+                    `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+                ).join('');
+            } else {
+                productosHtml = '<span>Sin productos</span>';
+            }
+            
+            // Botones según estado
+            let botones = '';
+            if (estado === 'pendiente') {
+                botones = `
+                    <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
+                    <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
+                `;
+            } else if (estado === 'coccion') {
+                botones = `
+                    <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
+                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                    <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
+                `;
+            } else if (estado === 'listo') {
+                botones = `
+                    <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
+                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                `;
+            }
+            
+            const card = document.createElement('div');
+            card.className = 'pedido-card';
+            
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span class="id-pedido">#${idPedido}</span>
+                    <span class="telefono">📞 ${telefono}</span>
+                </div>
+                <div class="cliente">${clienteNombre}</div>
+                <div class="detalle">${direccion}</div>
+                <div class="productos">${productosHtml}</div>
+                <div class="footer">
+                    <span class="precio">$${total.toFixed(2)}</span>
+                    <span class="tiempo">${timestamp}</span>
+                    ${botones}
+                </div>
+            `;
+            
+            container.appendChild(card);
+        }
+
+        // ============================================
+        // 17. MOSTRAR MENSAJE DE VACÍO
         // ============================================
         function mostrarMensajeVacio(columnaId, icono, mensaje) {
             const container = document.getElementById(columnaId);
@@ -1433,21 +1493,20 @@ if (contador) {
         }
 
         // ============================================
-        // 17. ACTUALIZAR CONTADORES
+        // 18. ACTUALIZAR CONTADORES
         // ============================================
-        function actualizarContadores(pendiente, coccion, listo, reparto) {
+        function actualizarContadores(pendiente, coccion, listo) {
             document.getElementById('count-pendiente').textContent = pendiente;
             document.getElementById('count-coccion').textContent = coccion;
             document.getElementById('count-listo').textContent = listo;
-            document.getElementById('count-reparto').textContent = reparto;
             document.getElementById('col-count-pendiente').textContent = pendiente;
             document.getElementById('col-count-coccion').textContent = coccion;
             document.getElementById('col-count-listo').textContent = listo;
-            document.getElementById('contador-activos').textContent = pendiente + coccion + listo + reparto;
+            document.getElementById('contador-activos').textContent = pendiente + coccion + listo;
         }
 
         // ============================================
-        // 18. MOSTRAR VISTA HISTORIAL
+        // 19. MOSTRAR VISTA HISTORIAL
         // ============================================
         function mostrarVistaHistorial(pedidos) {
             const columna = document.getElementById('col-pendiente');
@@ -1478,10 +1537,11 @@ if (contador) {
             const pedidosArray = Object.entries(pedidos);
             
             for (const [id, data] of pedidosArray) {
-                const restId = data.restauranteId || data.restaurante_id;
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
                 if (restId !== restauranteId) continue;
                 
-                if (data.estado === 'entregado' || data.estado === 'cancelado' || data.estado === 'ENTREGADO') {
+                const estado = data.estado ? data.estado.toLowerCase() : '';
+                if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
                     pedidosHistorial.push({ id, ...data });
                 }
             }
@@ -1501,22 +1561,40 @@ if (contador) {
                 card.className = 'pedido-card';
                 card.style.borderLeftColor = '#64748b';
                 
-                const productosHtml = pedido.productos ? 
-                    Object.entries(pedido.productos).map(([pid, prod]) => 
-                        `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-                    ).join('') : 
-                    '<span>Sin productos</span>';
-                
+                const clienteNombre = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
+                const telefono = pedido.cliente_telefono || pedido.telefono || 'Sin teléfono';
+                const direccion = pedido.direccion || 'Sin dirección';
+                const idPedido = pedido.id_pedido || pedido.id || '---';
+                const total = pedido.total || 0;
+                const estado = pedido.estado || 'Entregado';
                 const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
-                const estadoIcon = pedido.estado === 'entregado' || pedido.estado === 'ENTREGADO' ? '✅' : '❌';
+                const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
+                
+                let productosHtml = '';
+                if (pedido.items && pedido.items.length > 0) {
+                    productosHtml = pedido.items.map(item => 
+                        `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                } else if (pedido.productos) {
+                    productosHtml = Object.entries(pedido.productos).map(([pid, prod]) => 
+                        `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('');
+                } else {
+                    productosHtml = '<span>Sin productos</span>';
+                }
                 
                 card.innerHTML = `
-                    <div class="cliente">${pedido.clienteNombre || 'Cliente'}</div>
-                    <div class="detalle">${pedido.direccion || 'Sin dirección'} • ${estadoIcon} ${pedido.estado}</div>
-                    <div class="productos">${productosHtml}</div>
-                    <div class="footer">
-                        <span class="precio">$${(pedido.total || 0).toFixed(2)}</span>
-                        <span class="tiempo">${fecha}</span>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span class="id-pedido">#${idPedido}</span>
+                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
+                    </div>
+                    <div class="cliente">${clienteNombre}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
+                    <div class="detalle" style="margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
+                    <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
+                    <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">
+                        <span class="precio" style="color:#f59e0b;font-weight:700;">$${total.toFixed(2)}</span>
+                        <button onclick="verDetallePedido('${pedido.id}')" class="btn-accion primary">📋 Detalle</button>
                     </div>
                 `;
                 
@@ -1525,7 +1603,7 @@ if (contador) {
         }
 
         // ============================================
-        // 19. MOSTRAR VISTA DEMORAS
+        // 20. MOSTRAR VISTA DEMORAS
         // ============================================
         function mostrarVistaDemoras(pedidos) {
             const columna = document.getElementById('col-pendiente');
@@ -1556,11 +1634,12 @@ if (contador) {
             const pedidosArray = Object.entries(pedidos);
             
             for (const [id, data] of pedidosArray) {
-                const restId = data.restauranteId || data.restaurante_id;
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
                 if (restId !== restauranteId) continue;
                 
-                if (data.demora && data.demora > 0) {
-                    pedidosDemora.push({ id, ...data });
+                const demora = data.demora || data.tiempo_demora || 0;
+                if (demora > 0) {
+                    pedidosDemora.push({ id, ...data, demora: demora });
                 }
             }
             
@@ -1579,25 +1658,43 @@ if (contador) {
                 card.className = 'pedido-card';
                 card.style.borderLeftColor = '#ef4444';
                 
-                const productosHtml = pedido.productos ? 
-                    Object.entries(pedido.productos).map(([pid, prod]) => 
-                        `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-                    ).join('') : 
-                    '<span>Sin productos</span>';
-                
+                const clienteNombre = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
+                const telefono = pedido.cliente_telefono || pedido.telefono || 'Sin teléfono';
+                const direccion = pedido.direccion || 'Sin dirección';
+                const idPedido = pedido.id_pedido || pedido.id || '---';
+                const total = pedido.total || 0;
+                const estado = pedido.estado || 'Finalizado';
                 const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
                 const minutosDemora = pedido.demora || 0;
                 const demoraColor = minutosDemora > 30 ? '#ef4444' : minutosDemora > 15 ? '#f59e0b' : '#10b981';
                 
+                let productosHtml = '';
+                if (pedido.items && pedido.items.length > 0) {
+                    productosHtml = pedido.items.map(item => 
+                        `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                } else if (pedido.productos) {
+                    productosHtml = Object.entries(pedido.productos).map(([pid, prod]) => 
+                        `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('');
+                } else {
+                    productosHtml = '<span>Sin productos</span>';
+                }
+                
                 card.innerHTML = `
-                    <div class="cliente">${pedido.clienteNombre || 'Cliente'}</div>
-                    <div class="detalle" style="color: ${demoraColor};">
-                        ⏱️ Demora: ${minutosDemora} minutos • ${pedido.estado || 'Finalizado'}
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span class="id-pedido">#${idPedido}</span>
+                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
                     </div>
-                    <div class="productos">${productosHtml}</div>
-                    <div class="footer">
-                        <span class="precio">$${(pedido.total || 0).toFixed(2)}</span>
-                        <span class="tiempo">${fecha}</span>
+                    <div class="cliente">${clienteNombre}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
+                    <div class="detalle" style="margin-top:2px;color:${demoraColor};">
+                        ⏱️ Demora: ${minutosDemora} minutos • ${estado}
+                    </div>
+                    <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
+                    <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">
+                        <span class="precio" style="color:#f59e0b;font-weight:700;">$${total.toFixed(2)}</span>
+                        <button onclick="verDetallePedido('${pedido.id}')" class="btn-accion primary">📋 Detalle</button>
                     </div>
                 `;
                 
@@ -1606,7 +1703,7 @@ if (contador) {
         }
 
         // ============================================
-        // 20. RESTAURAR VISTA DE 3 COLUMNAS
+        // 21. RESTAURAR VISTA DE 3 COLUMNAS
         // ============================================
         function restaurarVistaColumnas() {
             const col1 = document.getElementById('col-pendiente').parentElement;
@@ -1629,11 +1726,15 @@ if (contador) {
         }
 
         // ============================================
-        // 21. FUNCIONES DE BOTONES
+        // 22. FUNCIONES DE BOTONES
         // ============================================
 
-        // 21.1 ACEPTAR PEDIDO
+        // 22.1 ACEPTAR PEDIDO
         window.aceptarPedido = async function(pedidoId) {
+            if (estaPausado) {
+                showToast('⏸️ Restaurante en pausa. No se pueden aceptar pedidos.', 'warning');
+                return;
+            }
             try {
                 await db.ref(`pedidos/${pedidoId}/estado`).set('coccion');
                 await db.ref(`pedidos/${pedidoId}/timestamp_inicio`).set(Date.now());
@@ -1645,7 +1746,6 @@ if (contador) {
                 });
                 
                 showToast('✅ Pedido aceptado, en preparación', 'success');
-                await notificarRepartidor(pedidoId);
                 renderizarVista();
                 
             } catch (error) {
@@ -1654,7 +1754,7 @@ if (contador) {
             }
         };
 
-        // 21.2 RECHAZAR PEDIDO
+        // 22.2 RECHAZAR PEDIDO
         window.rechazarPedido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -1688,7 +1788,7 @@ if (contador) {
             }
         };
 
-        // 21.3 MARCAR LISTO
+        // 22.3 MARCAR LISTO
         window.marcarListo = async function(pedidoId) {
             try {
                 const snapshot = await db.ref(`pedidos/${pedidoId}`).once('value');
@@ -1709,7 +1809,6 @@ if (contador) {
                 
                 showToast(`✅ Pedido listo (${tiempoPreparacion} min)`, 'success');
                 renderizarVista();
-                await notificarRepartidor(pedidoId);
                 
             } catch (error) {
                 console.error('Error al marcar listo:', error);
@@ -1717,7 +1816,7 @@ if (contador) {
             }
         };
 
-        // 21.4 MARCAR RECOGIDO
+        // 22.4 MARCAR RECOGIDO
         window.marcarRecogido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -1751,7 +1850,9 @@ if (contador) {
             }
         };
 
-        // 21.5 VER DETALLE DEL PEDIDO
+        // ============================================
+        // 23. VER DETALLE DEL PEDIDO (COMPLETO)
+        // ============================================
         window.verDetallePedido = function(pedidoId) {
             db.ref(`pedidos/${pedidoId}`).once('value')
                 .then((snapshot) => {
@@ -1761,44 +1862,85 @@ if (contador) {
                         return;
                     }
                     
+                    // Obtener todos los datos en cualquier formato
+                    const idPedido = data.id_pedido || data.id || '---';
+                    const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Sin nombre';
+                    const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                    const email = data.cliente_email || data.email || 'Sin email';
+                    const direccion = data.direccion || 'Sin dirección';
+                    const cp = data.cp || 'Sin CP';
+                    const total = data.total || 0;
+                    const subtotal = data.subtotal || 0;
+                    const envio = data.envio || 0;
+                    const estado = data.estado || 'Desconocido';
+                    const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
+                    const metodoPago = data.metodo_pago || 'No especificado';
+                    const restauranteNombre = data.restaurante_nombre || data.restaurante || 'Restaurante';
+                    
+                    // Productos
                     let productosList = '';
-                    if (data.productos) {
-                        for (const [id, prod] of Object.entries(data.productos)) {
-                            const precio = prod.precio || prod.PRECIO || 0;
-                            const cantidad = prod.cantidad || 1;
-                            productosList += `
-                                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #334155;">
-                                    <span>${cantidad}x ${prod.nombre}</span>
-                                    <span>$${(precio * cantidad).toFixed(2)}</span>
-                                </div>
-                            `;
-                        }
+                    if (data.items && data.items.length > 0) {
+                        productosList = data.items.map(item => `
+                            <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #334155;">
+                                <span>${item.cantidad || 1}x ${item.nombre}</span>
+                                <span>$${(item.total || (item.precio_unitario * item.cantidad) || 0).toFixed(2)}</span>
+                            </div>
+                        `).join('');
+                    } else if (data.productos) {
+                        productosList = Object.entries(data.productos).map(([pid, prod]) => `
+                            <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #334155;">
+                                <span>${prod.cantidad || 1}x ${prod.nombre}</span>
+                                <span>$${((prod.precio || prod.PRECIO || 0) * (prod.cantidad || 1)).toFixed(2)}</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        productosList = '<div style="color:#94a3b8;">Sin productos</div>';
                     }
                     
                     Swal.fire({
-                        title: `📋 Pedido #${pedidoId.slice(-6)}`,
+                        title: `📋 Pedido #${idPedido}`,
                         html: `
-                            <div style="text-align: left; max-height: 400px; overflow-y: auto;">
-                                <p><strong>👤 Cliente:</strong> ${data.clienteNombre || 'Sin nombre'}</p>
-                                <p><strong>📍 Dirección:</strong> ${data.direccion || 'Sin dirección'}</p>
-                                <p><strong>📱 Teléfono:</strong> ${data.telefono || 'Sin teléfono'}</p>
-                                <hr style="border-color: #334155; margin: 8px 0;">
-                                <p><strong>📦 Productos:</strong></p>
-                                ${productosList || '<p style="color: #94a3b8;">Sin productos</p>'}
-                                <hr style="border-color: #334155; margin: 8px 0;">
-                                <div style="display: flex; justify-content: space-between; font-weight: bold; color: #f59e0b; border-top: 2px solid #f59e0b; padding-top: 8px; margin-top: 8px;">
-                                    <span>💰 Total:</span>
-                                    <span>$${(data.total || 0).toFixed(2)}</span>
+                            <div style="text-align:left;max-height:450px;overflow-y:auto;padding:4px;">
+                                <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:12px;">
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px;">
+                                        <div><strong>🏪 Restaurante:</strong></div>
+                                        <div style="color:#f59e0b;">${restauranteNombre}</div>
+                                        <div><strong>👤 Cliente:</strong></div>
+                                        <div>${clienteNombre}</div>
+                                        <div><strong>📞 Teléfono:</strong></div>
+                                        <div>${telefono}</div>
+                                        <div><strong>📧 Email:</strong></div>
+                                        <div style="word-break:break-all;">${email}</div>
+                                        <div><strong>📍 Dirección:</strong></div>
+                                        <div>${direccion}</div>
+                                        <div><strong>📮 CP:</strong></div>
+                                        <div>${cp}</div>
+                                        <div><strong>💳 Pago:</strong></div>
+                                        <div>${metodoPago}</div>
+                                        <div><strong>⏱️ Estado:</strong></div>
+                                        <div>${estado}</div>
+                                        <div><strong>📅 Fecha:</strong></div>
+                                        <div>${fecha}</div>
+                                    </div>
                                 </div>
-                                <hr style="border-color: #334155; margin: 8px 0;">
-                                <div style="font-size: 0.8rem; color: #94a3b8;">
-                                    <p><strong>⏱️ Estado:</strong> ${data.estado}</p>
-                                    <p><strong>📅 Fecha:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha'}</p>
+                                <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:12px;">
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px;">
+                                        <div><strong>💰 Total:</strong></div>
+                                        <div style="color:#f59e0b;font-weight:bold;">$${total.toFixed(2)}</div>
+                                        <div><strong>📦 Subtotal:</strong></div>
+                                        <div>$${subtotal.toFixed(2)}</div>
+                                        <div><strong>🚚 Envío:</strong></div>
+                                        <div>$${envio.toFixed(2)}</div>
+                                    </div>
+                                </div>
+                                <div style="background:#1e293b;border-radius:8px;padding:12px;">
+                                    <div><strong>📦 Productos:</strong></div>
+                                    <div style="margin-top:8px;">${productosList}</div>
                                 </div>
                             </div>
                         `,
-                        width: '90%',
-                        maxWidth: '600px',
+                        width: '92%',
+                        maxWidth: '520px',
                         confirmButtonText: '✅ Cerrar',
                         background: '#0f172a',
                         color: 'white',
@@ -1811,7 +1953,9 @@ if (contador) {
                 });
         };
 
-        // 21.6 IMPRIMIR COMANDA
+        // ============================================
+        // 24. IMPRIMIR TICKET MEJORADO
+        // ============================================
         window.imprimirComanda = function(pedidoId) {
             db.ref(`pedidos/${pedidoId}`).once('value')
                 .then((snapshot) => {
@@ -1821,69 +1965,204 @@ if (contador) {
                         return;
                     }
                     
+                    const idPedido = data.id_pedido || data.id || '---';
+                    const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Sin nombre';
+                    const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                    const direccion = data.direccion || 'Sin dirección';
+                    const total = data.total || 0;
+                    const subtotal = data.subtotal || 0;
+                    const envio = data.envio || 0;
+                    const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString();
+                    const restauranteNombre = data.restaurante_nombre || data.restaurante || 'Restaurante';
+                    
                     let productosList = '';
-                    if (data.productos) {
-                        for (const [id, prod] of Object.entries(data.productos)) {
-                            productosList += `
-                                <tr>
-                                    <td style="padding: 4px 8px;">${prod.cantidad || 1}x</td>
-                                    <td style="padding: 4px 8px;">${prod.nombre}</td>
-                                    <td style="padding: 4px 8px; text-align: right;">$${((prod.precio || 0) * (prod.cantidad || 1)).toFixed(2)}</td>
-                                </tr>
-                            `;
-                        }
+                    if (data.items && data.items.length > 0) {
+                        productosList = data.items.map(item => `
+                            <tr>
+                                <td style="padding: 6px 8px; text-align: center;">${item.cantidad || 1}x</td>
+                                <td style="padding: 6px 8px;">${item.nombre}</td>
+                                <td style="padding: 6px 8px; text-align: right;">$${(item.total || (item.precio_unitario * item.cantidad) || 0).toFixed(2)}</td>
+                            </tr>
+                        `).join('');
+                    } else if (data.productos) {
+                        productosList = Object.entries(data.productos).map(([pid, prod]) => `
+                            <tr>
+                                <td style="padding: 6px 8px; text-align: center;">${prod.cantidad || 1}x</td>
+                                <td style="padding: 6px 8px;">${prod.nombre}</td>
+                                <td style="padding: 6px 8px; text-align: right;">$${((prod.precio || prod.PRECIO || 0) * (prod.cantidad || 1)).toFixed(2)}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        productosList = '<tr><td colspan="3" style="padding: 8px; text-align: center; color: #94a3b8;">Sin productos</td></tr>';
                     }
                     
                     const comandaHTML = `
+                        <!DOCTYPE html>
                         <html>
                         <head>
-                            <title>Comanda #${pedidoId.slice(-6)}</title>
+                            <title>Ticket #${idPedido}</title>
                             <style>
-                                body { font-family: 'Courier New', monospace; padding: 20px; max-width: 300px; margin: 0 auto; }
-                                h1 { font-size: 18px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; }
-                                .cliente { margin: 12px 0; padding: 8px; background: #f5f5f5; }
-                                table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-                                th { border-bottom: 2px solid #000; text-align: left; padding: 4px 8px; }
-                                td { padding: 4px 8px; border-bottom: 1px solid #ddd; }
-                                .total { font-weight: bold; border-top: 2px solid #000; padding-top: 8px; margin-top: 8px; }
-                                .footer { margin-top: 20px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 8px; }
+                                * { margin: 0; padding: 0; box-sizing: border-box; }
+                                body { 
+                                    font-family: 'Courier New', monospace; 
+                                    padding: 20px; 
+                                    max-width: 320px; 
+                                    margin: 0 auto; 
+                                    background: white;
+                                    color: #1e293b;
+                                }
+                                .ticket {
+                                    border: 2px dashed #334155;
+                                    border-radius: 16px;
+                                    padding: 24px 20px;
+                                    background: white;
+                                }
+                                .header {
+                                    text-align: center;
+                                    border-bottom: 2px solid #f59e0b;
+                                    padding-bottom: 12px;
+                                    margin-bottom: 16px;
+                                }
+                                .header h1 {
+                                    font-size: 20px;
+                                    font-weight: 900;
+                                    color: #f59e0b;
+                                    letter-spacing: 2px;
+                                }
+                                .header p {
+                                    font-size: 11px;
+                                    color: #64748b;
+                                    margin-top: 4px;
+                                }
+                                .info {
+                                    background: #f8fafc;
+                                    border-radius: 8px;
+                                    padding: 12px;
+                                    margin-bottom: 16px;
+                                    font-size: 12px;
+                                    line-height: 1.8;
+                                }
+                                .info strong { color: #0f172a; }
+                                .info .label { color: #64748b; }
+                                table {
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    margin: 12px 0;
+                                    font-size: 12px;
+                                }
+                                th {
+                                    text-align: left;
+                                    padding: 6px 8px;
+                                    border-bottom: 2px solid #334155;
+                                    font-size: 11px;
+                                    text-transform: uppercase;
+                                    letter-spacing: 1px;
+                                    color: #64748b;
+                                }
+                                td {
+                                    padding: 6px 8px;
+                                    border-bottom: 1px solid #e2e8f0;
+                                }
+                                .totales {
+                                    margin-top: 12px;
+                                    padding-top: 12px;
+                                    border-top: 2px solid #334155;
+                                    font-size: 13px;
+                                }
+                                .totales .row {
+                                    display: flex;
+                                    justify-content: space-between;
+                                    padding: 4px 0;
+                                }
+                                .totales .total {
+                                    font-size: 18px;
+                                    font-weight: 900;
+                                    color: #f59e0b;
+                                    padding-top: 8px;
+                                    border-top: 2px solid #f59e0b;
+                                    margin-top: 4px;
+                                }
+                                .footer {
+                                    text-align: center;
+                                    margin-top: 20px;
+                                    padding-top: 16px;
+                                    border-top: 2px dashed #e2e8f0;
+                                    font-size: 10px;
+                                    color: #94a3b8;
+                                }
+                                .footer .gracias {
+                                    font-size: 14px;
+                                    font-weight: 900;
+                                    color: #f59e0b;
+                                    margin-bottom: 4px;
+                                }
                             </style>
                         </head>
                         <body>
-                            <h1>🍳 COMANDA #${pedidoId.slice(-6)}</h1>
-                            <div class="cliente">
-                                <div><strong>👤 Cliente:</strong> ${data.clienteNombre || 'Sin nombre'}</div>
-                                <div><strong>📍 Dirección:</strong> ${data.direccion || 'Sin dirección'}</div>
-                                <div><strong>⏱️ Hora:</strong> ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '--:--'}</div>
-                            </div>
-                            <table>
-                                <thead>
-                                    <tr><th>Cant</th><th>Producto</th><th>Precio</th></tr>
-                                </thead>
-                                <tbody>
-                                    ${productosList}
-                                </tbody>
-                            </table>
-                            <div class="total">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>💰 TOTAL:</span>
-                                    <span>$${(data.total || 0).toFixed(2)}</span>
+                            <div class="ticket">
+                                <div class="header">
+                                    <h1>🍳 Aguadulce Express</h1>
+                                    <p>${restauranteNombre}</p>
+                                    <p style="font-size:10px;color:#94a3b8;">Ticket #${idPedido}</p>
+                                </div>
+                                
+                                <div class="info">
+                                    <div><span class="label">👤 Cliente:</span> <strong>${clienteNombre}</strong></div>
+                                    <div><span class="label">📞 Teléfono:</span> <strong>${telefono}</strong></div>
+                                    <div><span class="label">📍 Dirección:</span> <strong>${direccion}</strong></div>
+                                    <div><span class="label">📅 Fecha:</span> <strong>${fecha}</strong></div>
+                                </div>
+                                
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:center;width:15%;">Cant</th>
+                                            <th style="text-align:left;width:55%;">Producto</th>
+                                            <th style="text-align:right;width:30%;">Precio</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${productosList}
+                                    </tbody>
+                                </table>
+                                
+                                <div class="totales">
+                                    <div class="row">
+                                        <span>Subtotal</span>
+                                        <span>$${subtotal.toFixed(2)}</span>
+                                    </div>
+                                    <div class="row">
+                                        <span>🚚 Envío</span>
+                                        <span>$${envio.toFixed(2)}</span>
+                                    </div>
+                                    <div class="row total">
+                                        <span>💰 TOTAL</span>
+                                        <span>$${total.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="footer">
+                                    <div class="gracias">✨ ¡Gracias por tu pedido! ✨</div>
+                                    <p>${new Date().toLocaleString()}</p>
+                                    <p style="font-size:9px;color:#94a3b8;margin-top:4px;">Aguadulce Express - Comida a domicilio</p>
                                 </div>
                             </div>
-                            <div class="footer">
-                                <p>${new Date().toLocaleString()}</p>
-                                <p>¡Gracias por tu pedido! 🍕</p>
-                            </div>
                             <script>
-                                window.onload = function() { window.print(); }
+                                window.onload = function() { 
+                                    setTimeout(function() { window.print(); }, 500);
+                                }
                             <\/script>
                         </body>
                         </html>
                     `;
                     
-                    const ventana = window.open('', '_blank', 'width=400,height=600');
-                    ventana.document.write(comandaHTML);
-                    ventana.document.close();
+                    const ventana = window.open('', '_blank', 'width=400,height=700,menubar=no,toolbar=no');
+                    if (ventana) {
+                        ventana.document.write(comandaHTML);
+                        ventana.document.close();
+                    } else {
+                        showToast('❌ Error al abrir la impresión', 'error');
+                    }
                 })
                 .catch((error) => {
                     console.error('Error al imprimir comanda:', error);
@@ -1892,39 +2171,7 @@ if (contador) {
         };
 
         // ============================================
-        // 22. NOTIFICAR REPARTIDOR (EXISTENTE - MANTENER)
-        // ============================================
-        async function notificarRepartidor(pedidoId) {
-    try {
-        const snapshot = await db.ref(`pedidos/${pedidoId}`).once('value');
-        const pedido = snapshot.val();
-        if (!pedido) return;
-        
-        const repartidoresSnap = await db.ref('repartidores').orderByChild('estado').equalTo('activo').once('value');
-        const repartidores = repartidoresSnap.val();
-        
-        if (!repartidores) {
-            showToast('⚠️ No hay repartidores disponibles', 'warning');
-            return;
-        }
-        
-        const repartidorId = Object.keys(repartidores)[0];
-        
-        await db.ref(`pedidos/${pedidoId}/repartidorId`).set(repartidorId);
-        await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);  // ← 🔥 AGREGAR ESTA LÍNEA
-        await db.ref(`pedidos/${pedidoId}/repartidorNombre`).set(repartidores[repartidorId].nombre);
-        await db.ref(`pedidos/${pedidoId}/estado`).set('reparto');
-        
-        showToast(`📱 Repartidor asignado: ${repartidores[repartidorId].nombre}`, 'success');
-        renderizarVista();
-        
-    } catch (error) {
-        console.error('Error al notificar repartidor:', error);
-    }
-}
-
-        // ============================================
-        // 23. SOLICITAR PERMISO NOTIFICACIONES
+        // 25. SOLICITAR PERMISO NOTIFICACIONES
         // ============================================
         async function solicitarPermisoNotificaciones() {
             if (!('Notification' in window)) {
@@ -1960,13 +2207,13 @@ if (contador) {
         }
 
         // ============================================
-        // 24. REGISTRAR TOKEN FCM (CON VAPID KEY)
+        // 26. REGISTRAR TOKEN FCM
         // ============================================
         async function registrarTokenFCM() {
             try {
                 const messaging = firebase.messaging();
                 const token = await messaging.getToken({
-                    vapidKey: 'BJJGygKJ22PESP_kHcLxi125gFman4A76c2Gx3kvN6J-k9Wf9S6HC7fn9ju_3wpZmIlL6hF20_aOqxc4nIn8uG0'  // 🔥 REEMPLAZA CON TU VAPID KEY REAL
+                    vapidKey: 'BJJGygKJ22PESP_kHcLxi125gFman4A76c2Gx3kvN6J-k9Wf9S6HC7fn9ju_3wpZmIlL6hF20_aOqxc4nIn8uG0'
                 });
                 
                 console.log('📨 Token FCM obtenido:', token);
@@ -1984,7 +2231,7 @@ if (contador) {
         }
 
         // ============================================
-        // 25. INICIALIZAR
+        // 27. INICIALIZAR
         // ============================================
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(detectarOrientacion, 500);
@@ -1997,7 +2244,7 @@ if (contador) {
         });
 
         // ============================================
-        // 26. LOGS DE SEGURIDAD
+        // 28. LOGS DE SEGURIDAD
         // ============================================
         async function registrarLogSeguridad(evento, detalles = {}) {
             try {

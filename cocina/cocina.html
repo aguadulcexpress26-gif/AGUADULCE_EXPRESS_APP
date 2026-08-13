@@ -941,37 +941,75 @@
         document.addEventListener('DOMContentLoaded', detectarOrientacion);
 
         // ============================================
-        // 4. PWA - INSTALACIÓN
-        // ============================================
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            const btn = document.getElementById('install-btn');
-            if (btn && !window.matchMedia('(display-mode: standalone)').matches) {
-                btn.style.display = 'flex';
-            }
-        });
+// 4. PWA - INSTALACIÓN (MEJORADA)
+// ============================================
+let deferredPrompt = null;
+let installButton = null;
 
-        window.addEventListener('appinstalled', () => {
-            deferredPrompt = null;
-            document.getElementById('install-btn').style.display = 'none';
-            showToast('🎉 App instalada correctamente', 'success');
-        });
+window.addEventListener('beforeinstallprompt', (e) => {
+    console.log('📱 Evento beforeinstallprompt detectado');
+    e.preventDefault();
+    deferredPrompt = e;
+    
+    // Mostrar el botón de instalación
+    const btn = document.getElementById('install-btn');
+    if (btn) {
+        btn.style.display = 'flex';
+        btn.classList.add('visible');
+        console.log('✅ Botón de instalación visible');
+    }
+});
 
-        document.getElementById('install-btn').addEventListener('click', async () => {
+window.addEventListener('appinstalled', () => {
+    console.log('🎉 App instalada correctamente');
+    deferredPrompt = null;
+    const btn = document.getElementById('install-btn');
+    if (btn) {
+        btn.style.display = 'none';
+    }
+    showToast('🎉 App instalada correctamente', 'success');
+});
+
+// Evento para el botón de instalación
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('install-btn');
+    if (btn) {
+        btn.addEventListener('click', async () => {
+            console.log('📱 Click en botón de instalación');
             if (!deferredPrompt) {
                 showToast('⚠️ La instalación no está disponible ahora', 'warning');
                 return;
             }
-            deferredPrompt.prompt();
-            const result = await deferredPrompt.userChoice;
-            if (result.outcome === 'accepted') {
-                showToast('✅ App instalada con éxito', 'success');
-            } else {
-                showToast('❌ Instalación cancelada', 'error');
+            
+            try {
+                // Mostrar el prompt de instalación
+                deferredPrompt.prompt();
+                const result = await deferredPrompt.userChoice;
+                
+                if (result.outcome === 'accepted') {
+                    console.log('✅ Usuario aceptó la instalación');
+                    showToast('✅ App instalada con éxito', 'success');
+                } else {
+                    console.log('❌ Usuario rechazó la instalación');
+                    showToast('❌ Instalación cancelada', 'error');
+                }
+                deferredPrompt = null;
+            } catch (error) {
+                console.error('❌ Error en instalación:', error);
+                showToast('❌ Error al instalar la app', 'error');
             }
-            deferredPrompt = null;
         });
+    }
+});
+
+// Verificar si ya está instalada
+if (window.matchMedia('(display-mode: standalone)').matches) {
+    console.log('✅ App ya está instalada');
+    const btn = document.getElementById('install-btn');
+    if (btn) {
+        btn.style.display = 'none';
+    }
+}
 
         // ============================================
         // 5. TOAST NOTIFICATIONS
@@ -1210,21 +1248,88 @@
             }
         }
 
-        // ============================================
-        // 13. ESCUCHAR PEDIDOS
-        // ============================================
-        function escucharPedidos() {
-            pedidosListeners.forEach(ref => ref.off());
-            pedidosListeners = [];
-            
-            const pedidosRef = db.ref('pedidos');
-            pedidosRef.on('value', () => {
-                renderizarVista();
-            });
-            
-            pedidosListeners.push(pedidosRef);
-            console.log('✅ Listener de pedidos activado');
+      // ============================================
+// 13. ESCUCHAR PEDIDOS CON SONIDO
+// ============================================
+let pedidosAnteriores = {};
+
+function escucharPedidos() {
+    pedidosListeners.forEach(ref => ref.off());
+    pedidosListeners = [];
+    
+    const pedidosRef = db.ref('pedidos');
+    
+    // Escuchar cambios en pedidos
+    pedidosRef.on('value', (snapshot) => {
+        const pedidos = snapshot.val() || {};
+        const pedidosActuales = {};
+        
+        // Guardar pedidos actuales
+        for (const [id, data] of Object.entries(pedidos)) {
+            pedidosActuales[id] = data;
         }
+        
+        // Detectar NUEVOS pedidos (que no estaban antes)
+        const nuevosPedidos = [];
+        for (const [id, data] of Object.entries(pedidosActuales)) {
+            if (!pedidosAnteriores[id]) {
+                // Este pedido es NUEVO
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                if (restId === restauranteId) {
+                    nuevosPedidos.push({ id, ...data });
+                }
+            }
+        }
+        
+        // Reproducir sonido para NUEVOS pedidos
+        if (nuevosPedidos.length > 0) {
+            console.log(`🔔 ${nuevosPedidos.length} nuevo(s) pedido(s) recibido(s)`);
+            reproducirSonidoLlegada();
+            
+            // Mostrar notificación en la app
+            for (const pedido of nuevosPedidos) {
+                const cliente = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
+                showToast(`📦 Nuevo pedido de ${cliente}`, 'info');
+            }
+        }
+        
+        // Guardar pedidos actuales para la próxima comparación
+        pedidosAnteriores = pedidosActuales;
+        
+        // Renderizar vista
+        renderizarVista();
+    });
+    
+    pedidosListeners.push(pedidosRef);
+    console.log('✅ Listener de pedidos activado con sonido');
+}
+
+// ============================================
+// REPRODUCIR SONIDO DE LLEGADA
+// ============================================
+function reproducirSonidoLlegada() {
+    try {
+        // Usar el audio que ya existe
+        const audio = document.getElementById('audio-llegada');
+        if (audio) {
+            audio.currentTime = 0;
+            audio.volume = 0.9;
+            audio.play().catch(e => console.log('⚠️ Sonido bloqueado por el navegador'));
+        } else {
+            // Si no existe, crearlo
+            const nuevoAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            nuevoAudio.volume = 0.9;
+            nuevoAudio.play().catch(e => console.log('⚠️ Sonido bloqueado por el navegador'));
+        }
+        
+        // Vibrar si es móvil
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+        }
+    } catch (error) {
+        console.log('⚠️ Error al reproducir sonido:', error);
+    }
+}
 
         // ============================================
         // 14. CALCULAR ACUMULADOS

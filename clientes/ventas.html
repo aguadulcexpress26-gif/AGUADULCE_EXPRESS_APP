@@ -1077,19 +1077,63 @@ async function nuevoProcesarPedido() {
 
         const uid = user.uid; const email = cliente.email; const telefono = cliente.telefono;
 
-        // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (Antifraude)
-        const pedidosSnap = await database.ref('pedidos').once('value');
-        const todosLosPedidos = pedidosSnap.val() || {};
-        for (const id in todosLosPedidos) {
-            const p = todosLosPedidos[id];
-            const estado = p.estado || '';
-            const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
-            if (estaActivo && (p.uid_cliente === uid || p.cliente_email === email || p.cliente_telefono === telefono)) {
-                const emailSanitizado = sanitizarEmail(email);
-                await database.ref(`clientes_morosos/${emailSanitizado}`).set({ email_original: email, nombre: cliente.nombre, motivo: `Intento de pedido duplicado durante pedido activo #${id}`, deuda: 0, fecha: Date.now(), activo: true });
-                throw new Error("⚠️ Pedido Duplicado Detectado. Tu cuenta ha sido bloqueada por seguridad. Contacta con soporte.");
-            }
+       // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (Antifraude - Con 2 Advertencias)
+const pedidosSnap = await database.ref('pedidos').once('value');
+const todosLosPedidos = pedidosSnap.val() || {};
+
+let tienePedidoActivo = false;
+let pedidoActivoId = null;
+
+for (const [id, p] of Object.entries(todosLosPedidos)) {
+    if (p.uid_cliente === uid) {
+        const estado = p.estado || '';
+        const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
+        if (estaActivo) {
+            tienePedidoActivo = true;
+            pedidoActivoId = id;
+            break;
         }
+    }
+}
+
+if (tienePedidoActivo) {
+    // Gestionar intentos de pedido duplicado
+    const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
+    const intentosSnap = await intentosRef.once('value');
+    let intentos = intentosSnap.val() || 0;
+    intentos++;
+    await intentosRef.set(intentos);
+    
+    if (intentos >= 3) {
+        // 🔴 Bloquear cliente (3er intento)
+        const emailSanitizado = sanitizarEmail(email);
+        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
+            email_original: email,
+            nombre: cliente.nombre,
+            motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
+            deuda: 0,
+            fecha: Date.now(),
+            activo: true
+        });
+        throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
+    } else {
+        // ⚠️ Advertencia (1er o 2do intento)
+        const mensaje = `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`;
+        
+        // Mostrar SweetAlert con el mensaje
+        await Swal.fire({
+            title: '⚠️ Pedido en curso',
+            text: mensaje,
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+            background: '#020617',
+            color: 'white'
+        });
+        
+        // Detener el proceso de pedido
+        return;
+    }
+}
 
         // ✅ 2. VERIFICACIÓN DE DEUDA (Lista Negra Tradicional)
         const emailSanitizado = sanitizarEmail(email);

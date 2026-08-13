@@ -1006,20 +1006,18 @@
         // Cargar datos del restaurante
         await cargarDatosRestaurante();
         
-        // 🔥 ESCUCHAR PEDIDOS EN TIEMPO REAL
+        // 🔥 LO MÁS IMPORTANTE: ESCUCHAR PEDIDOS EN TIEMPO REAL
         escucharPedidos();
         
-        // 🔥 🔥 🔥 FORZAR RENDERIZADO INICIAL (CON RETRASO PARA ASEGURAR)
-        setTimeout(() => {
-            console.log('🔄 Renderizando vista inicial...');
-            renderizarVista();
-        }, 500);
+        // 🔥 FORZAR RENDERIZADO INICIAL
+        console.log('🔄 Renderizando vista inicial...');
+        renderizarVista();
         
-        // 🔥 🔥 🔥 SEGUNDO RENDERIZADO POR SI ACASO
+        // 🔥 SEGUNDA PASADA POR SI ACASO (después de que todo cargue)
         setTimeout(() => {
             console.log('🔄 Renderizando vista (segunda pasada)...');
             renderizarVista();
-        }, 1500);
+        }, 1000);
         
         // Solicitar permisos de notificaciones
         setTimeout(solicitarPermisoNotificaciones, 3000);
@@ -1093,14 +1091,14 @@
         // ============================================
         // 12. ESCUCHAR PEDIDOS
         // ============================================
-       function escucharPedidos() {
+    function escucharPedidos() {
     // Limpiar listeners anteriores
     pedidosListeners.forEach(ref => ref.off());
     pedidosListeners = [];
     
     const pedidosRef = db.ref('pedidos');
     
-    // Escuchar cambios en pedidos
+    // 🔥 ESCUCHAR CAMBIOS EN TIEMPO REAL
     pedidosRef.on('value', (snapshot) => {
         console.log('🔄 Cambio detectado en pedidos');
         renderizarVista();
@@ -1164,113 +1162,110 @@
             window.acumuladoTotal = totalGeneral;
         }
 
-       function renderizarVista() {
-    const container = document.getElementById('lista-pedidos');
-    if (!container) return;
+      function renderizarVista() {
+    console.log('🔄 renderizarVista() ejecutada');
+    console.log('📌 restauranteId:', restauranteId);
     
-    container.innerHTML = `
-        <div class="mensaje-sin-pedidos">
-            <div class="icono">⏳</div>
-            <div class="titulo">Cargando pedidos...</div>
-        </div>
-    `;
+    // Limpiar columnas
+    const colPendiente = document.getElementById('col-pendiente');
+    const colCoccion = document.getElementById('col-coccion');
+    const colListo = document.getElementById('col-listo');
     
+    if (colPendiente) colPendiente.innerHTML = '';
+    if (colCoccion) colCoccion.innerHTML = '';
+    if (colListo) colListo.innerHTML = '';
+    
+    // Resetear contadores
+    document.getElementById('count-pendiente').textContent = '0';
+    document.getElementById('count-coccion').textContent = '0';
+    document.getElementById('count-listo').textContent = '0';
+    document.getElementById('count-reparto').textContent = '0';
+    document.getElementById('col-count-pendiente').textContent = '0';
+    document.getElementById('col-count-coccion').textContent = '0';
+    document.getElementById('col-count-listo').textContent = '0';
+    
+    // Obtener pedidos
     db.ref('pedidos').once('value')
         .then((snapshot) => {
             const pedidos = snapshot.val();
             
             if (!pedidos) {
-                container.innerHTML = `
-                    <div class="mensaje-sin-pedidos">
-                        <div class="icono">🍽️</div>
-                        <div class="titulo">No hay pedidos disponibles</div>
-                        <div class="subtitulo">Los pedidos aparecerán aquí cuando lleguen</div>
-                    </div>
-                `;
+                console.log('📭 No hay pedidos en la BD');
+                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
                 return;
             }
             
-            // Limpiar columnas
-            document.getElementById('col-pendiente').innerHTML = '';
-            document.getElementById('col-coccion').innerHTML = '';
-            document.getElementById('col-listo').innerHTML = '';
-            
-            // Resetear contadores
             let countPendiente = 0;
             let countCoccion = 0;
             let countListo = 0;
             let countReparto = 0;
             
             const pedidosArray = Object.entries(pedidos);
-            console.log('🔍 Procesando', pedidosArray.length, 'pedidos');
+            console.log(`📦 Procesando ${pedidosArray.length} pedidos`);
             
             for (const [id, data] of pedidosArray) {
-                const restId = data.restauranteId || data.restaurante_id;
+                // 🔥 BUSCAR RESTAURANTE ID EN CUALQUIER FORMATO
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                
                 console.log(`🔍 Pedido ${id}: restId=${restId}, restauranteId=${restauranteId}`);
                 
-                if (restId !== restauranteId) {
-                    console.log(`⏭️ Saltando pedido ${id} (restId diferente)`);
-                    continue;
-                }
-                
-                // 🔥 NORMALIZAR ESTADO
-                let estado = data.estado ? data.estado.toLowerCase() : '';
-                if (estado === 'recibido') estado = 'pendiente';
-                
-                console.log(`✅ Pedido ${id}: estado normalizado = ${estado}`);
-                
-                // Contar según estado
-                if (estado === 'pendiente') {
-                    countPendiente++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                } else if (estado === 'coccion') {
-                    countCoccion++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                } else if (estado === 'listo') {
-                    countListo++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                } else if (estado === 'reparto') {
-                    countReparto++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                } else {
-                    console.log(`⏭️ Estado no manejado: ${estado}`);
+                // 🔥 COMPARAR SIN CASE SENSITIVE
+                if (restId && restId.toString() === restauranteId.toString()) {
+                    console.log(`✅ Pedido ${id} coincide!`);
+                    
+                    // Normalizar estado
+                    let estado = data.estado ? data.estado.toLowerCase() : '';
+                    if (estado === 'recibido') estado = 'pendiente';
+                    
+                    console.log(`📌 Estado normalizado: ${estado}`);
+                    
+                    // Contar
+                    if (estado === 'pendiente') {
+                        countPendiente++;
+                        agregarPedidoAColumna(id, { ...data, estado: estado });
+                    } else if (estado === 'coccion') {
+                        countCoccion++;
+                        agregarPedidoAColumna(id, { ...data, estado: estado });
+                    } else if (estado === 'listo') {
+                        countListo++;
+                        agregarPedidoAColumna(id, { ...data, estado: estado });
+                    } else if (estado === 'reparto') {
+                        countReparto++;
+                        agregarPedidoAColumna(id, { ...data, estado: estado });
+                    } else {
+                        console.log(`⏭️ Estado no manejado: ${estado}`);
+                    }
                 }
             }
             
-            // Si no hay pedidos activos, mostrar mensajes
+            // Actualizar contadores
+            document.getElementById('count-pendiente').textContent = countPendiente;
+            document.getElementById('count-coccion').textContent = countCoccion;
+            document.getElementById('count-listo').textContent = countListo;
+            document.getElementById('count-reparto').textContent = countReparto;
+            document.getElementById('col-count-pendiente').textContent = countPendiente;
+            document.getElementById('col-count-coccion').textContent = countCoccion;
+            document.getElementById('col-count-listo').textContent = countListo;
+            document.getElementById('contador-activos').textContent = countPendiente + countCoccion + countListo + countReparto;
+            
+            console.log(`📊 RESULTADOS:`);
+            console.log(`  📥 Entrada: ${countPendiente}`);
+            console.log(`  👨‍🍳 En Proceso: ${countCoccion}`);
+            console.log(`  ✅ Listo: ${countListo}`);
+            console.log(`  🛵 En Reparto: ${countReparto}`);
+            
+            // Si no hay pedidos, mostrar mensajes
             if (countPendiente === 0 && countCoccion === 0 && countListo === 0 && countReparto === 0) {
                 mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
                 mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
                 mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-            } else {
-                // Si algunas columnas quedaron vacías
-                if (document.getElementById('col-pendiente').children.length === 0) {
-                    mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                }
-                if (document.getElementById('col-coccion').children.length === 0) {
-                    mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                }
-                if (document.getElementById('col-listo').children.length === 0) {
-                    mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                }
             }
-            
-            actualizarContadores(countPendiente, countCoccion, countListo, countReparto);
-            console.log('📊 Contadores actualizados:', { countPendiente, countCoccion, countListo, countReparto });
             
         })
         .catch((error) => {
-            console.error('Error al cargar pedidos:', error);
-            container.innerHTML = `
-                <div class="mensaje-sin-pedidos" style="border: 2px solid #ef4444;">
-                    <div class="icono">❌</div>
-                    <div class="titulo" style="color: #ef4444;">Error al cargar pedidos</div>
-                    <div class="subtitulo">${error.message}</div>
-                    <button onclick="renderizarVista()" class="mt-4 px-4 py-2 bg-amber-500 text-black rounded-lg font-bold">
-                        🔄 Reintentar
-                    </button>
-                </div>
-            `;
+            console.error('❌ Error al cargar pedidos:', error);
         });
 }
         // ============================================

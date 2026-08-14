@@ -1926,109 +1926,116 @@
             }
         };
 
-        // ============================================
-        // 24. NOTIFICAR REPARTIDOR - VERSIÓN COMPLETA
-        // ============================================
-        window.notificarRepartidor = async function(pedidoId) {
-            try {
-                console.log('📤 Asignando repartidor para el pedido:', pedidoId);
-                
-                const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
-                const pedido = pedidoSnap.val();
-                
-                if (!pedido) {
-                    console.error('❌ Pedido no encontrado');
-                    return;
-                }
-                
-                const repartidoresSnap = await db.ref('repartidores')
-                    .orderByChild('activo')
-                    .equalTo(true)
-                    .once('value');
-                
-                const repartidores = repartidoresSnap.val();
-                if (!repartidores) {
-                    console.warn('⚠️ No hay repartidores activos disponibles');
-                    showToast('⚠️ No hay repartidores disponibles', 'warning');
-                    return;
-                }
-                
-                let repartidorAsignado = null;
-                let repartidorId = null;
-                
-                for (const [uid, data] of Object.entries(repartidores)) {
-                    const pedidosActivosSnap = await db.ref('pedidos')
-                        .orderByChild('uid_repartidor')
-                        .equalTo(uid)
-                        .once('value');
-                    
-                    const pedidosActivos = pedidosActivosSnap.val();
-                    let tienePedidosActivos = false;
-                    
-                    if (pedidosActivos) {
-                        for (const [pid, pData] of Object.entries(pedidosActivos)) {
-                            const estado = pData.estado ? pData.estado.toLowerCase() : '';
-                            if (estado === 'en_reparto' || estado === 'listo' || estado === 'reparto') {
-                                tienePedidosActivos = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!tienePedidosActivos) {
-                        repartidorAsignado = data;
-                        repartidorId = uid;
+       // ============================================
+// 24. NOTIFICAR REPARTIDOR - CORREGIDO (SIN CAMBIAR ESTADO)
+// ============================================
+window.notificarRepartidor = async function(pedidoId) {
+    try {
+        console.log('📤 Asignando repartidor para el pedido:', pedidoId);
+        
+        const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = pedidoSnap.val();
+        
+        if (!pedido) {
+            console.error('❌ Pedido no encontrado');
+            return;
+        }
+        
+        const repartidoresSnap = await db.ref('repartidores')
+            .orderByChild('activo')
+            .equalTo(true)
+            .once('value');
+        
+        const repartidores = repartidoresSnap.val();
+        if (!repartidores) {
+            console.warn('⚠️ No hay repartidores activos disponibles');
+            showToast('⚠️ No hay repartidores disponibles', 'warning');
+            return;
+        }
+        
+        let repartidorAsignado = null;
+        let repartidorId = null;
+        
+        for (const [uid, data] of Object.entries(repartidores)) {
+            const pedidosActivosSnap = await db.ref('pedidos')
+                .orderByChild('uid_repartidor')
+                .equalTo(uid)
+                .once('value');
+            
+            const pedidosActivos = pedidosActivosSnap.val();
+            let tienePedidosActivos = false;
+            
+            if (pedidosActivos) {
+                for (const [pid, pData] of Object.entries(pedidosActivos)) {
+                    const estado = pData.estado ? pData.estado.toUpperCase() : '';
+                    if (estado === 'EN_REPARTO' || estado === 'LISTO' || estado === 'REPARTO') {
+                        tienePedidosActivos = true;
                         break;
                     }
                 }
-                
-                if (!repartidorAsignado) {
-                    const keys = Object.keys(repartidores);
-                    if (keys.length > 0) {
-                        repartidorId = keys[0];
-                        repartidorAsignado = repartidores[keys[0]];
-                        console.log('⚠️ Todos los repartidores están ocupados, asignando al primero:', repartidorId);
-                    } else {
-                        console.warn('⚠️ No hay repartidores registrados');
-                        showToast('⚠️ No hay repartidores registrados', 'warning');
-                        return;
-                    }
-                }
-                
-                console.log('✅ Repartidor asignado:', repartidorId, repartidorAsignado.nombre);
-                
-                await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
-                await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorAsignado.nombre || 'Repartidor');
-                await db.ref(`pedidos/${pedidoId}/repartidor_email`).set(repartidorAsignado.email || '');
-                await db.ref(`pedidos/${pedidoId}/estado`).set('EN_REPARTO');
-                await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
-                await db.ref(`pedidos/${pedidoId}/historial`).push({
-                    estado: 'EN_REPARTO',
-                    timestamp: Date.now(),
-                    usuario: currentUser.uid,
-                    accion: 'asignar_repartidor',
-                    repartidor: repartidorId,
-                    repartidor_nombre: repartidorAsignado.nombre || 'Repartidor'
-                });
-                
-                showToast(`✅ Repartidor asignado: ${repartidorAsignado.nombre || 'Repartidor'}`, 'success');
-                renderizarVista();
-                
-                console.log('📨 Enviando notificación push al repartidor...');
-                await enviarNotificacionPush(repartidorId, pedido);
-                
-                await db.ref(`logs_seguridad`).push({
-                    evento: 'repartidor_asignado',
-                    pedido: pedidoId,
-                    repartidor: repartidorId,
-                    timestamp: Date.now()
-                });
-                
-            } catch (error) {
-                console.error('❌ Error en notificarRepartidor:', error);
-                showToast('❌ Error al asignar repartidor', 'error');
             }
-        };
+            
+            if (!tienePedidosActivos) {
+                repartidorAsignado = data;
+                repartidorId = uid;
+                break;
+            }
+        }
+        
+        if (!repartidorAsignado) {
+            const keys = Object.keys(repartidores);
+            if (keys.length > 0) {
+                repartidorId = keys[0];
+                repartidorAsignado = repartidores[keys[0]];
+                console.log('⚠️ Todos los repartidores están ocupados, asignando al primero:', repartidorId);
+            } else {
+                console.warn('⚠️ No hay repartidores registrados');
+                showToast('⚠️ No hay repartidores registrados', 'warning');
+                return;
+            }
+        }
+        
+        console.log('✅ Repartidor asignado:', repartidorId, repartidorAsignado.nombre);
+        
+        // 🔥 SOLO ASIGNAR REPARTIDOR - NO CAMBIAR ESTADO
+        await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
+        await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorAsignado.nombre || 'Repartidor');
+        await db.ref(`pedidos/${pedidoId}/repartidor_email`).set(repartidorAsignado.email || '');
+        await db.ref(`pedidos/${pedidoId}/repartidor_telefono`).set(repartidorAsignado.telefono || '');
+        await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
+        
+        // 🔥 EL ESTADO SE MANTIENE EN "LISTO" - NO SE CAMBIA A EN_REPARTO
+        // El repartidor debe hacer clic en "Recoger" para cambiarlo a EN_REPARTO
+        
+        await db.ref(`pedidos/${pedidoId}/historial`).push({
+            estado: 'LISTO',
+            timestamp: Date.now(),
+            usuario: currentUser.uid,
+            accion: 'asignar_repartidor',
+            repartidor: repartidorId,
+            repartidor_nombre: repartidorAsignado.nombre || 'Repartidor',
+            mensaje: 'Repartidor asignado, esperando que lo recoja'
+        });
+        
+        showToast(`✅ Repartidor asignado: ${repartidorAsignado.nombre || 'Repartidor'}`, 'success');
+        renderizarVista();
+        
+        console.log('📨 Enviando notificación push al repartidor...');
+        await enviarNotificacionPush(repartidorId, pedido);
+        
+        await db.ref(`logs_seguridad`).push({
+            evento: 'repartidor_asignado',
+            pedido: pedidoId,
+            repartidor: repartidorId,
+            estado: 'LISTO',
+            timestamp: Date.now()
+        });
+        
+    } catch (error) {
+        console.error('❌ Error en notificarRepartidor:', error);
+        showToast('❌ Error al asignar repartidor', 'error');
+    }
+};
 
         // ============================================
         // 25. ENVIAR NOTIFICACIÓN PUSH AL REPARTIDOR

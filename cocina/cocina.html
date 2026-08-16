@@ -2218,7 +2218,7 @@ function obtenerDireccionRestauranteLocal() {
 }
 
 // ============================================
-// CALCULAR COSTO DE ENVÍO (USANDO CLOUD FUNCTION)
+// CALCULAR COSTO DE ENVÍO (SOLO ROQUETAS DE MAR)
 // ============================================
 async function calcularCostoEnvio(direccionCliente) {
     try {
@@ -2234,7 +2234,7 @@ async function calcularCostoEnvio(direccionCliente) {
         
         console.log(`📤 Calculando distancia desde "${direccionRestaurante}" hasta "${direccionCliente}"...`);
         
-        // 2. Llamar a la Cloud Function (NO a Google Maps directamente)
+        // 2. Llamar a la Cloud Function para calcular distancia
         const calcularDistancia = firebase.functions().httpsCallable('calcularDistancia');
         const result = await calcularDistancia({
             origen: direccionRestaurante,
@@ -2245,11 +2245,29 @@ async function calcularCostoEnvio(direccionCliente) {
         
         if (result.data.success) {
             const distanciaKm = result.data.distanciaKm;
+            
+            // 3. VERIFICAR QUE LA DIRECCIÓN ESTÉ EN ROQUETAS DE MAR (CP 04740)
+            // Google Maps devuelve el código postal en el componente "postal_code"
+            // Pero como no lo tenemos en la respuesta, usamos la distancia como indicador
+            // Una distancia > 20km probablemente no sea Roquetas de Mar
+            
+            // 🔥 NUEVA VALIDACIÓN: Distancia máxima permitida (20km)
+            const DISTANCIA_MAXIMA_KM = 20; // Roquetas de Mar tiene ~15km de diámetro
+            
+            if (distanciaKm > DISTANCIA_MAXIMA_KM) {
+                console.warn(`⚠️ La dirección está fuera de Roquetas de Mar (${distanciaKm.toFixed(2)} km)`);
+                // Devolver un valor especial para indicar que está fuera de zona
+                return -1; // -1 indica "fuera de zona"
+            }
+            
+            // 4. Calcular costo normalmente
             const tarifaKm = restaurante.tarifa_envio_km || 1.50;
             const costoMinimo = restaurante.costo_envio_minimo || 3.00;
+            const costoMaximo = restaurante.costo_envio_maximo || 10.00;
             
             let costo = distanciaKm * tarifaKm;
             costo = Math.max(costo, costoMinimo);
+            costo = Math.min(costo, costoMaximo);
             costo = Math.round(costo * 100) / 100;
             
             console.log(`📍 Distancia: ${distanciaKm.toFixed(2)} km`);
@@ -2266,117 +2284,165 @@ async function calcularCostoEnvio(direccionCliente) {
         return 5.00;
     }
 }
-        // 26.2 ABRIR FORMULARIO DE REPARTO
-        window.abrirFormularioReparto = function() {
-            Swal.fire({
-                title: '🚚 Nuevo Reparto Personal',
-                html: `
-                    <div style="text-align:left;color:white;">
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">👤 Cliente *</label>
-                            <input id="cliente" class="swal2-input" placeholder="Nombre del cliente" style="background:#1e293b;border:1px solid #334155;color:white;">
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">📞 Teléfono *</label>
-                            <input id="telefono" class="swal2-input" placeholder="Teléfono" style="background:#1e293b;border:1px solid #334155;color:white;">
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">📍 Dirección *</label>
-                            <input id="direccion" class="swal2-input" placeholder="Dirección completa" style="background:#1e293b;border:1px solid #334155;color:white;">
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">💰 Monto del pedido *</label>
-                            <input id="monto" class="swal2-input" placeholder="0.00" type="number" step="0.01" style="background:#1e293b;border:1px solid #334155;color:white;">
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">💳 Estado del pago *</label>
-                            <select id="estado_pago" class="swal2-input" style="background:#1e293b;border:1px solid #334155;color:white;">
-                                <option value="pagado" style="background:#1e293b;">✅ Ya está pagado</option>
-                                <option value="cobrar" style="background:#1e293b;">💵 Cobrar en sitio</option>
-                            </select>
-                        </div>
-                        <div style="margin-bottom:4px;">
-                            <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">📝 Nota (opcional)</label>
-                            <textarea id="nota" class="swal2-input" placeholder="Detalles del pedido" style="background:#1e293b;border:1px solid #334155;color:white;min-height:60px;resize:vertical;"></textarea>
-                        </div>
-                        <div style="margin-top:12px;padding:12px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
-                            <div style="display:flex;justify-content:space-between;font-size:14px;">
-                                <span style="color:#94a3b8;">🚚 Costo de envío:</span>
-                                <span id="costo-envio-display" style="color:#f59e0b;font-weight:bold;">Calculando...</span>
-                            </div>
-                        </div>
-                        <div style="font-size:11px;color:#64748b;margin-top:8px;">* Campos obligatorios</div>
+        // ============================================
+// ABRIR FORMULARIO DE REPARTO (CON VALIDACIÓN DE ZONA)
+// ============================================
+window.abrirFormularioReparto = function() {
+    // Cargar zonas del restaurante (si existen)
+    db.ref(`restaurantes/${restauranteId}/zonas_envio`).once('value').then((snap) => {
+        const zonas = snap.val() || {};
+        let opcionesZonas = '';
+        
+        for (const [key, zona] of Object.entries(zonas)) {
+            opcionesZonas += `
+                <option value="${key}" data-costo="${zona.costo}">${zona.nombre} - $${zona.costo.toFixed(2)}</option>
+            `;
+        }
+        
+        if (!opcionesZonas) {
+            opcionesZonas = `
+                <option value="default" data-costo="5.00">Zona predeterminada - $5.00</option>
+            `;
+        }
+        
+        Swal.fire({
+            title: '🚚 Nuevo Reparto Personal',
+            html: `
+                <div style="text-align:left;color:white;">
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">👤 Cliente *</label>
+                        <input id="cliente" class="swal2-input" placeholder="Nombre del cliente" style="background:#1e293b;border:1px solid #334155;color:white;">
                     </div>
-                `,
-                confirmButtonText: '📨 Enviar a Repartidor',
-                showCancelButton: true,
-                cancelButtonText: 'Cancelar',
-                background: '#0f172a',
-                color: 'white',
-                confirmButtonColor: '#8b5cf6',
-                width: '92%',
-                didOpen: () => {
-                    const direccionInput = document.getElementById('direccion');
-                    const costoDisplay = document.getElementById('costo-envio-display');
-                    
-                    const calcularCosto = async () => {
-                        const direccion = direccionInput.value.trim();
-                        if (direccion) {
-                            costoDisplay.textContent = '🔄 Calculando...';
-                            try {
-                                const costo = await calcularCostoEnvio(direccion);
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">📞 Teléfono *</label>
+                        <input id="telefono" class="swal2-input" placeholder="Teléfono" style="background:#1e293b;border:1px solid #334155;color:white;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">📍 Dirección *</label>
+                        <input id="direccion" class="swal2-input" placeholder="Dirección completa (Roquetas de Mar, 04740)" style="background:#1e293b;border:1px solid #334155;color:white;">
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">⚠️ Solo disponible en Roquetas de Mar (C.P. 04740)</div>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">💰 Monto del pedido *</label>
+                        <input id="monto" class="swal2-input" placeholder="0.00" type="number" step="0.01" style="background:#1e293b;border:1px solid #334155;color:white;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">💳 Estado del pago *</label>
+                        <select id="estado_pago" class="swal2-input" style="background:#1e293b;border:1px solid #334155;color:white;">
+                            <option value="pagado" style="background:#1e293b;">✅ Ya está pagado</option>
+                            <option value="cobrar" style="background:#1e293b;">💵 Cobrar en sitio</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:4px;">
+                        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:4px;">📝 Nota (opcional)</label>
+                        <textarea id="nota" class="swal2-input" placeholder="Detalles del pedido" style="background:#1e293b;border:1px solid #334155;color:white;min-height:60px;resize:vertical;"></textarea>
+                    </div>
+                    <div style="margin-top:12px;padding:12px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
+                        <div style="display:flex;justify-content:space-between;font-size:14px;">
+                            <span style="color:#94a3b8;">🚚 Costo de envío:</span>
+                            <span id="costo-envio-display" style="color:#f59e0b;font-weight:bold;">Calculando...</span>
+                        </div>
+                    </div>
+                    <div style="font-size:11px;color:#64748b;margin-top:8px;">* Campos obligatorios</div>
+                </div>
+            `,
+            confirmButtonText: '📨 Enviar a Repartidor',
+            showCancelButton: true,
+            cancelButtonText: 'Cancelar',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#8b5cf6',
+            width: '92%',
+            didOpen: () => {
+                const direccionInput = document.getElementById('direccion');
+                const costoDisplay = document.getElementById('costo-envio-display');
+                
+                const calcularCosto = async () => {
+                    const direccion = direccionInput.value.trim();
+                    if (direccion) {
+                        costoDisplay.textContent = '🔄 Calculando...';
+                        try {
+                            const costo = await calcularCostoEnvio(direccion);
+                            if (costo === -1) {
+                                costoDisplay.textContent = '❌ Fuera de zona';
+                                costoDisplay.dataset.costo = -1;
+                                costoDisplay.style.color = '#ef4444';
+                            } else {
                                 costoDisplay.textContent = `$${costo.toFixed(2)}`;
                                 costoDisplay.dataset.costo = costo;
                                 costoDisplay.style.color = '#10b981';
-                            } catch (error) {
-                                costoDisplay.textContent = '$5.00 (estimado)';
-                                costoDisplay.dataset.costo = 5.00;
-                                costoDisplay.style.color = '#f59e0b';
                             }
-                        } else {
-                            costoDisplay.textContent = '$0.00';
-                            costoDisplay.dataset.costo = 0;
-                            costoDisplay.style.color = '#94a3b8';
+                        } catch (error) {
+                            costoDisplay.textContent = '$5.00 (estimado)';
+                            costoDisplay.dataset.costo = 5.00;
+                            costoDisplay.style.color = '#f59e0b';
                         }
-                    };
-                    
-                    direccionInput.addEventListener('blur', calcularCosto);
-                    setTimeout(calcularCosto, 500);
-                },
-                preConfirm: () => {
-                    const cliente = document.getElementById('cliente').value.trim();
-                    const telefono = document.getElementById('telefono').value.trim();
-                    const direccion = document.getElementById('direccion').value.trim();
-                    const monto = parseFloat(document.getElementById('monto').value) || 0;
-                    const estado_pago = document.getElementById('estado_pago').value;
-                    const nota = document.getElementById('nota').value.trim();
-                    const costoEnvio = parseFloat(document.getElementById('costo-envio-display').dataset.costo || 0);
-                    
-                    if (!cliente) {
-                        Swal.showValidationMessage('El nombre del cliente es obligatorio');
-                        return false;
+                    } else {
+                        costoDisplay.textContent = '$0.00';
+                        costoDisplay.dataset.costo = 0;
+                        costoDisplay.style.color = '#94a3b8';
                     }
-                    if (!telefono) {
-                        Swal.showValidationMessage('El teléfono es obligatorio');
-                        return false;
+                };
+                
+                direccionInput.addEventListener('blur', calcularCosto);
+                direccionInput.addEventListener('input', () => {
+                    // Solo actualizar si hay texto
+                    if (direccionInput.value.trim().length > 5) {
+                        calcularCosto();
                     }
-                    if (!direccion) {
-                        Swal.showValidationMessage('La dirección es obligatoria');
-                        return false;
-                    }
-                    if (monto <= 0) {
-                        Swal.showValidationMessage('El monto debe ser mayor a 0');
-                        return false;
-                    }
-                    
-                    return { cliente, telefono, direccion, monto, estado_pago, nota, costoEnvio };
+                });
+                
+                setTimeout(calcularCosto, 500);
+            },
+            preConfirm: async () => {
+                const cliente = document.getElementById('cliente').value.trim();
+                const telefono = document.getElementById('telefono').value.trim();
+                const direccion = document.getElementById('direccion').value.trim();
+                const monto = parseFloat(document.getElementById('monto').value) || 0;
+                const estado_pago = document.getElementById('estado_pago').value;
+                const nota = document.getElementById('nota').value.trim();
+                const costoEnvio = parseFloat(document.getElementById('costo-envio-display').dataset.costo || 0);
+                
+                if (!cliente) {
+                    Swal.showValidationMessage('El nombre del cliente es obligatorio');
+                    return false;
                 }
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    await crearEnvio(result.value);
+                if (!telefono) {
+                    Swal.showValidationMessage('El teléfono es obligatorio');
+                    return false;
                 }
-            });
-        };
+                if (!direccion) {
+                    Swal.showValidationMessage('La dirección es obligatoria');
+                    return false;
+                }
+                if (monto <= 0) {
+                    Swal.showValidationMessage('El monto debe ser mayor a 0');
+                    return false;
+                }
+                
+                // 🔥 VALIDAR QUE LA DIRECCIÓN ESTÉ EN ROQUETAS DE MAR
+                if (costoEnvio === -1) {
+                    Swal.showValidationMessage('❌ Esta dirección está fuera de Roquetas de Mar. El servicio de reparto solo está disponible en el código postal 04740.');
+                    return false;
+                }
+                
+                if (costoEnvio <= 0) {
+                    Swal.showValidationMessage('⚠️ No se pudo calcular el costo de envío. Verifica la dirección.');
+                    return false;
+                }
+                
+                return { cliente, telefono, direccion, monto, estado_pago, nota, costoEnvio };
+            }
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                await crearEnvio(result.value);
+            }
+        });
+    }).catch((error) => {
+        console.error('❌ Error al cargar zonas:', error);
+        showToast('❌ Error al cargar zonas de envío', 'error');
+    });
+};
 
         // 26.3 CREAR ENVÍO
       

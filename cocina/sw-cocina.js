@@ -81,71 +81,68 @@ self.addEventListener('activate', event => {
 // INTERCEPTAR PETICIONES (FETCH)
 // ============================================
 self.addEventListener('fetch', event => {
-  // Ignorar peticiones de analytics y extensions
-  if (event.request.url.includes('google-analytics') ||
-      event.request.url.includes('chrome-extension')) {
-    return;
-  }
-  
-  event.respondWith(
-    caches.match(event.request)
-      .then(cachedResponse => {
-        // Si está en cache, devolverlo
-        if (cachedResponse) {
-          console.log('📦 Cache hit:', event.request.url);
-          return cachedResponse;
-        }
-        
-        // Si no está en cache, hacer fetch
-        console.log('🌐 Fetching:', event.request.url);
-        return fetch(event.request)
-          .then(response => {
-            // Verificar si es una respuesta válida
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-            
-            // Clonar la respuesta para cachear
-            const responseToCache = response.clone();
-            
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                try {
-                  cache.put(event.request, responseToCache);
-                } catch (error) {
-                  console.warn('⚠️ No se pudo cachear:', event.request.url);
-                }
-              });
-            
-            return response;
-          })
-          .catch(error => {
-            console.error('❌ Error en fetch:', error);
-            
-            // Si falla el fetch, mostrar página offline
-            return caches.match(OFFLINE_URL)
-              .then(offlineResponse => {
-                if (offlineResponse) {
-                  return offlineResponse;
+    const url = event.request.url;
+    
+    // 🔥 IGNORAR PETICIONES A GOOGLE MAPS Y FCM
+    if (url.includes('maps.googleapis.com') || 
+        url.includes('fcm.googleapis.com') ||
+        url.includes('googleapis.com') ||
+        url.includes('gstatic.com')) {
+        // Dejar que el navegador maneje directamente
+        return;
+    }
+    
+    // Ignorar peticiones de analytics y extensions
+    if (url.includes('google-analytics') ||
+        url.includes('chrome-extension')) {
+        return;
+    }
+    
+    event.respondWith(
+        caches.match(event.request)
+            .then(cachedResponse => {
+                if (cachedResponse) {
+                    console.log('📦 Cache hit:', event.request.url);
+                    return cachedResponse;
                 }
                 
-                // Si no hay página offline, mostrar mensaje simple
-                return new Response(
-                  '🌐 Sin conexión a internet. Por favor, verifica tu conexión.',
-                  {
-                    status: 503,
-                    statusText: 'Service Unavailable',
-                    headers: new Headers({
-                      'Content-Type': 'text/plain'
+                console.log('🌐 Fetching:', event.request.url);
+                return fetch(event.request)
+                    .then(response => {
+                        if (!response || response.status !== 200 || response.type !== 'basic') {
+                            return response;
+                        }
+                        const responseToCache = response.clone();
+                        caches.open(CACHE_NAME).then(cache => {
+                            try {
+                                cache.put(event.request, responseToCache);
+                            } catch (error) {
+                                console.warn('⚠️ No se pudo cachear:', event.request.url);
+                            }
+                        });
+                        return response;
                     })
-                  }
-                );
-              });
-          });
-      })
-  );
+                    .catch(error => {
+                        console.error('❌ Error en fetch:', error);
+                        return caches.match(OFFLINE_URL).then(offlineResponse => {
+                            if (offlineResponse) {
+                                return offlineResponse;
+                            }
+                            return new Response(
+                                '🌐 Sin conexión a internet. Por favor, verifica tu conexión.',
+                                {
+                                    status: 503,
+                                    statusText: 'Service Unavailable',
+                                    headers: new Headers({
+                                        'Content-Type': 'text/plain'
+                                    })
+                                }
+                            );
+                        });
+                    });
+            })
+    );
 });
-
 // ============================================
 // GESTIÓN DE NOTIFICACIONES PUSH
 // ============================================

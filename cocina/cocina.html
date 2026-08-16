@@ -2218,81 +2218,53 @@ function obtenerDireccionRestauranteLocal() {
 }
 
 // ============================================
-// CALCULAR COSTO DE ENVÍO CON XMLHttpRequest
+// CALCULAR COSTO DE ENVÍO (USANDO CLOUD FUNCTION)
 // ============================================
 async function calcularCostoEnvio(direccionCliente) {
-    return new Promise(async (resolve) => {
-        try {
-            // 1. Obtener dirección del restaurante
-            const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
-            const restaurante = restSnap.val();
-            const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
-            
-            if (!direccionRestaurante) {
-                console.warn('⚠️ Restaurante sin dirección, costo fijo');
-                resolve(5.00);
-                return;
-            }
-            
-            // 2. Llamada a Google Maps con XMLHttpRequest
-            const apiKey = 'AIzaSyBEapmpody3y_vFyPF0ngUnCn5ZFOtxPjs';
-            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(direccionRestaurante)}&destinations=${encodeURIComponent(direccionCliente)}&key=${apiKey}`;
-            
-            console.log(`📤 Calculando distancia desde "${direccionRestaurante}" hasta "${direccionCliente}"...`);
-            
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', url, true);
-            xhr.timeout = 10000;
-            
-            xhr.onload = function() {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try {
-                        const data = JSON.parse(xhr.responseText);
-                        console.log('📨 Respuesta de Google Maps:', data);
-                        
-                        if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
-                            const distanciaMetros = data.rows[0].elements[0].distance.value;
-                            const distanciaKm = distanciaMetros / 1000;
-                            const tarifaKm = restaurante.tarifa_envio_km || 1.50;
-                            const costoMinimo = restaurante.costo_envio_minimo || 3.00;
-                            let costo = distanciaKm * tarifaKm;
-                            costo = Math.max(costo, costoMinimo);
-                            costo = Math.round(costo * 100) / 100;
-                            
-                            console.log(`📍 Distancia: ${distanciaKm.toFixed(2)} km`);
-                            console.log(`💰 Costo: $${costo.toFixed(2)}`);
-                            resolve(costo);
-                        } else {
-                            console.warn('⚠️ No se pudo calcular distancia:', data.status);
-                            resolve(5.00);
-                        }
-                    } catch (error) {
-                        console.error('❌ Error al parsear respuesta:', error);
-                        resolve(5.00);
-                    }
-                } else {
-                    console.warn('⚠️ Error en la solicitud:', xhr.status, xhr.statusText);
-                    resolve(5.00);
-                }
-            };
-            
-            xhr.onerror = function() {
-                console.warn('⚠️ Error de red');
-                resolve(5.00);
-            };
-            
-            xhr.ontimeout = function() {
-                console.warn('⚠️ Timeout');
-                resolve(5.00);
-            };
-            
-            xhr.send();
-            
-        } catch (error) {
-            console.error('❌ Error:', error);
-            resolve(5.00);
+    try {
+        // 1. Obtener dirección del restaurante
+        const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
+        const restaurante = restSnap.val();
+        const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
+        
+        if (!direccionRestaurante) {
+            console.warn('⚠️ Restaurante sin dirección configurada, usando costo fijo');
+            return 5.00;
         }
-    });
+        
+        console.log(`📤 Calculando distancia desde "${direccionRestaurante}" hasta "${direccionCliente}"...`);
+        
+        // 2. Llamar a la Cloud Function (NO a Google Maps directamente)
+        const calcularDistancia = firebase.functions().httpsCallable('calcularDistancia');
+        const result = await calcularDistancia({
+            origen: direccionRestaurante,
+            destino: direccionCliente
+        });
+        
+        console.log('📨 Respuesta de Cloud Function:', result.data);
+        
+        if (result.data.success) {
+            const distanciaKm = result.data.distanciaKm;
+            const tarifaKm = restaurante.tarifa_envio_km || 1.50;
+            const costoMinimo = restaurante.costo_envio_minimo || 3.00;
+            
+            let costo = distanciaKm * tarifaKm;
+            costo = Math.max(costo, costoMinimo);
+            costo = Math.round(costo * 100) / 100;
+            
+            console.log(`📍 Distancia: ${distanciaKm.toFixed(2)} km`);
+            console.log(`💰 Costo de envío: $${costo.toFixed(2)}`);
+            
+            return costo;
+        } else {
+            console.warn('⚠️ No se pudo calcular distancia, usando costo fijo');
+            return 5.00;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error al calcular costo de envío:', error);
+        return 5.00;
+    }
 }
         // 26.2 ABRIR FORMULARIO DE REPARTO
         window.abrirFormularioReparto = function() {

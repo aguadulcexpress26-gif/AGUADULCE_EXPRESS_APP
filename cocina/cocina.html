@@ -2359,14 +2359,14 @@ async function crearEnvio(data) {
         // 2. Generar ID de pedido
         const pedidoId = db.ref('pedidos').push().key;
         
-        // 3. Crear PEDIDO (no envío)
+        // 3. Crear PEDIDO DIRECTAMENTE EN ESTADO "LISTO" (salta RECIBIDO/COCCIÓN)
         const pedido = {
             uid_restaurante: restauranteId,
             restaurante_id: restauranteId,
             restaurante_nombre: document.getElementById('header-restaurante').textContent || 'Restaurante',
             uid_repartidor: repartidorId,
             repartidor_nombre: repartidorData.nombre || 'Repartidor',
-            uid_cliente: 'reparto_personal',  // Cliente especial para repartos
+            uid_cliente: 'reparto_personal',
             cliente_nombre: data.cliente,
             cliente_telefono: data.telefono,
             direccion: data.direccion,
@@ -2381,22 +2381,24 @@ async function crearEnvio(data) {
             total: data.monto || 0,
             subtotal: data.monto || 0,
             envio: data.costoEnvio || 0,
-            estado: 'RECIBIDO',  // Empieza como RECIBIDO
+            // 🔥 CLAVE: Estado DIRECTAMENTE en LISTO
+            estado: 'LISTO',
             tipo: 'reparto_personal',
             metodo_pago: data.estado_pago === 'pagado' ? 'Pagado' : 'Contra entrega',
             nota: data.nota || '',
             debe_cobrar: data.estado_pago === 'cobrar',
             timestamp: Date.now(),
             timestamp_inicio: Date.now(),
+            timestamp_listo: Date.now(),  // Ya está listo
+            tiempo_preparacion: 0,        // Sin tiempo de preparación
             historial: [
                 {
-                    estado: 'RECIBIDO',
+                    estado: 'LISTO',
                     timestamp: Date.now(),
                     accion: 'creado_por_restaurante',
                     tipo: 'reparto_personal'
                 }
             ],
-            // Datos adicionales para reparto personal
             reparto_personal: {
                 creado_por: 'restaurante',
                 fecha_creacion: Date.now(),
@@ -2421,12 +2423,12 @@ async function crearEnvio(data) {
             costo_envio: data.costoEnvio || 5.00,
             estado_pago: data.estado_pago === 'pagado' ? 'pagado' : 'pendiente',
             debe_cobrar: data.estado_pago === 'cobrar',
-            estado: 'pendiente',
+            estado: 'asignado',
             tipo: 'reparto_personal',
             nota: data.nota || '',
             timestamp: Date.now(),
             historial: [{
-                estado: 'creado',
+                estado: 'asignado',
                 timestamp: Date.now(),
                 accion: 'creado_por_restaurante'
             }]
@@ -2434,15 +2436,15 @@ async function crearEnvio(data) {
         
         await db.ref(`envios/${envioId}`).set(envio);
         
-        // 6. Enviar notificación al repartidor (ya está asignado)
-        // El repartidor verá el pedido en su lista
-        console.log('📤 Pedido creado, notificando al repartidor...');
+        // 6. ENVIAR NOTIFICACIÓN PUSH AL REPARTIDOR
+        console.log('📤 Enviando notificación al repartidor...');
+        await enviarNotificacionConCloudFunction(repartidorId, pedidoId, 'pedido');
         
-        // Mostrar mensaje de éxito
-        showToast(`✅ Pedido #${pedidoId.substring(0, 8)} creado - Envío: $${pedido.envio.toFixed(2)}`, 'success');
+        // 7. Mostrar mensaje de éxito
+        showToast(`✅ Pedido #${pedidoId.substring(0, 8)} listo para recoger - Envío: $${pedido.envio.toFixed(2)}`, 'success');
         renderizarVista();
         
-        // 7. Opcional: reproducir sonido de nuevo pedido
+        // 8. Reproducir sonido de nuevo pedido
         reproducirSonidoLlegada();
         
     } catch (error) {

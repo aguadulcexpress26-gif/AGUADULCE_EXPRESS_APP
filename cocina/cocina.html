@@ -2112,50 +2112,80 @@
         // ============================================
 
         // 26.1 CALCULAR COSTO DE ENVÍO (MISMA LÓGICA QUE VENTAS)
-        async function calcularCostoEnvio(direccionCliente) {
-            try {
-                const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
-                const restaurante = restSnap.val();
-                const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
-                
-                if (!direccionRestaurante) {
-                    console.warn('⚠️ Restaurante sin dirección configurada, usando costo fijo');
-                    return 5.00;
-                }
-                
-                // Calcular distancia con Google Maps API
-                const apiKey = 'AIzaSyBEapmpody3y_vFyPF0ngUnCn5ZFOtxPjs';
-                const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(direccionRestaurante)}&destinations=${encodeURIComponent(direccionCliente)}&key=${apiKey}`;
-                
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                let distanciaKm = 5;
-                
-                if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
-                    const distanciaMetros = data.rows[0].elements[0].distance.value;
-                    distanciaKm = distanciaMetros / 1000;
-                } else {
-                    console.warn('⚠️ No se pudo calcular distancia, usando valor por defecto:', data.status);
-                }
-                
-                // Obtener tarifa por km y costo mínimo
-                const tarifaKm = restaurante.tarifa_envio_km || 1.50;
-                const costoMinimo = restaurante.costo_envio_minimo || 3.00;
-                
-                let costo = distanciaKm * tarifaKm;
-                costo = Math.max(costo, costoMinimo);
-                
-                // Verificar si hay envío gratis desde cierto monto
-                const gratisDesde = restaurante.envio_gratis_desde || 0;
-                
-                return Math.round(costo * 100) / 100;
-                
-            } catch (error) {
-                console.error('❌ Error al calcular costo de envío:', error);
-                return 5.00;
+        // ============================================
+// CALCULAR COSTO DE ENVÍO (CON XMLHttpRequest)
+// ============================================
+async function calcularCostoEnvio(direccionCliente) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // 1. Obtener dirección del restaurante
+            const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
+            const restaurante = restSnap.val();
+            const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
+            
+            if (!direccionRestaurante) {
+                console.warn('⚠️ Restaurante sin dirección configurada, usando costo fijo');
+                resolve(5.00);
+                return;
             }
+            
+            // 2. Hacer la llamada a Google Maps con XMLHttpRequest (evita CORS del SW)
+            const apiKey = 'AIzaSyBEapmpody3y_vFyPF0ngUnCn5ZFOtxPjs';
+            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(direccionRestaurante)}&destinations=${encodeURIComponent(direccionCliente)}&key=${apiKey}`;
+            
+            console.log('📤 Calculando distancia con Google Maps...');
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        console.log('📨 Respuesta de Google Maps:', data);
+                        
+                        let distanciaKm = 5;
+                        
+                        if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
+                            const distanciaMetros = data.rows[0].elements[0].distance.value;
+                            distanciaKm = distanciaMetros / 1000;
+                            console.log(`📍 Distancia calculada: ${distanciaKm.toFixed(2)} km`);
+                        } else {
+                            console.warn('⚠️ No se pudo calcular distancia, usando valor por defecto:', data.status);
+                        }
+                        
+                        // Calcular costo
+                        const tarifaKm = restaurante.tarifa_envio_km || 1.50;
+                        const costoMinimo = restaurante.costo_envio_minimo || 3.00;
+                        let costo = distanciaKm * tarifaKm;
+                        costo = Math.max(costo, costoMinimo);
+                        costo = Math.round(costo * 100) / 100;
+                        
+                        console.log(`💰 Costo de envío calculado: $${costo.toFixed(2)}`);
+                        resolve(costo);
+                        
+                    } catch (error) {
+                        console.error('❌ Error al parsear respuesta:', error);
+                        resolve(5.00);
+                    }
+                } else {
+                    console.warn('⚠️ Error en la solicitud:', xhr.status, xhr.statusText);
+                    resolve(5.00);
+                }
+            };
+            
+            xhr.onerror = function() {
+                console.warn('⚠️ Error de red al calcular distancia');
+                resolve(5.00);
+            };
+            
+            xhr.send();
+            
+        } catch (error) {
+            console.error('❌ Error al calcular costo de envío:', error);
+            resolve(5.00);
         }
+    });
+}
 
         // 26.2 ABRIR FORMULARIO DE REPARTO
         window.abrirFormularioReparto = function() {
@@ -2270,113 +2300,156 @@
         };
 
         // 26.3 CREAR ENVÍO
-        async function crearEnvio(data) {
-            try {
-                const envioId = db.ref('envios').push().key;
-                
-                const repartidoresSnap = await db.ref('repartidores')
-                    .orderByChild('activo')
-                    .equalTo(true)
-                    .once('value');
-                
-                const repartidores = repartidoresSnap.val();
-                if (!repartidores) {
-                    showToast('⚠️ No hay repartidores disponibles', 'warning');
-                    return;
-                }
-                
-                let repartidorId = null;
-                let repartidorData = null;
-                
-                for (const [uid, rData] of Object.entries(repartidores)) {
-                    const pedidosActivosSnap = await db.ref('pedidos')
-                        .orderByChild('uid_repartidor')
-                        .equalTo(uid)
-                        .once('value');
-                    
-                    const pedidosActivos = pedidosActivosSnap.val();
-                    let tienePedidosActivos = false;
-                    
-                    if (pedidosActivos) {
-                        for (const [pid, pData] of Object.entries(pedidosActivos)) {
-                            const estado = pData.estado ? pData.estado.toLowerCase() : '';
-                            if (estado === 'en_reparto' || estado === 'listo' || estado === 'reparto') {
-                                tienePedidosActivos = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!tienePedidosActivos) {
-                        const enviosActivosSnap = await db.ref('envios')
-                            .orderByChild('uid_repartidor')
-                            .equalTo(uid)
-                            .once('value');
-                        
-                        const enviosActivos = enviosActivosSnap.val();
-                        if (enviosActivos) {
-                            for (const [eid, eData] of Object.entries(enviosActivos)) {
-                                const estado = eData.estado || '';
-                                if (estado !== 'entregado') {
-                                    tienePedidosActivos = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (!tienePedidosActivos) {
-                        repartidorId = uid;
-                        repartidorData = rData;
+      
+async function crearEnvio(data) {
+    try {
+        // 1. Buscar repartidor disponible
+        const repartidoresSnap = await db.ref('repartidores')
+            .orderByChild('activo')
+            .equalTo(true)
+            .once('value');
+        
+        const repartidores = repartidoresSnap.val();
+        if (!repartidores) {
+            showToast('⚠️ No hay repartidores disponibles', 'warning');
+            return;
+        }
+        
+        let repartidorId = null;
+        let repartidorData = null;
+        
+        for (const [uid, rData] of Object.entries(repartidores)) {
+            const pedidosActivosSnap = await db.ref('pedidos')
+                .orderByChild('uid_repartidor')
+                .equalTo(uid)
+                .once('value');
+            
+            const pedidosActivos = pedidosActivosSnap.val();
+            let tienePedidosActivos = false;
+            
+            if (pedidosActivos) {
+                for (const [pid, pData] of Object.entries(pedidosActivos)) {
+                    const estado = pData.estado ? pData.estado.toUpperCase() : '';
+                    if (estado === 'EN_REPARTO' || estado === 'LISTO' || estado === 'REPARTO') {
+                        tienePedidosActivos = true;
                         break;
                     }
                 }
-                
-                if (!repartidorId) {
-                    const keys = Object.keys(repartidores);
-                    if (keys.length > 0) {
-                        repartidorId = keys[0];
-                        repartidorData = repartidores[keys[0]];
-                        console.log('⚠️ Todos los repartidores están ocupados, asignando al primero:', repartidorId);
-                    } else {
-                        showToast('⚠️ No hay repartidores disponibles', 'warning');
-                        return;
-                    }
-                }
-                
-                const envio = {
-                    uid_restaurante: restauranteId,
-                    uid_repartidor: repartidorId,
-                    cliente_nombre: data.cliente,
-                    cliente_telefono: data.telefono,
-                    direccion: data.direccion,
-                    monto: data.monto || 0,
-                    estado_pago: data.estado_pago === 'pagado' ? 'pagado' : 'pendiente',
-                    estado: 'asignado',
-                    tipo: 'reparto_personal',
-                    nota: data.nota || '',
-                    costo_envio: data.costoEnvio || 5.00,
-                    debe_cobrar: data.estado_pago === 'cobrar',
-                    timestamp: Date.now(),
-                    historial: [{
-                        estado: 'asignado',
-                        timestamp: Date.now(),
-                        accion: 'creado_por_restaurante'
-                    }]
-                };
-                
-                await db.ref(`envios/${envioId}`).set(envio);
-                
-                await enviarNotificacionConCloudFunction(repartidorId, envioId, 'envio');
-                
-                showToast(`✅ Envío creado - Costo envío: $${envio.costo_envio.toFixed(2)}`, 'success');
-                renderizarVista();
-                
-            } catch (error) {
-                console.error('❌ Error al crear envío:', error);
-                showToast('❌ Error al crear envío', 'error');
+            }
+            
+            if (!tienePedidosActivos) {
+                repartidorId = uid;
+                repartidorData = rData;
+                break;
             }
         }
+        
+        if (!repartidorId) {
+            const keys = Object.keys(repartidores);
+            if (keys.length > 0) {
+                repartidorId = keys[0];
+                repartidorData = repartidores[keys[0]];
+                console.log('⚠️ Todos los repartidores están ocupados, asignando al primero:', repartidorId);
+            } else {
+                showToast('⚠️ No hay repartidores disponibles', 'warning');
+                return;
+            }
+        }
+        
+        // 2. Generar ID de pedido
+        const pedidoId = db.ref('pedidos').push().key;
+        
+        // 3. Crear PEDIDO (no envío)
+        const pedido = {
+            uid_restaurante: restauranteId,
+            restaurante_id: restauranteId,
+            restaurante_nombre: document.getElementById('header-restaurante').textContent || 'Restaurante',
+            uid_repartidor: repartidorId,
+            repartidor_nombre: repartidorData.nombre || 'Repartidor',
+            uid_cliente: 'reparto_personal',  // Cliente especial para repartos
+            cliente_nombre: data.cliente,
+            cliente_telefono: data.telefono,
+            direccion: data.direccion,
+            items: [
+                {
+                    nombre: '📦 Reparto Personal',
+                    cantidad: 1,
+                    precio_unitario: data.monto || 0,
+                    total: data.monto || 0
+                }
+            ],
+            total: data.monto || 0,
+            subtotal: data.monto || 0,
+            envio: data.costoEnvio || 0,
+            estado: 'RECIBIDO',  // Empieza como RECIBIDO
+            tipo: 'reparto_personal',
+            metodo_pago: data.estado_pago === 'pagado' ? 'Pagado' : 'Contra entrega',
+            nota: data.nota || '',
+            debe_cobrar: data.estado_pago === 'cobrar',
+            timestamp: Date.now(),
+            timestamp_inicio: Date.now(),
+            historial: [
+                {
+                    estado: 'RECIBIDO',
+                    timestamp: Date.now(),
+                    accion: 'creado_por_restaurante',
+                    tipo: 'reparto_personal'
+                }
+            ],
+            // Datos adicionales para reparto personal
+            reparto_personal: {
+                creado_por: 'restaurante',
+                fecha_creacion: Date.now(),
+                nota: data.nota || '',
+                estado_pago: data.estado_pago
+            }
+        };
+        
+        // 4. Guardar en la colección "pedidos"
+        await db.ref(`pedidos/${pedidoId}`).set(pedido);
+        
+        // 5. Guardar también en "envios" para el historial de entregas
+        const envioId = db.ref('envios').push().key;
+        const envio = {
+            uid_restaurante: restauranteId,
+            uid_repartidor: repartidorId,
+            pedido_id: pedidoId,
+            cliente_nombre: data.cliente,
+            cliente_telefono: data.telefono,
+            direccion: data.direccion,
+            monto: data.monto || 0,
+            costo_envio: data.costoEnvio || 5.00,
+            estado_pago: data.estado_pago === 'pagado' ? 'pagado' : 'pendiente',
+            debe_cobrar: data.estado_pago === 'cobrar',
+            estado: 'pendiente',
+            tipo: 'reparto_personal',
+            nota: data.nota || '',
+            timestamp: Date.now(),
+            historial: [{
+                estado: 'creado',
+                timestamp: Date.now(),
+                accion: 'creado_por_restaurante'
+            }]
+        };
+        
+        await db.ref(`envios/${envioId}`).set(envio);
+        
+        // 6. Enviar notificación al repartidor (ya está asignado)
+        // El repartidor verá el pedido en su lista
+        console.log('📤 Pedido creado, notificando al repartidor...');
+        
+        // Mostrar mensaje de éxito
+        showToast(`✅ Pedido #${pedidoId.substring(0, 8)} creado - Envío: $${pedido.envio.toFixed(2)}`, 'success');
+        renderizarVista();
+        
+        // 7. Opcional: reproducir sonido de nuevo pedido
+        reproducirSonidoLlegada();
+        
+    } catch (error) {
+        console.error('❌ Error al crear envío:', error);
+        showToast('❌ Error al crear envío', 'error');
+    }
+}
 
         // 26.4 VER DETALLE DE ENVÍO
         window.verDetalleEnvio = function(envioId) {

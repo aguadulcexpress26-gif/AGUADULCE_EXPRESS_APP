@@ -2113,78 +2113,147 @@
 
         // 26.1 CALCULAR COSTO DE ENVÍO (MISMA LÓGICA QUE VENTAS)
         // ============================================
-// CALCULAR COSTO DE ENVÍO (CON XMLHttpRequest)
 // ============================================
-async function calcularCostoEnvio(direccionCliente) {
-    return new Promise(async (resolve, reject) => {
-        try {
-            // 1. Obtener dirección del restaurante
-            const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
-            const restaurante = restSnap.val();
-            const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
-            
-            if (!direccionRestaurante) {
-                console.warn('⚠️ Restaurante sin dirección configurada, usando costo fijo');
-                resolve(5.00);
-                return;
-            }
-            
-            // 2. Hacer la llamada a Google Maps con XMLHttpRequest (evita CORS del SW)
-            const apiKey = 'AIzaSyBEapmpody3y_vFyPF0ngUnCn5ZFOtxPjs';
-            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(direccionRestaurante)}&destinations=${encodeURIComponent(direccionCliente)}&key=${apiKey}`;
-            
-            console.log('📤 Calculando distancia con Google Maps...');
-            
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', url, true);
-            xhr.onload = function() {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try {
-                        const data = JSON.parse(xhr.responseText);
-                        console.log('📨 Respuesta de Google Maps:', data);
-                        
-                        let distanciaKm = 5;
-                        
-                        if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
-                            const distanciaMetros = data.rows[0].elements[0].distance.value;
-                            distanciaKm = distanciaMetros / 1000;
-                            console.log(`📍 Distancia calculada: ${distanciaKm.toFixed(2)} km`);
-                        } else {
-                            console.warn('⚠️ No se pudo calcular distancia, usando valor por defecto:', data.status);
-                        }
-                        
-                        // Calcular costo
-                        const tarifaKm = restaurante.tarifa_envio_km || 1.50;
-                        const costoMinimo = restaurante.costo_envio_minimo || 3.00;
-                        let costo = distanciaKm * tarifaKm;
-                        costo = Math.max(costo, costoMinimo);
-                        costo = Math.round(costo * 100) / 100;
-                        
-                        console.log(`💰 Costo de envío calculado: $${costo.toFixed(2)}`);
-                        resolve(costo);
-                        
-                    } catch (error) {
-                        console.error('❌ Error al parsear respuesta:', error);
-                        resolve(5.00);
-                    }
-                } else {
-                    console.warn('⚠️ Error en la solicitud:', xhr.status, xhr.statusText);
-                    resolve(5.00);
-                }
-            };
-            
-            xhr.onerror = function() {
-                console.warn('⚠️ Error de red al calcular distancia');
-                resolve(5.00);
-            };
-            
-            xhr.send();
-            
-        } catch (error) {
-            console.error('❌ Error al calcular costo de envío:', error);
-            resolve(5.00);
+// CALCULAR COSTO DE ENVÍO (REUTILIZANDO LÓGICA DE VENTAS)
+// ============================================
+
+// Configuración de zonas (copiada de ventas)
+const ZONAS_ROQUETAS = {
+    kmIncluidos: 5,
+    tarifaBase: 2.50,
+    tarifaPorKm: 0.50,
+    maxEnvio: 8.00,
+    minEnvio: 2.50,
+    usoPlataforma: 0.99,
+    descuentoMinPedido: 20,
+    descuentoPorcentaje: 0.10
+};
+
+// Función para calcular distancia (copiada de ventas)
+async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
+    if (!direccionCliente || !direccionRestaurante) return null;
+
+    const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc';
+    const origen = encodeURIComponent(direccionRestaurante);
+    const destino = encodeURIComponent(direccionCliente);
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
+    
+    try {
+        // Usar proxy CORS
+        const proxyUrl = 'https://corsproxy.io/?';
+        const response = await fetch(proxyUrl + encodeURIComponent(url));
+        
+        if (!response.ok) {
+            console.warn(`⚠️ Proxy respondió con estado ${response.status}. Usando tarifa fija.`);
+            return null;
         }
-    });
+
+        const data = await response.json();
+        
+        if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+            const distanciaMetros = data.rows[0].elements[0].distance.value;
+            const distanciaKm = distanciaMetros / 1000;
+            const tiempoTexto = data.rows[0].elements[0].duration.text;
+            return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
+        } else {
+            console.warn('⚠️ No se pudo calcular distancia:', data.status);
+            return null;
+        }
+    } catch (error) {
+        console.error('❌ Error de red en Maps (Proxy):', error);
+        return null;
+    }
+}
+
+// Función para calcular costo de envío (copiada de ventas)
+function calcularCostoEnvioDesdeDistancia(distanciaKm, subtotalPedido = 0) {
+    if (distanciaKm === null || distanciaKm === undefined) {
+        return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
+    }
+    
+    let costoEnvio;
+    let mensaje = '';
+    let descuentoAplicado = false;
+    
+    if (distanciaKm <= ZONAS_ROQUETAS.kmIncluidos) {
+        costoEnvio = ZONAS_ROQUETAS.tarifaBase;
+    } else {
+        const kmExtra = distanciaKm - ZONAS_ROQUETAS.kmIncluidos;
+        costoEnvio = ZONAS_ROQUETAS.tarifaBase + (kmExtra * ZONAS_ROQUETAS.tarifaPorKm);
+    }
+    
+    // Descuento por pedido grande
+    if (subtotalPedido > ZONAS_ROQUETAS.descuentoMinPedido) {
+        const descuento = costoEnvio * ZONAS_ROQUETAS.descuentoPorcentaje;
+        costoEnvio = costoEnvio - descuento;
+        descuentoAplicado = true;
+        mensaje = `🎉 ¡Pedido superior a 20€! Descuento de envío (-${descuento.toFixed(2)}€)`;
+    }
+    
+    // Limitar costo
+    if (costoEnvio > ZONAS_ROQUETAS.maxEnvio) costoEnvio = ZONAS_ROQUETAS.maxEnvio;
+    if (costoEnvio < ZONAS_ROQUETAS.minEnvio) costoEnvio = ZONAS_ROQUETAS.minEnvio;
+    
+    // Redondear
+    costoEnvio = Math.ceil(costoEnvio * 20) / 20;
+    costoEnvio = Math.round(costoEnvio * 100) / 100;
+    
+    const usoPlataforma = ZONAS_ROQUETAS.usoPlataforma;
+    const total = costoEnvio + usoPlataforma;
+    
+    return {
+        envio: costoEnvio,
+        usoPlataforma: usoPlataforma,
+        total: Math.round(total * 100) / 100,
+        descuentoAplicado: descuentoAplicado,
+        mensaje: mensaje,
+        distanciaKm: distanciaKm
+    };
+}
+
+// Obtener dirección del restaurante
+function obtenerDireccionRestauranteLocal() {
+    // Intentar obtener del objeto global o de Firebase
+    return 'AVENIDA REINO DE ESPAÑA 20, Roquetas de Mar, Almería, España';
+}
+
+// FUNCIÓN PRINCIPAL: Calcular costo de envío
+async function calcularCostoEnvio(direccionCliente) {
+    try {
+        console.log(`📤 Calculando distancia para: "${direccionCliente}"`);
+        
+        // 1. Obtener dirección del restaurante
+        const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
+        const restaurante = restSnap.val();
+        const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || obtenerDireccionRestauranteLocal();
+        
+        if (!direccionRestaurante) {
+            console.warn('⚠️ Restaurante sin dirección, usando tarifa fija');
+            return 5.00;
+        }
+        
+        console.log(`📍 Restaurante: "${direccionRestaurante}"`);
+        
+        // 2. Calcular distancia con Google Maps
+        const distanciaData = await calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante);
+        
+        if (distanciaData && distanciaData.km !== null) {
+            console.log(`📍 Distancia: ${distanciaData.km.toFixed(2)} km, Tiempo: ${distanciaData.tiempo}`);
+            
+            // 3. Calcular costo (sin subtotal, solo envío)
+            const resultado = calcularCostoEnvioDesdeDistancia(distanciaData.km, 0);
+            console.log(`💰 Costo de envío: $${resultado.envio.toFixed(2)}`);
+            
+            return resultado.envio;
+        } else {
+            console.warn('⚠️ No se pudo calcular distancia, usando tarifa fija');
+            return 5.00;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error al calcular costo de envío:', error);
+        return 5.00;
+    }
 }
 
         // 26.2 ABRIR FORMULARIO DE REPARTO

@@ -2790,114 +2790,149 @@ async function crearEnvio(data) {
         };
 
         // 27.3 MOSTRAR RESUMEN DE ACUMULADOS
-        async function mostrarResumenAcumulados() {
-            try {
-                const pedidosSnap = await db.ref('pedidos').once('value');
-                const pedidos = pedidosSnap.val();
+       // ============================================
+// MOSTRAR RESUMEN DE ACUMULADOS (CORREGIDO)
+// ============================================
+async function mostrarResumenAcumulados() {
+    try {
+        const pedidosSnap = await db.ref('pedidos').once('value');
+        const pedidos = pedidosSnap.val();
+        
+        let totalHoy = 0;
+        let totalSemana = 0;
+        let totalQuincena = 0;
+        let totalMes = 0;
+        let totalEnvios = 0; // ← SOLO COSTO DE ENVÍO
+        
+        const ahora = new Date();
+        const inicioHoy = new Date(ahora);
+        inicioHoy.setHours(0, 0, 0, 0);
+        
+        const inicioSemana = new Date(ahora);
+        inicioSemana.setDate(ahora.getDate() - ahora.getDay());
+        inicioSemana.setHours(0, 0, 0, 0);
+        
+        const inicioQuincena = new Date(ahora);
+        if (ahora.getDate() <= 15) {
+            inicioQuincena.setDate(1);
+        } else {
+            inicioQuincena.setDate(16);
+        }
+        inicioQuincena.setHours(0, 0, 0, 0);
+        
+        const inicioMes = new Date(ahora);
+        inicioMes.setDate(1);
+        inicioMes.setHours(0, 0, 0, 0);
+        
+        // ============================================
+        // 1. CALCULAR PEDIDOS DE LA APP
+        // ============================================
+        if (pedidos) {
+            for (const [id, data] of Object.entries(pedidos)) {
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                if (restId !== restauranteId) continue;
                 
-                let totalHoy = 0;
-                let totalSemana = 0;
-                let totalQuincena = 0;
-                let totalMes = 0;
-                let totalEnvios = 0;
-                
-                const ahora = new Date();
-                const inicioHoy = new Date(ahora);
-                inicioHoy.setHours(0, 0, 0, 0);
-                
-                const inicioSemana = new Date(ahora);
-                inicioSemana.setDate(ahora.getDate() - ahora.getDay());
-                inicioSemana.setHours(0, 0, 0, 0);
-                
-                const inicioQuincena = new Date(ahora);
-                if (ahora.getDate() <= 15) {
-                    inicioQuincena.setDate(1);
-                } else {
-                    inicioQuincena.setDate(16);
+                // 🔥 IGNORAR PEDIDOS DE REPARTO PERSONAL
+                if (data.tipo === 'reparto_personal') {
+                    // ✅ SUMAR SOLO EL COSTO DE ENVÍO
+                    const costoEnvio = data.envio || 0;
+                    const fecha = data.timestamp ? new Date(data.timestamp) : null;
+                    
+                    if (fecha) {
+                        if (fecha >= inicioHoy) totalEnvios += costoEnvio;
+                        if (fecha >= inicioSemana) totalEnvios += costoEnvio; // Ya se sumó arriba, pero no duplicar
+                    }
+                    continue; // Saltar al siguiente pedido
                 }
-                inicioQuincena.setHours(0, 0, 0, 0);
                 
-                const inicioMes = new Date(ahora);
-                inicioMes.setDate(1);
-                inicioMes.setHours(0, 0, 0, 0);
-                
-                if (pedidos) {
-                    for (const [id, data] of Object.entries(pedidos)) {
-                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                        if (restId !== restauranteId) continue;
-                        
-                        const estado = data.estado ? data.estado.toLowerCase() : '';
-                        if (estado === 'entregado' || estado === 'listo') {
-                            const total = data.total || data.subtotal || 0;
-                            const fecha = data.timestamp ? new Date(data.timestamp) : null;
-                            
-                            if (fecha) {
-                                if (fecha >= inicioHoy) totalHoy += total;
-                                if (fecha >= inicioSemana) totalSemana += total;
-                                if (fecha >= inicioQuincena) totalQuincena += total;
-                                if (fecha >= inicioMes) totalMes += total;
-                            }
-                        }
+                // ✅ PEDIDOS NORMALES: SUMAR TOTAL COMPLETO
+                const estado = data.estado ? data.estado.toLowerCase() : '';
+                if (estado === 'entregado' || estado === 'listo') {
+                    const total = data.total || data.subtotal || 0;
+                    const fecha = data.timestamp ? new Date(data.timestamp) : null;
+                    
+                    if (fecha) {
+                        if (fecha >= inicioHoy) totalHoy += total;
+                        if (fecha >= inicioSemana) totalSemana += total;
+                        if (fecha >= inicioQuincena) totalQuincena += total;
+                        if (fecha >= inicioMes) totalMes += total;
                     }
                 }
-                
-                const enviosSnap = await db.ref('envios').once('value');
-                const envios = enviosSnap.val();
-                if (envios) {
-                    for (const [id, data] of Object.entries(envios)) {
-                        if (data.uid_restaurante !== restauranteId) continue;
-                        if (data.estado === 'entregado') {
-                            totalEnvios += data.monto || 0;
-                        }
-                    }
-                }
-                
-                Swal.fire({
-                    title: '📊 Resumen de Ventas',
-                    html: `
-                        <div style="text-align:left;padding:8px;">
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
-                                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Hoy</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalHoy.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Esta Semana</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalSemana.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Quincena</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalQuincena.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Este Mes</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalMes.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:6px 0;">
-                                    <span style="color:#94a3b8;">📦 Entregas (Reparto)</span>
-                                    <span style="color:#8b5cf6;font-weight:bold;">$${totalEnvios.toFixed(2)}</span>
-                                </div>
-                            </div>
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;">
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                                    <span style="color:#94a3b8;">📊 Total General</span>
-                                    <span style="color:#10b981;font-weight:bold;font-size:18px;">$${(totalHoy + totalEnvios).toFixed(2)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `,
-                    confirmButtonText: '✅ Cerrar',
-                    background: '#0f172a',
-                    color: 'white',
-                    confirmButtonColor: '#f59e0b'
-                });
-                
-            } catch (error) {
-                console.error('❌ Error al mostrar acumulados:', error);
-                showToast('❌ Error al cargar acumulados', 'error');
             }
         }
-
+        
+        // ============================================
+        // 2. CALCULAR ENVÍOS DE REPARTO PERSONAL
+        //    (Sumar SOLO el costo de envío)
+        // ============================================
+        const enviosSnap = await db.ref('envios').once('value');
+        const envios = enviosSnap.val();
+        if (envios) {
+            for (const [id, data] of Object.entries(envios)) {
+                if (data.uid_restaurante !== restauranteId) continue;
+                if (data.estado === 'entregado') {
+                    const costoEnvio = data.costo_envio || 0;
+                    const fecha = data.timestamp ? new Date(data.timestamp) : null;
+                    
+                    if (fecha) {
+                        if (fecha >= inicioHoy) totalEnvios += costoEnvio;
+                        if (fecha >= inicioSemana) totalEnvios += costoEnvio; // Ya se sumó arriba
+                    }
+                }
+            }
+        }
+        
+        // ============================================
+        // 3. MOSTRAR RESUMEN
+        // ============================================
+        Swal.fire({
+            title: '📊 Resumen de Ventas',
+            html: `
+                <div style="text-align:left;padding:8px;">
+                    <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Hoy (Pedidos App)</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${totalHoy.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Esta Semana</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${totalSemana.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Quincena</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${totalQuincena.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Este Mes</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${totalMes.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📦 Entregas (Reparto Personal)</span>
+                            <span style="color:#8b5cf6;font-weight:bold;">$${totalEnvios.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div style="background:#1e293b;border-radius:8px;padding:12px;">
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                            <span style="color:#94a3b8;">📊 Total General</span>
+                            <span style="color:#10b981;font-weight:bold;font-size:18px;">$${(totalHoy + totalEnvios).toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;font-size:11px;color:#64748b;text-align:center;border-top:1px solid #334155;padding-top:8px;">
+                        💡 Los repartos personales suman SOLO el costo de envío
+                    </div>
+                </div>
+            `,
+            confirmButtonText: '✅ Cerrar',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al mostrar acumulados:', error);
+        showToast('❌ Error al cargar acumulados', 'error');
+    }
+}
         // ============================================
         // 28. VER DETALLE DEL PEDIDO
         // ============================================

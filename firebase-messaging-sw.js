@@ -1,13 +1,12 @@
 // ============================================
-// FIREBASE MESSAGING SERVICE WORKER - NUEVO
-// UBICACIÓN: /firebase-messaging-sw-nuevo.js (RAÍZ)
+// FIREBASE MESSAGING SERVICE WORKER
 // PROYECTO: aguadulce-express-v2
 // ============================================
 
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
-// 🔥 CONFIGURACIÓN CORRECTA DEL PROYECTO ACTUAL
+// 🔥 CONFIGURACIÓN DEL PROYECTO ACTUAL
 const firebaseConfig = {
     apiKey: "AIzaSyBEapmpody3y_vFyPF0ngUnCn5ZFOtxPjs",
     authDomain: "aguadulce-express-v2.firebaseapp.com",
@@ -65,4 +64,4 @@ self.addEventListener('notificationclick', (event) => {
     );
 });
 
-console.log('✅ Firebase Messaging Service Worker NUEVO registrado correctamente');
+console.log('✅ Firebase Messaging Service Worker registrado correctamente');

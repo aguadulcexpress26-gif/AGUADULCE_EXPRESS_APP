@@ -1238,84 +1238,85 @@
         }
 
         // ============================================
-        // 17. RENDERIZAR VISTA PRINCIPAL
-        // ============================================
-        function renderizarVista() {
-            console.log('🔄 renderizarVista() ejecutada');
+// 17. RENDERIZAR VISTA PRINCIPAL (CORREGIDO)
+// ============================================
+function renderizarVista() {
+    console.log('🔄 renderizarVista() ejecutada');
+    
+    if (currentView === 'historial') {
+        mostrarVistaHistorial();
+        return;
+    }
+    
+    if (currentView === 'envios') {
+        mostrarVistaEnvios();
+        return;
+    }
+    
+    if (currentView === 'demoras') {
+        mostrarVistaDemoras();
+        return;
+    }
+    
+    // Vista de activos (pedidos en columnas)
+    db.ref('pedidos').once('value')
+        .then((snapshot) => {
+            const pedidos = snapshot.val();
             
-            if (currentView === 'historial') {
-                mostrarVistaHistorial();
+            document.getElementById('col-pendiente').innerHTML = '';
+            document.getElementById('col-coccion').innerHTML = '';
+            document.getElementById('col-listo').innerHTML = '';
+            
+            let countPendiente = 0;
+            let countCoccion = 0;
+            let countListo = 0;
+            
+            if (!pedidos) {
+                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                actualizarContadores(0, 0, 0);
                 return;
             }
             
-            if (currentView === 'envios') {
-                mostrarVistaEnvios();
-                return;
+            const pedidosArray = Object.entries(pedidos);
+            
+            for (const [id, data] of pedidosArray) {
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                if (restId !== restauranteId) continue;
+                
+                let estado = data.estado ? data.estado.toLowerCase() : '';
+                if (estado === 'recibido') estado = 'pendiente';
+                
+                if (estado === 'pendiente') {
+                    countPendiente++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                } else if (estado === 'coccion') {
+                    countCoccion++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                } else if (estado === 'listo' || estado === 'en_reparto') {
+                    countListo++;
+                    agregarPedidoAColumna(id, { ...data, estado: estado });
+                }
             }
             
-            if (currentView === 'demoras') {
-                mostrarVistaDemoras();
-                return;
+            if (countPendiente === 0) {
+                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+            }
+            if (countCoccion === 0) {
+                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+            }
+            if (countListo === 0) {
+                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
             }
             
-            db.ref('pedidos').once('value')
-                .then((snapshot) => {
-                    const pedidos = snapshot.val();
-                    
-                    document.getElementById('col-pendiente').innerHTML = '';
-                    document.getElementById('col-coccion').innerHTML = '';
-                    document.getElementById('col-listo').innerHTML = '';
-                    
-                    let countPendiente = 0;
-                    let countCoccion = 0;
-                    let countListo = 0;
-                    
-                    if (!pedidos) {
-                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                        actualizarContadores(0, 0, 0);
-                        return;
-                    }
-                    
-                    const pedidosArray = Object.entries(pedidos);
-                    
-                    for (const [id, data] of pedidosArray) {
-                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                        if (restId !== restauranteId) continue;
-                        
-                        let estado = data.estado ? data.estado.toLowerCase() : '';
-                        if (estado === 'recibido') estado = 'pendiente';
-                        
-                        if (estado === 'pendiente') {
-                            countPendiente++;
-                            agregarPedidoAColumna(id, { ...data, estado: estado });
-                        } else if (estado === 'coccion') {
-                            countCoccion++;
-                            agregarPedidoAColumna(id, { ...data, estado: estado });
-                        } else if (estado === 'listo' || estado === 'en_reparto') {
-                            countListo++;
-                            agregarPedidoAColumna(id, { ...data, estado: estado });
-                        }
-                    }
-                    
-                    if (countPendiente === 0) {
-                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                    }
-                    if (countCoccion === 0) {
-                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                    }
-                    if (countListo === 0) {
-                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                    }
-                    
-                    actualizarContadores(countPendiente, countCoccion, countListo);
-                    
-                })
-                .catch((error) => {
-                    console.error('Error al cargar pedidos:', error);
-                });
-        }
+            actualizarContadores(countPendiente, countCoccion, countListo);
+            
+        })
+        .catch((error) => {
+            console.error('Error al cargar pedidos:', error);
+        });
+}
 
         // ============================================
 // 18. AGREGAR PEDIDO A COLUMNA (CORREGIDO)
@@ -1446,17 +1447,17 @@ function agregarPedidoAColumna(id, data) {
         }
 
         // ============================================
-        // 20. ACTUALIZAR CONTADORES
-        // ============================================
-        function actualizarContadores(pendiente, coccion, listo) {
-            document.getElementById('count-pendiente').textContent = pendiente;
-            document.getElementById('count-coccion').textContent = coccion;
-            document.getElementById('count-listo').textContent = listo;
-            document.getElementById('col-count-pendiente').textContent = pendiente;
-            document.getElementById('col-count-coccion').textContent = coccion;
-            document.getElementById('col-count-listo').textContent = listo;
-            document.getElementById('contador-activos').textContent = pendiente + coccion + listo;
-        }
+// 20. ACTUALIZAR CONTADORES (CORREGIDO)
+// ============================================
+function actualizarContadores(pendiente, coccion, listo) {
+    document.getElementById('count-pendiente').textContent = pendiente;
+    document.getElementById('count-coccion').textContent = coccion;
+    document.getElementById('count-listo').textContent = listo;
+    document.getElementById('col-count-pendiente').textContent = pendiente;
+    document.getElementById('col-count-coccion').textContent = coccion;
+    document.getElementById('col-count-listo').textContent = listo;
+    document.getElementById('contador-activos').textContent = pendiente + coccion + listo;
+}
 
         // ============================================
         // 21. RESTAURAR VISTA DE 3 COLUMNAS

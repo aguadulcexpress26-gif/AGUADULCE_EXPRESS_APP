@@ -1454,25 +1454,72 @@ function mostrarVistaHistorial() {
 function cargarHistorialFiltrado() {
     console.log('📌 cargarHistorialFiltrado() ejecutada');
     
-    const container = document.getElementById('historial-contenido');
-    const contador = document.getElementById('col-count-historial');
-    const filtro = document.getElementById('filtro-historial');
+    // Buscar el contenedor de historial
+    let container = document.getElementById('historial-contenido');
     
+    // Si no existe, intentar encontrarlo de otra manera
     if (!container) {
-        console.log('❌ No se encontró contenedor de historial');
-        return;
+        const historialContainer = document.getElementById('historial-container');
+        if (historialContainer) {
+            container = historialContainer.querySelector('#historial-contenido');
+        }
     }
     
+    if (!container) {
+        console.log('❌ No se encontró contenedor de historial. Creándolo...');
+        // Crear contenedor si no existe
+        const historialContainer = document.getElementById('historial-container');
+        if (historialContainer) {
+            const newContent = document.createElement('div');
+            newContent.id = 'historial-contenido';
+            newContent.style.cssText = `
+                flex: 1;
+                overflow-y: auto;
+                padding: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+                background: #0f172a;
+            `;
+            historialContainer.appendChild(newContent);
+            container = newContent;
+        } else {
+            console.log('❌ No se encontró historial-container');
+            return;
+        }
+    }
+    
+    const contador = document.getElementById('col-count-historial');
+    const filtro = document.getElementById('filtro-historial');
     const filtroSeleccionado = filtro ? filtro.value : 'todos';
+    
     console.log('📌 Filtro seleccionado:', filtroSeleccionado);
     
+    // Limpiar contenedor
     container.innerHTML = '';
     
     db.ref('pedidos').once('value').then((snapshot) => {
         const pedidos = snapshot.val();
         
         if (!pedidos) {
-            mostrarMensajeVacioContainer(container, '📜', 'No hay pedidos en el historial');
+            const empty = document.createElement('div');
+            empty.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem 1rem;
+                color: #475569;
+                text-align: center;
+                font-size: 0.875rem;
+                height: 100%;
+                min-height: 120px;
+            `;
+            empty.innerHTML = `
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
+                <div>No hay pedidos en el historial</div>
+            `;
+            container.appendChild(empty);
             if (contador) contador.textContent = '0';
             return;
         }
@@ -1501,7 +1548,24 @@ function cargarHistorialFiltrado() {
             const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
                            filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
                            'No hay pedidos en el historial';
-            mostrarMensajeVacioContainer(container, '📜', mensaje);
+            const empty = document.createElement('div');
+            empty.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem 1rem;
+                color: #475569;
+                text-align: center;
+                font-size: 0.875rem;
+                height: 100%;
+                min-height: 120px;
+            `;
+            empty.innerHTML = `
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
+                <div>${mensaje}</div>
+            `;
+            container.appendChild(empty);
             if (contador) contador.textContent = '0';
             return;
         }
@@ -1597,7 +1661,7 @@ function cargarHistorialFiltrado() {
             container.appendChild(card);
         }
         
-        console.log('✅ Historial cargado correctamente');
+        console.log('✅ Historial cargado correctamente -', pedidosHistorial.length, 'pedidos');
         
     }).catch((error) => {
         console.error('❌ Error al cargar historial:', error);
@@ -3343,122 +3407,127 @@ function cargarHistorialFiltrado() {
             });
         };
 
-        // 30.3 MOSTRAR RESUMEN DE ACUMULADOS (CORREGIDO)
-        async function mostrarResumenAcumulados() {
-            try {
-                const pedidosSnap = await db.ref('pedidos').once('value');
-                const pedidos = pedidosSnap.val();
+       // ============================================
+// MOSTRAR RESUMEN DE ACUMULADOS (CORREGIDO)
+// ============================================
+async function mostrarResumenAcumulados() {
+    try {
+        const pedidosSnap = await db.ref('pedidos').once('value');
+        const pedidos = pedidosSnap.val();
+        
+        let ventasHoy = 0;
+        let ventasQuincena = 0;
+        let ventasMes = 0;
+        let repartosHoy = 0;
+        let repartosQuincena = 0;
+        let repartosMes = 0;
+        
+        const ahora = new Date();
+        const inicioHoy = new Date(ahora);
+        inicioHoy.setHours(0, 0, 0, 0);
+        
+        const inicioQuincena = new Date(ahora);
+        if (ahora.getDate() <= 15) {
+            inicioQuincena.setDate(1);
+        } else {
+            inicioQuincena.setDate(16);
+        }
+        inicioQuincena.setHours(0, 0, 0, 0);
+        
+        const inicioMes = new Date(ahora);
+        inicioMes.setDate(1);
+        inicioMes.setHours(0, 0, 0, 0);
+        
+        if (pedidos) {
+            for (const [id, data] of Object.entries(pedidos)) {
+                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                if (restId !== restauranteId) continue;
                 
-                let totalHoy = 0;
-                let totalQuincena = 0;
-                let totalMes = 0;
-                let totalEnviosHoy = 0;
-                let totalEnviosQuincena = 0;
-                let totalEnviosMes = 0;
+                const tipo = data.tipo || 'normal';
+                const estado = data.estado ? data.estado.toLowerCase() : '';
+                const fecha = data.timestamp ? new Date(data.timestamp) : null;
                 
-                const ahora = new Date();
-                const inicioHoy = new Date(ahora);
-                inicioHoy.setHours(0, 0, 0, 0);
+                if (!fecha) continue;
                 
-                const inicioQuincena = new Date(ahora);
-                if (ahora.getDate() <= 15) {
-                    inicioQuincena.setDate(1);
+                if (tipo === 'reparto_personal') {
+                    const costoEnvio = data.envio || 0;
+                    if (costoEnvio > 0) {
+                        if (fecha >= inicioHoy) repartosHoy += costoEnvio;
+                        if (fecha >= inicioQuincena) repartosQuincena += costoEnvio;
+                        if (fecha >= inicioMes) repartosMes += costoEnvio;
+                    }
                 } else {
-                    inicioQuincena.setDate(16);
-                }
-                inicioQuincena.setHours(0, 0, 0, 0);
-                
-                const inicioMes = new Date(ahora);
-                inicioMes.setDate(1);
-                inicioMes.setHours(0, 0, 0, 0);
-                
-                if (pedidos) {
-                    for (const [id, data] of Object.entries(pedidos)) {
-                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                        if (restId !== restauranteId) continue;
-                        
-                        const tipo = data.tipo || 'normal';
-                        const estado = data.estado ? data.estado.toLowerCase() : '';
-                        const fecha = data.timestamp ? new Date(data.timestamp) : null;
-                        
-                        if (!fecha) continue;
-                        
-                        if (tipo === 'reparto_personal') {
-                            const costoEnvio = data.envio || 0;
-                            if (costoEnvio > 0) {
-                                if (fecha >= inicioHoy) totalEnviosHoy += costoEnvio;
-                                if (fecha >= inicioQuincena) totalEnviosQuincena += costoEnvio;
-                                if (fecha >= inicioMes) totalEnviosMes += costoEnvio;
-                            }
-                        } else {
-                            if (estado === 'entregado' || estado === 'listo') {
-                                const subtotal = data.subtotal || 0;
-                                if (subtotal > 0) {
-                                    if (fecha >= inicioHoy) totalHoy += subtotal;
-                                    if (fecha >= inicioQuincena) totalQuincena += subtotal;
-                                    if (fecha >= inicioMes) totalMes += subtotal;
-                                }
-                            }
+                    if (estado === 'entregado' || estado === 'listo') {
+                        const subtotal = data.subtotal || 0;
+                        if (subtotal > 0) {
+                            if (fecha >= inicioHoy) ventasHoy += subtotal;
+                            if (fecha >= inicioQuincena) ventasQuincena += subtotal;
+                            if (fecha >= inicioMes) ventasMes += subtotal;
                         }
                     }
                 }
-                
-                Swal.fire({
-                    title: '📊 Resumen de Acumulados',
-                    html: `
-                        <div style="text-align:left;padding:8px;">
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
-                                <div style="color:#f59e0b;font-weight:bold;font-size:14px;margin-bottom:6px;">🛒 Ventas (Clientes)</div>
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Hoy</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalHoy.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Quincena</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalQuincena.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                                    <span style="color:#94a3b8;">📅 Mes</span>
-                                    <span style="color:#f59e0b;font-weight:bold;">$${totalMes.toFixed(2)}</span>
-                                </div>
-                            </div>
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
-                                <div style="color:#8b5cf6;font-weight:bold;font-size:14px;margin-bottom:6px;">📦 Repartos Personales</div>
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Hoy</span>
-                                    <span style="color:#8b5cf6;font-weight:bold;">$${totalEnviosHoy.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                                    <span style="color:#94a3b8;">📅 Quincena</span>
-                                    <span style="color:#8b5cf6;font-weight:bold;">$${totalEnviosQuincena.toFixed(2)}</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                                    <span style="color:#94a3b8;">📅 Mes</span>
-                                    <span style="color:#8b5cf6;font-weight:bold;">$${totalEnviosMes.toFixed(2)}</span>
-                                </div>
-                            </div>
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;">
-                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                                    <span style="color:#94a3b8;font-weight:bold;">📊 Total General</span>
-                                    <span style="color:#10b981;font-weight:bold;font-size:18px;">$${(totalHoy + totalEnviosHoy).toFixed(2)}</span>
-                                </div>
-                                <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;">
-                                    💡 Ventas = Subtotal (base) | Repartos = Costo de envío
-                                </div>
-                            </div>
-                        </div>
-                    `,
-                    confirmButtonText: '✅ Cerrar',
-                    background: '#0f172a',
-                    color: 'white',
-                    confirmButtonColor: '#f59e0b'
-                });
-                
-            } catch (error) {
-                console.error('❌ Error al mostrar acumulados:', error);
-                showToast('❌ Error al cargar acumulados', 'error');
             }
         }
+        
+        // 🔥 CALCULAR TOTAL GENERAL CORRECTAMENTE
+        const totalGeneral = ventasHoy + repartosHoy;
+        
+        Swal.fire({
+            title: '📊 Resumen de Acumulados',
+            html: `
+                <div style="text-align:left;padding:8px;">
+                    <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
+                        <div style="color:#f59e0b;font-weight:bold;font-size:14px;margin-bottom:6px;">🛒 Ventas (Clientes)</div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Hoy</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${ventasHoy.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Quincena</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${ventasQuincena.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                            <span style="color:#94a3b8;">📅 Mes</span>
+                            <span style="color:#f59e0b;font-weight:bold;">$${ventasMes.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
+                        <div style="color:#8b5cf6;font-weight:bold;font-size:14px;margin-bottom:6px;">📦 Repartos Personales</div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Hoy</span>
+                            <span style="color:#8b5cf6;font-weight:bold;">$${repartosHoy.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;">📅 Quincena</span>
+                            <span style="color:#8b5cf6;font-weight:bold;">$${repartosQuincena.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                            <span style="color:#94a3b8;">📅 Mes</span>
+                            <span style="color:#8b5cf6;font-weight:bold;">$${repartosMes.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div style="background:#1e293b;border-radius:8px;padding:12px;">
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                            <span style="color:#94a3b8;font-weight:bold;">📊 Total General</span>
+                            <span style="color:#10b981;font-weight:bold;font-size:18px;">$${totalGeneral.toFixed(2)}</span>
+                        </div>
+                        <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;">
+                            💡 Ventas = Subtotal (base) | Repartos = Costo de envío
+                        </div>
+                    </div>
+                </div>
+            `,
+            confirmButtonText: '✅ Cerrar',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al mostrar acumulados:', error);
+        showToast('❌ Error al cargar acumulados', 'error');
+    }
+}
 
         // ============================================
         // 31. VER DETALLE DEL PEDIDO

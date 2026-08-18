@@ -1076,7 +1076,7 @@
         }
 
         // ============================================
-        // 13. ESCUCHAR PEDIDOS
+        // 13. ESCUCHAR PEDIDOS CON SONIDO REPETIDO
         // ============================================
         let pedidosAnteriores = {};
 
@@ -1106,11 +1106,18 @@
                 
                 if (nuevosPedidos.length > 0) {
                     console.log(`🔔 ${nuevosPedidos.length} nuevo(s) pedido(s) recibido(s)`);
-                    reproducirSonidoLlegada();
                     
                     for (const pedido of nuevosPedidos) {
                         const cliente = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
                         showToast(`📦 Nuevo pedido de ${cliente}`, 'info');
+                        
+                        // 🔥 INICIAR SONIDO REPETIDO PARA PEDIDOS EN ESTADO RECIBIDO
+                        const estado = pedido.estado ? pedido.estado.toLowerCase() : '';
+                        if (estado === 'recibido' || estado === 'pendiente') {
+                            if (!sonidoActivo) {
+                                iniciarSonidoRepetido(pedido.id);
+                            }
+                        }
                     }
                 }
                 
@@ -1119,7 +1126,7 @@
             });
             
             pedidosListeners.push(pedidosRef);
-            console.log('✅ Listener de pedidos activado');
+            console.log('✅ Listener de pedidos activado con sonido repetido');
         }
 
         // ============================================
@@ -1179,7 +1186,7 @@
         }
 
         // ============================================
-        // 16. SONIDO REPETIDO
+        // 16. SONIDO REPETIDO HASTA ACEPTAR/RECHAZAR
         // ============================================
         function iniciarSonidoRepetido(pedidoId) {
             if (pedidoSonando === pedidoId) return;
@@ -1845,7 +1852,7 @@
         // 25. FUNCIONES DE BOTONES - PEDIDOS
         // ============================================
 
-        // 25.1 ACEPTAR PEDIDO
+        // 25.1 ACEPTAR PEDIDO (CON NOTIFICACIÓN)
         window.aceptarPedido = async function(pedidoId) {
             if (estaPausado) {
                 showToast('⏸️ Restaurante en pausa. No se pueden aceptar pedidos.', 'warning');
@@ -1914,7 +1921,7 @@
             }
         };
 
-        // 25.3 MARCAR LISTO
+        // 25.3 MARCAR LISTO (SIN NOTIFICACIÓN)
         window.marcarListo = async function(pedidoId) {
             try {
                 const snapshot = await db.ref(`pedidos/${pedidoId}`).once('value');
@@ -2044,9 +2051,11 @@
             }
         }
 
-        // 26.2 NOTIFICAR REPARTIDOR
+        // 26.2 NOTIFICAR REPARTIDOR (SIN CAMBIAR ESTADO)
         window.notificarRepartidor = async function(pedidoId) {
             try {
+                console.log('📤 notificarRepartidor() ejecutada para pedido:', pedidoId);
+                
                 const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
                 const pedido = pedidoSnap.val();
                 
@@ -2108,19 +2117,16 @@
                     }
                 }
 
+                // 🔥 SOLO ASIGNAR REPARTIDOR - NO CAMBIAR ESTADO
                 await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
                 await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
-                await db.ref(`pedidos/${pedidoId}/estado`).set('EN_REPARTO');
                 await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
-                await db.ref(`pedidos/${pedidoId}/historial`).push({
-                    estado: 'EN_REPARTO',
-                    timestamp: Date.now(),
-                    usuario: currentUser.uid,
-                    accion: 'asignar_repartidor',
-                    repartidor: repartidorId,
-                    repartidor_nombre: repartidorData.nombre || 'Repartidor'
-                });
+                // EL ESTADO SIGUE SIENDO "COCCION" - NO SE CAMBIA A EN_REPARTO
 
+                console.log('✅ Repartidor asignado:', repartidorId);
+                
+                // 🔥 ENVIAR NOTIFICACIÓN
+                console.log('📨 Enviando notificación al repartidor...');
                 await enviarNotificacionConCloudFunction(repartidorId, pedidoId, 'pedido');
 
                 showToast(`✅ Repartidor asignado: ${repartidorData.nombre || 'Repartidor'}`, 'success');
@@ -2490,7 +2496,8 @@
                 
                 await db.ref(`envios/${envioId}`).set(envio);
                 
-                console.log('📤 Enviando notificación al repartidor...');
+                // 🔥 ENVIAR NOTIFICACIÓN AL REPARTIDOR (REPARTO PERSONAL)
+                console.log('📤 Enviando notificación al repartidor (reparto personal)...');
                 await enviarNotificacionConCloudFunction(repartidorId, pedidoId, 'pedido');
                 
                 showToast(`✅ Pedido #${pedidoId.substring(0, 8)} listo para recoger - Envío: $${pedido.envio.toFixed(2)}`, 'success');

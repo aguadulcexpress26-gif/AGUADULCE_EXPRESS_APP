@@ -1406,11 +1406,14 @@
                 </div>
                 <div class="cliente">${clienteNombre}</div>
                 <div class="detalle">${direccion}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;">
+                    <span class="tiempo-elaboracion ${tiempoClase}">${tiempoDisplay}</span>
+                    <span style="font-size:0.7rem;color:#64748b;">${timestamp}</span>
+                </div>
                 <div class="productos">${productosHtml}</div>
                 <div class="footer">
                     <span class="precio">$${total.toFixed(2)}</span>
-                    <span class="tiempo">${timestamp}</span>
-                    ${botones}
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">${botones}</div>
                 </div>
             `;
             
@@ -1482,7 +1485,7 @@
         }
 
         // ============================================
-        // 22. MOSTRAR VISTA HISTORIAL
+        // 22. MOSTRAR VISTA HISTORIAL CON BOTÓN EN CABECERA
         // ============================================
         function mostrarVistaHistorial() {
             const columna = document.getElementById('col-pendiente');
@@ -1498,10 +1501,23 @@
             columna.parentElement.style.display = 'flex';
             columna.parentElement.style.maxWidth = '100%';
             
-            const header = columna.parentElement.querySelector('.columna-header .titulo');
-            if (header) header.innerHTML = '📜 Historial de Pedidos';
+            const header = columna.parentElement.querySelector('.columna-header');
             
-            const contador = columna.parentElement.querySelector('.columna-header .cantidad');
+            // Header con botón de acumulados
+            header.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                    <span class="titulo">📜 Historial de Pedidos</span>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="cantidad" id="col-count-historial">0</span>
+                        <button onclick="mostrarAcumulados()" 
+                                style="background:#1e293b;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;transition:all 0.3s;">
+                            🔒 Acumulados
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            const contador = document.getElementById('col-count-historial');
             
             db.ref('pedidos').once('value').then((snapshot) => {
                 const pedidos = snapshot.val();
@@ -1548,6 +1564,16 @@
                     const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
                     const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
                     
+                    const demora = pedido.demora || pedido.tiempo_demora || 0;
+                    const tiempoPreparacion = pedido.tiempo_preparacion || 0;
+                    
+                    let tiempoDisplay = '';
+                    if (demora > 0) {
+                        tiempoDisplay = `⏱️ Demora: ${demora} min`;
+                    } else if (tiempoPreparacion > 0) {
+                        tiempoDisplay = `⏱️ Preparación: ${tiempoPreparacion} min`;
+                    }
+                    
                     const subtotal = pedido.subtotal || 0;
                     const total = pedido.total || 0;
                     const envio = pedido.envio || 0;
@@ -1574,6 +1600,7 @@
                         <div class="cliente">${clienteNombre}</div>
                         <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
                         <div class="detalle" style="margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
+                        ${tiempoDisplay ? `<div style="font-size:11px;color:#f59e0b;margin-top:4px;">${tiempoDisplay}</div>` : ''}
                         <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
                         <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;flex-direction:column;gap:4px;">
                             <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
@@ -1598,22 +1625,6 @@
                     
                     columna.appendChild(card);
                 }
-                
-                // Botón para ver acumulados
-                const btnAcumulados = document.createElement('div');
-                btnAcumulados.style.cssText = `
-                    margin-top: 16px;
-                    display: flex;
-                    justify-content: center;
-                    padding: 8px;
-                `;
-                btnAcumulados.innerHTML = `
-                    <button onclick="mostrarAcumulados()" 
-                            style="background:#1e293b;border:2px solid #f59e0b;color:#f59e0b;padding:10px 32px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;">
-                        🔒 Ver Acumulados
-                    </button>
-                `;
-                columna.appendChild(btnAcumulados);
                 
             }).catch((error) => {
                 console.error('Error al cargar historial:', error);
@@ -1874,8 +1885,6 @@
                 // 🔥 NOTIFICAR AL REPARTIDOR AL ACEPTAR
                 console.log('📤 Notificando al repartidor (pedido aceptado)...');
                 await notificarRepartidor(pedidoId);
-                
-                // 🔥 DETENER SONIDO
                 detenerSonidoRepetido();
                 
             } catch (error) {
@@ -1884,7 +1893,7 @@
             }
         };
 
-        // 25.2 RECHAZAR PEDIDO
+        // 25.2 RECHAZAR PEDIDO (CON DETENER SONIDO)
         window.rechazarPedido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -1948,8 +1957,7 @@
                 showToast(`✅ Pedido listo (${tiempoPreparacion} min)`, 'success');
                 renderizarVista();
                 
-                // ❌ NOTIFICACIÓN ELIMINADA (YA SE ENVIÓ AL ACEPTAR)
-                // await notificarRepartidor(pedidoId);
+                // ❌ ELIMINADO: await notificarRepartidor(pedidoId);
                 
             } catch (error) {
                 console.error('Error al marcar listo:', error);
@@ -2054,8 +2062,6 @@
         // 26.2 NOTIFICAR REPARTIDOR (SIN CAMBIAR ESTADO)
         window.notificarRepartidor = async function(pedidoId) {
             try {
-                console.log('📤 notificarRepartidor() ejecutada para pedido:', pedidoId);
-                
                 const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
                 const pedido = pedidoSnap.val();
                 
@@ -2121,11 +2127,18 @@
                 await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
                 await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
                 await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
-                // EL ESTADO SIGUE SIENDO "COCCION" - NO SE CAMBIA A EN_REPARTO
+                // ❌ ELIMINADO: await db.ref(`pedidos/${pedidoId}/estado`).set('EN_REPARTO');
+                await db.ref(`pedidos/${pedidoId}/historial`).push({
+                    estado: 'coccion',
+                    timestamp: Date.now(),
+                    usuario: currentUser.uid,
+                    accion: 'asignar_repartidor',
+                    repartidor: repartidorId,
+                    repartidor_nombre: repartidorData.nombre || 'Repartidor'
+                });
 
                 console.log('✅ Repartidor asignado:', repartidorId);
                 
-                // 🔥 ENVIAR NOTIFICACIÓN
                 console.log('📨 Enviando notificación al repartidor...');
                 await enviarNotificacionConCloudFunction(repartidorId, pedidoId, 'pedido');
 
@@ -2143,6 +2156,111 @@
         // ============================================
 
         // 27.1 CALCULAR COSTO DE ENVÍO
+        // ============================================
+        // CALCULAR COSTO DE ENVÍO (REUTILIZANDO LÓGICA DE VENTAS)
+        // ============================================
+
+        // Configuración de zonas (copiada de ventas)
+        const ZONAS_ROQUETAS = {
+            kmIncluidos: 5,
+            tarifaBase: 2.50,
+            tarifaPorKm: 0.50,
+            maxEnvio: 8.00,
+            minEnvio: 2.50,
+            usoPlataforma: 0.99,
+            descuentoMinPedido: 20,
+            descuentoPorcentaje: 0.10
+        };
+
+        // Función para calcular distancia (copiada de ventas)
+        async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
+            if (!direccionCliente || !direccionRestaurante) return null;
+
+            const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc';
+            const origen = encodeURIComponent(direccionRestaurante);
+            const destino = encodeURIComponent(direccionCliente);
+            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
+            
+            try {
+                const proxyUrl = 'https://corsproxy.io/?';
+                const response = await fetch(proxyUrl + encodeURIComponent(url));
+                
+                if (!response.ok) {
+                    console.warn(`⚠️ Proxy respondió con estado ${response.status}. Usando tarifa fija.`);
+                    return null;
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+                    const distanciaMetros = data.rows[0].elements[0].distance.value;
+                    const distanciaKm = distanciaMetros / 1000;
+                    const tiempoTexto = data.rows[0].elements[0].duration.text;
+                    return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
+                } else {
+                    console.warn('⚠️ No se pudo calcular distancia:', data.status);
+                    return null;
+                }
+            } catch (error) {
+                console.error('❌ Error de red en Maps (Proxy):', error);
+                return null;
+            }
+        }
+
+        // Función para calcular costo de envío (copiada de ventas)
+        function calcularCostoEnvioDesdeDistancia(distanciaKm, subtotalPedido = 0) {
+            if (distanciaKm === null || distanciaKm === undefined) {
+                return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
+            }
+            
+            let costoEnvio;
+            let mensaje = '';
+            let descuentoAplicado = false;
+            
+            if (distanciaKm <= ZONAS_ROQUETAS.kmIncluidos) {
+                costoEnvio = ZONAS_ROQUETAS.tarifaBase;
+            } else {
+                const kmExtra = distanciaKm - ZONAS_ROQUETAS.kmIncluidos;
+                costoEnvio = ZONAS_ROQUETAS.tarifaBase + (kmExtra * ZONAS_ROQUETAS.tarifaPorKm);
+            }
+            
+            // Descuento por pedido grande
+            if (subtotalPedido > ZONAS_ROQUETAS.descuentoMinPedido) {
+                const descuento = costoEnvio * ZONAS_ROQUETAS.descuentoPorcentaje;
+                costoEnvio = costoEnvio - descuento;
+                descuentoAplicado = true;
+                mensaje = `🎉 ¡Pedido superior a 20€! Descuento de envío (-${descuento.toFixed(2)}€)`;
+            }
+            
+            // Limitar costo
+            if (costoEnvio > ZONAS_ROQUETAS.maxEnvio) costoEnvio = ZONAS_ROQUETAS.maxEnvio;
+            if (costoEnvio < ZONAS_ROQUETAS.minEnvio) costoEnvio = ZONAS_ROQUETAS.minEnvio;
+            
+            // Redondear
+            costoEnvio = Math.ceil(costoEnvio * 20) / 20;
+            costoEnvio = Math.round(costoEnvio * 100) / 100;
+            
+            const usoPlataforma = ZONAS_ROQUETAS.usoPlataforma;
+            const total = costoEnvio + usoPlataforma;
+            
+            return {
+                envio: costoEnvio,
+                usoPlataforma: usoPlataforma,
+                total: Math.round(total * 100) / 100,
+                descuentoAplicado: descuentoAplicado,
+                mensaje: mensaje,
+                distanciaKm: distanciaKm
+            };
+        }
+
+        // Obtener dirección del restaurante
+        function obtenerDireccionRestauranteLocal() {
+            return 'AVENIDA REINO DE ESPAÑA 20, Roquetas de Mar, Almería, España';
+        }
+
+        // ============================================
+        // CALCULAR COSTO DE ENVÍO (SOLO ROQUETAS DE MAR)
+        // ============================================
         async function calcularCostoEnvio(direccionCliente) {
             try {
                 const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
@@ -2166,6 +2284,7 @@
                 
                 if (result.data.success) {
                     const distanciaKm = result.data.distanciaKm;
+                    
                     const DISTANCIA_MAXIMA_KM = 20;
                     
                     if (distanciaKm > DISTANCIA_MAXIMA_KM) {
@@ -2197,72 +2316,110 @@
             }
         }
 
-        // 27.2 ABRIR FORMULARIO DE REPARTO
+        // ============================================
+        // ABRIR FORMULARIO DE REPARTO (VERSIÓN MEJORADA)
+        // ============================================
         window.abrirFormularioReparto = function() {
             Swal.fire({
                 title: '🚚 Nuevo Reparto Personal',
                 html: `
                     <div style="text-align:left;color:white;padding:4px;">
+                        <!-- Cliente -->
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#f59e0b;">👤</span> Cliente <span style="color:#ef4444;">*</span>
                             </label>
-                            <input id="cliente" class="swal2-input" placeholder="Nombre del cliente" 
-                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                            <div style="position:relative;">
+                                <input id="cliente" class="swal2-input" placeholder="Nombre del cliente" 
+                                       style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;transition:all 0.3s;outline:none;"
+                                       onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.2)'"
+                                       onblur="this.style.borderColor='#334155';this.style.boxShadow='none'">
+                            </div>
                         </div>
+
+                        <!-- Teléfono -->
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#f59e0b;">📞</span> Teléfono <span style="color:#ef4444;">*</span>
                             </label>
-                            <input id="telefono" class="swal2-input" placeholder="Teléfono del cliente" 
-                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                            <div style="position:relative;">
+                                <input id="telefono" class="swal2-input" placeholder="Teléfono del cliente" 
+                                       style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;transition:all 0.3s;outline:none;"
+                                       onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.2)'"
+                                       onblur="this.style.borderColor='#334155';this.style.boxShadow='none'">
+                            </div>
                         </div>
+
+                        <!-- Dirección -->
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#f59e0b;">📍</span> Dirección <span style="color:#ef4444;">*</span>
                             </label>
-                            <input id="direccion" class="swal2-input" placeholder="Calle, número, Roquetas de Mar" 
-                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#f59e0b;background:#1e293b;padding:6px 12px;border-radius:8px;">
-                                <span>⚠️</span>
-                                <span>Solo disponible en <strong>Roquetas de Mar</strong> (C.P. 04740)</span>
+                            <div style="position:relative;">
+                                <input id="direccion" class="swal2-input" placeholder="Calle, número, Roquetas de Mar" 
+                                       style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;transition:all 0.3s;outline:none;"
+                                       onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.2)'"
+                                       onblur="this.style.borderColor='#334155';this.style.boxShadow='none'">
+                                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#f59e0b;background:#1e293b;padding:6px 12px;border-radius:8px;">
+                                    <span>⚠️</span>
+                                    <span>Solo disponible en <strong>Roquetas de Mar</strong> (C.P. 04740)</span>
+                                </div>
                             </div>
                         </div>
+
+                        <!-- Monto -->
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#f59e0b;">💰</span> Monto del pedido <span style="color:#ef4444;">*</span>
                             </label>
-                            <input id="monto" class="swal2-input" placeholder="0.00" type="number" step="0.01" 
-                                   style="width:100%;padding:12px 16px 12px 36px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#94a3b8;font-weight:600;">€</span>
+                                <input id="monto" class="swal2-input" placeholder="0.00" type="number" step="0.01" 
+                                       style="width:100%;padding:12px 16px 12px 36px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;transition:all 0.3s;outline:none;"
+                                       onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.2)'"
+                                       onblur="this.style.borderColor='#334155';this.style.boxShadow='none'">
+                            </div>
                         </div>
+
+                        <!-- Estado del pago -->
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#f59e0b;">💳</span> Estado del pago <span style="color:#ef4444;">*</span>
                             </label>
                             <select id="estado_pago" 
-                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;transition:all 0.3s;outline:none;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%2394a3b8\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"/></svg>');background-repeat:no-repeat;background-position:right 16px center;background-size:16px;"
+                                    onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.2)'"
+                                    onblur="this.style.borderColor='#334155';this.style.boxShadow='none'">
                                 <option value="pagado" style="background:#1e293b;">✅ Ya está pagado</option>
                                 <option value="cobrar" style="background:#1e293b;">💵 Cobrar en sitio</option>
                             </select>
                         </div>
+
+                        <!-- Nota -->
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#f59e0b;">📝</span> Nota <span style="color:#64748b;">(opcional)</span>
                             </label>
-                            <textarea id="nota" placeholder="Detalles del pedido" 
-                                      style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;min-height:60px;outline:none;"></textarea>
+                            <textarea id="nota" placeholder="Detalles del pedido (ej: 2 pizzas, 1 refresco)" 
+                                      style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;min-height:60px;resize:vertical;transition:all 0.3s;outline:none;font-family:inherit;"
+                                      onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.2)'"
+                                      onblur="this.style.borderColor='#334155';this.style.boxShadow='none'"></textarea>
                         </div>
-                        <div style="margin-top:8px;padding:16px;background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);border-radius:14px;border:2px solid #334155;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
+
+                        <!-- Costo de envío - CARD DESTACADA -->
+                        <div style="margin-top:8px;padding:16px;background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);border-radius:14px;border:2px solid #334155;position:relative;overflow:hidden;">
+                            <div style="position:absolute;top:-50px;right:-50px;width:120px;height:120px;background:rgba(245,158,11,0.05);border-radius:50%;"></div>
+                            <div style="position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;">
                                 <div>
                                     <div style="font-size:12px;color:#94a3b8;font-weight:500;">🚚 Costo de envío</div>
                                     <div style="font-size:11px;color:#64748b;margin-top:2px;">Calculado según distancia</div>
                                 </div>
                                 <div style="text-align:right;">
-                                    <div id="costo-envio-display" style="font-size:22px;font-weight:700;color:#f59e0b;">Calculando...</div>
+                                    <div id="costo-envio-display" style="font-size:22px;font-weight:700;color:#f59e0b;transition:all 0.3s;">Calculando...</div>
                                 </div>
                             </div>
                         </div>
+
                         <div style="margin-top:12px;font-size:11px;color:#64748b;text-align:center;">
                             <span style="color:#ef4444;">*</span> Campos obligatorios
                         </div>
@@ -2276,6 +2433,12 @@
                 confirmButtonColor: '#8b5cf6',
                 cancelButtonColor: '#334155',
                 width: '92%',
+                maxWidth: '500px',
+                customClass: {
+                    confirmButton: 'swal2-confirm',
+                    cancelButton: 'swal2-cancel'
+                },
+                buttonsStyling: false,
                 didOpen: () => {
                     const direccionInput = document.getElementById('direccion');
                     const costoDisplay = document.getElementById('costo-envio-display');
@@ -2366,7 +2529,12 @@
             });
         };
 
+        console.log('✅ Formulario de reparto mejorado y actualizado');
+
         // 27.3 CREAR ENVÍO
+        // ============================================
+        // CREAR ENVÍO (GUARDA EN PEDIDOS Y ENVÍOS)
+        // ============================================
         async function crearEnvio(data) {
             try {
                 const repartidoresSnap = await db.ref('repartidores')
@@ -2496,8 +2664,7 @@
                 
                 await db.ref(`envios/${envioId}`).set(envio);
                 
-                // 🔥 ENVIAR NOTIFICACIÓN AL REPARTIDOR (REPARTO PERSONAL)
-                console.log('📤 Enviando notificación al repartidor (reparto personal)...');
+                console.log('📤 Enviando notificación al repartidor...');
                 await enviarNotificacionConCloudFunction(repartidorId, pedidoId, 'pedido');
                 
                 showToast(`✅ Pedido #${pedidoId.substring(0, 8)} listo para recoger - Envío: $${pedido.envio.toFixed(2)}`, 'success');

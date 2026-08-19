@@ -3724,7 +3724,178 @@ window.imprimirTicketPrueba = imprimirTicketPrueba;
                     });
             });
         }
+        
     </script>
+<!-- ============================================
+   BOTÓN DE INSTALACIÓN DE PWA (DENTRO DE LA APP)
+   ============================================ -->
+<div id="pwa-install-banner" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:9999; background:linear-gradient(135deg, #f59e0b, #d97706); color:#0f172a; padding:12px 24px; border-radius:16px; box-shadow:0 10px 40px rgba(245,158,11,0.5); display:flex; align-items:center; gap:16px; max-width:90%;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:24px;">📱</span>
+        <div>
+            <div style="font-weight:700; font-size:14px;">¡Instala Aguadulce Express!</div>
+            <div style="font-size:11px; opacity:0.8;">Acceso directo como app nativa</div>
+        </div>
+    </div>
+    <button id="btn-instalar-pwa" style="background:#0f172a; color:#f59e0b; border:none; padding:8px 20px; border-radius:9999px; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap;">
+        ✅ Instalar
+    </button>
+    <button id="btn-cerrar-instalacion" style="background:transparent; border:none; color:#0f172a; font-size:20px; cursor:pointer; padding:0 4px;">✕</button>
+</div>
 
+<script>
+// ============================================
+// 36. SISTEMA DE INSTALACIÓN DE PWA
+// ============================================
+
+// 36.1 DETECTAR SI LA APP YA ESTÁ INSTALADA
+function isAppInstalled() {
+    // Si está en modo standalone, ya está instalada
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+        return true;
+    }
+    // Si está en iOS como PWA
+    if (window.navigator.standalone === true) {
+        return true;
+    }
+    return false;
+}
+
+// 36.2 MOSTRAR U OCULTAR BANNER DE INSTALACIÓN
+function mostrarBannerInstalacion() {
+    const banner = document.getElementById('pwa-install-banner');
+    
+    // Si la app ya está instalada, ocultar banner
+    if (isAppInstalled()) {
+        banner.style.display = 'none';
+        return;
+    }
+    
+    // Si estamos en un navegador compatible y no está instalada
+    if ('beforeinstallprompt' in window || 'getInstalledRelatedApps' in window) {
+        banner.style.display = 'flex';
+        console.log('📱 Banner de instalación mostrado');
+    } else {
+        banner.style.display = 'none';
+        console.log('⚠️ Navegador no compatible con instalación PWA');
+    }
+}
+
+// 36.3 VARIABLE PARA EL PROMPT DE INSTALACIÓN
+let deferredPrompt = null;
+
+// 36.4 CAPTURAR EVENTO DE INSTALACIÓN
+window.addEventListener('beforeinstallprompt', (e) => {
+    console.log('📱 Evento beforeinstallprompt detectado');
+    e.preventDefault();
+    deferredPrompt = e;
+    
+    // Mostrar el banner de instalación
+    const banner = document.getElementById('pwa-install-banner');
+    banner.style.display = 'flex';
+});
+
+// 36.5 BOTÓN DE INSTALACIÓN
+document.getElementById('btn-instalar-pwa').addEventListener('click', async () => {
+    if (!deferredPrompt) {
+        // Si no hay deferredPrompt, mostrar mensaje alternativo
+        Swal.fire({
+            title: '📱 Instalar App',
+            text: 'Para instalar la app, usa el menú del navegador (⋮) → "Instalar aplicación" o "Añadir a pantalla de inicio"',
+            icon: 'info',
+            confirmButtonText: 'Entendido',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        });
+        return;
+    }
+    
+    // Mostrar el diálogo de instalación
+    deferredPrompt.prompt();
+    
+    // Esperar la elección del usuario
+    const result = await deferredPrompt.userChoice;
+    console.log('📱 Elección del usuario:', result.outcome);
+    
+    if (result.outcome === 'accepted') {
+        console.log('✅ App instalada correctamente');
+        showToast('✅ ¡App instalada con éxito!', 'success');
+        
+        // Ocultar banner
+        document.getElementById('pwa-install-banner').style.display = 'none';
+    } else {
+        console.log('❌ Instalación rechazada');
+        showToast('❌ Instalación cancelada', 'error');
+    }
+    
+    deferredPrompt = null;
+});
+
+// 36.6 CERRAR BANNER DE INSTALACIÓN
+document.getElementById('btn-cerrar-instalacion').addEventListener('click', () => {
+    document.getElementById('pwa-install-banner').style.display = 'none';
+    // Guardar que el usuario cerró el banner
+    localStorage.setItem('pwa-install-banner-closed', 'true');
+});
+
+// 36.7 DETECTAR CUANDO LA APP SE INSTALA
+window.addEventListener('appinstalled', () => {
+    console.log('🎉 App instalada correctamente (evento appinstalled)');
+    document.getElementById('pwa-install-banner').style.display = 'none';
+    showToast('🎉 ¡App instalada correctamente!', 'success');
+});
+
+// 36.8 VERIFICAR SI EL BANNER FUE CERRADO ANTES
+const bannerClosed = localStorage.getItem('pwa-install-banner-closed');
+if (bannerClosed === 'true') {
+    document.getElementById('pwa-install-banner').style.display = 'none';
+}
+
+// 36.9 MOSTRAR BANNER DESPUÉS DE 3 SEGUNDOS
+setTimeout(() => {
+    mostrarBannerInstalacion();
+}, 3000);
+
+// 36.10 COMPROBAR CADA 5 SEGUNDOS SI YA ESTÁ INSTALADA
+setInterval(() => {
+    if (isAppInstalled()) {
+        document.getElementById('pwa-install-banner').style.display = 'none';
+    }
+}, 5000);
+
+console.log('✅ Sistema de instalación PWA activado');
+</script>
+
+<!-- ============================================
+   ESTILOS PARA EL BANNER DE INSTALACIÓN
+   ============================================ -->
+<style>
+    #pwa-install-banner {
+        animation: slideUpBanner 0.5s ease-out;
+    }
+    
+    @keyframes slideUpBanner {
+        from { opacity: 0; transform: translateX(-50%) translateY(30px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    
+    @media (max-width: 480px) {
+        #pwa-install-banner {
+            flex-direction: column;
+            padding: 12px 16px;
+            gap: 8px;
+            text-align: center;
+            bottom: 10px;
+            width: 95%;
+        }
+        #pwa-install-banner > div {
+            flex-direction: column;
+        }
+        #btn-instalar-pwa {
+            width: 100%;
+        }
+    }
+</style>
 </body>
 </html>

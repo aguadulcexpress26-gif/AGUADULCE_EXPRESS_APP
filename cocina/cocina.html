@@ -3794,16 +3794,14 @@ window.imprimirTicketPrueba = imprimirTicketPrueba;
 
 <script>
 <!-- ============================================
-   SISTEMA DE INSTALACIÓN DE PWA (VERSIÓN FIRE OS)
+   INSTALACIÓN PARA FIRE TABLET (FUNCIONA EN SILK)
    ============================================ -->
 
-<!-- ============================================
-   BOTÓN DE INSTALACIÓN DE PWA
-   ============================================ -->
+<!-- BANNER DE INSTALACIÓN -->
 <div id="pwa-install-banner" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:9999; background:linear-gradient(135deg, #f59e0b, #d97706); color:#0f172a; padding:12px 24px; border-radius:16px; box-shadow:0 10px 40px rgba(245,158,11,0.5); display:flex; align-items:center; gap:16px; max-width:90%;">
     <div style="display:flex; align-items:center; gap:12px;">
         <span style="font-size:24px;">📱</span>
-        <div class="mensaje-instalacion">
+        <div>
             <div style="font-weight:700; font-size:14px;">¡Instala Aguadulce Express!</div>
             <div style="font-size:11px; opacity:0.8;">Acceso directo como app nativa</div>
         </div>
@@ -3816,156 +3814,83 @@ window.imprimirTicketPrueba = imprimirTicketPrueba;
 
 <script>
 // ============================================
-// 36. SISTEMA DE INSTALACIÓN DE PWA (VERSIÓN FIRE OS)
+// INSTALACIÓN PARA FIRE TABLET (SILK)
 // ============================================
 
-// 36.1 VARIABLE PARA EL PROMPT DE INSTALACIÓN
-let deferredPrompt = null;
-
-// 36.2 DETECTAR FIRE OS / SILK BROWSER
-function detectarFireOS() {
-    const userAgent = navigator.userAgent || '';
-    const isSilk = userAgent.includes('Silk') || userAgent.includes('Amazon Silk');
-    const isFireOS = userAgent.includes('KF') || userAgent.includes('Fire') || 
-                     (userAgent.includes('Android') && userAgent.includes('Amazon'));
-    return {
-        isSilk: isSilk,
-        isFireOS: isFireOS,
-        esFireTablet: isSilk || isFireOS
-    };
+// 1. Función para instalar en Silk (USA SHARE API)
+function instalarEnSilk() {
+    // Método 1: Intentar compartir (funciona en Silk)
+    if (navigator.share) {
+        navigator.share({
+            title: 'Aguadulce Express',
+            text: 'Instala Aguadulce Express en tu tablet',
+            url: window.location.href
+        }).then(() => {
+            console.log('✅ Compartido correctamente');
+            // Mostrar instrucciones después de compartir
+            setTimeout(() => {
+                mostrarInstruccionesInstalacion();
+            }, 500);
+        }).catch((error) => {
+            console.log('Error al compartir:', error);
+            mostrarInstruccionesInstalacion();
+        });
+    } else {
+        // Método 2: Instrucciones manuales
+        mostrarInstruccionesInstalacion();
+    }
 }
 
-// 36.3 DETECTAR SI LA APP YA ESTÁ INSTALADA
+// 2. Mostrar instrucciones paso a paso
+function mostrarInstruccionesInstalacion() {
+    Swal.fire({
+        title: '📱 Instalar en Fire Tablet',
+        html: `
+            <div style="text-align:left;color:white;padding:8px;">
+                <p style="margin-bottom:12px;font-size:15px;">Sigue estos pasos para instalar la app:</p>
+                <ol style="padding-left:20px;color:#94a3b8;font-size:14px;line-height:2.2;">
+                    <li>1. Toca el botón <strong style="color:#f59e0b;">COMPARTIR</strong> ⬆️ en la barra inferior</li>
+                    <li>2. Selecciona <strong style="color:#f59e0b;">"Añadir a la pantalla de inicio"</strong></li>
+                    <li>3. Confirma y la app aparecerá en tu pantalla</li>
+                </ol>
+                <div style="margin-top:16px;padding:12px;background:#1e293b;border-radius:8px;text-align:center;">
+                    <span style="font-size:24px;">📱</span>
+                    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">
+                        La app se abrirá sin la barra del navegador
+                    </div>
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        confirmButtonText: '✅ Entendido',
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#f59e0b'
+    });
+}
+
+// 3. Evento del botón
+document.getElementById('btn-instalar-pwa').addEventListener('click', function(e) {
+    e.preventDefault();
+    console.log('🖱️ Botón Instalar presionado');
+    instalarEnSilk();
+});
+
+// 4. Cerrar banner
+document.getElementById('btn-cerrar-instalacion').addEventListener('click', function() {
+    document.getElementById('pwa-install-banner').style.display = 'none';
+    localStorage.setItem('pwa-install-banner-closed', 'true');
+});
+
+// 5. Verificar si ya está instalada
 function isAppInstalled() {
     if (window.matchMedia('(display-mode: standalone)').matches) return true;
     if (window.navigator.standalone === true) return true;
     return false;
 }
 
-// 36.4 CAPTURAR EVENTO DE INSTALACIÓN (EVITA EL BANNER DEL NAVEGADOR)
-window.addEventListener('beforeinstallprompt', (e) => {
-    console.log('📱 Evento beforeinstallprompt detectado');
-    e.preventDefault();
-    deferredPrompt = e;
-    
-    const banner = document.getElementById('pwa-install-banner');
-    if (banner) {
-        // Verificar si es Fire OS para mostrar mensaje correcto
-        const dispositivo = detectarFireOS();
-        if (dispositivo.esFireTablet) {
-            // Fire OS - Mensaje con instrucciones
-            const mensaje = banner.querySelector('.mensaje-instalacion');
-            if (mensaje) {
-                mensaje.innerHTML = `
-                    <div style="font-weight:700; font-size:14px;">📱 Instalar en Fire Tablet</div>
-                    <div style="font-size:11px; opacity:0.9;">
-                        1. Toca los <strong>3 puntos</strong> (⋮)<br>
-                        2. Selecciona <strong>"Añadir a pantalla de inicio"</strong>
-                    </div>
-                `;
-            }
-            const btn = document.getElementById('btn-instalar-pwa');
-            if (btn) {
-                btn.textContent = '📖 Ver instrucciones';
-                btn.style.background = '#0f172a';
-                btn.style.color = '#f59e0b';
-            }
-        }
-        banner.style.display = 'flex';
-        console.log('✅ Banner de instalación personalizado mostrado');
-    }
-});
-
-// 36.5 BOTÓN DE INSTALACIÓN (CON SOPORTE FIRE OS)
-document.getElementById('btn-instalar-pwa').addEventListener('click', async () => {
-    const dispositivo = detectarFireOS();
-    
-    // Si es Fire Tablet, mostrar instrucciones
-    if (dispositivo.esFireTablet) {
-        Swal.fire({
-            title: '📱 Instalar en Fire Tablet',
-            html: `
-                <div style="text-align:left;color:white;padding:8px;">
-                    <p style="margin-bottom:12px;font-size:15px;">Sigue estos pasos para instalar la app:</p>
-                    <ol style="padding-left:20px;color:#94a3b8;font-size:14px;line-height:2.2;">
-                        <li>1. Toca los <strong style="color:#f59e0b;">3 puntos</strong> (⋮) en la esquina</li>
-                        <li>2. Selecciona <strong style="color:#f59e0b;">"Añadir a pantalla de inicio"</strong></li>
-                        <li>3. Confirma y la app aparecerá en tu pantalla</li>
-                    </ol>
-                    <div style="margin-top:16px;padding:12px;background:#1e293b;border-radius:8px;text-align:center;">
-                        <span style="font-size:24px;">📱</span>
-                        <div style="font-size:12px;color:#94a3b8;margin-top:4px;">
-                            La app se abrirá sin la barra del navegador
-                        </div>
-                    </div>
-                </div>
-            `,
-            icon: 'info',
-            confirmButtonText: '✅ Entendido',
-            background: '#0f172a',
-            color: 'white',
-            confirmButtonColor: '#f59e0b'
-        });
-        return;
-    }
-    
-    // Para otros navegadores (Chrome, Edge, etc.)
-    if (!deferredPrompt) {
-        Swal.fire({
-            title: '📱 Instalar App',
-            html: `
-                <div style="text-align:left;color:white;padding:8px;">
-                    <p style="margin-bottom:8px;">Para instalar la app manualmente:</p>
-                    <ol style="padding-left:20px;color:#94a3b8;font-size:13px;line-height:1.8;">
-                        <li>1. Toca los <strong>3 puntos</strong> (⋮) en la esquina</li>
-                        <li>2. Selecciona <strong>"Instalar aplicación"</strong></li>
-                        <li>3. O busca <strong>"Añadir a pantalla de inicio"</strong></li>
-                    </ol>
-                    <div style="margin-top:12px;padding:8px;background:#1e293b;border-radius:8px;font-size:12px;color:#94a3b8;text-align:center;">
-                        💡 Esto añadirá la app como un icono nativo
-                    </div>
-                </div>
-            `,
-            icon: 'info',
-            confirmButtonText: 'Entendido',
-            background: '#0f172a',
-            color: 'white',
-            confirmButtonColor: '#f59e0b'
-        });
-        return;
-    }
-    
-    // Mostrar el diálogo de instalación nativo
-    deferredPrompt.prompt();
-    const result = await deferredPrompt.userChoice;
-    console.log('📱 Elección del usuario:', result.outcome);
-    
-    if (result.outcome === 'accepted') {
-        console.log('✅ App instalada correctamente');
-        showToast('✅ ¡App instalada con éxito!', 'success');
-        document.getElementById('pwa-install-banner').style.display = 'none';
-    } else {
-        console.log('❌ Instalación rechazada');
-        showToast('❌ Instalación cancelada', 'error');
-    }
-    deferredPrompt = null;
-});
-
-// 36.6 CERRAR BANNER DE INSTALACIÓN
-document.getElementById('btn-cerrar-instalacion').addEventListener('click', () => {
-    document.getElementById('pwa-install-banner').style.display = 'none';
-    localStorage.setItem('pwa-install-banner-closed', 'true');
-});
-
-// 36.7 DETECTAR CUANDO LA APP SE INSTALA
-window.addEventListener('appinstalled', () => {
-    console.log('🎉 App instalada correctamente');
-    document.getElementById('pwa-install-banner').style.display = 'none';
-    showToast('🎉 ¡App instalada correctamente!', 'success');
-});
-
-// 36.8 MOSTRAR BANNER SOLO SI NO ESTÁ INSTALADA
-function mostrarBannerInstalacion() {
+// 6. Mostrar banner
+function mostrarBanner() {
     const banner = document.getElementById('pwa-install-banner');
     if (!banner) return;
     
@@ -3974,64 +3899,20 @@ function mostrarBannerInstalacion() {
         return;
     }
     
-    const closed = localStorage.getItem('pwa-install-banner-closed');
-    if (closed === 'true') {
+    if (localStorage.getItem('pwa-install-banner-closed') === 'true') {
         banner.style.display = 'none';
         return;
     }
     
-    // DETECTAR FIRE OS PARA MENSAJE PERSONALIZADO
-    const dispositivo = detectarFireOS();
-    if (dispositivo.esFireTablet) {
-        const mensaje = banner.querySelector('.mensaje-instalacion');
-        if (mensaje) {
-            mensaje.innerHTML = `
-                <div style="font-weight:700; font-size:14px;">📱 Instalar en Fire Tablet</div>
-                <div style="font-size:11px; opacity:0.9;">
-                    1. Toca los <strong>3 puntos</strong> (⋮)<br>
-                    2. Selecciona <strong>"Añadir a pantalla de inicio"</strong>
-                </div>
-            `;
-        }
-        const btn = document.getElementById('btn-instalar-pwa');
-        if (btn) {
-            btn.textContent = '📖 Ver instrucciones';
-            btn.style.background = '#0f172a';
-            btn.style.color = '#f59e0b';
-        }
-        banner.style.display = 'flex';
-        console.log('📱 Banner para Fire OS mostrado');
-        return;
-    }
-    
-    // PARA OTROS NAVEGADORES
-    if ('beforeinstallprompt' in window || 'getInstalledRelatedApps' in window) {
-        banner.style.display = 'flex';
-        console.log('📱 Banner de instalación mostrado');
-    } else {
-        banner.style.display = 'none';
-        console.log('⚠️ Navegador no compatible con instalación PWA');
-    }
+    banner.style.display = 'flex';
 }
 
-// 36.9 INICIALIZAR
-setTimeout(() => {
-    mostrarBannerInstalacion();
-}, 2000);
+// 7. Inicializar
+setTimeout(mostrarBanner, 2000);
 
-// 36.10 COMPROBAR CADA 5 SEGUNDOS SI YA ESTÁ INSTALADA
-setInterval(() => {
-    if (isAppInstalled()) {
-        document.getElementById('pwa-install-banner').style.display = 'none';
-    }
-}, 5000);
-
-console.log('✅ Sistema de instalación PWA activado (Fire OS compatible)');
+console.log('✅ Sistema de instalación para Silk activado');
 </script>
 
-<!-- ============================================
-   ESTILOS PARA EL BANNER DE INSTALACIÓN
-   ============================================ -->
 <style>
     /* Ocultar banners del navegador */
     .install-banner,

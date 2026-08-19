@@ -1447,77 +1447,37 @@ function mostrarVistaHistorial() {
 function cargarHistorialFiltrado() {
     console.log('📌 cargarHistorialFiltrado() ejecutada');
     
-    // Buscar el contenedor de historial
-    let container = document.getElementById('historial-contenido');
-    
-    // Si no existe, intentar encontrarlo de otra manera
-    if (!container) {
-        const historialContainer = document.getElementById('historial-container');
-        if (historialContainer) {
-            container = historialContainer.querySelector('#historial-contenido');
-        }
-    }
-    
-    if (!container) {
-        console.log('❌ No se encontró contenedor de historial. Creándolo...');
-        // Crear contenedor si no existe
-        const historialContainer = document.getElementById('historial-container');
-        if (historialContainer) {
-            const newContent = document.createElement('div');
-            newContent.id = 'historial-contenido';
-            newContent.style.cssText = `
-                flex: 1;
-                overflow-y: auto;
-                padding: 0.75rem;
-                display: flex;
-                flex-direction: column;
-                gap: 0.75rem;
-                background: #0f172a;
-            `;
-            historialContainer.appendChild(newContent);
-            container = newContent;
-        } else {
-            console.log('❌ No se encontró historial-container');
-            return;
-        }
-    }
-    
+    const content = document.getElementById('historial-contenido');
     const contador = document.getElementById('col-count-historial');
     const filtro = document.getElementById('filtro-historial');
-    const filtroSeleccionado = filtro ? filtro.value : 'todos';
     
+    if (!content) {
+        console.log('❌ No se encontró historial-contenido');
+        return;
+    }
+    
+    // 🔥 LEER EL VALOR DEL FILTRO
+    const filtroSeleccionado = filtro ? filtro.value : 'todos';
     console.log('📌 Filtro seleccionado:', filtroSeleccionado);
     
-    // Limpiar contenedor
-    container.innerHTML = '';
+    // Limpiar contenido
+    content.innerHTML = '';
     
-    db.ref('pedidos').once('value').then((snapshot) => {
-        const pedidos = snapshot.val();
+    db.ref('pedidos').once('value').then(snap => {
+        const pedidos = snap.val();
+        let count = 0;
         
         if (!pedidos) {
-            const empty = document.createElement('div');
-            empty.style.cssText = `
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem 1rem;
-                color: #475569;
-                text-align: center;
-                font-size: 0.875rem;
-                height: 100%;
-                min-height: 120px;
+            content.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                    <div>No hay pedidos en el historial</div>
+                </div>
             `;
-            empty.innerHTML = `
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
-                <div>No hay pedidos en el historial</div>
-            `;
-            container.appendChild(empty);
             if (contador) contador.textContent = '0';
             return;
         }
         
-        let pedidosHistorial = [];
         const pedidosArray = Object.entries(pedidos);
         
         for (const [id, data] of pedidosArray) {
@@ -1527,140 +1487,134 @@ function cargarHistorialFiltrado() {
             const estado = data.estado ? data.estado.toLowerCase() : '';
             const tipo = data.tipo || 'normal';
             
-            if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') continue;
-            if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') continue;
+            // 🔥 APLICAR FILTRO
+            if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') {
+                console.log(`   ⏭️ Saltando reparto: ${data.cliente_nombre}`);
+                continue;
+            }
+            if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') {
+                console.log(`   ⏭️ Saltando venta: ${data.cliente_nombre}`);
+                continue;
+            }
             
             if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
-                pedidosHistorial.push({ id, ...data });
+                count++;
+                const esReparto = tipo === 'reparto_personal';
+                const card = document.createElement('div');
+                card.className = 'pedido-card';
+                card.style.cssText = `
+                    background: #0f172a;
+                    border-radius: 0.75rem;
+                    padding: 1rem;
+                    border: 1px solid #334155;
+                    border-left: 4px solid ${esReparto ? '#8b5cf6' : '#64748b'};
+                    margin-bottom: 0.5rem;
+                    color: white;
+                `;
+                
+                const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+                const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                const direccion = data.direccion || 'Sin dirección';
+                const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+                const total = data.total || 0;
+                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
+                const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
+                const tipoIcon = esReparto ? '📦' : '🛒';
+                const tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
+                const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
+                
+                let montoHtml = '';
+                if (esReparto) {
+                    const costoEnvio = data.envio || 0;
+                    montoHtml = `
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                            <span style="color:#94a3b8;">🚚 Costo de envío:</span>
+                            <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
+                        </div>
+                    `;
+                } else {
+                    const subtotal = data.subtotal || 0;
+                    const totalPedido = data.total || 0;
+                    const envio = data.envio || 0;
+                    const usoApp = data.usoYServicios || data.uso_plataforma || 0;
+                    
+                    montoHtml = `
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                            <span style="color:#94a3b8;">💰 Subtotal:</span>
+                            <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
+                        </div>
+                        ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                            <span>🚚 Envío:</span>
+                            <span>$${envio.toFixed(2)}</span>
+                        </div>` : ''}
+                        ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                            <span>📱 Uso App:</span>
+                            <span>$${usoApp.toFixed(2)}</span>
+                        </div>` : ''}
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
+                            <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
+                            <span style="color:#f59e0b;font-weight:700;">$${totalPedido.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                
+                let productosHtml = '';
+                if (data.items && data.items.length > 0) {
+                    productosHtml = data.items.map(item => 
+                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                } else if (data.productos) {
+                    productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('');
+                } else {
+                    productosHtml = esReparto ? '<span style="font-size:0.65rem;color:#94a3b8;">📦 Reparto</span>' : '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
+                }
+                
+                card.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${idPedido}</span>
+                            <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
+                        </div>
+                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
+                    </div>
+                    <div style="font-weight:600;color:white;font-size:0.9rem;">${clienteNombre}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:4px;">
+                        ${montoHtml}
+                    </div>
+                    <button onclick="verDetallePedido('${id}')" class="btn-accion primary" style="margin-top:8px;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.7rem;font-weight:600;border:none;cursor:pointer;background:#f59e0b;color:#0f172a;width:100%;">📋 Ver Detalle</button>
+                `;
+                
+                content.appendChild(card);
+                console.log(`   ✅ Tarjeta agregada: ${clienteNombre} (${tipoLabel})`);
             }
         }
         
-        pedidosHistorial.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        if (contador) contador.textContent = count;
         
-        if (pedidosHistorial.length === 0) {
+        if (count === 0) {
             const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
                            filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
                            'No hay pedidos en el historial';
-            const empty = document.createElement('div');
-            empty.style.cssText = `
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem 1rem;
-                color: #475569;
-                text-align: center;
-                font-size: 0.875rem;
-                height: 100%;
-                min-height: 120px;
+            content.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                    <div>${mensaje}</div>
+                </div>
             `;
-            empty.innerHTML = `
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
-                <div>${mensaje}</div>
-            `;
-            container.appendChild(empty);
-            if (contador) contador.textContent = '0';
-            return;
         }
         
-        if (contador) contador.textContent = pedidosHistorial.length;
+        console.log(`📊 Total tarjetas mostradas: ${count}`);
+        console.log('✅ Historial filtrado correctamente');
         
-        for (const pedido of pedidosHistorial) {
-            const card = document.createElement('div');
-            const esReparto = pedido.tipo === 'reparto_personal';
-            card.className = 'pedido-card';
-            card.style.borderLeft = `4px solid ${esReparto ? '#8b5cf6' : '#64748b'}`;
-            card.style.marginBottom = '4px';
-            
-            const clienteNombre = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
-            const telefono = pedido.cliente_telefono || pedido.telefono || 'Sin teléfono';
-            const direccion = pedido.direccion || 'Sin dirección';
-            const idPedido = pedido.id_pedido || pedido.id || '---';
-            const estado = pedido.estado || 'Entregado';
-            const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
-            const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
-            
-            let montoDisplay = '';
-            let tipoIcon = esReparto ? '📦' : '🛒';
-            let tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
-            
-            if (esReparto) {
-                const costoEnvio = pedido.envio || 0;
-                montoDisplay = `
-                    <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                        <span style="color:#94a3b8;">🚚 Costo de envío:</span>
-                        <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
-                    </div>
-                `;
-            } else {
-                const subtotal = pedido.subtotal || 0;
-                const total = pedido.total || 0;
-                const envio = pedido.envio || 0;
-                const usoApp = pedido.usoYServicios || pedido.uso_plataforma || 0;
-                
-                montoDisplay = `
-                    <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                        <span style="color:#94a3b8;">💰 Subtotal:</span>
-                        <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
-                    </div>
-                    ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                        <span>🚚 Envío:</span>
-                        <span>$${envio.toFixed(2)}</span>
-                    </div>` : ''}
-                    ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                        <span>📱 Uso App:</span>
-                        <span>$${usoApp.toFixed(2)}</span>
-                    </div>` : ''}
-                    <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
-                        <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
-                        <span style="color:#f59e0b;font-weight:700;">$${total.toFixed(2)}</span>
-                    </div>
-                `;
-            }
-            
-            let productosHtml = '';
-            if (pedido.items && pedido.items.length > 0) {
-                productosHtml = pedido.items.map(item => 
-                    `<span>${item.cantidad || 1}x ${item.nombre}</span>`
-                ).join('');
-            } else if (pedido.productos) {
-                productosHtml = Object.entries(pedido.productos).map(([pid, prod]) => 
-                    `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-                ).join('');
-            } else {
-                productosHtml = esReparto ? '<span>📦 Reparto</span>' : '<span>Sin productos</span>';
-            }
-            
-            const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
-            
-            card.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="id-pedido">#${idPedido}</span>
-                        <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
-                    </div>
-                    <span style="font-size:11px;color:#64748b;">${fecha}</span>
-                </div>
-                <div class="cliente">${clienteNombre}</div>
-                <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
-                <div class="detalle" style="margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
-                <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
-                <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;flex-direction:column;gap:4px;">
-                    ${montoDisplay}
-                </div>
-                <button onclick="verDetallePedido('${pedido.id}')" class="btn-accion primary" style="margin-top:8px;width:100%;">📋 Ver Detalle</button>
-            `;
-            
-            container.appendChild(card);
-        }
-        
-        console.log('✅ Historial cargado correctamente -', pedidosHistorial.length, 'pedidos');
-        
-    }).catch((error) => {
+    }).catch(error => {
         console.error('❌ Error al cargar historial:', error);
     });
 }
-
 // ============================================
 // MOSTRAR VISTA DEMORAS (CORREGIDO)
 // ============================================

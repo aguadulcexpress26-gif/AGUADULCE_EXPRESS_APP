@@ -636,10 +636,6 @@
                 ✅ Listo
                 <span class="badge listo" id="count-listo">0</span>
             </div>
-            <div class="contador-item separador">
-                📦 Entregas
-                <span class="badge reparto" id="count-envios">0</span>
-            </div>
             <button id="btn-pausa-header" onclick="togglePausa()" class="btn-pausa inactivo">
                 ⏸️ Pausar
             </button>
@@ -744,6 +740,8 @@
         let sonidoActivo = false;
         let intervaloSonido = null;
         let pedidoSonando = null;
+        const TIEMPO_ELABORACION_DEFAULT = 20;
+        let tiempoElaboracionRestaurante = TIEMPO_ELABORACION_DEFAULT;
 
         // ============================================
         // 3. DETECCIÓN DE ORIENTACIÓN
@@ -961,6 +959,7 @@
                 
                 await cargarDatosRestaurante();
                 await cargarEstadoPausa();
+                await cargarTiempoElaboracion();
                 escucharPedidos();
                 escucharEnvios();
                 
@@ -1015,7 +1014,27 @@
         }
 
         // ============================================
-        // 12. ESTADO DE PAUSA
+        // 12. CARGAR TIEMPO DE ELABORACIÓN
+        // ============================================
+        async function cargarTiempoElaboracion() {
+            try {
+                const snapshot = await db.ref(`restaurantes/${restauranteId}/tiempo_elaboracion`).once('value');
+                const valor = snapshot.val();
+                if (valor) {
+                    tiempoElaboracionRestaurante = valor;
+                    console.log(`⏱️ Tiempo de elaboración: ${tiempoElaboracionRestaurante} minutos`);
+                } else {
+                    tiempoElaboracionRestaurante = TIEMPO_ELABORACION_DEFAULT;
+                    console.log(`⏱️ Usando tiempo por defecto: ${tiempoElaboracionRestaurante} minutos`);
+                }
+            } catch (error) {
+                console.error('Error al cargar tiempo de elaboración:', error);
+                tiempoElaboracionRestaurante = TIEMPO_ELABORACION_DEFAULT;
+            }
+        }
+
+        // ============================================
+        // 13. ESTADO DE PAUSA
         // ============================================
         async function cargarEstadoPausa() {
             try {
@@ -1071,7 +1090,7 @@
         }
 
         // ============================================
-        // 13. ESCUCHAR PEDIDOS CON SONIDO REPETIDO
+        // 14. ESCUCHAR PEDIDOS CON SONIDO REPETIDO
         // ============================================
         let pedidosAnteriores = {};
 
@@ -1106,7 +1125,7 @@
                         const cliente = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
                         showToast(`📦 Nuevo pedido de ${cliente}`, 'info');
                         
-                        // 🔥 INICIAR SONIDO REPETIDO PARA PEDIDOS EN ESTADO RECIBIDO
+                        // INICIAR SONIDO REPETIDO PARA PEDIDOS EN ESTADO RECIBIDO
                         const estado = pedido.estado ? pedido.estado.toLowerCase() : '';
                         if (estado === 'recibido' || estado === 'pendiente') {
                             if (!sonidoActivo) {
@@ -1125,7 +1144,7 @@
         }
 
         // ============================================
-        // 14. ESCUCHAR ENVÍOS
+        // 15. ESCUCHAR ENVÍOS
         // ============================================
         function escucharEnvios() {
             enviosListeners.forEach(ref => ref.off());
@@ -1157,7 +1176,7 @@
         }
 
         // ============================================
-        // 15. REPRODUCIR SONIDO
+        // 16. REPRODUCIR SONIDO
         // ============================================
         function reproducirSonidoLlegada() {
             try {
@@ -1181,7 +1200,7 @@
         }
 
         // ============================================
-        // 16. SONIDO REPETIDO HASTA ACEPTAR/RECHAZAR
+        // 17. SONIDO REPETIDO HASTA ACEPTAR/RECHAZAR
         // ============================================
         function iniciarSonidoRepetido(pedidoId) {
             if (pedidoSonando === pedidoId) return;
@@ -1232,39 +1251,561 @@
             pedidoSonando = null;
         }
 
-        // ============================================
-// 17. RENDERIZAR VISTA PRINCIPAL (CORREGIDO)
+      // ============================================
+// ============================================
+// RENDERIZAR VISTA PRINCIPAL (CORREGIDO)
 // ============================================
 function renderizarVista() {
-    console.log('🔄 renderizarVista() ejecutada');
+    console.log('🔄 renderizarVista() ejecutada - Vista:', currentView);
+    
+    // 🔥 ELIMINAR CONTENEDORES EXISTENTES
+    const hc = document.getElementById('historial-container');
+    if (hc) hc.remove();
+    
+    const dc = document.getElementById('demoras-container');
+    if (dc) dc.remove();
+    
+    // 🔥 RESTAURAR COLUMNAS
+    restaurarVistaColumnas();
+    
+    // Mostrar columnas por defecto
+    const col1 = document.getElementById('columna-pendiente');
+    const col2 = document.getElementById('columna-coccion');
+    const col3 = document.getElementById('columna-listo');
+    
+    if (col1) col1.style.display = 'flex';
+    if (col2) col2.style.display = 'flex';
+    if (col3) col3.style.display = 'flex';
     
     if (currentView === 'historial') {
+        if (col1) col1.style.display = 'none';
+        if (col2) col2.style.display = 'none';
+        if (col3) col3.style.display = 'none';
         mostrarVistaHistorial();
         return;
     }
     
-    if (currentView === 'envios') {
-        mostrarVistaEnvios();
-        return;
-    }
-    
     if (currentView === 'demoras') {
+        if (col1) col1.style.display = 'none';
+        if (col2) col2.style.display = 'none';
+        if (col3) col3.style.display = 'none';
         mostrarVistaDemoras();
         return;
     }
     
-    // Vista de activos (pedidos en columnas)
+    // Pedidos Activos
+    cargarPedidosActivos();
+}
+
+function restaurarVistaColumnas() {
+    const container = document.getElementById('columnas-container');
+    if (!container) return;
+    
+    // Verificar si las columnas existen
+    let col1 = document.getElementById('columna-pendiente');
+    let col2 = document.getElementById('columna-coccion');
+    let col3 = document.getElementById('columna-listo');
+    
+    if (!col1 || !col2 || !col3) {
+        container.innerHTML = `
+            <div class="columna columna-pendiente" id="columna-pendiente">
+                <div class="columna-header">
+                    <span class="titulo">📥 Entrada</span>
+                    <span class="cantidad" id="col-count-pendiente">0</span>
+                </div>
+                <div class="columna-contenido" id="col-pendiente"></div>
+            </div>
+            <div class="columna columna-coccion" id="columna-coccion">
+                <div class="columna-header">
+                    <span class="titulo">👨‍🍳 En Proceso</span>
+                    <span class="cantidad" id="col-count-coccion">0</span>
+                </div>
+                <div class="columna-contenido" id="col-coccion"></div>
+            </div>
+            <div class="columna columna-listo" id="columna-listo">
+                <div class="columna-header">
+                    <span class="titulo">✅ Listo</span>
+                    <span class="cantidad" id="col-count-listo">0</span>
+                </div>
+                <div class="columna-contenido" id="col-listo"></div>
+            </div>
+        `;
+    } else {
+        col1.style.display = 'flex';
+        col2.style.display = 'flex';
+        col3.style.display = 'flex';
+        col1.style.maxWidth = '400px';
+        col2.style.maxWidth = '400px';
+        col3.style.maxWidth = '400px';
+        col1.style.flex = '1';
+        col2.style.flex = '1';
+        col3.style.flex = '1';
+        
+        const cont1 = document.getElementById('col-pendiente');
+        const cont2 = document.getElementById('col-coccion');
+        const cont3 = document.getElementById('col-listo');
+        if (cont1) cont1.innerHTML = '';
+        if (cont2) cont2.innerHTML = '';
+        if (cont3) cont3.innerHTML = '';
+    }
+}
+// ============================================
+// MOSTRAR VISTA HISTORIAL (VERSIÓN DEFINITIVA)
+// ============================================
+function mostrarVistaHistorial() {
+    console.log('📌 mostrarVistaHistorial() - VERSIÓN DEFINITIVA');
+    
+    // 1. Obtener el contenedor principal
+    const container = document.getElementById('columnas-container');
+    if (!container) {
+        console.log('❌ No se encontró columnas-container');
+        return;
+    }
+    
+    // 2. LIMPIAR TODO EL CONTENEDOR
+    container.innerHTML = '';
+    console.log('✅ Contenedor limpiado');
+    
+    // 3. Crear UNA SOLA COLUMNA para el historial
+    const columna = document.createElement('div');
+    columna.className = 'columna';
+    columna.style.cssText = `
+        width: 100%;
+        height: 100%;
+        min-height: 500px;
+        display: flex;
+        flex-direction: column;
+        background: #1e293b;
+        border-radius: 1rem;
+        border: 2px solid #f59e0b;
+        overflow: hidden;
+        flex: 1;
+    `;
+    container.appendChild(columna);
+    console.log('✅ Columna creada');
+    
+    // 4. HEADER
+    const header = document.createElement('div');
+    header.className = 'columna-header';
+    header.style.cssText = `
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #f59e0b;
+        flex-shrink: 0;
+        background: #1e293b;
+    `;
+    header.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;">📜 Historial</span>
+                <select id="filtro-historial" 
+                        style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:white;padding:4px 12px;font-size:12px;cursor:pointer;outline:none;"
+                        onchange="cargarHistorialFiltrado()">
+                    <option value="todos" style="background:#0f172a;">📋 Todos</option>
+                    <option value="ventas" style="background:#0f172a;">🛒 Ventas</option>
+                    <option value="repartos" style="background:#0f172a;">📦 Repartos</option>
+                </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span class="cantidad" id="col-count-historial" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
+                <button onclick="mostrarAcumulados()" 
+                        style="background:#0f172a;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">🔒 Acumulados</button>
+            </div>
+        </div>
+    `;
+    columna.appendChild(header);
+    
+    // 5. CONTENIDO
+    const content = document.createElement('div');
+    content.id = 'historial-contenido';
+    content.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        background: #0f172a;
+        min-height: 400px;
+    `;
+    columna.appendChild(content);
+    console.log('✅ Contenido creado');
+    
+    // 6. CARGAR HISTORIAL
+    cargarHistorialFiltrado();
+}
+
+// ============================================
+// CARGAR HISTORIAL CON FILTRO (CORREGIDO)
+// ============================================
+function cargarHistorialFiltrado() {
+    console.log('📌 cargarHistorialFiltrado() ejecutada');
+    
+    const content = document.getElementById('historial-contenido');
+    const contador = document.getElementById('col-count-historial');
+    const filtro = document.getElementById('filtro-historial');
+    
+    if (!content) {
+        console.log('❌ No se encontró historial-contenido');
+        return;
+    }
+    
+    // 🔥 LEER EL VALOR DEL FILTRO
+    const filtroSeleccionado = filtro ? filtro.value : 'todos';
+    console.log('📌 Filtro seleccionado:', filtroSeleccionado);
+    
+    // Limpiar contenido
+    content.innerHTML = '';
+    
+    db.ref('pedidos').once('value').then(snap => {
+        const pedidos = snap.val();
+        let count = 0;
+        
+        if (!pedidos) {
+            content.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                    <div>No hay pedidos en el historial</div>
+                </div>
+            `;
+            if (contador) contador.textContent = '0';
+            return;
+        }
+        
+        const pedidosArray = Object.entries(pedidos);
+        
+        for (const [id, data] of pedidosArray) {
+            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+            if (restId !== restauranteId) continue;
+            
+            const estado = data.estado ? data.estado.toLowerCase() : '';
+            const tipo = data.tipo || 'normal';
+            
+            // 🔥 APLICAR FILTRO
+            if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') {
+                console.log(`   ⏭️ Saltando reparto: ${data.cliente_nombre}`);
+                continue;
+            }
+            if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') {
+                console.log(`   ⏭️ Saltando venta: ${data.cliente_nombre}`);
+                continue;
+            }
+            
+            if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
+                count++;
+                const esReparto = tipo === 'reparto_personal';
+                const card = document.createElement('div');
+                card.className = 'pedido-card';
+                card.style.cssText = `
+                    background: #0f172a;
+                    border-radius: 0.75rem;
+                    padding: 1rem;
+                    border: 1px solid #334155;
+                    border-left: 4px solid ${esReparto ? '#8b5cf6' : '#64748b'};
+                    margin-bottom: 0.5rem;
+                    color: white;
+                `;
+                
+                const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+                const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                const direccion = data.direccion || 'Sin dirección';
+                const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+                const total = data.total || 0;
+                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
+                const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
+                const tipoIcon = esReparto ? '📦' : '🛒';
+                const tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
+                const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
+                
+                let montoHtml = '';
+                if (esReparto) {
+                    const costoEnvio = data.envio || 0;
+                    montoHtml = `
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                            <span style="color:#94a3b8;">🚚 Costo de envío:</span>
+                            <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
+                        </div>
+                    `;
+                } else {
+                    const subtotal = data.subtotal || 0;
+                    const totalPedido = data.total || 0;
+                    const envio = data.envio || 0;
+                    const usoApp = data.usoYServicios || data.uso_plataforma || 0;
+                    
+                    montoHtml = `
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                            <span style="color:#94a3b8;">💰 Subtotal:</span>
+                            <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
+                        </div>
+                        ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                            <span>🚚 Envío:</span>
+                            <span>$${envio.toFixed(2)}</span>
+                        </div>` : ''}
+                        ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                            <span>📱 Uso App:</span>
+                            <span>$${usoApp.toFixed(2)}</span>
+                        </div>` : ''}
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
+                            <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
+                            <span style="color:#f59e0b;font-weight:700;">$${totalPedido.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                
+                let productosHtml = '';
+                if (data.items && data.items.length > 0) {
+                    productosHtml = data.items.map(item => 
+                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                } else if (data.productos) {
+                    productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('');
+                } else {
+                    productosHtml = esReparto ? '<span style="font-size:0.65rem;color:#94a3b8;">📦 Reparto</span>' : '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
+                }
+                
+                card.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${idPedido}</span>
+                            <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
+                        </div>
+                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
+                    </div>
+                    <div style="font-weight:600;color:white;font-size:0.9rem;">${clienteNombre}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:4px;">
+                        ${montoHtml}
+                    </div>
+                    <button onclick="verDetallePedido('${id}')" class="btn-accion primary" style="margin-top:8px;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.7rem;font-weight:600;border:none;cursor:pointer;background:#f59e0b;color:#0f172a;width:100%;">📋 Ver Detalle</button>
+                `;
+                
+                content.appendChild(card);
+                console.log(`   ✅ Tarjeta agregada: ${clienteNombre} (${tipoLabel})`);
+            }
+        }
+        
+        if (contador) contador.textContent = count;
+        
+        if (count === 0) {
+            const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
+                           filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
+                           'No hay pedidos en el historial';
+            content.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                    <div>${mensaje}</div>
+                </div>
+            `;
+        }
+        
+        console.log(`📊 Total tarjetas mostradas: ${count}`);
+        console.log('✅ Historial filtrado correctamente');
+        
+    }).catch(error => {
+        console.error('❌ Error al cargar historial:', error);
+    });
+}
+// ============================================
+// MOSTRAR VISTA DEMORAS (CORREGIDO)
+// ============================================
+function mostrarVistaDemoras() {
+    console.log('📌 mostrarVistaDemoras() ejecutada');
+    
+    const container = document.getElementById('columnas-container');
+    if (!container) return;
+    
+    // Eliminar contenedor existente
+    const dc = document.getElementById('demoras-container');
+    if (dc) dc.remove();
+    
+    const demorasContainer = document.createElement('div');
+    demorasContainer.id = 'demoras-container';
+    demorasContainer.style.cssText = `
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #1e293b;
+        border-radius: 1rem;
+        border: 1px solid #334155;
+        overflow: hidden;
+        margin: 0.5rem;
+    `;
+    container.appendChild(demorasContainer);
+    
+    // Header
+    const header = document.createElement('div');
+    header.className = 'columna-header';
+    header.style.cssText = `
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #ef4444;
+        flex-shrink: 0;
+        background: #1e293b;
+    `;
+    header.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+            <span style="display:flex;align-items:center;gap:0.5rem;color:#ef4444;">⏱️ Registro de Demoras</span>
+            <span class="cantidad" id="col-count-demoras" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
+        </div>
+    `;
+    demorasContainer.appendChild(header);
+    
+    // Contenido
+    const content = document.createElement('div');
+    content.id = 'demoras-contenido';
+    content.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        background: #0f172a;
+    `;
+    demorasContainer.appendChild(content);
+    
+    db.ref('pedidos').once('value').then((snapshot) => {
+        const pedidos = snapshot.val();
+        const contador = document.getElementById('col-count-demoras');
+        
+        if (!pedidos) {
+            mostrarMensajeVacioContainer(content, '⏱️', 'No hay registros de demoras');
+            if (contador) contador.textContent = '0';
+            return;
+        }
+        
+        let demoras = [];
+        let totalDemora = 0, maxDemora = 0, countDemora = 0;
+        
+        for (const [id, data] of Object.entries(pedidos)) {
+            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+            if (restId !== restauranteId) continue;
+            
+            const demora = data.demora || data.tiempo_demora || 0;
+            if (demora > 0) {
+                demoras.push({
+                    id: id,
+                    id_pedido: data.id_pedido || id.substring(0, 8),
+                    cliente: data.cliente_nombre || 'Cliente',
+                    telefono: data.cliente_telefono || 'Sin teléfono',
+                    total: data.total || 0,
+                    estado: data.estado || 'Finalizado',
+                    demora: demora,
+                    tiempo_preparacion: data.tiempo_preparacion || 0,
+                    fecha: data.timestamp ? new Date(data.timestamp) : null,
+                    items: data.items || data.productos || []
+                });
+                totalDemora += demora;
+                maxDemora = Math.max(maxDemora, demora);
+                countDemora++;
+            }
+        }
+        
+        demoras.sort((a, b) => b.demora - a.demora);
+        
+        if (demoras.length === 0) {
+            mostrarMensajeVacioContainer(content, '⏱️', 'No hay registros de demoras');
+            if (contador) contador.textContent = '0';
+            return;
+        }
+        
+        if (contador) contador.textContent = demoras.length;
+        
+        // Resumen
+        const resumen = document.createElement('div');
+        resumen.style.cssText = `background:#1e293b;border-radius:0.75rem;padding:0.75rem 1rem;border:1px solid #334155;margin-bottom:0.75rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;`;
+        resumen.innerHTML = `
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                <div><span style="color:#94a3b8;font-size:11px;">📊 Total</span><div style="color:#ef4444;font-weight:bold;font-size:18px;">${countDemora}</div></div>
+                <div><span style="color:#94a3b8;font-size:11px;">⏱️ Promedio</span><div style="color:#f59e0b;font-weight:bold;font-size:18px;">${(totalDemora/countDemora).toFixed(0)} min</div></div>
+                <div><span style="color:#94a3b8;font-size:11px;">🔴 Máxima</span><div style="color:#ef4444;font-weight:bold;font-size:18px;">${maxDemora} min</div></div>
+            </div>
+        `;
+        content.appendChild(resumen);
+        
+        // Lista
+        for (const d of demoras) {
+            const card = document.createElement('div');
+            const color = d.demora > 30 ? '#ef4444' : d.demora > 15 ? '#f59e0b' : '#10b981';
+            card.style.cssText = `background:#0f172a;border-radius:0.75rem;padding:0.75rem;border:1px solid #334155;border-left:4px solid ${color};`;
+            
+            const fechaStr = d.fecha ? d.fecha.toLocaleString() : 'Sin fecha';
+            let prodHtml = '';
+            if (d.items && d.items.length > 0) {
+                const items = Array.isArray(d.items) ? d.items : Object.values(d.items);
+                prodHtml = items.slice(0, 3).map(item => {
+                    const nombre = item.nombre || item.PLATO || 'Producto';
+                    const cant = item.cantidad || 1;
+                    return `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${cant}x ${nombre}</span>`;
+                }).join('');
+                if (items.length > 3) prodHtml += `<span style="font-size:0.6rem;color:#64748b;"> +${items.length-3} más</span>`;
+            } else {
+                prodHtml = '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
+            }
+            
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${d.id_pedido}</span>
+                    <span style="font-size:0.6rem;background:${color};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${d.demora} min</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="color:white;font-weight:600;font-size:0.85rem;">${d.cliente}</span>
+                        <span style="color:#94a3b8;font-size:0.65rem;margin-left:8px;">📞 ${d.telefono}</span>
+                    </div>
+                    <span style="color:#f59e0b;font-weight:700;font-size:0.8rem;">$${d.total.toFixed(2)}</span>
+                </div>
+                <div style="margin-top:4px;font-size:0.65rem;color:#94a3b8;">${d.estado === 'entregado' ? '✅' : '⏳'} ${d.estado}</div>
+                <div style="margin-top:4px;">${prodHtml}</div>
+                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;display:flex;justify-content:flex-end;">
+                    <button onclick="verDetallePedido('${d.id}')" class="btn-accion primary" style="padding:0.15rem 0.5rem;font-size:0.6rem;">📋 Detalle</button>
+                </div>
+            `;
+            content.appendChild(card);
+        }
+        
+        console.log('✅ Demoras cargadas correctamente');
+        
+    }).catch((error) => {
+        console.error('❌ Error al cargar demoras:', error);
+    });
+}
+
+// ============================================
+// CARGAR PEDIDOS ACTIVOS (NUEVA FUNCIÓN)
+// ============================================
+function cargarPedidosActivos() {
+    console.log('📌 cargarPedidosActivos() ejecutada');
+    
+    const colPendiente = document.getElementById('col-pendiente');
+    const colCoccion = document.getElementById('col-coccion');
+    const colListo = document.getElementById('col-listo');
+    
+    if (colPendiente) colPendiente.innerHTML = '';
+    if (colCoccion) colCoccion.innerHTML = '';
+    if (colListo) colListo.innerHTML = '';
+    
     db.ref('pedidos').once('value')
         .then((snapshot) => {
             const pedidos = snapshot.val();
             
-            document.getElementById('col-pendiente').innerHTML = '';
-            document.getElementById('col-coccion').innerHTML = '';
-            document.getElementById('col-listo').innerHTML = '';
-            
-            let countPendiente = 0;
-            let countCoccion = 0;
-            let countListo = 0;
+            let countPendiente = 0, countCoccion = 0, countListo = 0;
             
             if (!pedidos) {
                 mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
@@ -1313,114 +1854,11 @@ function renderizarVista() {
         });
 }
 
-        // ============================================
-// 18. AGREGAR PEDIDO A COLUMNA (CORREGIDO)
 // ============================================
-function agregarPedidoAColumna(id, data) {
-    let estado = data.estado || 'pendiente';
-    estado = estado.toLowerCase();
-    if (estado === 'recibido') estado = 'pendiente';
-    
-    let columnaId = '';
-    let contadorRef = '';
-    
-    switch(estado) {
-        case 'pendiente':
-            columnaId = 'col-pendiente';
-            contadorRef = 'count-pendiente';
-            break;
-        case 'coccion':
-            columnaId = 'col-coccion';
-            contadorRef = 'count-coccion';
-            break;
-        case 'listo':
-        case 'en_reparto':
-            columnaId = 'col-listo';
-            contadorRef = 'count-listo';
-            break;
-        default:
-            columnaId = 'col-pendiente';
-            contadorRef = 'count-pendiente';
-    }
-    
-    const container = document.getElementById(columnaId);
+// FUNCIÓN AUXILIAR PARA MENSAJE EN CONTENEDOR
+// ============================================
+function mostrarMensajeVacioContainer(container, icono, mensaje) {
     if (!container) return;
-    
-    const contador = document.getElementById(contadorRef);
-    if (contador) {
-        contador.textContent = parseInt(contador.textContent) + 1;
-    }
-    
-    const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
-    const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
-    const direccion = data.direccion || 'Sin dirección';
-    const idPedido = data.id_pedido || data.id || id.substring(0, 8);
-    const total = data.total || 0;
-    const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
-    
-    let productosHtml = '';
-    if (data.items && data.items.length > 0) {
-        productosHtml = data.items.map(item => 
-            `<span>${item.cantidad || 1}x ${item.nombre}</span>`
-        ).join('');
-    } else if (data.productos) {
-        productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
-            `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-        ).join('');
-    } else {
-        productosHtml = '<span>Sin productos</span>';
-    }
-    
-    let botones = '';
-    if (estado === 'pendiente') {
-        botones = `
-            <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
-            <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
-        `;
-    } else if (estado === 'coccion') {
-        botones = `
-            <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
-            <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-            <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
-        `;
-    } else if (estado === 'listo' || estado === 'en_reparto') {
-        const repartidor = data.repartidor_nombre || data.uid_repartidor || 'Asignado';
-        botones = `
-            <span style="font-size:11px;color:#8b5cf6;">🛵 ${repartidor}</span>
-            <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
-            <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-        `;
-    }
-    
-    const card = document.createElement('div');
-    card.className = 'pedido-card';
-    
-    card.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span class="id-pedido">#${idPedido}</span>
-            <span class="telefono">📞 ${telefono}</span>
-        </div>
-        <div class="cliente">${clienteNombre}</div>
-        <div class="detalle">${direccion}</div>
-        <div class="productos">${productosHtml}</div>
-        <div class="footer">
-            <span class="precio">$${total.toFixed(2)}</span>
-            <span class="tiempo">${timestamp}</span>
-            ${botones}
-        </div>
-    `;
-    
-    container.appendChild(card);
-}
-
-        // ============================================
-        // 19. MOSTRAR MENSAJE DE VACÍO
-        // ============================================
-       function mostrarMensajeVacio(columnaId, icono, mensaje) {
-    const container = document.getElementById(columnaId);
-    if (!container) return; // Si no existe, salir sin error
-    if (container.children.length > 0) return;
-    
     const empty = document.createElement('div');
     empty.style.cssText = `
         display: flex;
@@ -1439,58 +1877,319 @@ function agregarPedidoAColumna(id, data) {
         <div>${mensaje}</div>
     `;
     container.appendChild(empty);
-}
+}       
+        // ============================================
+        // 19. AGREGAR PEDIDO A COLUMNA CON DEMORA AUTOMÁTICA
+        // ============================================
+        function agregarPedidoAColumna(id, data) {
+            let estado = data.estado || 'pendiente';
+            estado = estado.toLowerCase();
+            if (estado === 'recibido') estado = 'pendiente';
+            
+            let columnaId = '';
+            let contadorRef = '';
+            
+            switch(estado) {
+                case 'pendiente':
+                    columnaId = 'col-pendiente';
+                    contadorRef = 'count-pendiente';
+                    break;
+                case 'coccion':
+                    columnaId = 'col-coccion';
+                    contadorRef = 'count-coccion';
+                    break;
+                case 'listo':
+                case 'en_reparto':
+                    columnaId = 'col-listo';
+                    contadorRef = 'count-listo';
+                    break;
+                default:
+                    columnaId = 'col-pendiente';
+                    contadorRef = 'count-pendiente';
+            }
+            
+            const container = document.getElementById(columnaId);
+            if (!container) return;
+            
+            const contador = document.getElementById(contadorRef);
+            if (contador) {
+                contador.textContent = parseInt(contador.textContent) + 1;
+            }
+            
+            const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+            const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+            const direccion = data.direccion || 'Sin dirección';
+            const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+            const total = data.total || 0;
+            const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+            
+            // CALCULAR TIEMPO DE ELABORACIÓN
+            const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
+            const tiempoActual = Date.now();
+            const tiempoTranscurrido = Math.floor((tiempoActual - tiempoInicio) / 60000);
+            const tiempoLimite = data.tiempo_limite || tiempoElaboracionRestaurante || TIEMPO_ELABORACION_DEFAULT;
+            const tiempoRestante = Math.max(0, tiempoLimite - tiempoTranscurrido);
+            const enDemora = tiempoTranscurrido > tiempoLimite;
+            
+            let tiempoDisplay = '';
+            let badgeDemora = '';
+            let sonidoAlerta = false;
+            
+            if (estado === 'pendiente') {
+                tiempoDisplay = '⏳ Esperando';
+            } else if (estado === 'coccion') {
+                if (enDemora) {
+                    tiempoDisplay = `⏱️ ${tiempoTranscurrido} min (DEMORA)`;
+                    badgeDemora = `<span style="background:#ef4444;color:white;padding:2px 10px;border-radius:9999px;font-size:10px;font-weight:700;animation:pulse-badge 1s ease-in-out infinite;">🔴 DEMORA</span>`;
+                    
+                    if (!data._alerta_sonada) {
+                        data._alerta_sonada = true;
+                        sonidoAlerta = true;
+                        db.ref(`pedidos/${id}/_alerta_sonada`).set(true);
+                    }
+                } else {
+                    tiempoDisplay = `⏱️ ${tiempoTranscurrido} min (${tiempoRestante} min restante)`;
+                }
+            } else if (estado === 'listo' || estado === 'en_reparto') {
+                const tiempoListo = data.timestamp_listo || Date.now();
+                const tiempoEspera = Math.floor((tiempoActual - tiempoListo) / 60000);
+                tiempoDisplay = `✅ Listo (${tiempoEspera} min espera)`;
+            }
+            
+            // Productos
+            let productosHtml = '';
+            if (data.items && data.items.length > 0) {
+                productosHtml = data.items.map(item => 
+                    `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+                ).join('');
+            } else if (data.productos) {
+                productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+                    `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
+                ).join('');
+            } else {
+                productosHtml = '<span>Sin productos</span>';
+            }
+            
+            // ESTILOS
+            let borderColor = '#334155';
+            let backgroundColor = '#0f172a';
+            let animacionPulso = '';
+            
+            if (estado === 'coccion' && enDemora) {
+                borderColor = '#ef4444';
+                backgroundColor = '#1a0a0a';
+                animacionPulso = 'animation:pulse-demora 1.5s ease-in-out infinite;';
+                if (!document.getElementById('demora-keyframes')) {
+                    const style = document.createElement('style');
+                    style.id = 'demora-keyframes';
+                    style.textContent = `
+                        @keyframes pulse-demora {
+                            0%, 100% { border-color: #ef4444; box-shadow: 0 0 10px rgba(239,68,68,0.1); }
+                            50% { border-color: #dc2626; box-shadow: 0 0 25px rgba(239,68,68,0.4); }
+                        }
+                        @keyframes pulse-badge {
+                            0%, 100% { opacity: 1; }
+                            50% { opacity: 0.6; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            }
+            
+            // ALERTA DE DEMORA
+            if (sonidoAlerta) {
+                setTimeout(() => {
+                    try {
+                        const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
+                        audio.volume = 1.0;
+                        audio.play().catch(e => console.log('⚠️ Sonido de alerta bloqueado'));
+                        if (navigator.vibrate) {
+                            navigator.vibrate([500, 200, 500, 200, 500]);
+                        }
+                        showToast('⚠️ ¡DEMORA! Pedido #' + idPedido + ' superó el tiempo de elaboración.', 'warning');
+                    } catch (e) {
+                        console.log('⚠️ Error al reproducir alerta:', e);
+                    }
+                }, 500);
+            }
+            
+            // Botones
+            let botones = '';
+            if (estado === 'pendiente') {
+                botones = `
+                    <button class="btn-accion success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
+                    <button class="btn-accion danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
+                `;
+            } else if (estado === 'coccion') {
+                botones = `
+                    <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
+                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                    <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
+                `;
+            } else if (estado === 'listo' || estado === 'en_reparto') {
+                const repartidor = data.repartidor_nombre || data.uid_repartidor || 'Asignado';
+                botones = `
+                    <span style="font-size:11px;color:#8b5cf6;">🛵 ${repartidor}</span>
+                    <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
+                    <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                `;
+            }
+            
+            const card = document.createElement('div');
+            card.className = 'pedido-card';
+            card.style.borderColor = borderColor;
+            card.style.backgroundColor = backgroundColor;
+            card.style.borderWidth = enDemora && estado === 'coccion' ? '2px' : '1px';
+            if (animacionPulso) {
+                card.style.animation = 'pulse-demora 1.5s ease-in-out infinite';
+            }
+            
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span class="id-pedido">#${idPedido}</span>
+                    <span class="telefono">📞 ${telefono}</span>
+                </div>
+                <div class="cliente">${clienteNombre}</div>
+                <div class="detalle">${direccion}</div>
+                
+                <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;padding:4px 8px;background:#1e293b;border-radius:6px;border:1px solid ${enDemora && estado === 'coccion' ? '#ef4444' : '#334155'};">
+                    <span style="font-size:0.7rem;color:#94a3b8;">${estado === 'coccion' ? '⏱️ Elaboración' : '📌 Estado'}</span>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:0.8rem;font-weight:600;color:${enDemora && estado === 'coccion' ? '#ef4444' : '#f59e0b'};">
+                            ${tiempoDisplay}
+                        </span>
+                        ${badgeDemora}
+                    </div>
+                </div>
+                
+                <div class="productos">${productosHtml}</div>
+                <div class="footer">
+                    <span class="precio">$${total.toFixed(2)}</span>
+                    <span style="font-size:0.6rem;color:#64748b;">${timestamp}</span>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;width:100%;margin-top:4px;">${botones}</div>
+                </div>
+            `;
+            
+            container.appendChild(card);
+        }
 
         // ============================================
-// 20. ACTUALIZAR CONTADORES (CORREGIDO)
+        // 20. MOSTRAR MENSAJE DE VACÍO
+        // ============================================
+        function mostrarMensajeVacio(columnaId, icono, mensaje) {
+            const container = document.getElementById(columnaId);
+            if (!container) return;
+            if (container.children.length > 0) return;
+            
+            const empty = document.createElement('div');
+            empty.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem 1rem;
+                color: #475569;
+                text-align: center;
+                font-size: 0.875rem;
+                height: 100%;
+                min-height: 120px;
+            `;
+            empty.innerHTML = `
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">${icono}</div>
+                <div>${mensaje}</div>
+            `;
+            container.appendChild(empty);
+        }
+
+        // ============================================
+        // 21. ACTUALIZAR CONTADORES
+        // ============================================
+        function actualizarContadores(pendiente, coccion, listo) {
+            const countPendiente = document.getElementById('count-pendiente');
+            if (countPendiente) countPendiente.textContent = pendiente;
+            
+            const countCoccion = document.getElementById('count-coccion');
+            if (countCoccion) countCoccion.textContent = coccion;
+            
+            const countListo = document.getElementById('count-listo');
+            if (countListo) countListo.textContent = listo;
+            
+            const colCountPendiente = document.getElementById('col-count-pendiente');
+            if (colCountPendiente) colCountPendiente.textContent = pendiente;
+            
+            const colCountCoccion = document.getElementById('col-count-coccion');
+            if (colCountCoccion) colCountCoccion.textContent = coccion;
+            
+            const colCountListo = document.getElementById('col-count-listo');
+            if (colCountListo) colCountListo.textContent = listo;
+            
+            const contadorActivos = document.getElementById('contador-activos');
+            if (contadorActivos) contadorActivos.textContent = pendiente + coccion + listo;
+        }
+
+       // ============================================
+// RESTAURAR VISTA DE 3 COLUMNAS (CORREGIDO)
 // ============================================
-function actualizarContadores(pendiente, coccion, listo) {
-    // Verificar que el elemento existe antes de actualizarlo
-    const countPendiente = document.getElementById('count-pendiente');
-    if (countPendiente) countPendiente.textContent = pendiente;
+function restaurarVistaColumnas() {
+    const col1 = document.getElementById('columna-pendiente');
+    const col2 = document.getElementById('columna-coccion');
+    const col3 = document.getElementById('columna-listo');
     
-    const countCoccion = document.getElementById('count-coccion');
-    if (countCoccion) countCoccion.textContent = coccion;
+    // Si no existen los IDs, crearlos
+    if (!col1) {
+        const container = document.getElementById('columnas-container');
+        if (container) {
+            // Recrear las columnas si no existen
+            container.innerHTML = `
+                <!-- COLUMNA: ENTRADA -->
+                <div class="columna columna-pendiente" id="columna-pendiente">
+                    <div class="columna-header">
+                        <span class="titulo">📥 Entrada</span>
+                        <span class="cantidad" id="col-count-pendiente">0</span>
+                    </div>
+                    <div class="columna-contenido" id="col-pendiente">
+                        <!-- Pedidos pendientes -->
+                    </div>
+                </div>
+                
+                <!-- COLUMNA: EN PROCESO -->
+                <div class="columna columna-coccion" id="columna-coccion">
+                    <div class="columna-header">
+                        <span class="titulo">👨‍🍳 En Proceso</span>
+                        <span class="cantidad" id="col-count-coccion">0</span>
+                    </div>
+                    <div class="columna-contenido" id="col-coccion">
+                        <!-- Pedidos en cocción -->
+                    </div>
+                </div>
+                
+                <!-- COLUMNA: LISTO -->
+                <div class="columna columna-listo" id="columna-listo">
+                    <div class="columna-header">
+                        <span class="titulo">✅ Listo</span>
+                        <span class="cantidad" id="col-count-listo">0</span>
+                    </div>
+                    <div class="columna-contenido" id="col-listo">
+                        <!-- Pedidos listos -->
+                    </div>
+                </div>
+            `;
+        }
+        return;
+    }
     
-    const countListo = document.getElementById('count-listo');
-    if (countListo) countListo.textContent = listo;
-    
-    const colCountPendiente = document.getElementById('col-count-pendiente');
-    if (colCountPendiente) colCountPendiente.textContent = pendiente;
-    
-    const colCountCoccion = document.getElementById('col-count-coccion');
-    if (colCountCoccion) colCountCoccion.textContent = coccion;
-    
-    const colCountListo = document.getElementById('col-count-listo');
-    if (colCountListo) colCountListo.textContent = listo;
-    
-    const contadorActivos = document.getElementById('contador-activos');
-    if (contadorActivos) contadorActivos.textContent = pendiente + coccion + listo;
-}
-
-        // ============================================
-        // 21. RESTAURAR VISTA DE 3 COLUMNAS
-        // ============================================
-       function restaurarVistaColumnas() {
-    const col1 = document.getElementById('col-pendiente').parentElement;
-    const col2 = document.getElementById('col-coccion').parentElement;
-    const col3 = document.getElementById('col-listo').parentElement;
-    
-    // Forzar el tamaño correcto
+    // Restaurar columnas existentes
     col1.style.display = 'flex';
     col2.style.display = 'flex';
     col3.style.display = 'flex';
+    col1.style.maxWidth = '400px';
+    col2.style.maxWidth = '400px';
+    col3.style.maxWidth = '400px';
     col1.style.flex = '1';
     col2.style.flex = '1';
     col3.style.flex = '1';
-    col1.style.minWidth = '280px';
-    col1.style.maxWidth = '400px';
-    col2.style.minWidth = '280px';
-    col2.style.maxWidth = '400px';
-    col3.style.minWidth = '280px';
-    col3.style.maxWidth = '400px';
     
-    // Restaurar los títulos
+    // Restaurar headers
     const header1 = col1.querySelector('.columna-header .titulo');
     const header2 = col2.querySelector('.columna-header .titulo');
     const header3 = col3.querySelector('.columna-header .titulo');
@@ -1498,317 +2197,303 @@ function actualizarContadores(pendiente, coccion, listo) {
     if (header2) header2.innerHTML = '👨‍🍳 En Proceso';
     if (header3) header3.innerHTML = '✅ Listo';
     
-    // Asegurar que los contadores se actualicen
-    renderizarVista();
+    // Limpiar contenidos
+    const cont1 = document.getElementById('col-pendiente');
+    const cont2 = document.getElementById('col-coccion');
+    const cont3 = document.getElementById('col-listo');
+    if (cont1) cont1.innerHTML = '';
+    if (cont2) cont2.innerHTML = '';
+    if (cont3) cont3.innerHTML = '';
 }
-
-       // ============================================
-// MOSTRAR VISTA HISTORIAL (UNIFICADO)
+        // ============================================
+// MOSTRAR VISTA HISTORIAL (CON CONTENEDOR SEPARADO)
 // ============================================
 function mostrarVistaHistorial() {
-    const columna = document.getElementById('col-pendiente');
-    const columna2 = document.getElementById('col-coccion');
-    const columna3 = document.getElementById('col-listo');
+    console.log('📌 mostrarVistaHistorial() ejecutada');
     
-    columna.innerHTML = '';
-    columna2.innerHTML = '';
-    columna3.innerHTML = '';
+    // Ocultar columnas de pedidos activos
+    const col1 = document.getElementById('columna-pendiente');
+    const col2 = document.getElementById('columna-coccion');
+    const col3 = document.getElementById('columna-listo');
     
-    columna2.parentElement.style.display = 'none';
-    columna3.parentElement.style.display = 'none';
-    columna.parentElement.style.display = 'flex';
-    columna.parentElement.style.maxWidth = '100%';
+    if (col1) col1.style.display = 'none';
+    if (col2) col2.style.display = 'none';
+    if (col3) col3.style.display = 'none';
     
-    const header = columna.parentElement.querySelector('.columna-header');
+    // Crear o obtener contenedor de historial
+    let historialContainer = document.getElementById('historial-container');
+    const columnasContainer = document.getElementById('columnas-container');
     
-    // Header con selector y botón de acumulados
+    if (!historialContainer) {
+        historialContainer = document.createElement('div');
+        historialContainer.id = 'historial-container';
+        historialContainer.style.cssText = `
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1e293b;
+            border-radius: 1rem;
+            border: 1px solid #334155;
+            overflow: hidden;
+            margin: 0.5rem;
+        `;
+        columnasContainer.appendChild(historialContainer);
+    }
+    
+    historialContainer.style.display = 'flex';
+    
+    // Header
+    const header = document.createElement('div');
+    header.className = 'columna-header';
+    header.style.cssText = `
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #f59e0b;
+        flex-shrink: 0;
+        background: #1e293b;
+    `;
+    
     header.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:8px;">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span class="titulo">📜 Historial</span>
+                <span style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;">
+                    📜 Historial
+                </span>
                 <select id="filtro-historial" 
-                        style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:white;padding:4px 12px;font-size:12px;cursor:pointer;outline:none;"
-                        onchange="renderizarVista()">
-                    <option value="todos" style="background:#1e293b;">📋 Todos</option>
-                    <option value="ventas" style="background:#1e293b;">🛒 Ventas</option>
-                    <option value="repartos" style="background:#1e293b;">📦 Repartos</option>
+                        style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:white;padding:4px 12px;font-size:12px;cursor:pointer;outline:none;">
+                    <option value="todos" style="background:#0f172a;">📋 Todos</option>
+                    <option value="ventas" style="background:#0f172a;">🛒 Ventas</option>
+                    <option value="repartos" style="background:#0f172a;">📦 Repartos</option>
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:12px;">
-                <span class="cantidad" id="col-count-historial">0</span>
+                <span class="cantidad" id="col-count-historial" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
                 <button onclick="mostrarAcumulados()" 
-                        style="background:#1e293b;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;transition:all 0.3s;">
+                        style="background:#0f172a;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;transition:all 0.3s;">
                     🔒 Acumulados
                 </button>
             </div>
         </div>
     `;
     
+    historialContainer.innerHTML = '';
+    historialContainer.appendChild(header);
+    
+    // Contenedor de contenido
+    const content = document.createElement('div');
+    content.id = 'historial-contenido';
+    content.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        background: #0f172a;
+    `;
+    historialContainer.appendChild(content);
+    
+    // Cargar historial
+    cargarHistorialFiltrado();
+}
+
+// ============================================
+// CARGAR HISTORIAL CON FILTRO (VERSIÓN DEFINITIVA)
+// ============================================
+function cargarHistorialFiltrado() {
+    console.log('📌 cargarHistorialFiltrado() - VERSIÓN DEFINITIVA');
+    
+    const content = document.getElementById('historial-contenido');
     const contador = document.getElementById('col-count-historial');
     const filtro = document.getElementById('filtro-historial');
     
-    db.ref('pedidos').once('value').then((snapshot) => {
-        const pedidos = snapshot.val();
+    if (!content) {
+        console.log('❌ No se encontró historial-contenido');
+        return;
+    }
+    
+    const filtroSeleccionado = filtro ? filtro.value : 'todos';
+    console.log('📌 Filtro seleccionado:', filtroSeleccionado);
+    
+    // Limpiar contenido
+    content.innerHTML = '';
+    
+    db.ref('pedidos').once('value').then(snap => {
+        const pedidos = snap.val();
+        let count = 0;
         
         if (!pedidos) {
-            mostrarMensajeVacio('col-pendiente', '📜', 'No hay pedidos en el historial');
+            content.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                    <div>No hay pedidos en el historial</div>
+                </div>
+            `;
             if (contador) contador.textContent = '0';
             return;
         }
         
-        let pedidosHistorial = [];
         const pedidosArray = Object.entries(pedidos);
-        const filtroSeleccionado = filtro ? filtro.value : 'todos';
         
-        for (const [id, data] of Object.entries(pedidosArray)) {
+        for (const [id, data] of pedidosArray) {
             const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
             if (restId !== restauranteId) continue;
             
             const estado = data.estado ? data.estado.toLowerCase() : '';
             const tipo = data.tipo || 'normal';
             
-            // Filtrar según selección
             if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') continue;
             if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') continue;
             
-            // Solo mostrar pedidos finalizados
             if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
-                pedidosHistorial.push({ id, ...data });
+                count++;
+                const esReparto = tipo === 'reparto_personal';
+                const card = document.createElement('div');
+                card.className = 'pedido-card';
+                card.style.cssText = `
+                    background: #0f172a;
+                    border-radius: 0.75rem;
+                    padding: 1rem;
+                    border: 1px solid #334155;
+                    border-left: 4px solid ${esReparto ? '#8b5cf6' : '#64748b'};
+                    margin-bottom: 0.5rem;
+                    color: white;
+                `;
+                
+                const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+                const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                const direccion = data.direccion || 'Sin dirección';
+                const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+                const total = data.total || 0;
+                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
+                const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
+                const tipoIcon = esReparto ? '📦' : '🛒';
+                const tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
+                const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
+                
+                let montoHtml = '';
+                if (esReparto) {
+                    const costoEnvio = data.envio || 0;
+                    montoHtml = `
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                            <span style="color:#94a3b8;">🚚 Costo de envío:</span>
+                            <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
+                        </div>
+                    `;
+                } else {
+                    const subtotal = data.subtotal || 0;
+                    const totalPedido = data.total || 0;
+                    const envio = data.envio || 0;
+                    const usoApp = data.usoYServicios || data.uso_plataforma || 0;
+                    
+                    montoHtml = `
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                            <span style="color:#94a3b8;">💰 Subtotal:</span>
+                            <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
+                        </div>
+                        ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                            <span>🚚 Envío:</span>
+                            <span>$${envio.toFixed(2)}</span>
+                        </div>` : ''}
+                        ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                            <span>📱 Uso App:</span>
+                            <span>$${usoApp.toFixed(2)}</span>
+                        </div>` : ''}
+                        <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
+                            <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
+                            <span style="color:#f59e0b;font-weight:700;">$${totalPedido.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                
+                let productosHtml = '';
+                if (data.items && data.items.length > 0) {
+                    productosHtml = data.items.map(item => 
+                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                } else if (data.productos) {
+                    productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${prod.cantidad || 1}x ${prod.nombre}</span>`
+                    ).join('');
+                } else {
+                    productosHtml = esReparto ? '<span style="font-size:0.65rem;color:#94a3b8;">📦 Reparto</span>' : '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
+                }
+                
+                card.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${idPedido}</span>
+                            <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
+                        </div>
+                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
+                    </div>
+                    <div style="font-weight:600;color:white;font-size:0.9rem;">${clienteNombre}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:4px;">
+                        ${montoHtml}
+                    </div>
+                    <button onclick="verDetallePedido('${id}')" class="btn-accion primary" style="margin-top:8px;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.7rem;font-weight:600;border:none;cursor:pointer;background:#f59e0b;color:#0f172a;width:100%;">📋 Ver Detalle</button>
+                `;
+                
+                content.appendChild(card);
             }
         }
         
-        pedidosHistorial.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        if (contador) contador.textContent = count;
         
-        if (pedidosHistorial.length === 0) {
+        if (count === 0) {
             const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
                            filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
                            'No hay pedidos en el historial';
-            mostrarMensajeVacio('col-pendiente', '📜', mensaje);
-            if (contador) contador.textContent = '0';
-            return;
-        }
-        
-        if (contador) contador.textContent = pedidosHistorial.length;
-        
-        for (const pedido of pedidosHistorial) {
-            const card = document.createElement('div');
-            const esReparto = pedido.tipo === 'reparto_personal';
-            card.className = 'pedido-card';
-            card.style.borderLeftColor = esReparto ? '#8b5cf6' : '#64748b';
-            card.style.borderLeft = `4px solid ${esReparto ? '#8b5cf6' : '#64748b'}`;
-            
-            const clienteNombre = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
-            const telefono = pedido.cliente_telefono || pedido.telefono || 'Sin teléfono';
-            const direccion = pedido.direccion || 'Sin dirección';
-            const idPedido = pedido.id_pedido || pedido.id || '---';
-            const estado = pedido.estado || 'Entregado';
-            const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
-            const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
-            
-            // Calcular montos según tipo
-            let montoDisplay = '';
-            let tipoIcon = esReparto ? '📦' : '🛒';
-            let tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
-            
-            if (esReparto) {
-                const costoEnvio = pedido.envio || 0;
-                montoDisplay = `
-                    <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                        <span style="color:#94a3b8;">🚚 Costo de envío:</span>
-                        <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
-                    </div>
-                `;
-            } else {
-                const subtotal = pedido.subtotal || 0;
-                const total = pedido.total || 0;
-                const envio = pedido.envio || 0;
-                const usoApp = pedido.usoYServicios || pedido.uso_plataforma || 0;
-                
-                montoDisplay = `
-                    <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                        <span style="color:#94a3b8;">💰 Subtotal:</span>
-                        <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
-                    </div>
-                    ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                        <span>🚚 Envío:</span>
-                        <span>$${envio.toFixed(2)}</span>
-                    </div>` : ''}
-                    ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                        <span>📱 Uso App:</span>
-                        <span>$${usoApp.toFixed(2)}</span>
-                    </div>` : ''}
-                    <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
-                        <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
-                        <span style="color:#f59e0b;font-weight:700;">$${total.toFixed(2)}</span>
-                    </div>
-                `;
-            }
-            
-            let productosHtml = '';
-            if (pedido.items && pedido.items.length > 0) {
-                productosHtml = pedido.items.map(item => 
-                    `<span>${item.cantidad || 1}x ${item.nombre}</span>`
-                ).join('');
-            } else if (pedido.productos) {
-                productosHtml = Object.entries(pedido.productos).map(([pid, prod]) => 
-                    `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-                ).join('');
-            } else {
-                productosHtml = esReparto ? '<span>📦 Reparto</span>' : '<span>Sin productos</span>';
-            }
-            
-            // Badge de tipo
-            const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
-            
-            card.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="id-pedido">#${idPedido}</span>
-                        <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
-                    </div>
-                    <span style="font-size:11px;color:#64748b;">${fecha}</span>
+            content.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                    <div>${mensaje}</div>
                 </div>
-                <div class="cliente">${clienteNombre}</div>
-                <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
-                <div class="detalle" style="margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
-                <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
-                <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;flex-direction:column;gap:4px;">
-                    ${montoDisplay}
-                </div>
-                <button onclick="verDetallePedido('${pedido.id}')" class="btn-accion primary" style="margin-top:8px;width:100%;">📋 Ver Detalle</button>
             `;
-            
-            columna.appendChild(card);
         }
         
-    }).catch((error) => {
-        console.error('Error al cargar historial:', error);
+        console.log(`📊 Total tarjetas: ${count}`);
+        console.log('✅ Historial cargado correctamente');
+    }).catch(error => {
+        console.error('❌ Error al cargar historial:', error);
     });
 }
-
         // ============================================
-        // 23. MOSTRAR VISTA ENVÍOS
+        // 25. FUNCIÓN AUXILIAR PARA MENSAJE EN CONTENEDOR
         // ============================================
-        function mostrarVistaEnvios() {
-            const columna = document.getElementById('col-pendiente');
-            const columna2 = document.getElementById('col-coccion');
-            const columna3 = document.getElementById('col-listo');
-            
-            columna.innerHTML = '';
-            columna2.innerHTML = '';
-            columna3.innerHTML = '';
-            
-            columna2.parentElement.style.display = 'none';
-            columna3.parentElement.style.display = 'none';
-            columna.parentElement.style.display = 'flex';
-            columna.parentElement.style.maxWidth = '100%';
-            
-            const header = columna.parentElement.querySelector('.columna-header .titulo');
-            if (header) header.innerHTML = '📦 Entregas (Reparto Personal)';
-            
-            const contador = columna.parentElement.querySelector('.columna-header .cantidad');
-            
-            db.ref('envios').once('value').then((snapshot) => {
-                const envios = snapshot.val();
-                
-                if (!envios) {
-                    mostrarMensajeVacio('col-pendiente', '📦', 'No hay entregas registradas');
-                    if (contador) contador.textContent = '0';
-                    return;
-                }
-                
-                let enviosLista = [];
-                const enviosArray = Object.entries(envios);
-                
-                for (const [id, data] of enviosArray) {
-                    if (data.uid_restaurante === restauranteId) {
-                        enviosLista.push({ id, ...data });
-                    }
-                }
-                
-                enviosLista.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                
-                if (enviosLista.length === 0) {
-                    mostrarMensajeVacio('col-pendiente', '📦', 'No hay entregas registradas');
-                    if (contador) contador.textContent = '0';
-                    return;
-                }
-                
-                if (contador) contador.textContent = enviosLista.length;
-                
-                for (const envio of enviosLista) {
-                    const card = document.createElement('div');
-                    card.className = 'pedido-card';
-                    card.style.borderLeftColor = '#8b5cf6';
-                    
-                    const clienteNombre = envio.cliente_nombre || 'Cliente';
-                    const telefono = envio.cliente_telefono || 'Sin teléfono';
-                    const direccion = envio.direccion || 'Sin dirección';
-                    const monto = envio.monto || 0;
-                    const costoEnvio = envio.costo_envio || 0;
-                    const estado = envio.estado || 'pendiente';
-                    const fecha = envio.timestamp ? new Date(envio.timestamp).toLocaleString() : 'Fecha desconocida';
-                    const debeCobrar = envio.debe_cobrar || false;
-                    const nota = envio.nota || '';
-                    const repartidor = envio.uid_repartidor || 'No asignado';
-                    
-                    const estadoMap = {
-                        'pendiente': '⏳ Pendiente',
-                        'asignado': '🛵 Asignado',
-                        'recogido': '📦 Recogido',
-                        'entregado': '✅ Entregado'
-                    };
-                    
-                    const estadoDisplay = estadoMap[estado] || estado;
-                    
-                    let estadoColor = '#94a3b8';
-                    if (estado === 'entregado') estadoColor = '#10b981';
-                    else if (estado === 'asignado') estadoColor = '#3b82f6';
-                    else if (estado === 'recogido') estadoColor = '#8b5cf6';
-                    
-                    const pagoIcon = debeCobrar ? '💵 Cobrar en sitio' : '✅ Pagado';
-                    const pagoColor = debeCobrar ? '#f59e0b' : '#10b981';
-                    
-                    card.innerHTML = `
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <span class="id-pedido" style="color:#8b5cf6;">📦 #${envio.id.substring(0, 8)}</span>
-                            <span style="font-size:11px;color:#64748b;">${fecha}</span>
-                        </div>
-                        <div class="cliente">${clienteNombre}</div>
-                        <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
-                        <div class="detalle" style="margin-top:2px;">📍 ${direccion}</div>
-                        ${nota ? `<div style="color:#94a3b8;font-size:11px;margin-top:4px;font-style:italic;">📝 ${nota}</div>` : ''}
-                        <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">
-                            <div style="display:flex;justify-content:space-between;font-size:12px;">
-                                <span style="color:#94a3b8;">💰 Monto:</span>
-                                <span style="color:#f59e0b;font-weight:700;">$${monto.toFixed(2)}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-top:2px;">
-                                <span>🚚 Costo envío:</span>
-                                <span>$${costoEnvio.toFixed(2)}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
-                                <span style="color:#94a3b8;">💳 Pago:</span>
-                                <span style="color:${pagoColor};font-weight:600;">${pagoIcon}</span>
-                            </div>
-                        </div>
-                        <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">
-                            <span style="color:${estadoColor};font-weight:600;font-size:12px;">${estadoDisplay}</span>
-                            <span style="font-size:10px;color:#64748b;">🛵 ${repartidor}</span>
-                            ${estado !== 'entregado' ? `<button onclick="verDetalleEnvio('${envio.id}')" class="btn-accion envio">📋 Detalle</button>` : ''}
-                        </div>
-                    `;
-                    
-                    columna.appendChild(card);
-                }
-                
-            }).catch((error) => {
-                console.error('Error al cargar envíos:', error);
-            });
+        function mostrarMensajeVacioContainer(container, icono, mensaje) {
+            if (!container) return;
+            const empty = document.createElement('div');
+            empty.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem 1rem;
+                color: #475569;
+                text-align: center;
+                font-size: 0.875rem;
+                height: 100%;
+                min-height: 120px;
+            `;
+            empty.innerHTML = `
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">${icono}</div>
+                <div>${mensaje}</div>
+            `;
+            container.appendChild(empty);
         }
 
         // ============================================
-        // 24. MOSTRAR VISTA DEMORAS
+        // 26. MOSTRAR VISTA DEMORAS CON RESUMEN
         // ============================================
         function mostrarVistaDemoras() {
             const columna = document.getElementById('col-pendiente');
@@ -1839,6 +2524,10 @@ function mostrarVistaHistorial() {
                 }
                 
                 let pedidosDemora = [];
+                let totalDemora = 0;
+                let maxDemora = 0;
+                let countDemora = 0;
+                
                 const pedidosArray = Object.entries(pedidos);
                 
                 for (const [id, data] of pedidosArray) {
@@ -1848,6 +2537,9 @@ function mostrarVistaHistorial() {
                     const demora = data.demora || data.tiempo_demora || 0;
                     if (demora > 0) {
                         pedidosDemora.push({ id, ...data, demora: demora });
+                        totalDemora += demora;
+                        maxDemora = Math.max(maxDemora, demora);
+                        countDemora++;
                     }
                 }
                 
@@ -1861,10 +2553,43 @@ function mostrarVistaHistorial() {
                 
                 if (contador) contador.textContent = pedidosDemora.length;
                 
+                // TARJETA DE RESUMEN
+                const resumenCard = document.createElement('div');
+                resumenCard.style.cssText = `
+                    background: #1e293b;
+                    border-radius: 0.75rem;
+                    padding: 0.75rem 1rem;
+                    border: 1px solid #334155;
+                    margin-bottom: 0.75rem;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                `;
+                resumenCard.innerHTML = `
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                        <div>
+                            <span style="color:#94a3b8;font-size:11px;">📊 Total demoras</span>
+                            <div style="color:#ef4444;font-weight:bold;font-size:18px;">${countDemora}</div>
+                        </div>
+                        <div>
+                            <span style="color:#94a3b8;font-size:11px;">⏱️ Promedio</span>
+                            <div style="color:#f59e0b;font-weight:bold;font-size:18px;">${(totalDemora / countDemora).toFixed(0)} min</div>
+                        </div>
+                        <div>
+                            <span style="color:#94a3b8;font-size:11px;">🔴 Máxima</span>
+                            <div style="color:#ef4444;font-weight:bold;font-size:18px;">${maxDemora} min</div>
+                        </div>
+                    </div>
+                `;
+                columna.appendChild(resumenCard);
+                
                 for (const pedido of pedidosDemora) {
                     const card = document.createElement('div');
                     card.className = 'pedido-card';
                     card.style.borderLeftColor = '#ef4444';
+                    card.style.borderLeft = '4px solid #ef4444';
                     
                     const clienteNombre = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
                     const telefono = pedido.cliente_telefono || pedido.telefono || 'Sin teléfono';
@@ -1874,6 +2599,8 @@ function mostrarVistaHistorial() {
                     const estado = pedido.estado || 'Finalizado';
                     const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
                     const minutosDemora = pedido.demora || 0;
+                    const tiempoPreparacion = pedido.tiempo_preparacion || 0;
+                    
                     const demoraColor = minutosDemora > 30 ? '#ef4444' : minutosDemora > 15 ? '#f59e0b' : '#10b981';
                     
                     let productosHtml = '';
@@ -1897,7 +2624,7 @@ function mostrarVistaHistorial() {
                         <div class="cliente">${clienteNombre}</div>
                         <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
                         <div class="detalle" style="margin-top:2px;color:${demoraColor};">
-                            ⏱️ Demora: ${minutosDemora} minutos • ${estado}
+                            ⏱️ Demora: ${minutosDemora} min (Preparación: ${tiempoPreparacion} min)
                         </div>
                         <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
                         <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">
@@ -1915,10 +2642,10 @@ function mostrarVistaHistorial() {
         }
 
         // ============================================
-        // 25. FUNCIONES DE BOTONES - PEDIDOS
+        // 27. FUNCIONES DE BOTONES - PEDIDOS
         // ============================================
 
-        // 25.1 ACEPTAR PEDIDO (CON NOTIFICACIÓN)
+        // 27.1 ACEPTAR PEDIDO
         window.aceptarPedido = async function(pedidoId) {
             if (estaPausado) {
                 showToast('⏸️ Restaurante en pausa. No se pueden aceptar pedidos.', 'warning');
@@ -1937,7 +2664,7 @@ function mostrarVistaHistorial() {
                 showToast('✅ Pedido aceptado, en preparación', 'success');
                 renderizarVista();
                 
-                // 🔥 NOTIFICAR AL REPARTIDOR AL ACEPTAR
+                // NOTIFICAR AL REPARTIDOR AL ACEPTAR
                 console.log('📤 Notificando al repartidor (pedido aceptado)...');
                 await notificarRepartidor(pedidoId);
                 detenerSonidoRepetido();
@@ -1948,7 +2675,7 @@ function mostrarVistaHistorial() {
             }
         };
 
-        // 25.2 RECHAZAR PEDIDO (CON DETENER SONIDO)
+        // 27.2 RECHAZAR PEDIDO
         window.rechazarPedido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -1975,8 +2702,6 @@ function mostrarVistaHistorial() {
                 
                 showToast('❌ Pedido rechazado', 'error');
                 renderizarVista();
-                
-                // 🔥 DETENER SONIDO
                 detenerSonidoRepetido();
                 
             } catch (error) {
@@ -1985,7 +2710,7 @@ function mostrarVistaHistorial() {
             }
         };
 
-        // 25.3 MARCAR LISTO (SIN NOTIFICACIÓN)
+        // 27.3 MARCAR LISTO (CON REGISTRO AUTOMÁTICO DE DEMORA)
         window.marcarListo = async function(pedidoId) {
             try {
                 const snapshot = await db.ref(`pedidos/${pedidoId}`).once('value');
@@ -1997,6 +2722,8 @@ function mostrarVistaHistorial() {
                 
                 const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
                 const tiempoPreparacion = Math.floor((Date.now() - tiempoInicio) / 60000);
+                const tiempoLimite = data.tiempo_limite || tiempoElaboracionRestaurante || TIEMPO_ELABORACION_DEFAULT;
+                const demora = Math.max(0, tiempoPreparacion - tiempoLimite);
                 
                 await db.ref(`pedidos/${pedidoId}/estado`).set('LISTO');
                 await db.ref(`pedidos/${pedidoId}/tiempo_preparacion`).set(tiempoPreparacion);
@@ -2009,10 +2736,27 @@ function mostrarVistaHistorial() {
                     tiempo_preparacion: tiempoPreparacion
                 });
                 
+                // REGISTRAR DEMORA AUTOMÁTICAMENTE
+                if (demora > 0) {
+                    await db.ref(`pedidos/${pedidoId}/demora`).set(demora);
+                    await db.ref(`pedidos/${pedidoId}/tiempo_demora`).set(demora);
+                    await db.ref(`pedidos/${pedidoId}/historial`).push({
+                        estado: 'demora_registrada',
+                        timestamp: Date.now(),
+                        usuario: currentUser.uid,
+                        demora: demora,
+                        tiempo_limite: tiempoLimite,
+                        accion: 'registrar_demora_automatica'
+                    });
+                    
+                    showToast(`⏱️ Demora registrada: ${demora} minutos`, 'warning');
+                }
+                
                 showToast(`✅ Pedido listo (${tiempoPreparacion} min)`, 'success');
                 renderizarVista();
                 
-                // ❌ ELIMINADO: await notificarRepartidor(pedidoId);
+                // ❌ NOTIFICACIÓN ELIMINADA (YA SE ENVIÓ AL ACEPTAR)
+                // await notificarRepartidor(pedidoId);
                 
             } catch (error) {
                 console.error('Error al marcar listo:', error);
@@ -2020,7 +2764,7 @@ function mostrarVistaHistorial() {
             }
         };
 
-        // 25.4 MARCAR RECOGIDO
+        // 27.4 MARCAR RECOGIDO
         window.marcarRecogido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -2055,10 +2799,10 @@ function mostrarVistaHistorial() {
         };
 
         // ============================================
-        // 26. NOTIFICACIONES PUSH (CON CLOUD FUNCTION)
+        // 28. NOTIFICACIONES PUSH (CON CLOUD FUNCTION)
         // ============================================
         
-        // 26.1 ENVIAR NOTIFICACIÓN CON CLOUD FUNCTION
+        // 28.1 ENVIAR NOTIFICACIÓN CON CLOUD FUNCTION
         async function enviarNotificacionConCloudFunction(uidRepartidor, pedidoId, tipo = 'pedido') {
             try {
                 const tokenSnap = await db.ref(`repartidores/${uidRepartidor}/token`).once('value');
@@ -2114,7 +2858,7 @@ function mostrarVistaHistorial() {
             }
         }
 
-        // 26.2 NOTIFICAR REPARTIDOR (SIN CAMBIAR ESTADO)
+        // 28.2 NOTIFICAR REPARTIDOR
         window.notificarRepartidor = async function(pedidoId) {
             try {
                 const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
@@ -2178,7 +2922,6 @@ function mostrarVistaHistorial() {
                     }
                 }
 
-                // 🔥 SOLO ASIGNAR REPARTIDOR - NO CAMBIAR ESTADO
                 await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
                 await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
                 await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
@@ -2192,9 +2935,6 @@ function mostrarVistaHistorial() {
                     repartidor_nombre: repartidorData.nombre || 'Repartidor'
                 });
 
-                console.log('✅ Repartidor asignado:', repartidorId);
-                
-                console.log('📨 Enviando notificación al repartidor...');
                 await enviarNotificacionConCloudFunction(repartidorId, pedidoId, 'pedido');
 
                 showToast(`✅ Repartidor asignado: ${repartidorData.nombre || 'Repartidor'}`, 'success');
@@ -2207,115 +2947,10 @@ function mostrarVistaHistorial() {
         };
 
         // ============================================
-        // 27. FUNCIONES PARA REPARTO PERSONAL
+        // 29. FUNCIONES PARA REPARTO PERSONAL
         // ============================================
 
-        // 27.1 CALCULAR COSTO DE ENVÍO
-        // ============================================
-        // CALCULAR COSTO DE ENVÍO (REUTILIZANDO LÓGICA DE VENTAS)
-        // ============================================
-
-        // Configuración de zonas (copiada de ventas)
-        const ZONAS_ROQUETAS = {
-            kmIncluidos: 5,
-            tarifaBase: 2.50,
-            tarifaPorKm: 0.50,
-            maxEnvio: 8.00,
-            minEnvio: 2.50,
-            usoPlataforma: 0.99,
-            descuentoMinPedido: 20,
-            descuentoPorcentaje: 0.10
-        };
-
-        // Función para calcular distancia (copiada de ventas)
-        async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
-            if (!direccionCliente || !direccionRestaurante) return null;
-
-            const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc';
-            const origen = encodeURIComponent(direccionRestaurante);
-            const destino = encodeURIComponent(direccionCliente);
-            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
-            
-            try {
-                const proxyUrl = 'https://corsproxy.io/?';
-                const response = await fetch(proxyUrl + encodeURIComponent(url));
-                
-                if (!response.ok) {
-                    console.warn(`⚠️ Proxy respondió con estado ${response.status}. Usando tarifa fija.`);
-                    return null;
-                }
-
-                const data = await response.json();
-                
-                if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
-                    const distanciaMetros = data.rows[0].elements[0].distance.value;
-                    const distanciaKm = distanciaMetros / 1000;
-                    const tiempoTexto = data.rows[0].elements[0].duration.text;
-                    return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
-                } else {
-                    console.warn('⚠️ No se pudo calcular distancia:', data.status);
-                    return null;
-                }
-            } catch (error) {
-                console.error('❌ Error de red en Maps (Proxy):', error);
-                return null;
-            }
-        }
-
-        // Función para calcular costo de envío (copiada de ventas)
-        function calcularCostoEnvioDesdeDistancia(distanciaKm, subtotalPedido = 0) {
-            if (distanciaKm === null || distanciaKm === undefined) {
-                return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
-            }
-            
-            let costoEnvio;
-            let mensaje = '';
-            let descuentoAplicado = false;
-            
-            if (distanciaKm <= ZONAS_ROQUETAS.kmIncluidos) {
-                costoEnvio = ZONAS_ROQUETAS.tarifaBase;
-            } else {
-                const kmExtra = distanciaKm - ZONAS_ROQUETAS.kmIncluidos;
-                costoEnvio = ZONAS_ROQUETAS.tarifaBase + (kmExtra * ZONAS_ROQUETAS.tarifaPorKm);
-            }
-            
-            // Descuento por pedido grande
-            if (subtotalPedido > ZONAS_ROQUETAS.descuentoMinPedido) {
-                const descuento = costoEnvio * ZONAS_ROQUETAS.descuentoPorcentaje;
-                costoEnvio = costoEnvio - descuento;
-                descuentoAplicado = true;
-                mensaje = `🎉 ¡Pedido superior a 20€! Descuento de envío (-${descuento.toFixed(2)}€)`;
-            }
-            
-            // Limitar costo
-            if (costoEnvio > ZONAS_ROQUETAS.maxEnvio) costoEnvio = ZONAS_ROQUETAS.maxEnvio;
-            if (costoEnvio < ZONAS_ROQUETAS.minEnvio) costoEnvio = ZONAS_ROQUETAS.minEnvio;
-            
-            // Redondear
-            costoEnvio = Math.ceil(costoEnvio * 20) / 20;
-            costoEnvio = Math.round(costoEnvio * 100) / 100;
-            
-            const usoPlataforma = ZONAS_ROQUETAS.usoPlataforma;
-            const total = costoEnvio + usoPlataforma;
-            
-            return {
-                envio: costoEnvio,
-                usoPlataforma: usoPlataforma,
-                total: Math.round(total * 100) / 100,
-                descuentoAplicado: descuentoAplicado,
-                mensaje: mensaje,
-                distanciaKm: distanciaKm
-            };
-        }
-
-        // Obtener dirección del restaurante
-        function obtenerDireccionRestauranteLocal() {
-            return 'AVENIDA REINO DE ESPAÑA 20, Roquetas de Mar, Almería, España';
-        }
-
-        // ============================================
-        // CALCULAR COSTO DE ENVÍO (SOLO ROQUETAS DE MAR)
-        // ============================================
+        // 29.1 CALCULAR COSTO DE ENVÍO
         async function calcularCostoEnvio(direccionCliente) {
             try {
                 const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
@@ -2339,7 +2974,6 @@ function mostrarVistaHistorial() {
                 
                 if (result.data.success) {
                     const distanciaKm = result.data.distanciaKm;
-                    
                     const DISTANCIA_MAXIMA_KM = 20;
                     
                     if (distanciaKm > DISTANCIA_MAXIMA_KM) {
@@ -2371,183 +3005,164 @@ function mostrarVistaHistorial() {
             }
         }
 
-      // ============================================
-// ABRIR FORMULARIO DE REPARTO (SIN CAMPO MONTO)
-// ============================================
-window.abrirFormularioReparto = function() {
-    Swal.fire({
-        title: '🚚 Nuevo Reparto Personal',
-        html: `
-            <div style="text-align:left;color:white;padding:4px;">
-                <!-- Cliente -->
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
-                        <span style="color:#f59e0b;">👤</span> Cliente <span style="color:#ef4444;">*</span>
-                    </label>
-                    <input id="cliente" class="swal2-input" placeholder="Nombre del cliente" 
-                           style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                </div>
-
-                <!-- Teléfono -->
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
-                        <span style="color:#f59e0b;">📞</span> Teléfono <span style="color:#ef4444;">*</span>
-                    </label>
-                    <input id="telefono" class="swal2-input" placeholder="Teléfono del cliente" 
-                           style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                </div>
-
-                <!-- Dirección -->
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
-                        <span style="color:#f59e0b;">📍</span> Dirección <span style="color:#ef4444;">*</span>
-                    </label>
-                    <input id="direccion" class="swal2-input" placeholder="Calle, número, Roquetas de Mar" 
-                           style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#f59e0b;background:#1e293b;padding:6px 12px;border-radius:8px;">
-                        <span>⚠️</span>
-                        <span>Solo disponible en <strong>Roquetas de Mar</strong> (C.P. 04740)</span>
-                    </div>
-                </div>
-
-                <!-- Estado del pago -->
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
-                        <span style="color:#f59e0b;">💳</span> Estado del pago <span style="color:#ef4444;">*</span>
-                    </label>
-                    <select id="estado_pago" 
-                            style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                        <option value="pagado" style="background:#1e293b;">✅ Ya está pagado</option>
-                        <option value="cobrar" style="background:#1e293b;">💵 Cobrar en sitio</option>
-                    </select>
-                </div>
-
-                <!-- Nota -->
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
-                        <span style="color:#f59e0b;">📝</span> Nota <span style="color:#64748b;">(opcional)</span>
-                    </label>
-                    <textarea id="nota" placeholder="Detalles del pedido" 
-                              style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;min-height:60px;outline:none;"></textarea>
-                </div>
-
-                <!-- Costo de envío - CARD DESTACADA -->
-                <div style="margin-top:8px;padding:16px;background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);border-radius:14px;border:2px solid #334155;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <div style="font-size:12px;color:#94a3b8;font-weight:500;">🚚 Costo de envío</div>
-                            <div style="font-size:11px;color:#64748b;margin-top:2px;">Calculado según distancia</div>
+        // 29.2 ABRIR FORMULARIO DE REPARTO
+        window.abrirFormularioReparto = function() {
+            Swal.fire({
+                title: '🚚 Nuevo Reparto Personal',
+                html: `
+                    <div style="text-align:left;color:white;padding:4px;">
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#f59e0b;">👤</span> Cliente <span style="color:#ef4444;">*</span>
+                            </label>
+                            <input id="cliente" class="swal2-input" placeholder="Nombre del cliente" 
+                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
                         </div>
-                        <div style="text-align:right;">
-                            <div id="costo-envio-display" style="font-size:22px;font-weight:700;color:#f59e0b;">Calculando...</div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#f59e0b;">📞</span> Teléfono <span style="color:#ef4444;">*</span>
+                            </label>
+                            <input id="telefono" class="swal2-input" placeholder="Teléfono del cliente" 
+                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#f59e0b;">📍</span> Dirección <span style="color:#ef4444;">*</span>
+                            </label>
+                            <input id="direccion" class="swal2-input" placeholder="Calle, número, Roquetas de Mar" 
+                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#f59e0b;background:#1e293b;padding:6px 12px;border-radius:8px;">
+                                <span>⚠️</span>
+                                <span>Solo disponible en <strong>Roquetas de Mar</strong> (C.P. 04740)</span>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#f59e0b;">💳</span> Estado del pago <span style="color:#ef4444;">*</span>
+                            </label>
+                            <select id="estado_pago" 
+                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                                <option value="pagado" style="background:#1e293b;">✅ Ya está pagado</option>
+                                <option value="cobrar" style="background:#1e293b;">💵 Cobrar en sitio</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#f59e0b;">📝</span> Nota <span style="color:#64748b;">(opcional)</span>
+                            </label>
+                            <textarea id="nota" placeholder="Detalles del pedido" 
+                                      style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;min-height:60px;outline:none;"></textarea>
+                        </div>
+                        <div style="margin-top:8px;padding:16px;background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);border-radius:14px;border:2px solid #334155;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <div style="font-size:12px;color:#94a3b8;font-weight:500;">🚚 Costo de envío</div>
+                                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Calculado según distancia</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div id="costo-envio-display" style="font-size:22px;font-weight:700;color:#f59e0b;">Calculando...</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px;font-size:11px;color:#64748b;text-align:center;">
+                            <span style="color:#ef4444;">*</span> Campos obligatorios
                         </div>
                     </div>
-                </div>
-
-                <div style="margin-top:12px;font-size:11px;color:#64748b;text-align:center;">
-                    <span style="color:#ef4444;">*</span> Campos obligatorios
-                </div>
-            </div>
-        `,
-        confirmButtonText: '📨 Enviar a Repartidor',
-        showCancelButton: true,
-        cancelButtonText: 'Cancelar',
-        background: '#0f172a',
-        color: 'white',
-        confirmButtonColor: '#8b5cf6',
-        cancelButtonColor: '#334155',
-        width: '92%',
-        didOpen: () => {
-            const direccionInput = document.getElementById('direccion');
-            const costoDisplay = document.getElementById('costo-envio-display');
-            
-            const calcularCosto = async () => {
-                const direccion = direccionInput.value.trim();
-                if (direccion) {
-                    costoDisplay.textContent = '🔄';
-                    costoDisplay.style.color = '#94a3b8';
-                    try {
-                        const costo = await calcularCostoEnvio(direccion);
-                        if (costo === -1) {
-                            costoDisplay.textContent = '❌ Fuera de zona';
-                            costoDisplay.dataset.costo = -1;
-                            costoDisplay.style.color = '#ef4444';
-                            costoDisplay.style.fontSize = '16px';
+                `,
+                confirmButtonText: '📨 Enviar a Repartidor',
+                showCancelButton: true,
+                cancelButtonText: 'Cancelar',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#8b5cf6',
+                cancelButtonColor: '#334155',
+                width: '92%',
+                didOpen: () => {
+                    const direccionInput = document.getElementById('direccion');
+                    const costoDisplay = document.getElementById('costo-envio-display');
+                    
+                    const calcularCosto = async () => {
+                        const direccion = direccionInput.value.trim();
+                        if (direccion) {
+                            costoDisplay.textContent = '🔄';
+                            costoDisplay.style.color = '#94a3b8';
+                            try {
+                                const costo = await calcularCostoEnvio(direccion);
+                                if (costo === -1) {
+                                    costoDisplay.textContent = '❌ Fuera de zona';
+                                    costoDisplay.dataset.costo = -1;
+                                    costoDisplay.style.color = '#ef4444';
+                                    costoDisplay.style.fontSize = '16px';
+                                } else {
+                                    costoDisplay.textContent = `€${costo.toFixed(2)}`;
+                                    costoDisplay.dataset.costo = costo;
+                                    costoDisplay.style.color = '#10b981';
+                                    costoDisplay.style.fontSize = '22px';
+                                }
+                            } catch (error) {
+                                costoDisplay.textContent = '€5.00';
+                                costoDisplay.dataset.costo = 5.00;
+                                costoDisplay.style.color = '#f59e0b';
+                                costoDisplay.style.fontSize = '22px';
+                            }
                         } else {
-                            costoDisplay.textContent = `€${costo.toFixed(2)}`;
-                            costoDisplay.dataset.costo = costo;
-                            costoDisplay.style.color = '#10b981';
+                            costoDisplay.textContent = '€0.00';
+                            costoDisplay.dataset.costo = 0;
+                            costoDisplay.style.color = '#94a3b8';
                             costoDisplay.style.fontSize = '22px';
                         }
-                    } catch (error) {
-                        costoDisplay.textContent = '€5.00';
-                        costoDisplay.dataset.costo = 5.00;
-                        costoDisplay.style.color = '#f59e0b';
-                        costoDisplay.style.fontSize = '22px';
+                    };
+                    
+                    direccionInput.addEventListener('blur', calcularCosto);
+                    direccionInput.addEventListener('input', () => {
+                        if (direccionInput.value.trim().length > 5) {
+                            calcularCosto();
+                        }
+                    });
+                    
+                    setTimeout(calcularCosto, 500);
+                },
+                preConfirm: async () => {
+                    const cliente = document.getElementById('cliente').value.trim();
+                    const telefono = document.getElementById('telefono').value.trim();
+                    const direccion = document.getElementById('direccion').value.trim();
+                    const estado_pago = document.getElementById('estado_pago').value;
+                    const nota = document.getElementById('nota').value.trim();
+                    const costoEnvio = parseFloat(document.getElementById('costo-envio-display').dataset.costo || 0);
+                    
+                    if (!cliente) {
+                        Swal.showValidationMessage('❌ El nombre del cliente es obligatorio');
+                        return false;
                     }
-                } else {
-                    costoDisplay.textContent = '€0.00';
-                    costoDisplay.dataset.costo = 0;
-                    costoDisplay.style.color = '#94a3b8';
-                    costoDisplay.style.fontSize = '22px';
+                    if (!telefono) {
+                        Swal.showValidationMessage('❌ El teléfono es obligatorio');
+                        return false;
+                    }
+                    if (!direccion) {
+                        Swal.showValidationMessage('❌ La dirección es obligatoria');
+                        return false;
+                    }
+                    
+                    if (costoEnvio === -1) {
+                        Swal.showValidationMessage('❌ Esta dirección está fuera de Roquetas de Mar. El servicio de reparto solo está disponible en el código postal 04740.');
+                        return false;
+                    }
+                    
+                    if (costoEnvio <= 0) {
+                        Swal.showValidationMessage('⚠️ No se pudo calcular el costo de envío. Verifica la dirección.');
+                        return false;
+                    }
+                    
+                    return { cliente, telefono, direccion, estado_pago, nota, costoEnvio };
                 }
-            };
-            
-            direccionInput.addEventListener('blur', calcularCosto);
-            direccionInput.addEventListener('input', () => {
-                if (direccionInput.value.trim().length > 5) {
-                    calcularCosto();
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    await crearEnvio(result.value);
                 }
             });
-            
-            setTimeout(calcularCosto, 500);
-        },
-        preConfirm: async () => {
-            const cliente = document.getElementById('cliente').value.trim();
-            const telefono = document.getElementById('telefono').value.trim();
-            const direccion = document.getElementById('direccion').value.trim();
-            const estado_pago = document.getElementById('estado_pago').value;
-            const nota = document.getElementById('nota').value.trim();
-            const costoEnvio = parseFloat(document.getElementById('costo-envio-display').dataset.costo || 0);
-            
-            if (!cliente) {
-                Swal.showValidationMessage('❌ El nombre del cliente es obligatorio');
-                return false;
-            }
-            if (!telefono) {
-                Swal.showValidationMessage('❌ El teléfono es obligatorio');
-                return false;
-            }
-            if (!direccion) {
-                Swal.showValidationMessage('❌ La dirección es obligatoria');
-                return false;
-            }
-            
-            if (costoEnvio === -1) {
-                Swal.showValidationMessage('❌ Esta dirección está fuera de Roquetas de Mar. El servicio de reparto solo está disponible en el código postal 04740.');
-                return false;
-            }
-            
-            if (costoEnvio <= 0) {
-                Swal.showValidationMessage('⚠️ No se pudo calcular el costo de envío. Verifica la dirección.');
-                return false;
-            }
-            
-            return { cliente, telefono, direccion, estado_pago, nota, costoEnvio };
-        }
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            await crearEnvio(result.value);
-        }
-    });
-};
+        };
 
-        console.log('✅ Formulario de reparto mejorado y actualizado');
-
-        // 27.3 CREAR ENVÍO
-        // ============================================
-        // CREAR ENVÍO (GUARDA EN PEDIDOS Y ENVÍOS)
-        // ============================================
+        // 29.3 CREAR ENVÍO
         async function crearEnvio(data) {
             try {
                 const repartidoresSnap = await db.ref('repartidores')
@@ -2604,52 +3219,51 @@ window.abrirFormularioReparto = function() {
                 
                 const pedidoId = db.ref('pedidos').push().key;
                 
-               // En crearEnvio(), reemplaza el objeto pedido:
-const pedido = {
-    uid_restaurante: restauranteId,
-    restaurante_id: restauranteId,
-    restaurante_nombre: document.getElementById('header-restaurante').textContent || 'Restaurante',
-    uid_repartidor: repartidorId,
-    repartidor_nombre: repartidorData.nombre || 'Repartidor',
-    uid_cliente: 'reparto_personal',
-    cliente_nombre: data.cliente,
-    cliente_telefono: data.telefono,
-    direccion: data.direccion,
-    items: [
-        {
-            nombre: '📦 Reparto Personal',
-            cantidad: 1,
-            precio_unitario: 0, // 🔥 SIN MONTO
-            total: 0             // 🔥 SIN MONTO
-        }
-    ],
-    total: 0,                    // 🔥 SIN MONTO
-    subtotal: 0,                 // 🔥 SIN MONTO
-    envio: data.costoEnvio || 5.00, // 🔥 SOLO EL COSTO DE ENVÍO
-    estado: 'LISTO',
-    tipo: 'reparto_personal',
-    metodo_pago: data.estado_pago === 'pagado' ? 'Pagado' : 'Contra entrega',
-    nota: data.nota || '',
-    debe_cobrar: data.estado_pago === 'cobrar',
-    timestamp: Date.now(),
-    timestamp_inicio: Date.now(),
-    timestamp_listo: Date.now(),
-    tiempo_preparacion: 0,
-    historial: [
-        {
-            estado: 'LISTO',
-            timestamp: Date.now(),
-            accion: 'creado_por_restaurante',
-            tipo: 'reparto_personal'
-        }
-    ],
-    reparto_personal: {
-        creado_por: 'restaurante',
-        fecha_creacion: Date.now(),
-        nota: data.nota || '',
-        estado_pago: data.estado_pago
-    }
-};
+                const pedido = {
+                    uid_restaurante: restauranteId,
+                    restaurante_id: restauranteId,
+                    restaurante_nombre: document.getElementById('header-restaurante').textContent || 'Restaurante',
+                    uid_repartidor: repartidorId,
+                    repartidor_nombre: repartidorData.nombre || 'Repartidor',
+                    uid_cliente: 'reparto_personal',
+                    cliente_nombre: data.cliente,
+                    cliente_telefono: data.telefono,
+                    direccion: data.direccion,
+                    items: [
+                        {
+                            nombre: '📦 Reparto Personal',
+                            cantidad: 1,
+                            precio_unitario: 0,
+                            total: 0
+                        }
+                    ],
+                    total: 0,
+                    subtotal: 0,
+                    envio: data.costoEnvio || 0,
+                    estado: 'LISTO',
+                    tipo: 'reparto_personal',
+                    metodo_pago: data.estado_pago === 'pagado' ? 'Pagado' : 'Contra entrega',
+                    nota: data.nota || '',
+                    debe_cobrar: data.estado_pago === 'cobrar',
+                    timestamp: Date.now(),
+                    timestamp_inicio: Date.now(),
+                    timestamp_listo: Date.now(),
+                    tiempo_preparacion: 0,
+                    historial: [
+                        {
+                            estado: 'LISTO',
+                            timestamp: Date.now(),
+                            accion: 'creado_por_restaurante',
+                            tipo: 'reparto_personal'
+                        }
+                    ],
+                    reparto_personal: {
+                        creado_por: 'restaurante',
+                        fecha_creacion: Date.now(),
+                        nota: data.nota || '',
+                        estado_pago: data.estado_pago
+                    }
+                };
                 
                 await db.ref(`pedidos/${pedidoId}`).set(pedido);
                 
@@ -2661,7 +3275,7 @@ const pedido = {
                     cliente_nombre: data.cliente,
                     cliente_telefono: data.telefono,
                     direccion: data.direccion,
-                    monto: data.monto || 0,
+                    monto: 0,
                     costo_envio: data.costoEnvio || 5.00,
                     estado_pago: data.estado_pago === 'pagado' ? 'pagado' : 'pendiente',
                     debe_cobrar: data.estado_pago === 'cobrar',
@@ -2691,7 +3305,7 @@ const pedido = {
             }
         }
 
-        // 27.4 VER DETALLE DE ENVÍO
+        // 29.4 VER DETALLE DE ENVÍO
         window.verDetalleEnvio = function(envioId) {
             db.ref(`envios/${envioId}`).once('value').then((snapshot) => {
                 const data = snapshot.val();
@@ -2763,7 +3377,7 @@ const pedido = {
         };
 
         // ============================================
-        // 28. FUNCIONES PARA ACUMULADOS OCULTOS
+        // 30. FUNCIONES PARA ACUMULADOS OCULTOS
         // ============================================
 
         async function verificarClaveAcumulados(claveIngresada) {
@@ -2826,21 +3440,17 @@ const pedido = {
             });
         };
 
-        // 28.3 MOSTRAR RESUMEN DE ACUMULADOS
-        // ============================================
-// MOSTRAR RESUMEN DE ACUMULADOS (SIN SEMANA)
+// ============================================
+// MOSTRAR RESUMEN DE ACUMULADOS (CORREGIDO - TOTAL)
 // ============================================
 async function mostrarResumenAcumulados() {
     try {
         const pedidosSnap = await db.ref('pedidos').once('value');
         const pedidos = pedidosSnap.val();
         
-        // Variables para ventas (clientes) - SOLO SUBTOTAL
         let ventasHoy = 0;
         let ventasQuincena = 0;
         let ventasMes = 0;
-        
-        // Variables para repartos personales - SOLO COSTO DE ENVÍO
         let repartosHoy = 0;
         let repartosQuincena = 0;
         let repartosMes = 0;
@@ -2873,7 +3483,6 @@ async function mostrarResumenAcumulados() {
                 if (!fecha) continue;
                 
                 if (tipo === 'reparto_personal') {
-                    // 🔥 REPARTOS PERSONALES: SOLO EL COSTO DE ENVÍO
                     const costoEnvio = data.envio || 0;
                     if (costoEnvio > 0) {
                         if (fecha >= inicioHoy) repartosHoy += costoEnvio;
@@ -2881,7 +3490,6 @@ async function mostrarResumenAcumulados() {
                         if (fecha >= inicioMes) repartosMes += costoEnvio;
                     }
                 } else {
-                    // 🔥 VENTAS (CLIENTES): SOLO EL SUBTOTAL (BASE)
                     if (estado === 'entregado' || estado === 'listo') {
                         const subtotal = data.subtotal || 0;
                         if (subtotal > 0) {
@@ -2894,12 +3502,16 @@ async function mostrarResumenAcumulados() {
             }
         }
         
-        // Mostrar resumen
+        // 🔥 USAR QUINCENA COMO TOTAL PRINCIPAL (porque tiene datos)
+        const totalGeneral = ventasQuincena + repartosQuincena;
+        const totalHoy = ventasHoy + repartosHoy;
+        const totalMes = ventasMes + repartosMes;
+        
         Swal.fire({
             title: '📊 Resumen de Acumulados',
             html: `
                 <div style="text-align:left;padding:8px;">
-                    <!-- VENTAS (CLIENTES) -->
+                    <!-- VENTAS -->
                     <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
                         <div style="color:#f59e0b;font-weight:bold;font-size:14px;margin-bottom:6px;">🛒 Ventas (Clientes)</div>
                         <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
@@ -2916,7 +3528,7 @@ async function mostrarResumenAcumulados() {
                         </div>
                     </div>
                     
-                    <!-- REPARTOS PERSONALES -->
+                    <!-- REPARTOS -->
                     <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
                         <div style="color:#8b5cf6;font-weight:bold;font-size:14px;margin-bottom:6px;">📦 Repartos Personales</div>
                         <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
@@ -2935,11 +3547,19 @@ async function mostrarResumenAcumulados() {
                     
                     <!-- TOTAL GENERAL -->
                     <div style="background:#1e293b;border-radius:8px;padding:12px;">
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                            <span style="color:#94a3b8;font-weight:bold;">📊 Total General</span>
-                            <span style="color:#10b981;font-weight:bold;font-size:18px;">$${(ventasHoy + repartosHoy).toFixed(2)}</span>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;font-weight:bold;">📊 Total Hoy</span>
+                            <span style="color:#10b981;font-weight:bold;font-size:16px;">$${totalHoy.toFixed(2)}</span>
                         </div>
-                        <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;">
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                            <span style="color:#94a3b8;font-weight:bold;">📊 Total Quincena</span>
+                            <span style="color:#10b981;font-weight:bold;font-size:18px;">$${totalGeneral.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                            <span style="color:#94a3b8;font-weight:bold;">📊 Total Mes</span>
+                            <span style="color:#10b981;font-weight:bold;font-size:16px;">$${totalMes.toFixed(2)}</span>
+                        </div>
+                        <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;border-top:1px solid #334155;padding-top:4px;">
                             💡 Ventas = Subtotal (base) | Repartos = Costo de envío
                         </div>
                     </div>
@@ -2956,9 +3576,8 @@ async function mostrarResumenAcumulados() {
         showToast('❌ Error al cargar acumulados', 'error');
     }
 }
-
         // ============================================
-        // 29. VER DETALLE DEL PEDIDO
+        // 31. VER DETALLE DEL PEDIDO
         // ============================================
         window.verDetallePedido = function(pedidoId) {
             db.ref(`pedidos/${pedidoId}`).once('value')
@@ -3058,7 +3677,7 @@ async function mostrarResumenAcumulados() {
         };
 
         // ============================================
-        // 30. IMPRIMIR TICKET
+        // 32. IMPRIMIR TICKET
         // ============================================
         window.imprimirComanda = function(pedidoId) {
             db.ref(`pedidos/${pedidoId}`).once('value')
@@ -3197,7 +3816,7 @@ async function mostrarResumenAcumulados() {
         };
 
         // ============================================
-        // 31. SOLICITAR PERMISO NOTIFICACIONES
+        // 33. SOLICITAR PERMISO NOTIFICACIONES
         // ============================================
         async function solicitarPermisoNotificaciones() {
             if (!('Notification' in window)) {
@@ -3233,7 +3852,7 @@ async function mostrarResumenAcumulados() {
         }
 
         // ============================================
-        // 32. REGISTRAR TOKEN FCM
+        // 34. REGISTRAR TOKEN FCM
         // ============================================
         async function registrarTokenFCM() {
             try {
@@ -3257,7 +3876,7 @@ async function mostrarResumenAcumulados() {
         }
 
         // ============================================
-        // 33. INICIALIZAR
+        // 35. INICIALIZAR
         // ============================================
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(detectarOrientacion, 500);
@@ -3270,7 +3889,7 @@ async function mostrarResumenAcumulados() {
         });
 
         // ============================================
-        // 34. LOGS DE SEGURIDAD
+        // 36. LOGS DE SEGURIDAD
         // ============================================
         async function registrarLogSeguridad(evento, detalles = {}) {
             try {

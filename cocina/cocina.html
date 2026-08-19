@@ -783,6 +783,8 @@
         // Variables de impresión
         let impresoraConfigurada = false;
         let nombreImpresora = '';
+        let impresoraBluetooth = null;
+        let dispositivoBluetooth = null;
 
         // ============================================
         // 3. DETECCIÓN DE ORIENTACIÓN
@@ -3030,39 +3032,164 @@
         };
 
         // ============================================
-        // 31. SISTEMA DE IMPRESIÓN TÉRMICA
+        // 31. SISTEMA DE IMPRESIÓN TÉRMICA CON BLUETOOTH
         // ============================================
 
-        // 31.1 CARGAR CONFIGURACIÓN DE IMPRESORA
-        async function cargarConfiguracionImpresora() {
+        // 31.1 BUSCAR IMPRESORAS BLUETOOTH
+        async function buscarImpresorasBluetooth() {
             try {
-                const snap = await db.ref(`restaurantes/${restauranteId}/impresora`).once('value');
-                const config = snap.val();
-                if (config) {
-                    impresoraConfigurada = config.activo || false;
-                    nombreImpresora = config.nombre || '';
-                    actualizarEstadoImpresoraUI();
+                // Verificar si el navegador soporta Bluetooth
+                if (!navigator.bluetooth) {
+                    showToast('❌ Tu navegador no soporta Bluetooth. Usa Chrome en Android.', 'error');
+                    return [];
+                }
+
+                showToast('🔍 Buscando impresoras Bluetooth...', 'info');
+
+                // Solicitar dispositivos Bluetooth con el filtro de impresoras
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [
+                        { services: ['000018f0-0000-1000-8000-00805f9b34fb'] }, // Servicio de impresión
+                        { namePrefix: 'POS' },
+                        { namePrefix: 'BT' },
+                        { namePrefix: 'PRINTER' },
+                        { namePrefix: 'TM' },
+                        { namePrefix: 'EPSON' }
+                    ],
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+                });
+
+                console.log('📡 Dispositivo encontrado:', device);
+
+                // Guardar el dispositivo
+                dispositivoBluetooth = device;
+                impresoraBluetooth = device;
+
+                // Conectar al dispositivo
+                try {
+                    const server = await device.gatt.connect();
+                    console.log('✅ Conectado al dispositivo Bluetooth');
+
+                    // Intentar obtener el servicio de impresión
+                    try {
+                        const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+                        console.log('✅ Servicio de impresión encontrado');
+
+                        // Intentar obtener la característica de escritura
+                        try {
+                            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+                            console.log('✅ Característica de escritura encontrada');
+
+                            // Guardar la característica para imprimir
+                            impresoraBluetooth = {
+                                device: device,
+                                server: server,
+                                service: service,
+                                characteristic: characteristic,
+                                nombre: device.name || 'Impresora Bluetooth'
+                            };
+
+                            showToast(`✅ Impresora "${impresoraBluetooth.nombre}" conectada correctamente`, 'success');
+
+                            // Guardar en Firebase
+                            await db.ref(`restaurantes/${restauranteId}/impresora`).set({
+                                activo: true,
+                                nombre: impresoraBluetooth.nombre,
+                                tipo: 'bluetooth',
+                                deviceId: device.id,
+                                fecha_configuracion: Date.now()
+                            });
+
+                            impresoraConfigurada = true;
+                            nombreImpresora = impresoraBluetooth.nombre;
+                            actualizarEstadoImpresoraUI();
+
+                            return [impresoraBluetooth];
+
+                        } catch (error) {
+                            console.warn('⚠️ No se encontró la característica de escritura:', error);
+                            showToast('⚠️ La impresora no es compatible. Intentando con otro método...', 'warning');
+
+                            // Intentar con otro servicio común
+                            try {
+                                const fallbackService = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+                                const fallbackChar = await fallbackService.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+                                impresoraBluetooth = {
+                                    device: device,
+                                    server: server,
+                                    service: fallbackService,
+                                    characteristic: fallbackChar,
+                                    nombre: device.name || 'Impresora Bluetooth'
+                                };
+                                showToast(`✅ Impresora "${impresoraBluetooth.nombre}" conectada (modo compatibilidad)`, 'success');
+                                return [impresoraBluetooth];
+                            } catch (fallbackError) {
+                                console.error('❌ Error en fallback:', fallbackError);
+                                return [];
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ No se encontró el servicio de impresión:', error);
+                        showToast('⚠️ El dispositivo no es una impresora compatible', 'warning');
+                        return [];
+                    }
+                } catch (error) {
+                    console.error('❌ Error al conectar:', error);
+                    showToast('❌ Error al conectar con la impresora', 'error');
+                    return [];
                 }
             } catch (error) {
-                console.error('Error al cargar configuración de impresora:', error);
-            }
-        }
-
-        // 31.2 ACTUALIZAR UI DE IMPRESORA
-        function actualizarEstadoImpresoraUI() {
-            const estadoEl = document.getElementById('estado-impresora');
-            if (estadoEl) {
-                if (impresoraConfigurada) {
-                    estadoEl.innerHTML = `🟢 ${nombreImpresora || 'Conectada'}`;
-                    estadoEl.style.color = '#10b981';
+                console.error('❌ Error al buscar dispositivos:', error);
+                if (error.message.includes('cancelled')) {
+                    showToast('❌ Búsqueda cancelada', 'info');
                 } else {
-                    estadoEl.innerHTML = '⭕ Desconectada';
-                    estadoEl.style.color = '#94a3b8';
+                    showToast('❌ Error al buscar impresoras', 'error');
                 }
+                return [];
             }
         }
 
-        // 31.3 CONFIGURAR IMPRESORA
+        // 31.2 IMPRIMIR POR BLUETOOTH
+        async function imprimirPorBluetooth(contenido) {
+            if (!impresoraBluetooth || !impresoraBluetooth.characteristic) {
+                showToast('⚠️ No hay impresora Bluetooth conectada', 'warning');
+                return false;
+            }
+
+            try {
+                // Verificar que la conexión sigue activa
+                if (!impresoraBluetooth.device.gatt.connected) {
+                    showToast('🔄 Reconectando a la impresora...', 'info');
+                    await impresoraBluetooth.device.gatt.connect();
+                    showToast('✅ Reconectado', 'success');
+                }
+
+                // Preparar datos para imprimir
+                const encoder = new TextEncoder();
+                const data = encoder.encode(contenido + '\n\n\n\n');
+
+                // Enviar datos a la impresora
+                await impresoraBluetooth.characteristic.writeValue(data);
+                console.log('✅ Datos enviados a la impresora');
+
+                showToast('🖨️ Ticket enviado a la impresora Bluetooth', 'success');
+                return true;
+            } catch (error) {
+                console.error('❌ Error al imprimir por Bluetooth:', error);
+                showToast('❌ Error al imprimir. Verifica la conexión.', 'error');
+
+                // Intentar reconectar
+                try {
+                    await impresoraBluetooth.device.gatt.connect();
+                    showToast('🔄 Reconectado, intenta de nuevo', 'info');
+                } catch (reconnectError) {
+                    console.error('❌ Error al reconectar:', reconnectError);
+                }
+                return false;
+            }
+        }
+
+        // 31.3 CONFIGURAR IMPRESORA (CON BÚSQUEDA BLUETOOTH)
         window.configurarImpresora = function() {
             Swal.fire({
                 title: '🖨️ Configurar Impresora Térmica',
@@ -3070,9 +3197,29 @@
                     <div style="text-align:left;color:white;padding:4px;">
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#8b5cf6;">📡</span> Tipo de conexión
+                            </label>
+                            <select id="tipo-conexion-config" 
+                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                                <option value="bluetooth" style="background:#1e293b;">📡 Bluetooth (Buscar automático)</option>
+                                <option value="usb" style="background:#1e293b;">🔌 USB (Navegador)</option>
+                                <option value="network" style="background:#1e293b;">🌐 Red (IP)</option>
+                            </select>
+                        </div>
+                        <div id="bluetooth-info" style="margin-bottom:16px;padding:12px;background:#1e293b;border-radius:8px;border:1px solid #8b5cf6;">
+                            <div style="display:flex;align-items:center;gap:8px;color:#8b5cf6;font-size:13px;font-weight:500;">
+                                <span>📡</span>
+                                <span>Buscará dispositivos Bluetooth disponibles automáticamente</span>
+                            </div>
+                            <div style="font-size:11px;color:#94a3b8;margin-top:6px;">
+                                ✅ Asegúrate de que la impresora esté encendida y en modo emparejamiento
+                            </div>
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#8b5cf6;">🖨️</span> Nombre de la Impresora
                             </label>
-                            <input id="nombre-impresora" class="swal2-input" 
+                            <input id="nombre-impresora-config" class="swal2-input" 
                                    placeholder="Ej: POS-80, BT-58, Epson-TM88" 
                                    value="${nombreImpresora || ''}"
                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
@@ -3081,49 +3228,85 @@
                             <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
                                 <span style="color:#8b5cf6;">📏</span> Tamaño de papel
                             </label>
-                            <select id="tamaño-papel" 
+                            <select id="tamaño-papel-config" 
                                     style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
                                 <option value="58" style="background:#1e293b;">📄 58mm (Pequeño)</option>
                                 <option value="80" style="background:#1e293b;">📄 80mm (Estándar)</option>
                             </select>
                         </div>
-                        <div style="margin-bottom:16px;">
-                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
-                                <span style="color:#8b5cf6;">🔌</span> Tipo de conexión
-                            </label>
-                            <select id="tipo-conexion" 
-                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                                <option value="usb" style="background:#1e293b;">🔌 USB</option>
-                                <option value="bluetooth" style="background:#1e293b;">📡 Bluetooth</option>
-                                <option value="network" style="background:#1e293b;">🌐 Red (IP)</option>
-                            </select>
+                        <div id="bluetooth-status" style="margin-top:8px;padding:12px;background:#0f172a;border-radius:8px;border:1px solid #334155;display:none;">
+                            <div id="bluetooth-devices-list" style="color:#94a3b8;font-size:12px;text-align:center;">
+                                🔍 Buscando dispositivos...
+                            </div>
                         </div>
                         <div style="margin-top:8px;padding:12px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
                             <div style="font-size:11px;color:#94a3b8;text-align:center;">
-                                💡 Al presionar "Imprimir" en un pedido, se enviará directamente a la impresora.
                                 ${impresoraConfigurada ? '✅ Impresora configurada correctamente' : '⚠️ No hay impresora configurada'}
                             </div>
                         </div>
                     </div>
                 `,
-                confirmButtonText: '💾 Guardar Configuración',
+                confirmButtonText: '🔍 Buscar y Conectar',
                 showCancelButton: true,
                 cancelButtonText: 'Cancelar',
                 background: '#0f172a',
                 color: 'white',
                 confirmButtonColor: '#8b5cf6',
                 cancelButtonColor: '#334155',
-                preConfirm: () => {
-                    const nombre = document.getElementById('nombre-impresora').value.trim();
-                    const tamaño = document.getElementById('tamaño-papel').value;
-                    const conexion = document.getElementById('tipo-conexion').value;
+                didOpen: () => {
+                    // Mostrar info de Bluetooth si está seleccionado
+                    const tipoSelect = document.getElementById('tipo-conexion-config');
+                    const bluetoothInfo = document.getElementById('bluetooth-info');
+                    
+                    tipoSelect.addEventListener('change', () => {
+                        if (tipoSelect.value === 'bluetooth') {
+                            bluetoothInfo.style.display = 'block';
+                        } else {
+                            bluetoothInfo.style.display = 'none';
+                        }
+                    });
+                },
+                preConfirm: async () => {
+                    const tipo = document.getElementById('tipo-conexion-config').value;
+                    const nombre = document.getElementById('nombre-impresora-config').value.trim();
+                    const tamaño = document.getElementById('tamaño-papel-config').value;
                     
                     if (!nombre) {
                         Swal.showValidationMessage('❌ El nombre de la impresora es obligatorio');
                         return false;
                     }
                     
-                    return { nombre, tamaño, conexion };
+                    if (tipo === 'bluetooth') {
+                        // Mostrar estado de búsqueda
+                        const statusDiv = document.getElementById('bluetooth-status');
+                        const devicesList = document.getElementById('bluetooth-devices-list');
+                        statusDiv.style.display = 'block';
+                        devicesList.innerHTML = '🔍 Buscando dispositivos Bluetooth...';
+
+                        // Buscar impresoras Bluetooth
+                        const devices = await buscarImpresorasBluetooth();
+
+                        if (devices.length === 0) {
+                            Swal.showValidationMessage('❌ No se encontraron impresoras Bluetooth. Asegúrate de que esté encendida.');
+                            return false;
+                        }
+
+                        // Usar la primera encontrada
+                        const selectedDevice = devices[0];
+                        devicesList.innerHTML = `
+                            ✅ Conectado a: <strong style="color:#10b981;">${selectedDevice.nombre}</strong>
+                            <div style="font-size:10px;color:#64748b;margin-top:4px;">ID: ${selectedDevice.device.id || 'N/A'}</div>
+                        `;
+
+                        return { 
+                            tipo: 'bluetooth', 
+                            nombre: selectedDevice.nombre || nombre,
+                            tamaño: parseInt(tamaño),
+                            deviceId: selectedDevice.device.id || 'bluetooth'
+                        };
+                    } else {
+                        return { tipo, nombre, tamaño: parseInt(tamaño) };
+                    }
                 }
             }).then(async (result) => {
                 if (result.isConfirmed) {
@@ -3131,8 +3314,9 @@
                         await db.ref(`restaurantes/${restauranteId}/impresora`).set({
                             activo: true,
                             nombre: result.value.nombre,
-                            tamaño: parseInt(result.value.tamaño),
-                            conexion: result.value.conexion,
+                            tamaño: result.value.tamaño,
+                            tipo: result.value.tipo,
+                            deviceId: result.value.deviceId || 'manual',
                             fecha_configuracion: Date.now()
                         });
                         
@@ -3143,7 +3327,7 @@
                         await registrarLogSeguridad('configurar_impresora', {
                             nombre: result.value.nombre,
                             tamaño: result.value.tamaño,
-                            conexion: result.value.conexion
+                            tipo: result.value.tipo
                         });
                         
                         showToast(`✅ Impresora "${result.value.nombre}" configurada correctamente`, 'success');
@@ -3195,6 +3379,13 @@
 
         // 31.5 IMPRIMIR TICKET DIRECTO
         function imprimirTicketDirecto(contenido) {
+            // Si hay impresora Bluetooth conectada, usarla
+            if (impresoraBluetooth && impresoraBluetooth.characteristic) {
+                imprimirPorBluetooth(contenido);
+                return;
+            }
+
+            // Fallback: Usar el diálogo de impresión del navegador
             try {
                 const ventana = window.open('', '_blank', 'width=200,height=400,menubar=no,toolbar=no,scrollbars=no');
                 if (ventana) {
@@ -3393,11 +3584,61 @@ ${esReparto ? '║  🛵 REPARTO PERSONAL        ║' : ''}
             }
         }
 
-        // 31.8 EXPONER FUNCIONES GLOBALES
+        // 31.8 CARGAR CONFIGURACIÓN DE IMPRESORA
+        async function cargarConfiguracionImpresora() {
+            try {
+                const snap = await db.ref(`restaurantes/${restauranteId}/impresora`).once('value');
+                const config = snap.val();
+                if (config) {
+                    impresoraConfigurada = config.activo || false;
+                    nombreImpresora = config.nombre || '';
+                    actualizarEstadoImpresoraUI();
+
+                    // Si es Bluetooth, intentar reconectar
+                    if (config.tipo === 'bluetooth' && config.deviceId) {
+                        // Intentar reconectar automáticamente
+                        try {
+                            if (navigator.bluetooth) {
+                                const devices = await navigator.bluetooth.getDevices();
+                                const device = devices.find(d => d.id === config.deviceId);
+                                if (device) {
+                                    dispositivoBluetooth = device;
+                                    impresoraBluetooth = device;
+                                    showToast('🔄 Reconectando a la impresora Bluetooth...', 'info');
+                                    await device.gatt.connect();
+                                    showToast('✅ Impresora Bluetooth reconectada', 'success');
+                                }
+                            }
+                        } catch (error) {
+                            console.log('⚠️ No se pudo reconectar automáticamente:', error);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error al cargar configuración de impresora:', error);
+            }
+        }
+
+        // 31.9 ACTUALIZAR UI DE IMPRESORA
+        function actualizarEstadoImpresoraUI() {
+            const estadoEl = document.getElementById('estado-impresora');
+            if (estadoEl) {
+                if (impresoraConfigurada) {
+                    estadoEl.innerHTML = `🟢 ${nombreImpresora || 'Conectada'}`;
+                    estadoEl.style.color = '#10b981';
+                } else {
+                    estadoEl.innerHTML = '⭕ Desconectada';
+                    estadoEl.style.color = '#94a3b8';
+                }
+            }
+        }
+
+        // 31.10 EXPONER FUNCIONES GLOBALES
         window.imprimirTicketDirectoPedido = imprimirTicketDirectoPedido;
         window.imprimirComandaConImpresora = imprimirComandaConImpresora;
         window.configurarImpresora = configurarImpresora;
         window.imprimirTicketDirecto = imprimirTicketDirecto;
+        window.buscarImpresorasBluetooth = buscarImpresorasBluetooth;
 
         // ============================================
         // 32. FUNCIONES PARA ACUMULADOS OCULTOS
@@ -3678,7 +3919,7 @@ ${esReparto ? '║  🛵 REPARTO PERSONAL        ║' : ''}
         });
 
         console.log('🍳 Aguadulce Express - Panel de Cocina');
-        console.log('📱 Versión 4.0 - Con Impresión Térmica, Reparto Personal, Acumulados Ocultos y Tiempos de Elaboración');
+        console.log('📱 Versión 5.0 - Con Búsqueda Bluetooth, Impresión Térmica, Reparto Personal, Acumulados Ocultos y Tiempos de Elaboración');
     </script>
 
     <!-- ============================================

@@ -2892,7 +2892,7 @@
                 });
         };
 // ============================================
-// 31. SISTEMA DE IMPRESIÓN TÉRMICA CON BLUETOOTH (CORREGIDO)
+// 31. SISTEMA DE IMPRESIÓN TÉRMICA CON BLUETOOTH (CORREGIDO - ASCII)
 // ============================================
 
 // 31.1 FUNCIÓN DE AYUDA PARA DELAY
@@ -2903,7 +2903,7 @@ function delay(ms) {
 // 31.2 DIVIDIR TICKET EN PARTES DE 512 BYTES
 function dividirTicketEnPartes(ticket) {
     const encoder = new TextEncoder();
-    const maxBytes = 480; // Dejamos margen de seguridad
+    const maxBytes = 480;
     
     const ticketBytes = encoder.encode(ticket);
     const partes = [];
@@ -2916,7 +2916,7 @@ function dividirTicketEnPartes(ticket) {
     return partes;
 }
 
-// 31.3 IMPRIMIR POR BLUETOOTH (CORREGIDA)
+// 31.3 IMPRIMIR POR BLUETOOTH
 async function imprimirPorBluetooth(contenido) {
     if (!impresoraBluetooth || !impresoraBluetooth.characteristic) {
         showToast('⚠️ No hay impresora Bluetooth conectada', 'warning');
@@ -2930,7 +2930,6 @@ async function imprimirPorBluetooth(contenido) {
         }
 
         const partes = dividirTicketEnPartes(contenido);
-        const encoder = new TextEncoder();
         
         // Comandos ESC/POS
         const init = new Uint8Array([0x1B, 0x40]);
@@ -2975,13 +2974,14 @@ async function imprimirPorBluetooth(contenido) {
     }
 }
 
-// 31.4 GENERAR TICKET DE PEDIDO OPTIMIZADO
+// 31.4 GENERAR TICKET DE PEDIDO (VERSIÓN ASCII - LEGIBLE)
 function generarTicketPedido(data) {
     const idPedido = data.id_pedido || data.id || '---';
     const cliente = data.cliente_nombre || data.clienteNombre || 'Cliente';
-    const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+    const telefono = data.cliente_telefono || data.telefono || 'Sin telefono';
     const total = data.total || 0;
     const fecha = new Date().toLocaleString();
+    const linea = '----------------------------------------';
     
     let productos = '';
     if (data.items && data.items.length > 0) {
@@ -2989,32 +2989,38 @@ function generarTicketPedido(data) {
             const nombre = item.nombre || 'Producto';
             const cant = item.cantidad || 1;
             const precio = item.total || 0;
-            return `${cant}x ${nombre.substring(0, 15)} $${precio.toFixed(2)}`;
+            const nombreCorto = nombre.length > 18 ? nombre.substring(0, 16) + '..' : nombre;
+            return `${cant}x ${nombreCorto.padEnd(18)} $${precio.toFixed(2)}`;
         }).join('\n');
         if (data.items.length > 5) {
-            productos += `\n... y ${data.items.length - 5} más`;
+            productos += `\n... y ${data.items.length - 5} mas`;
         }
     } else {
         productos = 'Sin productos';
     }
     
     return `
-╔════════════════════════════╗
-║  🍳 AGUADULCE EXPRESS      ║
-╠════════════════════════════╣
-║  #${idPedido}  ${fecha}   ║
-╠════════════════════════════╣
-║  👤 ${cliente.substring(0, 20)}    ║
-║  📞 ${telefono}            ║
-╠════════════════════════════╣
-${productos.split('\n').map(line => `║  ${line.padEnd(24)} ║`).join('\n')}
-╠════════════════════════════╣
-║  TOTAL: $${total.toFixed(2).padStart(14)}    ║
-╚════════════════════════════╝
+========================================
+  🍳 AGUADULCE EXPRESS
+========================================
+  #${idPedido}  ${fecha}
+----------------------------------------
+  Cliente: ${cliente}
+  Telefono: ${telefono}
+----------------------------------------
+  CANT  PRODUCTO             PRECIO
+----------------------------------------
+${productos}
+----------------------------------------
+  TOTAL: $${total.toFixed(2)}
+========================================
+  ✨ Gracias por tu compra! ✨
+  Aguadulce Express
+========================================
 `;
 }
 
-// 31.5 IMPRIMIR TICKET DIRECTO (CORREGIDO)
+// 31.5 IMPRIMIR TICKET DIRECTO
 function imprimirTicketDirecto(contenido) {
     if (impresoraBluetooth && impresoraBluetooth.characteristic) {
         imprimirPorBluetooth(contenido);
@@ -3086,23 +3092,23 @@ function imprimirTicketDirectoFallback(contenido) {
     }
 }
 
-// 31.7 IMPRIMIR TICKET DE PRUEBA
+// 31.7 IMPRIMIR TICKET DE PRUEBA (VERSIÓN ASCII)
 function imprimirTicketPrueba() {
     const ticket = `
-╔════════════════════════════╗
-║      🖨️ TICKET DE PRUEBA    ║
-╠════════════════════════════╣
-║  Aguadulce Express         ║
-║  ${new Date().toLocaleString()}   ║
-╠════════════════════════════╣
-║  ✅ Impresión correcta     ║
-║  ✨ ¡Listo para usar!      ║
-╚════════════════════════════╝
+========================================
+      🖨️ TICKET DE PRUEBA
+========================================
+  Aguadulce Express
+  ${new Date().toLocaleString()}
+----------------------------------------
+  ✅ Impresion correcta
+  ✨ ¡Listo para usar!
+========================================
 `;
     imprimirTicketDirecto(ticket);
 }
 
-// 31.8 IMPRIMIR TICKET DE PEDIDO (CORREGIDO)
+// 31.8 IMPRIMIR TICKET DE PEDIDO
 window.imprimirTicketDirectoPedido = function(pedidoId) {
     db.ref(`pedidos/${pedidoId}`).once('value')
         .then((snapshot) => {
@@ -3239,7 +3245,7 @@ async function buscarImpresorasBluetooth() {
     }
 }
 
-// 31.11 CONFIGURAR IMPRESORA (CON BÚSQUEDA BLUETOOTH)
+// 31.11 CONFIGURAR IMPRESORA
 window.configurarImpresora = function() {
     Swal.fire({
         title: '🖨️ Configurar Impresora Térmica',

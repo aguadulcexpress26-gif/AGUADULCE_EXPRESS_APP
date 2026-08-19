@@ -372,6 +372,38 @@
         .btn-accion.envio:hover { background: #7c3aed; }
         
         /* ============================================
+           CONFIGURACIÓN IMPRESORA TÉRMICA
+           ============================================ */
+        .btn-impresora-config {
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #8b5cf6;
+            color: white;
+        }
+        .btn-impresora-config:hover {
+            background: #7c3aed;
+            transform: scale(1.05);
+        }
+        .btn-impresora-config .indicador {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .btn-impresora-config .indicador.conectado {
+            background: #10b981;
+        }
+        .btn-impresora-config .indicador.desconectado {
+            background: #ef4444;
+        }
+        
+        /* ============================================
            MENÚ HAMBURGUESA
            ============================================ */
         #menu-toggle {
@@ -592,6 +624,11 @@
                 <button class="menu-item" onclick="abrirFormularioReparto()">
                     <span>🚚</span> Nuevo Reparto
                 </button>
+                <button class="menu-item" onclick="configurarImpresora()">
+                    <span>🖨️</span>
+                    <span>Configurar Impresora</span>
+                    <span id="estado-impresora" style="font-size:10px;margin-left:auto;color:#94a3b8;">⭕ Desconectada</span>
+                </button>
                 <button class="menu-item" id="btn-pausa" onclick="togglePausa()">
                     <span id="icono-pausa">⏸️</span>
                     <span id="texto-pausa">Pausar Pedidos</span>
@@ -742,6 +779,10 @@
         let pedidoSonando = null;
         const TIEMPO_ELABORACION_DEFAULT = 20;
         let tiempoElaboracionRestaurante = TIEMPO_ELABORACION_DEFAULT;
+
+        // Variables de impresión
+        let impresoraConfigurada = false;
+        let nombreImpresora = '';
 
         // ============================================
         // 3. DETECCIÓN DE ORIENTACIÓN
@@ -960,6 +1001,7 @@
                 await cargarDatosRestaurante();
                 await cargarEstadoPausa();
                 await cargarTiempoElaboracion();
+                await cargarConfiguracionImpresora();
                 escucharPedidos();
                 escucharEnvios();
                 
@@ -1125,7 +1167,6 @@
                         const cliente = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
                         showToast(`📦 Nuevo pedido de ${cliente}`, 'info');
                         
-                        // INICIAR SONIDO REPETIDO PARA PEDIDOS EN ESTADO RECIBIDO
                         const estado = pedido.estado ? pedido.estado.toLowerCase() : '';
                         if (estado === 'recibido' || estado === 'pendiente') {
                             if (!sonidoActivo) {
@@ -1251,635 +1292,590 @@
             pedidoSonando = null;
         }
 
-      // ============================================
-// ============================================
-// RENDERIZAR VISTA PRINCIPAL (CORREGIDO)
-// ============================================
-function renderizarVista() {
-    console.log('🔄 renderizarVista() ejecutada - Vista:', currentView);
-    
-    // 🔥 ELIMINAR CONTENEDORES EXISTENTES
-    const hc = document.getElementById('historial-container');
-    if (hc) hc.remove();
-    
-    const dc = document.getElementById('demoras-container');
-    if (dc) dc.remove();
-    
-    // 🔥 RESTAURAR COLUMNAS
-    restaurarVistaColumnas();
-    
-    // Mostrar columnas por defecto
-    const col1 = document.getElementById('columna-pendiente');
-    const col2 = document.getElementById('columna-coccion');
-    const col3 = document.getElementById('columna-listo');
-    
-    if (col1) col1.style.display = 'flex';
-    if (col2) col2.style.display = 'flex';
-    if (col3) col3.style.display = 'flex';
-    
-    if (currentView === 'historial') {
-        if (col1) col1.style.display = 'none';
-        if (col2) col2.style.display = 'none';
-        if (col3) col3.style.display = 'none';
-        mostrarVistaHistorial();
-        return;
-    }
-    
-    if (currentView === 'demoras') {
-        if (col1) col1.style.display = 'none';
-        if (col2) col2.style.display = 'none';
-        if (col3) col3.style.display = 'none';
-        mostrarVistaDemoras();
-        return;
-    }
-    
-    // Pedidos Activos
-    cargarPedidosActivos();
-}
-
-function restaurarVistaColumnas() {
-    const container = document.getElementById('columnas-container');
-    if (!container) return;
-    
-    // Verificar si las columnas existen
-    let col1 = document.getElementById('columna-pendiente');
-    let col2 = document.getElementById('columna-coccion');
-    let col3 = document.getElementById('columna-listo');
-    
-    if (!col1 || !col2 || !col3) {
-        container.innerHTML = `
-            <div class="columna columna-pendiente" id="columna-pendiente">
-                <div class="columna-header">
-                    <span class="titulo">📥 Entrada</span>
-                    <span class="cantidad" id="col-count-pendiente">0</span>
-                </div>
-                <div class="columna-contenido" id="col-pendiente"></div>
-            </div>
-            <div class="columna columna-coccion" id="columna-coccion">
-                <div class="columna-header">
-                    <span class="titulo">👨‍🍳 En Proceso</span>
-                    <span class="cantidad" id="col-count-coccion">0</span>
-                </div>
-                <div class="columna-contenido" id="col-coccion"></div>
-            </div>
-            <div class="columna columna-listo" id="columna-listo">
-                <div class="columna-header">
-                    <span class="titulo">✅ Listo</span>
-                    <span class="cantidad" id="col-count-listo">0</span>
-                </div>
-                <div class="columna-contenido" id="col-listo"></div>
-            </div>
-        `;
-    } else {
-        col1.style.display = 'flex';
-        col2.style.display = 'flex';
-        col3.style.display = 'flex';
-        col1.style.maxWidth = '400px';
-        col2.style.maxWidth = '400px';
-        col3.style.maxWidth = '400px';
-        col1.style.flex = '1';
-        col2.style.flex = '1';
-        col3.style.flex = '1';
-        
-        const cont1 = document.getElementById('col-pendiente');
-        const cont2 = document.getElementById('col-coccion');
-        const cont3 = document.getElementById('col-listo');
-        if (cont1) cont1.innerHTML = '';
-        if (cont2) cont2.innerHTML = '';
-        if (cont3) cont3.innerHTML = '';
-    }
-}
-// ============================================
-// MOSTRAR VISTA HISTORIAL (VERSIÓN DEFINITIVA)
-// ============================================
-function mostrarVistaHistorial() {
-    console.log('📌 mostrarVistaHistorial() - VERSIÓN DEFINITIVA');
-    
-    // 1. Obtener el contenedor principal
-    const container = document.getElementById('columnas-container');
-    if (!container) {
-        console.log('❌ No se encontró columnas-container');
-        return;
-    }
-    
-    // 2. LIMPIAR TODO EL CONTENEDOR
-    container.innerHTML = '';
-    console.log('✅ Contenedor limpiado');
-    
-    // 3. Crear UNA SOLA COLUMNA para el historial
-    const columna = document.createElement('div');
-    columna.className = 'columna';
-    columna.style.cssText = `
-        width: 100%;
-        height: 100%;
-        min-height: 500px;
-        display: flex;
-        flex-direction: column;
-        background: #1e293b;
-        border-radius: 1rem;
-        border: 2px solid #f59e0b;
-        overflow: hidden;
-        flex: 1;
-    `;
-    container.appendChild(columna);
-    console.log('✅ Columna creada');
-    
-    // 4. HEADER
-    const header = document.createElement('div');
-    header.className = 'columna-header';
-    header.style.cssText = `
-        padding: 0.75rem 1rem;
-        font-weight: 600;
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 2px solid #f59e0b;
-        flex-shrink: 0;
-        background: #1e293b;
-    `;
-    header.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:8px;">
-            <div style="display:flex;align-items:center;gap:12px;">
-                <span style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;">📜 Historial</span>
-                <select id="filtro-historial" 
-                        style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:white;padding:4px 12px;font-size:12px;cursor:pointer;outline:none;"
-                        onchange="cargarHistorialFiltrado()">
-                    <option value="todos" style="background:#0f172a;">📋 Todos</option>
-                    <option value="ventas" style="background:#0f172a;">🛒 Ventas</option>
-                    <option value="repartos" style="background:#0f172a;">📦 Repartos</option>
-                </select>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;">
-                <span class="cantidad" id="col-count-historial" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
-                <button onclick="mostrarAcumulados()" 
-                        style="background:#0f172a;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">🔒 Acumulados</button>
-            </div>
-        </div>
-    `;
-    columna.appendChild(header);
-    
-    // 5. CONTENIDO
-    const content = document.createElement('div');
-    content.id = 'historial-contenido';
-    content.style.cssText = `
-        flex: 1;
-        overflow-y: auto;
-        padding: 0.75rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        background: #0f172a;
-        min-height: 400px;
-    `;
-    columna.appendChild(content);
-    console.log('✅ Contenido creado');
-    
-    // 6. CARGAR HISTORIAL
-    cargarHistorialFiltrado();
-}
-
-// ============================================
-// CARGAR HISTORIAL CON FILTRO (CORREGIDO)
-// ============================================
-function cargarHistorialFiltrado() {
-    console.log('📌 cargarHistorialFiltrado() ejecutada');
-    
-    const content = document.getElementById('historial-contenido');
-    const contador = document.getElementById('col-count-historial');
-    const filtro = document.getElementById('filtro-historial');
-    
-    if (!content) {
-        console.log('❌ No se encontró historial-contenido');
-        return;
-    }
-    
-    // 🔥 LEER EL VALOR DEL FILTRO
-    const filtroSeleccionado = filtro ? filtro.value : 'todos';
-    console.log('📌 Filtro seleccionado:', filtroSeleccionado);
-    
-    // Limpiar contenido
-    content.innerHTML = '';
-    
-    db.ref('pedidos').once('value').then(snap => {
-        const pedidos = snap.val();
-        let count = 0;
-        
-        if (!pedidos) {
-            content.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
-                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
-                    <div>No hay pedidos en el historial</div>
-                </div>
-            `;
-            if (contador) contador.textContent = '0';
-            return;
-        }
-        
-        const pedidosArray = Object.entries(pedidos);
-        
-        for (const [id, data] of pedidosArray) {
-            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-            if (restId !== restauranteId) continue;
+        // ============================================
+        // 18. RENDERIZAR VISTA PRINCIPAL
+        // ============================================
+        function renderizarVista() {
+            console.log('🔄 renderizarVista() ejecutada - Vista:', currentView);
             
-            const estado = data.estado ? data.estado.toLowerCase() : '';
-            const tipo = data.tipo || 'normal';
+            const hc = document.getElementById('historial-container');
+            if (hc) hc.remove();
             
-            // 🔥 APLICAR FILTRO
-            if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') {
-                console.log(`   ⏭️ Saltando reparto: ${data.cliente_nombre}`);
-                continue;
-            }
-            if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') {
-                console.log(`   ⏭️ Saltando venta: ${data.cliente_nombre}`);
-                continue;
-            }
+            const dc = document.getElementById('demoras-container');
+            if (dc) dc.remove();
             
-            if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
-                count++;
-                const esReparto = tipo === 'reparto_personal';
-                const card = document.createElement('div');
-                card.className = 'pedido-card';
-                card.style.cssText = `
-                    background: #0f172a;
-                    border-radius: 0.75rem;
-                    padding: 1rem;
-                    border: 1px solid #334155;
-                    border-left: 4px solid ${esReparto ? '#8b5cf6' : '#64748b'};
-                    margin-bottom: 0.5rem;
-                    color: white;
-                `;
-                
-                const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
-                const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
-                const direccion = data.direccion || 'Sin dirección';
-                const idPedido = data.id_pedido || data.id || id.substring(0, 8);
-                const total = data.total || 0;
-                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
-                const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
-                const tipoIcon = esReparto ? '📦' : '🛒';
-                const tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
-                const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
-                
-                let montoHtml = '';
-                if (esReparto) {
-                    const costoEnvio = data.envio || 0;
-                    montoHtml = `
-                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                            <span style="color:#94a3b8;">🚚 Costo de envío:</span>
-                            <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
-                        </div>
-                    `;
-                } else {
-                    const subtotal = data.subtotal || 0;
-                    const totalPedido = data.total || 0;
-                    const envio = data.envio || 0;
-                    const usoApp = data.usoYServicios || data.uso_plataforma || 0;
-                    
-                    montoHtml = `
-                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                            <span style="color:#94a3b8;">💰 Subtotal:</span>
-                            <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
-                        </div>
-                        ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                            <span>🚚 Envío:</span>
-                            <span>$${envio.toFixed(2)}</span>
-                        </div>` : ''}
-                        ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                            <span>📱 Uso App:</span>
-                            <span>$${usoApp.toFixed(2)}</span>
-                        </div>` : ''}
-                        <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
-                            <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
-                            <span style="color:#f59e0b;font-weight:700;">$${totalPedido.toFixed(2)}</span>
-                        </div>
-                    `;
-                }
-                
-                let productosHtml = '';
-                if (data.items && data.items.length > 0) {
-                    productosHtml = data.items.map(item => 
-                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${item.cantidad || 1}x ${item.nombre}</span>`
-                    ).join('');
-                } else if (data.productos) {
-                    productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
-                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${prod.cantidad || 1}x ${prod.nombre}</span>`
-                    ).join('');
-                } else {
-                    productosHtml = esReparto ? '<span style="font-size:0.65rem;color:#94a3b8;">📦 Reparto</span>' : '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
-                }
-                
-                card.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${idPedido}</span>
-                            <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
-                        </div>
-                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
-                    </div>
-                    <div style="font-weight:600;color:white;font-size:0.9rem;">${clienteNombre}</div>
-                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
-                    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:4px;">
-                        ${montoHtml}
-                    </div>
-                    <button onclick="verDetallePedido('${id}')" class="btn-accion primary" style="margin-top:8px;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.7rem;font-weight:600;border:none;cursor:pointer;background:#f59e0b;color:#0f172a;width:100%;">📋 Ver Detalle</button>
-                `;
-                
-                content.appendChild(card);
-                console.log(`   ✅ Tarjeta agregada: ${clienteNombre} (${tipoLabel})`);
-            }
-        }
-        
-        if (contador) contador.textContent = count;
-        
-        if (count === 0) {
-            const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
-                           filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
-                           'No hay pedidos en el historial';
-            content.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
-                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
-                    <div>${mensaje}</div>
-                </div>
-            `;
-        }
-        
-        console.log(`📊 Total tarjetas mostradas: ${count}`);
-        console.log('✅ Historial filtrado correctamente');
-        
-    }).catch(error => {
-        console.error('❌ Error al cargar historial:', error);
-    });
-}
-// ============================================
-// MOSTRAR VISTA DEMORAS (CORREGIDO)
-// ============================================
-function mostrarVistaDemoras() {
-    console.log('📌 mostrarVistaDemoras() ejecutada');
-    
-    const container = document.getElementById('columnas-container');
-    if (!container) return;
-    
-    // Eliminar contenedor existente
-    const dc = document.getElementById('demoras-container');
-    if (dc) dc.remove();
-    
-    const demorasContainer = document.createElement('div');
-    demorasContainer.id = 'demoras-container';
-    demorasContainer.style.cssText = `
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        background: #1e293b;
-        border-radius: 1rem;
-        border: 1px solid #334155;
-        overflow: hidden;
-        margin: 0.5rem;
-    `;
-    container.appendChild(demorasContainer);
-    
-    // Header
-    const header = document.createElement('div');
-    header.className = 'columna-header';
-    header.style.cssText = `
-        padding: 0.75rem 1rem;
-        font-weight: 600;
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 2px solid #ef4444;
-        flex-shrink: 0;
-        background: #1e293b;
-    `;
-    header.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-            <span style="display:flex;align-items:center;gap:0.5rem;color:#ef4444;">⏱️ Registro de Demoras</span>
-            <span class="cantidad" id="col-count-demoras" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
-        </div>
-    `;
-    demorasContainer.appendChild(header);
-    
-    // Contenido
-    const content = document.createElement('div');
-    content.id = 'demoras-contenido';
-    content.style.cssText = `
-        flex: 1;
-        overflow-y: auto;
-        padding: 0.75rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        background: #0f172a;
-    `;
-    demorasContainer.appendChild(content);
-    
-    db.ref('pedidos').once('value').then((snapshot) => {
-        const pedidos = snapshot.val();
-        const contador = document.getElementById('col-count-demoras');
-        
-        if (!pedidos) {
-            mostrarMensajeVacioContainer(content, '⏱️', 'No hay registros de demoras');
-            if (contador) contador.textContent = '0';
-            return;
-        }
-        
-        let demoras = [];
-        let totalDemora = 0, maxDemora = 0, countDemora = 0;
-        
-        for (const [id, data] of Object.entries(pedidos)) {
-            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-            if (restId !== restauranteId) continue;
+            restaurarVistaColumnas();
             
-            const demora = data.demora || data.tiempo_demora || 0;
-            if (demora > 0) {
-                demoras.push({
-                    id: id,
-                    id_pedido: data.id_pedido || id.substring(0, 8),
-                    cliente: data.cliente_nombre || 'Cliente',
-                    telefono: data.cliente_telefono || 'Sin teléfono',
-                    total: data.total || 0,
-                    estado: data.estado || 'Finalizado',
-                    demora: demora,
-                    tiempo_preparacion: data.tiempo_preparacion || 0,
-                    fecha: data.timestamp ? new Date(data.timestamp) : null,
-                    items: data.items || data.productos || []
-                });
-                totalDemora += demora;
-                maxDemora = Math.max(maxDemora, demora);
-                countDemora++;
-            }
-        }
-        
-        demoras.sort((a, b) => b.demora - a.demora);
-        
-        if (demoras.length === 0) {
-            mostrarMensajeVacioContainer(content, '⏱️', 'No hay registros de demoras');
-            if (contador) contador.textContent = '0';
-            return;
-        }
-        
-        if (contador) contador.textContent = demoras.length;
-        
-        // Resumen
-        const resumen = document.createElement('div');
-        resumen.style.cssText = `background:#1e293b;border-radius:0.75rem;padding:0.75rem 1rem;border:1px solid #334155;margin-bottom:0.75rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;`;
-        resumen.innerHTML = `
-            <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                <div><span style="color:#94a3b8;font-size:11px;">📊 Total</span><div style="color:#ef4444;font-weight:bold;font-size:18px;">${countDemora}</div></div>
-                <div><span style="color:#94a3b8;font-size:11px;">⏱️ Promedio</span><div style="color:#f59e0b;font-weight:bold;font-size:18px;">${(totalDemora/countDemora).toFixed(0)} min</div></div>
-                <div><span style="color:#94a3b8;font-size:11px;">🔴 Máxima</span><div style="color:#ef4444;font-weight:bold;font-size:18px;">${maxDemora} min</div></div>
-            </div>
-        `;
-        content.appendChild(resumen);
-        
-        // Lista
-        for (const d of demoras) {
-            const card = document.createElement('div');
-            const color = d.demora > 30 ? '#ef4444' : d.demora > 15 ? '#f59e0b' : '#10b981';
-            card.style.cssText = `background:#0f172a;border-radius:0.75rem;padding:0.75rem;border:1px solid #334155;border-left:4px solid ${color};`;
+            const col1 = document.getElementById('columna-pendiente');
+            const col2 = document.getElementById('columna-coccion');
+            const col3 = document.getElementById('columna-listo');
             
-            const fechaStr = d.fecha ? d.fecha.toLocaleString() : 'Sin fecha';
-            let prodHtml = '';
-            if (d.items && d.items.length > 0) {
-                const items = Array.isArray(d.items) ? d.items : Object.values(d.items);
-                prodHtml = items.slice(0, 3).map(item => {
-                    const nombre = item.nombre || item.PLATO || 'Producto';
-                    const cant = item.cantidad || 1;
-                    return `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${cant}x ${nombre}</span>`;
-                }).join('');
-                if (items.length > 3) prodHtml += `<span style="font-size:0.6rem;color:#64748b;"> +${items.length-3} más</span>`;
-            } else {
-                prodHtml = '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
-            }
+            if (col1) col1.style.display = 'flex';
+            if (col2) col2.style.display = 'flex';
+            if (col3) col3.style.display = 'flex';
             
-            card.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${d.id_pedido}</span>
-                    <span style="font-size:0.6rem;background:${color};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${d.demora} min</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                        <span style="color:white;font-weight:600;font-size:0.85rem;">${d.cliente}</span>
-                        <span style="color:#94a3b8;font-size:0.65rem;margin-left:8px;">📞 ${d.telefono}</span>
-                    </div>
-                    <span style="color:#f59e0b;font-weight:700;font-size:0.8rem;">$${d.total.toFixed(2)}</span>
-                </div>
-                <div style="margin-top:4px;font-size:0.65rem;color:#94a3b8;">${d.estado === 'entregado' ? '✅' : '⏳'} ${d.estado}</div>
-                <div style="margin-top:4px;">${prodHtml}</div>
-                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;display:flex;justify-content:flex-end;">
-                    <button onclick="verDetallePedido('${d.id}')" class="btn-accion primary" style="padding:0.15rem 0.5rem;font-size:0.6rem;">📋 Detalle</button>
-                </div>
-            `;
-            content.appendChild(card);
-        }
-        
-        console.log('✅ Demoras cargadas correctamente');
-        
-    }).catch((error) => {
-        console.error('❌ Error al cargar demoras:', error);
-    });
-}
-
-// ============================================
-// CARGAR PEDIDOS ACTIVOS (NUEVA FUNCIÓN)
-// ============================================
-function cargarPedidosActivos() {
-    console.log('📌 cargarPedidosActivos() ejecutada');
-    
-    const colPendiente = document.getElementById('col-pendiente');
-    const colCoccion = document.getElementById('col-coccion');
-    const colListo = document.getElementById('col-listo');
-    
-    if (colPendiente) colPendiente.innerHTML = '';
-    if (colCoccion) colCoccion.innerHTML = '';
-    if (colListo) colListo.innerHTML = '';
-    
-    db.ref('pedidos').once('value')
-        .then((snapshot) => {
-            const pedidos = snapshot.val();
-            
-            let countPendiente = 0, countCoccion = 0, countListo = 0;
-            
-            if (!pedidos) {
-                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-                actualizarContadores(0, 0, 0);
+            if (currentView === 'historial') {
+                if (col1) col1.style.display = 'none';
+                if (col2) col2.style.display = 'none';
+                if (col3) col3.style.display = 'none';
+                mostrarVistaHistorial();
                 return;
             }
             
-            const pedidosArray = Object.entries(pedidos);
-            
-            for (const [id, data] of pedidosArray) {
-                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                if (restId !== restauranteId) continue;
-                
-                let estado = data.estado ? data.estado.toLowerCase() : '';
-                if (estado === 'recibido') estado = 'pendiente';
-                
-                if (estado === 'pendiente') {
-                    countPendiente++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                } else if (estado === 'coccion') {
-                    countCoccion++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                } else if (estado === 'listo' || estado === 'en_reparto') {
-                    countListo++;
-                    agregarPedidoAColumna(id, { ...data, estado: estado });
-                }
+            if (currentView === 'demoras') {
+                if (col1) col1.style.display = 'none';
+                if (col2) col2.style.display = 'none';
+                if (col3) col3.style.display = 'none';
+                mostrarVistaDemoras();
+                return;
             }
             
-            if (countPendiente === 0) {
-                mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
-            }
-            if (countCoccion === 0) {
-                mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
-            }
-            if (countListo === 0) {
-                mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
-            }
-            
-            actualizarContadores(countPendiente, countCoccion, countListo);
-            
-        })
-        .catch((error) => {
-            console.error('Error al cargar pedidos:', error);
-        });
-}
+            cargarPedidosActivos();
+        }
 
-// ============================================
-// FUNCIÓN AUXILIAR PARA MENSAJE EN CONTENEDOR
-// ============================================
-function mostrarMensajeVacioContainer(container, icono, mensaje) {
-    if (!container) return;
-    const empty = document.createElement('div');
-    empty.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem 1rem;
-        color: #475569;
-        text-align: center;
-        font-size: 0.875rem;
-        height: 100%;
-        min-height: 120px;
-    `;
-    empty.innerHTML = `
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">${icono}</div>
-        <div>${mensaje}</div>
-    `;
-    container.appendChild(empty);
-}       
+        function restaurarVistaColumnas() {
+            const container = document.getElementById('columnas-container');
+            if (!container) return;
+            
+            let col1 = document.getElementById('columna-pendiente');
+            let col2 = document.getElementById('columna-coccion');
+            let col3 = document.getElementById('columna-listo');
+            
+            if (!col1 || !col2 || !col3) {
+                container.innerHTML = `
+                    <div class="columna columna-pendiente" id="columna-pendiente">
+                        <div class="columna-header">
+                            <span class="titulo">📥 Entrada</span>
+                            <span class="cantidad" id="col-count-pendiente">0</span>
+                        </div>
+                        <div class="columna-contenido" id="col-pendiente"></div>
+                    </div>
+                    <div class="columna columna-coccion" id="columna-coccion">
+                        <div class="columna-header">
+                            <span class="titulo">👨‍🍳 En Proceso</span>
+                            <span class="cantidad" id="col-count-coccion">0</span>
+                        </div>
+                        <div class="columna-contenido" id="col-coccion"></div>
+                    </div>
+                    <div class="columna columna-listo" id="columna-listo">
+                        <div class="columna-header">
+                            <span class="titulo">✅ Listo</span>
+                            <span class="cantidad" id="col-count-listo">0</span>
+                        </div>
+                        <div class="columna-contenido" id="col-listo"></div>
+                    </div>
+                `;
+            } else {
+                col1.style.display = 'flex';
+                col2.style.display = 'flex';
+                col3.style.display = 'flex';
+                col1.style.maxWidth = '400px';
+                col2.style.maxWidth = '400px';
+                col3.style.maxWidth = '400px';
+                col1.style.flex = '1';
+                col2.style.flex = '1';
+                col3.style.flex = '1';
+                
+                const cont1 = document.getElementById('col-pendiente');
+                const cont2 = document.getElementById('col-coccion');
+                const cont3 = document.getElementById('col-listo');
+                if (cont1) cont1.innerHTML = '';
+                if (cont2) cont2.innerHTML = '';
+                if (cont3) cont3.innerHTML = '';
+            }
+        }
+
         // ============================================
-        // 19. AGREGAR PEDIDO A COLUMNA CON DEMORA AUTOMÁTICA
+        // 19. MOSTRAR VISTA HISTORIAL
+        // ============================================
+        function mostrarVistaHistorial() {
+            console.log('📌 mostrarVistaHistorial() - VERSIÓN DEFINITIVA');
+            
+            const container = document.getElementById('columnas-container');
+            if (!container) {
+                console.log('❌ No se encontró columnas-container');
+                return;
+            }
+            
+            container.innerHTML = '';
+            console.log('✅ Contenedor limpiado');
+            
+            const columna = document.createElement('div');
+            columna.className = 'columna';
+            columna.style.cssText = `
+                width: 100%;
+                height: 100%;
+                min-height: 500px;
+                display: flex;
+                flex-direction: column;
+                background: #1e293b;
+                border-radius: 1rem;
+                border: 2px solid #f59e0b;
+                overflow: hidden;
+                flex: 1;
+            `;
+            container.appendChild(columna);
+            console.log('✅ Columna creada');
+            
+            const header = document.createElement('div');
+            header.className = 'columna-header';
+            header.style.cssText = `
+                padding: 0.75rem 1rem;
+                font-weight: 600;
+                font-size: 0.875rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid #f59e0b;
+                flex-shrink: 0;
+                background: #1e293b;
+            `;
+            header.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;">📜 Historial</span>
+                        <select id="filtro-historial" 
+                                style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:white;padding:4px 12px;font-size:12px;cursor:pointer;outline:none;"
+                                onchange="cargarHistorialFiltrado()">
+                            <option value="todos" style="background:#0f172a;">📋 Todos</option>
+                            <option value="ventas" style="background:#0f172a;">🛒 Ventas</option>
+                            <option value="repartos" style="background:#0f172a;">📦 Repartos</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="cantidad" id="col-count-historial" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
+                        <button onclick="mostrarAcumulados()" 
+                                style="background:#0f172a;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">🔒 Acumulados</button>
+                    </div>
+                </div>
+            `;
+            columna.appendChild(header);
+            
+            const content = document.createElement('div');
+            content.id = 'historial-contenido';
+            content.style.cssText = `
+                flex: 1;
+                overflow-y: auto;
+                padding: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+                background: #0f172a;
+                min-height: 400px;
+            `;
+            columna.appendChild(content);
+            console.log('✅ Contenido creado');
+            
+            cargarHistorialFiltrado();
+        }
+
+        // ============================================
+        // 20. CARGAR HISTORIAL CON FILTRO
+        // ============================================
+        function cargarHistorialFiltrado() {
+            console.log('📌 cargarHistorialFiltrado() ejecutada');
+            
+            const content = document.getElementById('historial-contenido');
+            const contador = document.getElementById('col-count-historial');
+            const filtro = document.getElementById('filtro-historial');
+            
+            if (!content) {
+                console.log('❌ No se encontró historial-contenido');
+                return;
+            }
+            
+            const filtroSeleccionado = filtro ? filtro.value : 'todos';
+            console.log('📌 Filtro seleccionado:', filtroSeleccionado);
+            
+            content.innerHTML = '';
+            
+            db.ref('pedidos').once('value').then(snap => {
+                const pedidos = snap.val();
+                let count = 0;
+                
+                if (!pedidos) {
+                    content.innerHTML = `
+                        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                            <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                            <div>No hay pedidos en el historial</div>
+                        </div>
+                    `;
+                    if (contador) contador.textContent = '0';
+                    return;
+                }
+                
+                const pedidosArray = Object.entries(pedidos);
+                
+                for (const [id, data] of pedidosArray) {
+                    const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                    if (restId !== restauranteId) continue;
+                    
+                    const estado = data.estado ? data.estado.toLowerCase() : '';
+                    const tipo = data.tipo || 'normal';
+                    
+                    if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') {
+                        continue;
+                    }
+                    if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') {
+                        continue;
+                    }
+                    
+                    if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
+                        count++;
+                        const esReparto = tipo === 'reparto_personal';
+                        const card = document.createElement('div');
+                        card.className = 'pedido-card';
+                        card.style.cssText = `
+                            background: #0f172a;
+                            border-radius: 0.75rem;
+                            padding: 1rem;
+                            border: 1px solid #334155;
+                            border-left: 4px solid ${esReparto ? '#8b5cf6' : '#64748b'};
+                            margin-bottom: 0.5rem;
+                            color: white;
+                        `;
+                        
+                        const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+                        const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                        const direccion = data.direccion || 'Sin dirección';
+                        const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+                        const total = data.total || 0;
+                        const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
+                        const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
+                        const tipoIcon = esReparto ? '📦' : '🛒';
+                        const tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
+                        const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
+                        
+                        let montoHtml = '';
+                        if (esReparto) {
+                            const costoEnvio = data.envio || 0;
+                            montoHtml = `
+                                <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                                    <span style="color:#94a3b8;">🚚 Costo de envío:</span>
+                                    <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
+                                </div>
+                            `;
+                        } else {
+                            const subtotal = data.subtotal || 0;
+                            const totalPedido = data.total || 0;
+                            const envio = data.envio || 0;
+                            const usoApp = data.usoYServicios || data.uso_plataforma || 0;
+                            
+                            montoHtml = `
+                                <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
+                                    <span style="color:#94a3b8;">💰 Subtotal:</span>
+                                    <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
+                                </div>
+                                ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                                    <span>🚚 Envío:</span>
+                                    <span>$${envio.toFixed(2)}</span>
+                                </div>` : ''}
+                                ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
+                                    <span>📱 Uso App:</span>
+                                    <span>$${usoApp.toFixed(2)}</span>
+                                </div>` : ''}
+                                <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
+                                    <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
+                                    <span style="color:#f59e0b;font-weight:700;">$${totalPedido.toFixed(2)}</span>
+                                </div>
+                            `;
+                        }
+                        
+                        let productosHtml = '';
+                        if (data.items && data.items.length > 0) {
+                            productosHtml = data.items.map(item => 
+                                `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${item.cantidad || 1}x ${item.nombre}</span>`
+                            ).join('');
+                        } else if (data.productos) {
+                            productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
+                                `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${prod.cantidad || 1}x ${prod.nombre}</span>`
+                            ).join('');
+                        } else {
+                            productosHtml = esReparto ? '<span style="font-size:0.65rem;color:#94a3b8;">📦 Reparto</span>' : '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
+                        }
+                        
+                        card.innerHTML = `
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${idPedido}</span>
+                                    <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
+                                </div>
+                                <span style="font-size:11px;color:#64748b;">${fecha}</span>
+                            </div>
+                            <div style="font-weight:600;color:white;font-size:0.9rem;">${clienteNombre}</div>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
+                            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
+                            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:4px;">
+                                ${montoHtml}
+                            </div>
+                            <button onclick="verDetallePedido('${id}')" class="btn-accion primary" style="margin-top:8px;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.7rem;font-weight:600;border:none;cursor:pointer;background:#f59e0b;color:#0f172a;width:100%;">📋 Ver Detalle</button>
+                        `;
+                        
+                        content.appendChild(card);
+                    }
+                }
+                
+                if (contador) contador.textContent = count;
+                
+                if (count === 0) {
+                    const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
+                                   filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
+                                   'No hay pedidos en el historial';
+                    content.innerHTML = `
+                        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
+                            <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
+                            <div>${mensaje}</div>
+                        </div>
+                    `;
+                }
+                
+                console.log(`📊 Total tarjetas mostradas: ${count}`);
+                console.log('✅ Historial filtrado correctamente');
+                
+            }).catch(error => {
+                console.error('❌ Error al cargar historial:', error);
+            });
+        }
+
+        // ============================================
+        // 21. MOSTRAR VISTA DEMORAS
+        // ============================================
+        function mostrarVistaDemoras() {
+            console.log('📌 mostrarVistaDemoras() ejecutada');
+            
+            const container = document.getElementById('columnas-container');
+            if (!container) return;
+            
+            const dc = document.getElementById('demoras-container');
+            if (dc) dc.remove();
+            
+            const demorasContainer = document.createElement('div');
+            demorasContainer.id = 'demoras-container';
+            demorasContainer.style.cssText = `
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                background: #1e293b;
+                border-radius: 1rem;
+                border: 1px solid #334155;
+                overflow: hidden;
+                margin: 0.5rem;
+            `;
+            container.appendChild(demorasContainer);
+            
+            const header = document.createElement('div');
+            header.className = 'columna-header';
+            header.style.cssText = `
+                padding: 0.75rem 1rem;
+                font-weight: 600;
+                font-size: 0.875rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid #ef4444;
+                flex-shrink: 0;
+                background: #1e293b;
+            `;
+            header.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                    <span style="display:flex;align-items:center;gap:0.5rem;color:#ef4444;">⏱️ Registro de Demoras</span>
+                    <span class="cantidad" id="col-count-demoras" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
+                </div>
+            `;
+            demorasContainer.appendChild(header);
+            
+            const content = document.createElement('div');
+            content.id = 'demoras-contenido';
+            content.style.cssText = `
+                flex: 1;
+                overflow-y: auto;
+                padding: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+                background: #0f172a;
+            `;
+            demorasContainer.appendChild(content);
+            
+            db.ref('pedidos').once('value').then((snapshot) => {
+                const pedidos = snapshot.val();
+                const contador = document.getElementById('col-count-demoras');
+                
+                if (!pedidos) {
+                    mostrarMensajeVacioContainer(content, '⏱️', 'No hay registros de demoras');
+                    if (contador) contador.textContent = '0';
+                    return;
+                }
+                
+                let demoras = [];
+                let totalDemora = 0, maxDemora = 0, countDemora = 0;
+                
+                for (const [id, data] of Object.entries(pedidos)) {
+                    const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                    if (restId !== restauranteId) continue;
+                    
+                    const demora = data.demora || data.tiempo_demora || 0;
+                    if (demora > 0) {
+                        demoras.push({
+                            id: id,
+                            id_pedido: data.id_pedido || id.substring(0, 8),
+                            cliente: data.cliente_nombre || 'Cliente',
+                            telefono: data.cliente_telefono || 'Sin teléfono',
+                            total: data.total || 0,
+                            estado: data.estado || 'Finalizado',
+                            demora: demora,
+                            tiempo_preparacion: data.tiempo_preparacion || 0,
+                            fecha: data.timestamp ? new Date(data.timestamp) : null,
+                            items: data.items || data.productos || []
+                        });
+                        totalDemora += demora;
+                        maxDemora = Math.max(maxDemora, demora);
+                        countDemora++;
+                    }
+                }
+                
+                demoras.sort((a, b) => b.demora - a.demora);
+                
+                if (demoras.length === 0) {
+                    mostrarMensajeVacioContainer(content, '⏱️', 'No hay registros de demoras');
+                    if (contador) contador.textContent = '0';
+                    return;
+                }
+                
+                if (contador) contador.textContent = demoras.length;
+                
+                const resumen = document.createElement('div');
+                resumen.style.cssText = `background:#1e293b;border-radius:0.75rem;padding:0.75rem 1rem;border:1px solid #334155;margin-bottom:0.75rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;`;
+                resumen.innerHTML = `
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                        <div><span style="color:#94a3b8;font-size:11px;">📊 Total</span><div style="color:#ef4444;font-weight:bold;font-size:18px;">${countDemora}</div></div>
+                        <div><span style="color:#94a3b8;font-size:11px;">⏱️ Promedio</span><div style="color:#f59e0b;font-weight:bold;font-size:18px;">${(totalDemora/countDemora).toFixed(0)} min</div></div>
+                        <div><span style="color:#94a3b8;font-size:11px;">🔴 Máxima</span><div style="color:#ef4444;font-weight:bold;font-size:18px;">${maxDemora} min</div></div>
+                    </div>
+                `;
+                content.appendChild(resumen);
+                
+                for (const d of demoras) {
+                    const card = document.createElement('div');
+                    const color = d.demora > 30 ? '#ef4444' : d.demora > 15 ? '#f59e0b' : '#10b981';
+                    card.style.cssText = `background:#0f172a;border-radius:0.75rem;padding:0.75rem;border:1px solid #334155;border-left:4px solid ${color};`;
+                    
+                    const fechaStr = d.fecha ? d.fecha.toLocaleString() : 'Sin fecha';
+                    let prodHtml = '';
+                    if (d.items && d.items.length > 0) {
+                        const items = Array.isArray(d.items) ? d.items : Object.values(d.items);
+                        prodHtml = items.slice(0, 3).map(item => {
+                            const nombre = item.nombre || item.PLATO || 'Producto';
+                            const cant = item.cantidad || 1;
+                            return `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${cant}x ${nombre}</span>`;
+                        }).join('');
+                        if (items.length > 3) prodHtml += `<span style="font-size:0.6rem;color:#64748b;"> +${items.length-3} más</span>`;
+                    } else {
+                        prodHtml = '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
+                    }
+                    
+                    card.innerHTML = `
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${d.id_pedido}</span>
+                            <span style="font-size:0.6rem;background:${color};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${d.demora} min</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <span style="color:white;font-weight:600;font-size:0.85rem;">${d.cliente}</span>
+                                <span style="color:#94a3b8;font-size:0.65rem;margin-left:8px;">📞 ${d.telefono}</span>
+                            </div>
+                            <span style="color:#f59e0b;font-weight:700;font-size:0.8rem;">$${d.total.toFixed(2)}</span>
+                        </div>
+                        <div style="margin-top:4px;font-size:0.65rem;color:#94a3b8;">${d.estado === 'entregado' ? '✅' : '⏳'} ${d.estado}</div>
+                        <div style="margin-top:4px;">${prodHtml}</div>
+                        <div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;display:flex;justify-content:flex-end;">
+                            <button onclick="verDetallePedido('${d.id}')" class="btn-accion primary" style="padding:0.15rem 0.5rem;font-size:0.6rem;">📋 Detalle</button>
+                        </div>
+                    `;
+                    content.appendChild(card);
+                }
+                
+                console.log('✅ Demoras cargadas correctamente');
+                
+            }).catch((error) => {
+                console.error('❌ Error al cargar demoras:', error);
+            });
+        }
+
+        // ============================================
+        // 22. CARGAR PEDIDOS ACTIVOS
+        // ============================================
+        function cargarPedidosActivos() {
+            console.log('📌 cargarPedidosActivos() ejecutada');
+            
+            const colPendiente = document.getElementById('col-pendiente');
+            const colCoccion = document.getElementById('col-coccion');
+            const colListo = document.getElementById('col-listo');
+            
+            if (colPendiente) colPendiente.innerHTML = '';
+            if (colCoccion) colCoccion.innerHTML = '';
+            if (colListo) colListo.innerHTML = '';
+            
+            db.ref('pedidos').once('value')
+                .then((snapshot) => {
+                    const pedidos = snapshot.val();
+                    
+                    let countPendiente = 0, countCoccion = 0, countListo = 0;
+                    
+                    if (!pedidos) {
+                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                        actualizarContadores(0, 0, 0);
+                        return;
+                    }
+                    
+                    const pedidosArray = Object.entries(pedidos);
+                    
+                    for (const [id, data] of pedidosArray) {
+                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                        if (restId !== restauranteId) continue;
+                        
+                        let estado = data.estado ? data.estado.toLowerCase() : '';
+                        if (estado === 'recibido') estado = 'pendiente';
+                        
+                        if (estado === 'pendiente') {
+                            countPendiente++;
+                            agregarPedidoAColumna(id, { ...data, estado: estado });
+                        } else if (estado === 'coccion') {
+                            countCoccion++;
+                            agregarPedidoAColumna(id, { ...data, estado: estado });
+                        } else if (estado === 'listo' || estado === 'en_reparto') {
+                            countListo++;
+                            agregarPedidoAColumna(id, { ...data, estado: estado });
+                        }
+                    }
+                    
+                    if (countPendiente === 0) {
+                        mostrarMensajeVacio('col-pendiente', '📥', 'No hay pedidos en entrada');
+                    }
+                    if (countCoccion === 0) {
+                        mostrarMensajeVacio('col-coccion', '👨‍🍳', 'No hay pedidos en proceso');
+                    }
+                    if (countListo === 0) {
+                        mostrarMensajeVacio('col-listo', '✅', 'No hay pedidos listos');
+                    }
+                    
+                    actualizarContadores(countPendiente, countCoccion, countListo);
+                    
+                })
+                .catch((error) => {
+                    console.error('Error al cargar pedidos:', error);
+                });
+        }
+
+        // ============================================
+        // 23. AGREGAR PEDIDO A COLUMNA CON DEMORA AUTOMÁTICA
         // ============================================
         function agregarPedidoAColumna(id, data) {
             let estado = data.estado || 'pendiente';
@@ -1923,7 +1919,6 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
             const total = data.total || 0;
             const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
             
-            // CALCULAR TIEMPO DE ELABORACIÓN
             const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
             const tiempoActual = Date.now();
             const tiempoTranscurrido = Math.floor((tiempoActual - tiempoInicio) / 60000);
@@ -1956,7 +1951,6 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
                 tiempoDisplay = `✅ Listo (${tiempoEspera} min espera)`;
             }
             
-            // Productos
             let productosHtml = '';
             if (data.items && data.items.length > 0) {
                 productosHtml = data.items.map(item => 
@@ -1970,7 +1964,6 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
                 productosHtml = '<span>Sin productos</span>';
             }
             
-            // ESTILOS
             let borderColor = '#334155';
             let backgroundColor = '#0f172a';
             let animacionPulso = '';
@@ -1996,7 +1989,6 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
                 }
             }
             
-            // ALERTA DE DEMORA
             if (sonidoAlerta) {
                 setTimeout(() => {
                     try {
@@ -2013,7 +2005,6 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
                 }, 500);
             }
             
-            // Botones
             let botones = '';
             if (estado === 'pendiente') {
                 botones = `
@@ -2024,7 +2015,7 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
                 botones = `
                     <button class="btn-accion success" onclick="marcarListo('${id}')">✅ Marcar Listo</button>
                     <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
-                    <button class="btn-accion warning" onclick="imprimirComanda('${id}')">🖨️ Imprimir</button>
+                    <button class="btn-accion warning" onclick="imprimirComandaConImpresora('${id}')">🖨️ Imprimir</button>
                 `;
             } else if (estado === 'listo' || estado === 'en_reparto') {
                 const repartidor = data.repartidor_nombre || data.uid_repartidor || 'Asignado';
@@ -2032,6 +2023,7 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
                     <span style="font-size:11px;color:#8b5cf6;">🛵 ${repartidor}</span>
                     <button class="btn-accion success" onclick="marcarRecogido('${id}')">🛵 Recogido</button>
                     <button class="btn-accion primary" onclick="verDetallePedido('${id}')">📋 Detalle</button>
+                    <button class="btn-accion warning" onclick="imprimirComandaConImpresora('${id}')">🖨️ Imprimir</button>
                 `;
             }
             
@@ -2074,7 +2066,7 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
         }
 
         // ============================================
-        // 20. MOSTRAR MENSAJE DE VACÍO
+        // 24. MOSTRAR MENSAJE DE VACÍO
         // ============================================
         function mostrarMensajeVacio(columnaId, icono, mensaje) {
             const container = document.getElementById(columnaId);
@@ -2101,8 +2093,30 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
             container.appendChild(empty);
         }
 
+        function mostrarMensajeVacioContainer(container, icono, mensaje) {
+            if (!container) return;
+            const empty = document.createElement('div');
+            empty.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem 1rem;
+                color: #475569;
+                text-align: center;
+                font-size: 0.875rem;
+                height: 100%;
+                min-height: 120px;
+            `;
+            empty.innerHTML = `
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">${icono}</div>
+                <div>${mensaje}</div>
+            `;
+            container.appendChild(empty);
+        }
+
         // ============================================
-        // 21. ACTUALIZAR CONTADORES
+        // 25. ACTUALIZAR CONTADORES
         // ============================================
         function actualizarContadores(pendiente, coccion, listo) {
             const countPendiente = document.getElementById('count-pendiente');
@@ -2127,525 +2141,10 @@ function mostrarMensajeVacioContainer(container, icono, mensaje) {
             if (contadorActivos) contadorActivos.textContent = pendiente + coccion + listo;
         }
 
-       // ============================================
-// RESTAURAR VISTA DE 3 COLUMNAS (CORREGIDO)
-// ============================================
-function restaurarVistaColumnas() {
-    const col1 = document.getElementById('columna-pendiente');
-    const col2 = document.getElementById('columna-coccion');
-    const col3 = document.getElementById('columna-listo');
-    
-    // Si no existen los IDs, crearlos
-    if (!col1) {
-        const container = document.getElementById('columnas-container');
-        if (container) {
-            // Recrear las columnas si no existen
-            container.innerHTML = `
-                <!-- COLUMNA: ENTRADA -->
-                <div class="columna columna-pendiente" id="columna-pendiente">
-                    <div class="columna-header">
-                        <span class="titulo">📥 Entrada</span>
-                        <span class="cantidad" id="col-count-pendiente">0</span>
-                    </div>
-                    <div class="columna-contenido" id="col-pendiente">
-                        <!-- Pedidos pendientes -->
-                    </div>
-                </div>
-                
-                <!-- COLUMNA: EN PROCESO -->
-                <div class="columna columna-coccion" id="columna-coccion">
-                    <div class="columna-header">
-                        <span class="titulo">👨‍🍳 En Proceso</span>
-                        <span class="cantidad" id="col-count-coccion">0</span>
-                    </div>
-                    <div class="columna-contenido" id="col-coccion">
-                        <!-- Pedidos en cocción -->
-                    </div>
-                </div>
-                
-                <!-- COLUMNA: LISTO -->
-                <div class="columna columna-listo" id="columna-listo">
-                    <div class="columna-header">
-                        <span class="titulo">✅ Listo</span>
-                        <span class="cantidad" id="col-count-listo">0</span>
-                    </div>
-                    <div class="columna-contenido" id="col-listo">
-                        <!-- Pedidos listos -->
-                    </div>
-                </div>
-            `;
-        }
-        return;
-    }
-    
-    // Restaurar columnas existentes
-    col1.style.display = 'flex';
-    col2.style.display = 'flex';
-    col3.style.display = 'flex';
-    col1.style.maxWidth = '400px';
-    col2.style.maxWidth = '400px';
-    col3.style.maxWidth = '400px';
-    col1.style.flex = '1';
-    col2.style.flex = '1';
-    col3.style.flex = '1';
-    
-    // Restaurar headers
-    const header1 = col1.querySelector('.columna-header .titulo');
-    const header2 = col2.querySelector('.columna-header .titulo');
-    const header3 = col3.querySelector('.columna-header .titulo');
-    if (header1) header1.innerHTML = '📥 Entrada';
-    if (header2) header2.innerHTML = '👨‍🍳 En Proceso';
-    if (header3) header3.innerHTML = '✅ Listo';
-    
-    // Limpiar contenidos
-    const cont1 = document.getElementById('col-pendiente');
-    const cont2 = document.getElementById('col-coccion');
-    const cont3 = document.getElementById('col-listo');
-    if (cont1) cont1.innerHTML = '';
-    if (cont2) cont2.innerHTML = '';
-    if (cont3) cont3.innerHTML = '';
-}
         // ============================================
-// MOSTRAR VISTA HISTORIAL (CON CONTENEDOR SEPARADO)
-// ============================================
-function mostrarVistaHistorial() {
-    console.log('📌 mostrarVistaHistorial() ejecutada');
-    
-    // Ocultar columnas de pedidos activos
-    const col1 = document.getElementById('columna-pendiente');
-    const col2 = document.getElementById('columna-coccion');
-    const col3 = document.getElementById('columna-listo');
-    
-    if (col1) col1.style.display = 'none';
-    if (col2) col2.style.display = 'none';
-    if (col3) col3.style.display = 'none';
-    
-    // Crear o obtener contenedor de historial
-    let historialContainer = document.getElementById('historial-container');
-    const columnasContainer = document.getElementById('columnas-container');
-    
-    if (!historialContainer) {
-        historialContainer = document.createElement('div');
-        historialContainer.id = 'historial-container';
-        historialContainer.style.cssText = `
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: #1e293b;
-            border-radius: 1rem;
-            border: 1px solid #334155;
-            overflow: hidden;
-            margin: 0.5rem;
-        `;
-        columnasContainer.appendChild(historialContainer);
-    }
-    
-    historialContainer.style.display = 'flex';
-    
-    // Header
-    const header = document.createElement('div');
-    header.className = 'columna-header';
-    header.style.cssText = `
-        padding: 0.75rem 1rem;
-        font-weight: 600;
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 2px solid #f59e0b;
-        flex-shrink: 0;
-        background: #1e293b;
-    `;
-    
-    header.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:8px;">
-            <div style="display:flex;align-items:center;gap:12px;">
-                <span style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;">
-                    📜 Historial
-                </span>
-                <select id="filtro-historial" 
-                        style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:white;padding:4px 12px;font-size:12px;cursor:pointer;outline:none;">
-                    <option value="todos" style="background:#0f172a;">📋 Todos</option>
-                    <option value="ventas" style="background:#0f172a;">🛒 Ventas</option>
-                    <option value="repartos" style="background:#0f172a;">📦 Repartos</option>
-                </select>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;">
-                <span class="cantidad" id="col-count-historial" style="background:rgba(255,255,255,0.1);padding:0.125rem 0.75rem;border-radius:9999px;font-size:0.75rem;">0</span>
-                <button onclick="mostrarAcumulados()" 
-                        style="background:#0f172a;border:1px solid #f59e0b;color:#f59e0b;padding:4px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;transition:all 0.3s;">
-                    🔒 Acumulados
-                </button>
-            </div>
-        </div>
-    `;
-    
-    historialContainer.innerHTML = '';
-    historialContainer.appendChild(header);
-    
-    // Contenedor de contenido
-    const content = document.createElement('div');
-    content.id = 'historial-contenido';
-    content.style.cssText = `
-        flex: 1;
-        overflow-y: auto;
-        padding: 0.75rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        background: #0f172a;
-    `;
-    historialContainer.appendChild(content);
-    
-    // Cargar historial
-    cargarHistorialFiltrado();
-}
-
-// ============================================
-// CARGAR HISTORIAL CON FILTRO (VERSIÓN DEFINITIVA)
-// ============================================
-function cargarHistorialFiltrado() {
-    console.log('📌 cargarHistorialFiltrado() - VERSIÓN DEFINITIVA');
-    
-    const content = document.getElementById('historial-contenido');
-    const contador = document.getElementById('col-count-historial');
-    const filtro = document.getElementById('filtro-historial');
-    
-    if (!content) {
-        console.log('❌ No se encontró historial-contenido');
-        return;
-    }
-    
-    const filtroSeleccionado = filtro ? filtro.value : 'todos';
-    console.log('📌 Filtro seleccionado:', filtroSeleccionado);
-    
-    // Limpiar contenido
-    content.innerHTML = '';
-    
-    db.ref('pedidos').once('value').then(snap => {
-        const pedidos = snap.val();
-        let count = 0;
-        
-        if (!pedidos) {
-            content.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
-                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
-                    <div>No hay pedidos en el historial</div>
-                </div>
-            `;
-            if (contador) contador.textContent = '0';
-            return;
-        }
-        
-        const pedidosArray = Object.entries(pedidos);
-        
-        for (const [id, data] of pedidosArray) {
-            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-            if (restId !== restauranteId) continue;
-            
-            const estado = data.estado ? data.estado.toLowerCase() : '';
-            const tipo = data.tipo || 'normal';
-            
-            if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') continue;
-            if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') continue;
-            
-            if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
-                count++;
-                const esReparto = tipo === 'reparto_personal';
-                const card = document.createElement('div');
-                card.className = 'pedido-card';
-                card.style.cssText = `
-                    background: #0f172a;
-                    border-radius: 0.75rem;
-                    padding: 1rem;
-                    border: 1px solid #334155;
-                    border-left: 4px solid ${esReparto ? '#8b5cf6' : '#64748b'};
-                    margin-bottom: 0.5rem;
-                    color: white;
-                `;
-                
-                const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
-                const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
-                const direccion = data.direccion || 'Sin dirección';
-                const idPedido = data.id_pedido || data.id || id.substring(0, 8);
-                const total = data.total || 0;
-                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
-                const estadoIcon = estado === 'entregado' || estado === 'ENTREGADO' ? '✅' : '❌';
-                const tipoIcon = esReparto ? '📦' : '🛒';
-                const tipoLabel = esReparto ? 'Reparto Personal' : 'Venta';
-                const badgeColor = esReparto ? '#8b5cf6' : '#f59e0b';
-                
-                let montoHtml = '';
-                if (esReparto) {
-                    const costoEnvio = data.envio || 0;
-                    montoHtml = `
-                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                            <span style="color:#94a3b8;">🚚 Costo de envío:</span>
-                            <span style="color:#8b5cf6;font-weight:700;">$${costoEnvio.toFixed(2)}</span>
-                        </div>
-                    `;
-                } else {
-                    const subtotal = data.subtotal || 0;
-                    const totalPedido = data.total || 0;
-                    const envio = data.envio || 0;
-                    const usoApp = data.usoYServicios || data.uso_plataforma || 0;
-                    
-                    montoHtml = `
-                        <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;">
-                            <span style="color:#94a3b8;">💰 Subtotal:</span>
-                            <span style="color:#10b981;font-weight:700;">$${subtotal.toFixed(2)}</span>
-                        </div>
-                        ${envio > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                            <span>🚚 Envío:</span>
-                            <span>$${envio.toFixed(2)}</span>
-                        </div>` : ''}
-                        ${usoApp > 0 ? `<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;color:#64748b;">
-                            <span>📱 Uso App:</span>
-                            <span>$${usoApp.toFixed(2)}</span>
-                        </div>` : ''}
-                        <div style="display:flex;justify-content:space-between;width:100%;font-size:13px;border-top:1px solid #334155;padding-top:4px;margin-top:2px;">
-                            <span style="color:#f59e0b;font-weight:700;">💳 Total:</span>
-                            <span style="color:#f59e0b;font-weight:700;">$${totalPedido.toFixed(2)}</span>
-                        </div>
-                    `;
-                }
-                
-                let productosHtml = '';
-                if (data.items && data.items.length > 0) {
-                    productosHtml = data.items.map(item => 
-                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${item.cantidad || 1}x ${item.nombre}</span>`
-                    ).join('');
-                } else if (data.productos) {
-                    productosHtml = Object.entries(data.productos).map(([pid, prod]) => 
-                        `<span style="display:inline-block;background:#1e293b;padding:0.1rem 0.4rem;border-radius:9999px;margin:0.1rem 0.2rem;font-size:0.65rem;color:#94a3b8;">${prod.cantidad || 1}x ${prod.nombre}</span>`
-                    ).join('');
-                } else {
-                    productosHtml = esReparto ? '<span style="font-size:0.65rem;color:#94a3b8;">📦 Reparto</span>' : '<span style="font-size:0.65rem;color:#94a3b8;">Sin productos</span>';
-                }
-                
-                card.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:0.65rem;color:#64748b;font-family:monospace;">#${idPedido}</span>
-                            <span style="font-size:9px;background:${badgeColor};color:#0f172a;padding:2px 8px;border-radius:9999px;font-weight:700;">${tipoIcon} ${tipoLabel}</span>
-                        </div>
-                        <span style="font-size:11px;color:#64748b;">${fecha}</span>
-                    </div>
-                    <div style="font-weight:600;color:white;font-size:0.9rem;">${clienteNombre}</div>
-                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
-                    <div style="color:#94a3b8;font-size:12px;margin-top:2px;">${direccion} • ${estadoIcon} ${estado}</div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:4px;">
-                        ${montoHtml}
-                    </div>
-                    <button onclick="verDetallePedido('${id}')" class="btn-accion primary" style="margin-top:8px;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.7rem;font-weight:600;border:none;cursor:pointer;background:#f59e0b;color:#0f172a;width:100%;">📋 Ver Detalle</button>
-                `;
-                
-                content.appendChild(card);
-            }
-        }
-        
-        if (contador) contador.textContent = count;
-        
-        if (count === 0) {
-            const mensaje = filtroSeleccionado === 'ventas' ? 'No hay pedidos de ventas' :
-                           filtroSeleccionado === 'repartos' ? 'No hay repartos personales' :
-                           'No hay pedidos en el historial';
-            content.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:#475569;text-align:center;height:100%;min-height:200px;">
-                    <div style="font-size:2rem;margin-bottom:0.5rem;">📜</div>
-                    <div>${mensaje}</div>
-                </div>
-            `;
-        }
-        
-        console.log(`📊 Total tarjetas: ${count}`);
-        console.log('✅ Historial cargado correctamente');
-    }).catch(error => {
-        console.error('❌ Error al cargar historial:', error);
-    });
-}
-        // ============================================
-        // 25. FUNCIÓN AUXILIAR PARA MENSAJE EN CONTENEDOR
-        // ============================================
-        function mostrarMensajeVacioContainer(container, icono, mensaje) {
-            if (!container) return;
-            const empty = document.createElement('div');
-            empty.style.cssText = `
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem 1rem;
-                color: #475569;
-                text-align: center;
-                font-size: 0.875rem;
-                height: 100%;
-                min-height: 120px;
-            `;
-            empty.innerHTML = `
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">${icono}</div>
-                <div>${mensaje}</div>
-            `;
-            container.appendChild(empty);
-        }
-
-        // ============================================
-        // 26. MOSTRAR VISTA DEMORAS CON RESUMEN
-        // ============================================
-        function mostrarVistaDemoras() {
-            const columna = document.getElementById('col-pendiente');
-            const columna2 = document.getElementById('col-coccion');
-            const columna3 = document.getElementById('col-listo');
-            
-            columna.innerHTML = '';
-            columna2.innerHTML = '';
-            columna3.innerHTML = '';
-            
-            columna2.parentElement.style.display = 'none';
-            columna3.parentElement.style.display = 'none';
-            columna.parentElement.style.display = 'flex';
-            columna.parentElement.style.maxWidth = '100%';
-            
-            const header = columna.parentElement.querySelector('.columna-header .titulo');
-            if (header) header.innerHTML = '⏱️ Registro de Demoras';
-            
-            const contador = columna.parentElement.querySelector('.columna-header .cantidad');
-            
-            db.ref('pedidos').once('value').then((snapshot) => {
-                const pedidos = snapshot.val();
-                
-                if (!pedidos) {
-                    mostrarMensajeVacio('col-pendiente', '⏱️', 'No hay registros de demoras');
-                    if (contador) contador.textContent = '0';
-                    return;
-                }
-                
-                let pedidosDemora = [];
-                let totalDemora = 0;
-                let maxDemora = 0;
-                let countDemora = 0;
-                
-                const pedidosArray = Object.entries(pedidos);
-                
-                for (const [id, data] of pedidosArray) {
-                    const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                    if (restId !== restauranteId) continue;
-                    
-                    const demora = data.demora || data.tiempo_demora || 0;
-                    if (demora > 0) {
-                        pedidosDemora.push({ id, ...data, demora: demora });
-                        totalDemora += demora;
-                        maxDemora = Math.max(maxDemora, demora);
-                        countDemora++;
-                    }
-                }
-                
-                pedidosDemora.sort((a, b) => (b.demora || 0) - (a.demora || 0));
-                
-                if (pedidosDemora.length === 0) {
-                    mostrarMensajeVacio('col-pendiente', '⏱️', 'No hay registros de demoras');
-                    if (contador) contador.textContent = '0';
-                    return;
-                }
-                
-                if (contador) contador.textContent = pedidosDemora.length;
-                
-                // TARJETA DE RESUMEN
-                const resumenCard = document.createElement('div');
-                resumenCard.style.cssText = `
-                    background: #1e293b;
-                    border-radius: 0.75rem;
-                    padding: 0.75rem 1rem;
-                    border: 1px solid #334155;
-                    margin-bottom: 0.75rem;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                `;
-                resumenCard.innerHTML = `
-                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                        <div>
-                            <span style="color:#94a3b8;font-size:11px;">📊 Total demoras</span>
-                            <div style="color:#ef4444;font-weight:bold;font-size:18px;">${countDemora}</div>
-                        </div>
-                        <div>
-                            <span style="color:#94a3b8;font-size:11px;">⏱️ Promedio</span>
-                            <div style="color:#f59e0b;font-weight:bold;font-size:18px;">${(totalDemora / countDemora).toFixed(0)} min</div>
-                        </div>
-                        <div>
-                            <span style="color:#94a3b8;font-size:11px;">🔴 Máxima</span>
-                            <div style="color:#ef4444;font-weight:bold;font-size:18px;">${maxDemora} min</div>
-                        </div>
-                    </div>
-                `;
-                columna.appendChild(resumenCard);
-                
-                for (const pedido of pedidosDemora) {
-                    const card = document.createElement('div');
-                    card.className = 'pedido-card';
-                    card.style.borderLeftColor = '#ef4444';
-                    card.style.borderLeft = '4px solid #ef4444';
-                    
-                    const clienteNombre = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
-                    const telefono = pedido.cliente_telefono || pedido.telefono || 'Sin teléfono';
-                    const direccion = pedido.direccion || 'Sin dirección';
-                    const idPedido = pedido.id_pedido || pedido.id || '---';
-                    const total = pedido.total || 0;
-                    const estado = pedido.estado || 'Finalizado';
-                    const fecha = pedido.timestamp ? new Date(pedido.timestamp).toLocaleString() : 'Fecha desconocida';
-                    const minutosDemora = pedido.demora || 0;
-                    const tiempoPreparacion = pedido.tiempo_preparacion || 0;
-                    
-                    const demoraColor = minutosDemora > 30 ? '#ef4444' : minutosDemora > 15 ? '#f59e0b' : '#10b981';
-                    
-                    let productosHtml = '';
-                    if (pedido.items && pedido.items.length > 0) {
-                        productosHtml = pedido.items.map(item => 
-                            `<span>${item.cantidad || 1}x ${item.nombre}</span>`
-                        ).join('');
-                    } else if (pedido.productos) {
-                        productosHtml = Object.entries(pedido.productos).map(([pid, prod]) => 
-                            `<span>${prod.cantidad || 1}x ${prod.nombre}</span>`
-                        ).join('');
-                    } else {
-                        productosHtml = '<span>Sin productos</span>';
-                    }
-                    
-                    card.innerHTML = `
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <span class="id-pedido">#${idPedido}</span>
-                            <span style="font-size:11px;color:#64748b;">${fecha}</span>
-                        </div>
-                        <div class="cliente">${clienteNombre}</div>
-                        <div style="color:#94a3b8;font-size:12px;margin-top:4px;">📞 ${telefono}</div>
-                        <div class="detalle" style="margin-top:2px;color:${demoraColor};">
-                            ⏱️ Demora: ${minutosDemora} min (Preparación: ${tiempoPreparacion} min)
-                        </div>
-                        <div class="productos" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">${productosHtml}</div>
-                        <div class="footer" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;">
-                            <span class="precio" style="color:#f59e0b;font-weight:700;">$${total.toFixed(2)}</span>
-                            <button onclick="verDetallePedido('${pedido.id}')" class="btn-accion primary">📋 Detalle</button>
-                        </div>
-                    `;
-                    
-                    columna.appendChild(card);
-                }
-                
-            }).catch((error) => {
-                console.error('Error al cargar demoras:', error);
-            });
-        }
-
-        // ============================================
-        // 27. FUNCIONES DE BOTONES - PEDIDOS
+        // 26. FUNCIONES DE BOTONES - PEDIDOS
         // ============================================
 
-        // 27.1 ACEPTAR PEDIDO
         window.aceptarPedido = async function(pedidoId) {
             if (estaPausado) {
                 showToast('⏸️ Restaurante en pausa. No se pueden aceptar pedidos.', 'warning');
@@ -2664,7 +2163,6 @@ function cargarHistorialFiltrado() {
                 showToast('✅ Pedido aceptado, en preparación', 'success');
                 renderizarVista();
                 
-                // NOTIFICAR AL REPARTIDOR AL ACEPTAR
                 console.log('📤 Notificando al repartidor (pedido aceptado)...');
                 await notificarRepartidor(pedidoId);
                 detenerSonidoRepetido();
@@ -2675,7 +2173,6 @@ function cargarHistorialFiltrado() {
             }
         };
 
-        // 27.2 RECHAZAR PEDIDO
         window.rechazarPedido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -2710,7 +2207,6 @@ function cargarHistorialFiltrado() {
             }
         };
 
-        // 27.3 MARCAR LISTO (CON REGISTRO AUTOMÁTICO DE DEMORA)
         window.marcarListo = async function(pedidoId) {
             try {
                 const snapshot = await db.ref(`pedidos/${pedidoId}`).once('value');
@@ -2736,7 +2232,6 @@ function cargarHistorialFiltrado() {
                     tiempo_preparacion: tiempoPreparacion
                 });
                 
-                // REGISTRAR DEMORA AUTOMÁTICAMENTE
                 if (demora > 0) {
                     await db.ref(`pedidos/${pedidoId}/demora`).set(demora);
                     await db.ref(`pedidos/${pedidoId}/tiempo_demora`).set(demora);
@@ -2755,16 +2250,12 @@ function cargarHistorialFiltrado() {
                 showToast(`✅ Pedido listo (${tiempoPreparacion} min)`, 'success');
                 renderizarVista();
                 
-                // ❌ NOTIFICACIÓN ELIMINADA (YA SE ENVIÓ AL ACEPTAR)
-                // await notificarRepartidor(pedidoId);
-                
             } catch (error) {
                 console.error('Error al marcar listo:', error);
                 showToast('❌ Error al marcar listo', 'error');
             }
         };
 
-        // 27.4 MARCAR RECOGIDO
         window.marcarRecogido = async function(pedidoId) {
             try {
                 const confirm = await Swal.fire({
@@ -2799,10 +2290,9 @@ function cargarHistorialFiltrado() {
         };
 
         // ============================================
-        // 28. NOTIFICACIONES PUSH (CON CLOUD FUNCTION)
+        // 27. NOTIFICACIONES PUSH
         // ============================================
         
-        // 28.1 ENVIAR NOTIFICACIÓN CON CLOUD FUNCTION
         async function enviarNotificacionConCloudFunction(uidRepartidor, pedidoId, tipo = 'pedido') {
             try {
                 const tokenSnap = await db.ref(`repartidores/${uidRepartidor}/token`).once('value');
@@ -2858,7 +2348,6 @@ function cargarHistorialFiltrado() {
             }
         }
 
-        // 28.2 NOTIFICAR REPARTIDOR
         window.notificarRepartidor = async function(pedidoId) {
             try {
                 const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
@@ -2925,7 +2414,6 @@ function cargarHistorialFiltrado() {
                 await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
                 await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
                 await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
-                // ❌ ELIMINADO: await db.ref(`pedidos/${pedidoId}/estado`).set('EN_REPARTO');
                 await db.ref(`pedidos/${pedidoId}/historial`).push({
                     estado: 'coccion',
                     timestamp: Date.now(),
@@ -2947,10 +2435,9 @@ function cargarHistorialFiltrado() {
         };
 
         // ============================================
-        // 29. FUNCIONES PARA REPARTO PERSONAL
+        // 28. FUNCIONES PARA REPARTO PERSONAL
         // ============================================
 
-        // 29.1 CALCULAR COSTO DE ENVÍO
         async function calcularCostoEnvio(direccionCliente) {
             try {
                 const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
@@ -3005,7 +2492,6 @@ function cargarHistorialFiltrado() {
             }
         }
 
-        // 29.2 ABRIR FORMULARIO DE REPARTO
         window.abrirFormularioReparto = function() {
             Swal.fire({
                 title: '🚚 Nuevo Reparto Personal',
@@ -3162,7 +2648,6 @@ function cargarHistorialFiltrado() {
             });
         };
 
-        // 29.3 CREAR ENVÍO
         async function crearEnvio(data) {
             try {
                 const repartidoresSnap = await db.ref('repartidores')
@@ -3305,279 +2790,8 @@ function cargarHistorialFiltrado() {
             }
         }
 
-        // 29.4 VER DETALLE DE ENVÍO
-        window.verDetalleEnvio = function(envioId) {
-            db.ref(`envios/${envioId}`).once('value').then((snapshot) => {
-                const data = snapshot.val();
-                if (!data) {
-                    showToast('❌ Envío no encontrado', 'error');
-                    return;
-                }
-                
-                const cliente = data.cliente_nombre || 'Sin nombre';
-                const telefono = data.cliente_telefono || 'Sin teléfono';
-                const direccion = data.direccion || 'Sin dirección';
-                const monto = data.monto || 0;
-                const costoEnvio = data.costo_envio || 0;
-                const estado = data.estado || 'pendiente';
-                const nota = data.nota || 'Sin nota';
-                const debeCobrar = data.debe_cobrar || false;
-                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Fecha desconocida';
-                const repartidor = data.uid_repartidor || 'No asignado';
-                
-                const estadoMap = {
-                    'pendiente': '⏳ Pendiente',
-                    'asignado': '🛵 Asignado a repartidor',
-                    'recogido': '📦 Recogido por repartidor',
-                    'entregado': '✅ Entregado'
-                };
-                
-                Swal.fire({
-                    title: `📦 Detalle del Envío #${envioId.substring(0, 8)}`,
-                    html: `
-                        <div style="text-align:left;padding:8px;">
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px;">
-                                    <div><strong>👤 Cliente:</strong></div>
-                                    <div>${cliente}</div>
-                                    <div><strong>📞 Teléfono:</strong></div>
-                                    <div>${telefono}</div>
-                                    <div><strong>📍 Dirección:</strong></div>
-                                    <div>${direccion}</div>
-                                    <div><strong>💰 Monto:</strong></div>
-                                    <div style="color:#f59e0b;font-weight:bold;">$${monto.toFixed(2)}</div>
-                                    <div><strong>🚚 Costo envío:</strong></div>
-                                    <div>$${costoEnvio.toFixed(2)}</div>
-                                    <div><strong>💳 Pago:</strong></div>
-                                    <div style="color:${debeCobrar ? '#f59e0b' : '#10b981'};font-weight:600;">${debeCobrar ? '💵 Cobrar en sitio' : '✅ Pagado'}</div>
-                                    <div><strong>⏱️ Estado:</strong></div>
-                                    <div>${estadoMap[estado] || estado}</div>
-                                    <div><strong>🛵 Repartidor:</strong></div>
-                                    <div>${repartidor}</div>
-                                    <div><strong>📅 Fecha:</strong></div>
-                                    <div>${fecha}</div>
-                                </div>
-                            </div>
-                            <div style="background:#1e293b;border-radius:8px;padding:12px;">
-                                <div><strong>📝 Nota:</strong></div>
-                                <div style="color:#94a3b8;margin-top:4px;">${nota}</div>
-                            </div>
-                        </div>
-                    `,
-                    confirmButtonText: '✅ Cerrar',
-                    background: '#0f172a',
-                    color: 'white',
-                    confirmButtonColor: '#f59e0b'
-                });
-                
-            }).catch((error) => {
-                console.error('Error al ver detalle de envío:', error);
-                showToast('❌ Error al cargar detalle', 'error');
-            });
-        };
-
         // ============================================
-        // 30. FUNCIONES PARA ACUMULADOS OCULTOS
-        // ============================================
-
-        async function verificarClaveAcumulados(claveIngresada) {
-            try {
-                const snap = await db.ref(`restaurantes/${restauranteId}/clave_acumulados`).once('value');
-                const claveGuardada = snap.val();
-                
-                if (!claveGuardada) {
-                    return claveIngresada === '1234';
-                }
-                
-                return claveIngresada === claveGuardada;
-                
-            } catch (error) {
-                console.error('❌ Error al verificar clave:', error);
-                return false;
-            }
-        }
-
-        window.mostrarAcumulados = function() {
-            Swal.fire({
-                title: '🔒 Ver Acumulados de Ventas',
-                html: `
-                    <div style="text-align:left;color:white;">
-                        <p style="margin-bottom:12px;color:#94a3b8;">Ingresa la contraseña para ver los acumulados de ventas:</p>
-                        <input id="clave-acumulados" class="swal2-input" type="password" placeholder="Contraseña" style="background:#1e293b;border:1px solid #334155;color:white;text-align:center;font-size:20px;letter-spacing:8px;">
-                        <div style="font-size:11px;color:#64748b;margin-top:8px;text-align:center;">Contraseña configurada por el administrador</div>
-                    </div>
-                `,
-                confirmButtonText: '✅ Ver Acumulados',
-                showCancelButton: true,
-                cancelButtonText: 'Cancelar',
-                background: '#0f172a',
-                color: 'white',
-                confirmButtonColor: '#f59e0b',
-                preConfirm: () => {
-                    const clave = document.getElementById('clave-acumulados').value;
-                    if (!clave) {
-                        Swal.showValidationMessage('Ingresa la contraseña');
-                        return false;
-                    }
-                    return clave;
-                }
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    const valida = await verificarClaveAcumulados(result.value);
-                    if (valida) {
-                        await mostrarResumenAcumulados();
-                    } else {
-                        Swal.fire({
-                            title: '❌ Contraseña incorrecta',
-                            text: 'La contraseña ingresada no es válida. Contacta al administrador.',
-                            icon: 'error',
-                            background: '#0f172a',
-                            color: 'white',
-                            confirmButtonColor: '#f59e0b'
-                        });
-                    }
-                }
-            });
-        };
-
-// ============================================
-// MOSTRAR RESUMEN DE ACUMULADOS (CORREGIDO - TOTAL)
-// ============================================
-async function mostrarResumenAcumulados() {
-    try {
-        const pedidosSnap = await db.ref('pedidos').once('value');
-        const pedidos = pedidosSnap.val();
-        
-        let ventasHoy = 0;
-        let ventasQuincena = 0;
-        let ventasMes = 0;
-        let repartosHoy = 0;
-        let repartosQuincena = 0;
-        let repartosMes = 0;
-        
-        const ahora = new Date();
-        const inicioHoy = new Date(ahora);
-        inicioHoy.setHours(0, 0, 0, 0);
-        
-        const inicioQuincena = new Date(ahora);
-        if (ahora.getDate() <= 15) {
-            inicioQuincena.setDate(1);
-        } else {
-            inicioQuincena.setDate(16);
-        }
-        inicioQuincena.setHours(0, 0, 0, 0);
-        
-        const inicioMes = new Date(ahora);
-        inicioMes.setDate(1);
-        inicioMes.setHours(0, 0, 0, 0);
-        
-        if (pedidos) {
-            for (const [id, data] of Object.entries(pedidos)) {
-                const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                if (restId !== restauranteId) continue;
-                
-                const tipo = data.tipo || 'normal';
-                const estado = data.estado ? data.estado.toLowerCase() : '';
-                const fecha = data.timestamp ? new Date(data.timestamp) : null;
-                
-                if (!fecha) continue;
-                
-                if (tipo === 'reparto_personal') {
-                    const costoEnvio = data.envio || 0;
-                    if (costoEnvio > 0) {
-                        if (fecha >= inicioHoy) repartosHoy += costoEnvio;
-                        if (fecha >= inicioQuincena) repartosQuincena += costoEnvio;
-                        if (fecha >= inicioMes) repartosMes += costoEnvio;
-                    }
-                } else {
-                    if (estado === 'entregado' || estado === 'listo') {
-                        const subtotal = data.subtotal || 0;
-                        if (subtotal > 0) {
-                            if (fecha >= inicioHoy) ventasHoy += subtotal;
-                            if (fecha >= inicioQuincena) ventasQuincena += subtotal;
-                            if (fecha >= inicioMes) ventasMes += subtotal;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 🔥 USAR QUINCENA COMO TOTAL PRINCIPAL (porque tiene datos)
-        const totalGeneral = ventasQuincena + repartosQuincena;
-        const totalHoy = ventasHoy + repartosHoy;
-        const totalMes = ventasMes + repartosMes;
-        
-        Swal.fire({
-            title: '📊 Resumen de Acumulados',
-            html: `
-                <div style="text-align:left;padding:8px;">
-                    <!-- VENTAS -->
-                    <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
-                        <div style="color:#f59e0b;font-weight:bold;font-size:14px;margin-bottom:6px;">🛒 Ventas (Clientes)</div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                            <span style="color:#94a3b8;">📅 Hoy</span>
-                            <span style="color:#f59e0b;font-weight:bold;">$${ventasHoy.toFixed(2)}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                            <span style="color:#94a3b8;">📅 Quincena</span>
-                            <span style="color:#f59e0b;font-weight:bold;">$${ventasQuincena.toFixed(2)}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                            <span style="color:#94a3b8;">📅 Mes</span>
-                            <span style="color:#f59e0b;font-weight:bold;">$${ventasMes.toFixed(2)}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- REPARTOS -->
-                    <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
-                        <div style="color:#8b5cf6;font-weight:bold;font-size:14px;margin-bottom:6px;">📦 Repartos Personales</div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                            <span style="color:#94a3b8;">📅 Hoy</span>
-                            <span style="color:#8b5cf6;font-weight:bold;">$${repartosHoy.toFixed(2)}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                            <span style="color:#94a3b8;">📅 Quincena</span>
-                            <span style="color:#8b5cf6;font-weight:bold;">$${repartosQuincena.toFixed(2)}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                            <span style="color:#94a3b8;">📅 Mes</span>
-                            <span style="color:#8b5cf6;font-weight:bold;">$${repartosMes.toFixed(2)}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- TOTAL GENERAL -->
-                    <div style="background:#1e293b;border-radius:8px;padding:12px;">
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                            <span style="color:#94a3b8;font-weight:bold;">📊 Total Hoy</span>
-                            <span style="color:#10b981;font-weight:bold;font-size:16px;">$${totalHoy.toFixed(2)}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
-                            <span style="color:#94a3b8;font-weight:bold;">📊 Total Quincena</span>
-                            <span style="color:#10b981;font-weight:bold;font-size:18px;">$${totalGeneral.toFixed(2)}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                            <span style="color:#94a3b8;font-weight:bold;">📊 Total Mes</span>
-                            <span style="color:#10b981;font-weight:bold;font-size:16px;">$${totalMes.toFixed(2)}</span>
-                        </div>
-                        <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;border-top:1px solid #334155;padding-top:4px;">
-                            💡 Ventas = Subtotal (base) | Repartos = Costo de envío
-                        </div>
-                    </div>
-                </div>
-            `,
-            confirmButtonText: '✅ Cerrar',
-            background: '#0f172a',
-            color: 'white',
-            confirmButtonColor: '#f59e0b'
-        });
-        
-    } catch (error) {
-        console.error('❌ Error al mostrar acumulados:', error);
-        showToast('❌ Error al cargar acumulados', 'error');
-    }
-}
-        // ============================================
-        // 31. VER DETALLE DEL PEDIDO
+        // 29. VER DETALLE DEL PEDIDO
         // ============================================
         window.verDetallePedido = function(pedidoId) {
             db.ref(`pedidos/${pedidoId}`).once('value')
@@ -3677,7 +2891,7 @@ async function mostrarResumenAcumulados() {
         };
 
         // ============================================
-        // 32. IMPRIMIR TICKET
+        // 30. IMPRIMIR COMADA (MÉTODO TRADICIONAL)
         // ============================================
         window.imprimirComanda = function(pedidoId) {
             db.ref(`pedidos/${pedidoId}`).once('value')
@@ -3816,6 +3030,570 @@ async function mostrarResumenAcumulados() {
         };
 
         // ============================================
+        // 31. SISTEMA DE IMPRESIÓN TÉRMICA
+        // ============================================
+
+        // 31.1 CARGAR CONFIGURACIÓN DE IMPRESORA
+        async function cargarConfiguracionImpresora() {
+            try {
+                const snap = await db.ref(`restaurantes/${restauranteId}/impresora`).once('value');
+                const config = snap.val();
+                if (config) {
+                    impresoraConfigurada = config.activo || false;
+                    nombreImpresora = config.nombre || '';
+                    actualizarEstadoImpresoraUI();
+                }
+            } catch (error) {
+                console.error('Error al cargar configuración de impresora:', error);
+            }
+        }
+
+        // 31.2 ACTUALIZAR UI DE IMPRESORA
+        function actualizarEstadoImpresoraUI() {
+            const estadoEl = document.getElementById('estado-impresora');
+            if (estadoEl) {
+                if (impresoraConfigurada) {
+                    estadoEl.innerHTML = `🟢 ${nombreImpresora || 'Conectada'}`;
+                    estadoEl.style.color = '#10b981';
+                } else {
+                    estadoEl.innerHTML = '⭕ Desconectada';
+                    estadoEl.style.color = '#94a3b8';
+                }
+            }
+        }
+
+        // 31.3 CONFIGURAR IMPRESORA
+        window.configurarImpresora = function() {
+            Swal.fire({
+                title: '🖨️ Configurar Impresora Térmica',
+                html: `
+                    <div style="text-align:left;color:white;padding:4px;">
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#8b5cf6;">🖨️</span> Nombre de la Impresora
+                            </label>
+                            <input id="nombre-impresora" class="swal2-input" 
+                                   placeholder="Ej: POS-80, BT-58, Epson-TM88" 
+                                   value="${nombreImpresora || ''}"
+                                   style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#8b5cf6;">📏</span> Tamaño de papel
+                            </label>
+                            <select id="tamaño-papel" 
+                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                                <option value="58" style="background:#1e293b;">📄 58mm (Pequeño)</option>
+                                <option value="80" style="background:#1e293b;">📄 80mm (Estándar)</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;font-weight:500;color:#94a3b8;margin-bottom:6px;">
+                                <span style="color:#8b5cf6;">🔌</span> Tipo de conexión
+                            </label>
+                            <select id="tipo-conexion" 
+                                    style="width:100%;padding:12px 16px;background:#1e293b;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                                <option value="usb" style="background:#1e293b;">🔌 USB</option>
+                                <option value="bluetooth" style="background:#1e293b;">📡 Bluetooth</option>
+                                <option value="network" style="background:#1e293b;">🌐 Red (IP)</option>
+                            </select>
+                        </div>
+                        <div style="margin-top:8px;padding:12px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
+                            <div style="font-size:11px;color:#94a3b8;text-align:center;">
+                                💡 Al presionar "Imprimir" en un pedido, se enviará directamente a la impresora.
+                                ${impresoraConfigurada ? '✅ Impresora configurada correctamente' : '⚠️ No hay impresora configurada'}
+                            </div>
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: '💾 Guardar Configuración',
+                showCancelButton: true,
+                cancelButtonText: 'Cancelar',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#8b5cf6',
+                cancelButtonColor: '#334155',
+                preConfirm: () => {
+                    const nombre = document.getElementById('nombre-impresora').value.trim();
+                    const tamaño = document.getElementById('tamaño-papel').value;
+                    const conexion = document.getElementById('tipo-conexion').value;
+                    
+                    if (!nombre) {
+                        Swal.showValidationMessage('❌ El nombre de la impresora es obligatorio');
+                        return false;
+                    }
+                    
+                    return { nombre, tamaño, conexion };
+                }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    try {
+                        await db.ref(`restaurantes/${restauranteId}/impresora`).set({
+                            activo: true,
+                            nombre: result.value.nombre,
+                            tamaño: parseInt(result.value.tamaño),
+                            conexion: result.value.conexion,
+                            fecha_configuracion: Date.now()
+                        });
+                        
+                        impresoraConfigurada = true;
+                        nombreImpresora = result.value.nombre;
+                        actualizarEstadoImpresoraUI();
+                        
+                        await registrarLogSeguridad('configurar_impresora', {
+                            nombre: result.value.nombre,
+                            tamaño: result.value.tamaño,
+                            conexion: result.value.conexion
+                        });
+                        
+                        showToast(`✅ Impresora "${result.value.nombre}" configurada correctamente`, 'success');
+                        
+                        const test = await Swal.fire({
+                            title: '🧪 ¿Probar impresión?',
+                            text: '¿Quieres imprimir un ticket de prueba?',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: '✅ Sí, probar',
+                            cancelButtonText: 'No, gracias',
+                            background: '#0f172a',
+                            color: 'white',
+                            confirmButtonColor: '#10b981'
+                        });
+                        
+                        if (test.isConfirmed) {
+                            imprimirTicketPrueba();
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error al guardar configuración:', error);
+                        showToast('❌ Error al configurar impresora', 'error');
+                    }
+                }
+            });
+        };
+
+        // 31.4 IMPRIMIR TICKET DE PRUEBA
+        function imprimirTicketPrueba() {
+            const ticket = `
+╔════════════════════════════╗
+║      🖨️ TICKET DE PRUEBA    ║
+╠════════════════════════════╣
+║  Aguadulce Express         ║
+║  Impresora: ${nombreImpresora || 'Configurada'}  ║
+║  Fecha: ${new Date().toLocaleString()}   ║
+╠════════════════════════════╣
+║  ✅ Impresión correcta     ║
+║  📅 ${new Date().toLocaleDateString()}     ║
+║  ⏱️ ${new Date().toLocaleTimeString()}     ║
+╠════════════════════════════╣
+║  ✨ ¡Listo para usar! ✨   ║
+╚════════════════════════════╝
+`;
+            imprimirTicketDirecto(ticket);
+            showToast('🖨️ Ticket de prueba enviado a la impresora', 'success');
+        }
+
+        // 31.5 IMPRIMIR TICKET DIRECTO
+        function imprimirTicketDirecto(contenido) {
+            try {
+                const ventana = window.open('', '_blank', 'width=200,height=400,menubar=no,toolbar=no,scrollbars=no');
+                if (ventana) {
+                    ventana.document.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Impresión Térmica</title>
+                            <style>
+                                * { margin: 0; padding: 0; box-sizing: border-box; }
+                                body { 
+                                    font-family: 'Courier New', 'Lucida Console', monospace; 
+                                    width: 58mm;
+                                    margin: 0 auto;
+                                    padding: 2mm;
+                                    background: white;
+                                    color: #000;
+                                    font-size: 10px;
+                                    line-height: 1.2;
+                                }
+                                pre {
+                                    font-family: 'Courier New', monospace;
+                                    font-size: 9px;
+                                    line-height: 1.2;
+                                    white-space: pre-wrap;
+                                    word-wrap: break-word;
+                                    margin: 0;
+                                    padding: 0;
+                                }
+                                @media print {
+                                    body { padding: 0; margin: 0; width: 58mm; }
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <pre>${contenido}</pre>
+                            <script>
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() {
+                                        window.close();
+                                    }, 1000);
+                                }, 500);
+                            <\/script>
+                        </body>
+                        </html>
+                    `);
+                    ventana.document.close();
+                    return true;
+                } else {
+                    const printWindow = window.open('', '_blank');
+                    if (printWindow) {
+                        printWindow.document.write(`<pre style="font-family:'Courier New',monospace;font-size:10px;line-height:1.2;white-space:pre-wrap;">${contenido}</pre>`);
+                        printWindow.document.close();
+                        printWindow.print();
+                        setTimeout(() => printWindow.close(), 2000);
+                        return true;
+                    }
+                }
+                return false;
+            } catch (error) {
+                console.error('Error al imprimir:', error);
+                showToast('❌ Error al imprimir. Verifica la impresora.', 'error');
+                return false;
+            }
+        }
+
+        // 31.6 IMPRIMIR TICKET DE PEDIDO DIRECTO
+        window.imprimirTicketDirectoPedido = function(pedidoId) {
+            db.ref(`pedidos/${pedidoId}`).once('value')
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    if (!data) {
+                        showToast('❌ Pedido no encontrado', 'error');
+                        return;
+                    }
+                    
+                    if (!impresoraConfigurada) {
+                        Swal.fire({
+                            title: '⚠️ Impresora no configurada',
+                            text: 'Primero configura una impresora desde el menú',
+                            icon: 'warning',
+                            confirmButtonText: 'Configurar ahora',
+                            showCancelButton: true,
+                            cancelButtonText: 'Cancelar',
+                            background: '#0f172a',
+                            color: 'white',
+                            confirmButtonColor: '#8b5cf6'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                configurarImpresora();
+                            }
+                        });
+                        return;
+                    }
+                    
+                    const idPedido = data.id_pedido || data.id || '---';
+                    const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Sin nombre';
+                    const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+                    const direccion = data.direccion || 'Sin dirección';
+                    const total = data.total || 0;
+                    const subtotal = data.subtotal || 0;
+                    const envio = data.envio || 0;
+                    const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString();
+                    const restauranteNombre = data.restaurante_nombre || data.restaurante || 'Restaurante';
+                    const metodoPago = data.metodo_pago || 'Efectivo';
+                    const estado = data.estado || 'Desconocido';
+                    
+                    let productosStr = '';
+                    if (data.items && data.items.length > 0) {
+                        productosStr = data.items.map(item => {
+                            const nombre = item.nombre || 'Producto';
+                            const cantidad = item.cantidad || 1;
+                            const precio = item.total || (item.precio_unitario * cantidad) || 0;
+                            return `${cantidad}x ${nombre.substring(0, 20)} $${precio.toFixed(2)}`;
+                        }).join('\n');
+                    } else if (data.productos) {
+                        productosStr = Object.entries(data.productos).map(([pid, prod]) => {
+                            const nombre = prod.nombre || prod.PLATO || 'Producto';
+                            const cantidad = prod.cantidad || 1;
+                            const precio = (prod.precio || prod.PRECIO || 0) * cantidad;
+                            return `${cantidad}x ${nombre.substring(0, 20)} $${precio.toFixed(2)}`;
+                        }).join('\n');
+                    } else {
+                        productosStr = '  Sin productos';
+                    }
+                    
+                    const ancho = 32;
+                    const linea = '═'.repeat(ancho);
+                    const linea2 = '─'.repeat(ancho);
+                    const fechaStr = new Date().toLocaleString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    const esReparto = data.tipo === 'reparto_personal';
+                    const tipoPedido = esReparto ? '📦 REPARTO PERSONAL' : '🍳 PEDIDO COCINA';
+                    
+                    const ticket = `
+╔${linea}╗
+║  ${tipoPedido.padEnd(28)}  ║
+╠${linea}╣
+║  ${restauranteNombre.padEnd(28)}  ║
+║  #${idPedido.padEnd(27)}  ║
+╠${linea2}╣
+║ 👤 ${clienteNombre.padEnd(26)}  ║
+║ 📞 ${telefono.padEnd(26)}  ║
+║ 📍 ${direccion.substring(0, 26).padEnd(26)}  ║
+║ 📅 ${fechaStr.padEnd(26)}  ║
+╠${linea2}╣
+║  CANT  PRODUCTO          PRECIO  ║
+╠${linea2}╣
+${productosStr.split('\n').map(line => `║ ${line.padEnd(30)} ║`).join('\n')}
+╠${linea2}╣
+${esReparto ? `║  📦 ENVÍO: $${(data.envio || 0).toFixed(2).padStart(24)}  ║` : ''}
+${!esReparto ? `║  📦 SUBTOTAL: $${subtotal.toFixed(2).padStart(21)}  ║` : ''}
+${!esReparto && envio > 0 ? `║  🚚 ENVÍO: $${envio.toFixed(2).padStart(23)}  ║` : ''}
+${!esReparto && data.usoYServicios ? `║  📱 USO APP: $${data.usoYServicios.toFixed(2).padStart(21)}  ║` : ''}
+╠${linea}╣
+║  💳 TOTAL: $${total.toFixed(2).padStart(22)}  ║
+╠${linea}╣
+║  💳 PAGO: ${metodoPago.padEnd(23)}  ║
+║  ⏱️ ESTADO: ${estado.padEnd(23)}  ║
+${esReparto ? '║  🛵 REPARTO PERSONAL        ║' : ''}
+╠${linea}╣
+║  ✨ ¡GRACIAS POR TU COMPRA! ✨   ║
+║  Aguadulce Express              ║
+╚${linea}╝
+`;
+                    
+                    imprimirTicketDirecto(ticket);
+                    showToast('🖨️ Ticket enviado a la impresora', 'success');
+                    
+                    registrarLogSeguridad('imprimir_ticket', {
+                        pedido: idPedido,
+                        cliente: clienteNombre,
+                        total: total
+                    });
+                    
+                })
+                .catch((error) => {
+                    console.error('Error al imprimir ticket:', error);
+                    showToast('❌ Error al imprimir ticket', 'error');
+                });
+        };
+
+        // 31.7 IMPRIMIR COMADA CON IMPRESORA
+        function imprimirComandaConImpresora(pedidoId) {
+            if (impresoraConfigurada) {
+                imprimirTicketDirectoPedido(pedidoId);
+            } else {
+                imprimirComanda(pedidoId);
+            }
+        }
+
+        // 31.8 EXPONER FUNCIONES GLOBALES
+        window.imprimirTicketDirectoPedido = imprimirTicketDirectoPedido;
+        window.imprimirComandaConImpresora = imprimirComandaConImpresora;
+        window.configurarImpresora = configurarImpresora;
+        window.imprimirTicketDirecto = imprimirTicketDirecto;
+
+        // ============================================
+        // 32. FUNCIONES PARA ACUMULADOS OCULTOS
+        // ============================================
+
+        async function verificarClaveAcumulados(claveIngresada) {
+            try {
+                const snap = await db.ref(`restaurantes/${restauranteId}/clave_acumulados`).once('value');
+                const claveGuardada = snap.val();
+                
+                if (!claveGuardada) {
+                    return claveIngresada === '1234';
+                }
+                
+                return claveIngresada === claveGuardada;
+                
+            } catch (error) {
+                console.error('❌ Error al verificar clave:', error);
+                return false;
+            }
+        }
+
+        window.mostrarAcumulados = function() {
+            Swal.fire({
+                title: '🔒 Ver Acumulados de Ventas',
+                html: `
+                    <div style="text-align:left;color:white;">
+                        <p style="margin-bottom:12px;color:#94a3b8;">Ingresa la contraseña para ver los acumulados de ventas:</p>
+                        <input id="clave-acumulados" class="swal2-input" type="password" placeholder="Contraseña" style="background:#1e293b;border:1px solid #334155;color:white;text-align:center;font-size:20px;letter-spacing:8px;">
+                        <div style="font-size:11px;color:#64748b;margin-top:8px;text-align:center;">Contraseña configurada por el administrador</div>
+                    </div>
+                `,
+                confirmButtonText: '✅ Ver Acumulados',
+                showCancelButton: true,
+                cancelButtonText: 'Cancelar',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#f59e0b',
+                preConfirm: () => {
+                    const clave = document.getElementById('clave-acumulados').value;
+                    if (!clave) {
+                        Swal.showValidationMessage('Ingresa la contraseña');
+                        return false;
+                    }
+                    return clave;
+                }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const valida = await verificarClaveAcumulados(result.value);
+                    if (valida) {
+                        await mostrarResumenAcumulados();
+                    } else {
+                        Swal.fire({
+                            title: '❌ Contraseña incorrecta',
+                            text: 'La contraseña ingresada no es válida. Contacta al administrador.',
+                            icon: 'error',
+                            background: '#0f172a',
+                            color: 'white',
+                            confirmButtonColor: '#f59e0b'
+                        });
+                    }
+                }
+            });
+        };
+
+        async function mostrarResumenAcumulados() {
+            try {
+                const pedidosSnap = await db.ref('pedidos').once('value');
+                const pedidos = pedidosSnap.val();
+                
+                let ventasHoy = 0;
+                let ventasQuincena = 0;
+                let ventasMes = 0;
+                let repartosHoy = 0;
+                let repartosQuincena = 0;
+                let repartosMes = 0;
+                
+                const ahora = new Date();
+                const inicioHoy = new Date(ahora);
+                inicioHoy.setHours(0, 0, 0, 0);
+                
+                const inicioQuincena = new Date(ahora);
+                if (ahora.getDate() <= 15) {
+                    inicioQuincena.setDate(1);
+                } else {
+                    inicioQuincena.setDate(16);
+                }
+                inicioQuincena.setHours(0, 0, 0, 0);
+                
+                const inicioMes = new Date(ahora);
+                inicioMes.setDate(1);
+                inicioMes.setHours(0, 0, 0, 0);
+                
+                if (pedidos) {
+                    for (const [id, data] of Object.entries(pedidos)) {
+                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                        if (restId !== restauranteId) continue;
+                        
+                        const tipo = data.tipo || 'normal';
+                        const estado = data.estado ? data.estado.toLowerCase() : '';
+                        const fecha = data.timestamp ? new Date(data.timestamp) : null;
+                        
+                        if (!fecha) continue;
+                        
+                        if (tipo === 'reparto_personal') {
+                            const costoEnvio = data.envio || 0;
+                            if (costoEnvio > 0) {
+                                if (fecha >= inicioHoy) repartosHoy += costoEnvio;
+                                if (fecha >= inicioQuincena) repartosQuincena += costoEnvio;
+                                if (fecha >= inicioMes) repartosMes += costoEnvio;
+                            }
+                        } else {
+                            if (estado === 'entregado' || estado === 'listo') {
+                                const subtotal = data.subtotal || 0;
+                                if (subtotal > 0) {
+                                    if (fecha >= inicioHoy) ventasHoy += subtotal;
+                                    if (fecha >= inicioQuincena) ventasQuincena += subtotal;
+                                    if (fecha >= inicioMes) ventasMes += subtotal;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                const totalGeneral = ventasQuincena + repartosQuincena;
+                const totalHoy = ventasHoy + repartosHoy;
+                const totalMes = ventasMes + repartosMes;
+                
+                Swal.fire({
+                    title: '📊 Resumen de Acumulados',
+                    html: `
+                        <div style="text-align:left;padding:8px;">
+                            <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
+                                <div style="color:#f59e0b;font-weight:bold;font-size:14px;margin-bottom:6px;">🛒 Ventas (Clientes)</div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                                    <span style="color:#94a3b8;">📅 Hoy</span>
+                                    <span style="color:#f59e0b;font-weight:bold;">$${ventasHoy.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                                    <span style="color:#94a3b8;">📅 Quincena</span>
+                                    <span style="color:#f59e0b;font-weight:bold;">$${ventasQuincena.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                                    <span style="color:#94a3b8;">📅 Mes</span>
+                                    <span style="color:#f59e0b;font-weight:bold;">$${ventasMes.toFixed(2)}</span>
+                                </div>
+                            </div>
+                            
+                            <div style="background:#1e293b;border-radius:8px;padding:12px;margin-bottom:8px;">
+                                <div style="color:#8b5cf6;font-weight:bold;font-size:14px;margin-bottom:6px;">📦 Repartos Personales</div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                                    <span style="color:#94a3b8;">📅 Hoy</span>
+                                    <span style="color:#8b5cf6;font-weight:bold;">$${repartosHoy.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                                    <span style="color:#94a3b8;">📅 Quincena</span>
+                                    <span style="color:#8b5cf6;font-weight:bold;">$${repartosQuincena.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                                    <span style="color:#94a3b8;">📅 Mes</span>
+                                    <span style="color:#8b5cf6;font-weight:bold;">$${repartosMes.toFixed(2)}</span>
+                                </div>
+                            </div>
+                            
+                            <div style="background:#1e293b;border-radius:8px;padding:12px;">
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                                    <span style="color:#94a3b8;font-weight:bold;">📊 Total Hoy</span>
+                                    <span style="color:#10b981;font-weight:bold;font-size:16px;">$${totalHoy.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #334155;">
+                                    <span style="color:#94a3b8;font-weight:bold;">📊 Total Quincena</span>
+                                    <span style="color:#10b981;font-weight:bold;font-size:18px;">$${totalGeneral.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                                    <span style="color:#94a3b8;font-weight:bold;">📊 Total Mes</span>
+                                    <span style="color:#10b981;font-weight:bold;font-size:16px;">$${totalMes.toFixed(2)}</span>
+                                </div>
+                                <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;border-top:1px solid #334155;padding-top:4px;">
+                                    💡 Ventas = Subtotal (base) | Repartos = Costo de envío
+                                </div>
+                            </div>
+                        </div>
+                    `,
+                    confirmButtonText: '✅ Cerrar',
+                    background: '#0f172a',
+                    color: 'white',
+                    confirmButtonColor: '#f59e0b'
+                });
+                
+            } catch (error) {
+                console.error('❌ Error al mostrar acumulados:', error);
+                showToast('❌ Error al cargar acumulados', 'error');
+            }
+        }
+
+        // ============================================
         // 33. SOLICITAR PERMISO NOTIFICACIONES
         // ============================================
         async function solicitarPermisoNotificaciones() {
@@ -3876,20 +3654,7 @@ async function mostrarResumenAcumulados() {
         }
 
         // ============================================
-        // 35. INICIALIZAR
-        // ============================================
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(detectarOrientacion, 500);
-            
-            if (auth.currentUser) {
-                setTimeout(() => {
-                    showToast('🍳 Panel de Cocina listo', 'info');
-                }, 1000);
-            }
-        });
-
-        // ============================================
-        // 36. LOGS DE SEGURIDAD
+        // 35. LOGS DE SEGURIDAD
         // ============================================
         async function registrarLogSeguridad(evento, detalles = {}) {
             try {
@@ -3913,7 +3678,7 @@ async function mostrarResumenAcumulados() {
         });
 
         console.log('🍳 Aguadulce Express - Panel de Cocina');
-        console.log('📱 Versión 3.0 - Con Reparto Personal, Acumulados Ocultos y Tiempos de Elaboración');
+        console.log('📱 Versión 4.0 - Con Impresión Térmica, Reparto Personal, Acumulados Ocultos y Tiempos de Elaboración');
     </script>
 
     <!-- ============================================

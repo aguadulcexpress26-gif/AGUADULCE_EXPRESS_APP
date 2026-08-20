@@ -3951,5 +3951,76 @@ console.log('✅ Sistema de instalación PWA activado (v2)');
         }
     }
 </style>
+    <script>
+// ============================================
+// FORZAR FUNCIONAMIENTO EN TABLET
+// ============================================
+
+// 1. FORZAR RECONEXIÓN DE FIREBASE
+async function forzarConexionFirebase() {
+    console.log('🔄 Forzando conexión a Firebase...');
+    try {
+        await firebase.database().goOffline();
+        await new Promise(r => setTimeout(r, 1000));
+        await firebase.database().goOnline();
+        console.log('✅ Firebase reconectado');
+        
+        // Verificar repartidores
+        const snap = await db.ref('repartidores').once('value');
+        console.log('📊 Repartidores:', snap.val());
+        
+        if (snap.val()) {
+            const count = Object.keys(snap.val()).length;
+            showToast(`✅ ${count} repartidores disponibles`, 'success');
+        } else {
+            showToast('⚠️ No hay repartidores activos', 'warning');
+        }
+    } catch (e) {
+        console.error('❌ Error:', e);
+    }
+}
+
+// 2. FORZAR REGISTRO DEL SERVICE WORKER
+async function forzarSW() {
+    try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of regs) {
+            await reg.unregister();
+            console.log('🗑️ SW desregistrado');
+        }
+        
+        const reg = await navigator.serviceWorker.register(
+            '/AGUADULCE_EXPRESS_APP/cocina/sw-cocina.js'
+        );
+        console.log('✅ SW registrado:', reg);
+        await navigator.serviceWorker.ready;
+        console.log('✅ SW listo');
+    } catch (e) {
+        console.error('❌ Error SW:', e);
+    }
+}
+
+// 3. EJECUTAR AL CARGAR
+setTimeout(() => {
+    console.log('🚀 Iniciando tablet...');
+    forzarConexionFirebase();
+    forzarSW();
+}, 3000);
+
+// 4. BOTÓN DE RECONEXIÓN EN EL MENÚ
+document.addEventListener('DOMContentLoaded', function() {
+    const menuDiv = document.querySelector('#menu-desplegable .mt-4.pt-4');
+    if (menuDiv) {
+        const btn = document.createElement('button');
+        btn.className = 'menu-item';
+        btn.innerHTML = '<span>🔄</span> Reconectar';
+        btn.style.color = '#3b82f6';
+        btn.onclick = forzarConexionFirebase;
+        menuDiv.insertBefore(btn, menuDiv.querySelector('#btn-pausa'));
+    }
+});
+
+console.log('✅ Sistema de reconexión activado');
+</script>
 </body>
 </html>

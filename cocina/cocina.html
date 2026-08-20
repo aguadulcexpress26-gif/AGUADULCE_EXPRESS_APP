@@ -3742,7 +3742,7 @@ window.imprimirTicketPrueba = imprimirTicketPrueba;
         console.log('📱 Versión 5.0 - Con Búsqueda Bluetooth, Impresión Térmica, Reparto Personal, Acumulados Ocultos y Tiempos de Elaboración');
     </script>
 
-   <!-- ============================================
+  <!-- ============================================
     SERVICE WORKER
     ============================================ -->
 <script>
@@ -3768,11 +3768,6 @@ window.imprimirTicketPrueba = imprimirTicketPrueba;
         });
     }
 </script>
-
-<!-- ============================================
-   PATCH DE SEGURIDAD PARA ERRORES
-   ============================================ -->
-<script>
 // ============================================
 // PATCH DE SEGURIDAD COMPLETO
 // ============================================
@@ -3843,6 +3838,253 @@ if (typeof actualizarContadores === 'function') {
 }
 
 console.log('✅ PATCH DE SEGURIDAD APLICADO');
+</script>
+
+<!-- ============================================
+   DEPURADOR DE NOTIFICACIONES (VISIBLE EN PANTALLA)
+   ============================================ -->
+<script>
+// ============================================
+// DEPURADOR DE NOTIFICACIONES - VERSIÓN PANTALLA
+// ============================================
+
+console.log('🔧 Activando depurador de notificaciones...');
+
+// 1. Guardar la función original
+const originalNotificar = window.notificarRepartidor || function() {};
+
+// 2. Reemplazar la función notificarRepartidor
+window.notificarRepartidor = async function(pedidoId) {
+    try {
+        console.log('📤 Intentando notificar repartidor...');
+        
+        // Mostrar mensaje de "cargando"
+        Swal.fire({
+            title: '📤 Enviando notificación...',
+            text: 'Por favor espera',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+        // Obtener datos del pedido
+        const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = pedidoSnap.val();
+        
+        if (!pedido) {
+            Swal.fire({
+                title: '❌ Error',
+                text: 'Pedido no encontrado',
+                icon: 'error',
+                confirmButtonText: 'OK',
+                background: '#0f172a',
+                color: 'white'
+            });
+            return;
+        }
+        
+        // Buscar repartidor disponible
+        const repartidoresSnap = await db.ref('repartidores')
+            .orderByChild('activo')
+            .equalTo(true)
+            .once('value');
+        
+        const repartidores = repartidoresSnap.val();
+        
+        if (!repartidores) {
+            Swal.fire({
+                title: '⚠️ Sin repartidores',
+                text: 'No hay repartidores disponibles en este momento',
+                icon: 'warning',
+                confirmButtonText: 'OK',
+                background: '#0f172a',
+                color: 'white'
+            });
+            return;
+        }
+        
+        // Seleccionar primer repartidor
+        const keys = Object.keys(repartidores);
+        const uidRepartidor = keys[0];
+        const repartidorData = repartidores[uidRepartidor];
+        
+        console.log('📱 Repartidor seleccionado:', uidRepartidor);
+        console.log('📱 Token:', repartidorData.token);
+        
+        // Verificar si tiene token
+        if (!repartidorData.token) {
+            Swal.fire({
+                title: '❌ Repartidor sin token',
+                html: `
+                    <div style="text-align:left;color:white;">
+                        <div style="background:#1a0a0a;border:1px solid #ef4444;border-radius:8px;padding:12px;">
+                            <div style="color:#ef4444;">El repartidor no tiene token FCM</div>
+                            <div style="font-size:12px;color:#94a3b8;margin-top:8px;">
+                                UID: ${uidRepartidor}<br>
+                                Nombre: ${repartidorData.nombre || 'Sin nombre'}
+                            </div>
+                        </div>
+                        <div style="margin-top:8px;font-size:11px;color:#64748b;">
+                            💡 El repartidor debe abrir la app para registrar su token
+                        </div>
+                    </div>
+                `,
+                icon: 'error',
+                confirmButtonText: 'Entendido',
+                background: '#0f172a',
+                color: 'white'
+            });
+            return;
+        }
+        
+        // Intentar enviar la notificación
+        try {
+            console.log('📤 Enviando notificación...');
+            
+            const enviarNotificacion = firebase.functions().httpsCallable('enviarNotificationPedido');
+            
+            const result = await enviarNotificacion({
+                token: repartidorData.token,
+                titulo: '🛵 Nuevo pedido disponible',
+                mensaje: `Recoge el pedido de ${pedido.cliente_nombre || 'cliente'} en ${pedido.restaurante_nombre || 'el restaurante'}`,
+                data: { 
+                    tipo: 'pedido', 
+                    uid: uidRepartidor,
+                    pedidoId: pedidoId
+                }
+            });
+            
+            console.log('✅ Notificación enviada:', result);
+            
+            Swal.fire({
+                title: '✅ Notificación enviada',
+                html: `
+                    <div style="text-align:left;color:white;">
+                        <div style="background:#1a1a2e;border-radius:8px;padding:12px;">
+                            <div style="color:#10b981;">Notificación enviada correctamente</div>
+                            <div style="font-size:12px;color:#94a3b8;margin-top:8px;">
+                                Repartidor: ${repartidorData.nombre || 'Sin nombre'}<br>
+                                Token: ${repartidorData.token.substring(0, 20)}...
+                            </div>
+                        </div>
+                    </div>
+                `,
+                icon: 'success',
+                confirmButtonText: 'OK',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#10b981'
+            });
+            
+        } catch (error) {
+            console.error('❌ Error al enviar notificación:', error);
+            
+            // Mostrar el error en pantalla
+            let mensajeError = error.message || 'Error desconocido';
+            let detalles = '';
+            
+            if (error.details) {
+                detalles = JSON.stringify(error.details, null, 2);
+            }
+            
+            Swal.fire({
+                title: '❌ Error al enviar notificación',
+                html: `
+                    <div style="text-align:left;color:white;">
+                        <div style="background:#1a0a0a;border:1px solid #ef4444;border-radius:8px;padding:12px;margin-bottom:12px;">
+                            <div style="color:#ef4444;font-weight:bold;">Mensaje:</div>
+                            <div style="color:#fca5a5;font-size:13px;margin-top:4px;">${mensajeError}</div>
+                        </div>
+                        ${detalles ? `
+                        <div style="background:#1e293b;border-radius:8px;padding:12px;">
+                            <div style="color:#f59e0b;font-weight:bold;">Detalles técnicos:</div>
+                            <div style="font-size:11px;color:#94a3b8;margin-top:4px;word-break:break-all;max-height:150px;overflow-y:auto;">${detalles}</div>
+                        </div>
+                        ` : ''}
+                        <div style="margin-top:8px;font-size:11px;color:#64748b;">
+                            📋 Error Code: ${error.code || 'N/A'}
+                        </div>
+                    </div>
+                `,
+                icon: 'error',
+                confirmButtonText: 'Entendido',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#ef4444'
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error general:', error);
+        Swal.fire({
+            title: '❌ Error general',
+            text: error.message || 'Error desconocido',
+            icon: 'error',
+            confirmButtonText: 'OK',
+            background: '#0f172a',
+            color: 'white'
+        });
+    }
+};
+
+// 3. Función para probar la notificación con un repartidor de prueba
+window.probarNotificacionSimple = async function() {
+    console.log('🧪 Probando notificación simple...');
+    
+    const tokenPrueba = 'TOKEN_DE_PRUEBA';
+    
+    try {
+        const enviarNotificacion = firebase.functions().httpsCallable('enviarNotificationPedido');
+        
+        const result = await enviarNotificacion({
+            token: tokenPrueba,
+            titulo: '🧪 Notificación de prueba',
+            mensaje: 'Esta es una notificación de prueba desde la app',
+            data: { tipo: 'prueba', pedidoId: 'test' }
+        });
+        
+        console.log('✅ Prueba exitosa:', result);
+        
+        Swal.fire({
+            title: '✅ Prueba exitosa',
+            text: 'La Cloud Function respondió correctamente',
+            icon: 'success',
+            confirmButtonText: 'OK',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#10b981'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error en prueba:', error);
+        
+        let mensajeError = error.message || 'Error desconocido';
+        
+        Swal.fire({
+            title: '❌ Error en prueba',
+            html: `
+                <div style="text-align:left;color:white;">
+                    <div style="background:#1a0a0a;border:1px solid #ef4444;border-radius:8px;padding:12px;">
+                        <div style="color:#ef4444;font-weight:bold;">Error:</div>
+                        <div style="color:#fca5a5;font-size:13px;margin-top:4px;">${mensajeError}</div>
+                    </div>
+                    ${error.code ? `<div style="margin-top:8px;font-size:11px;color:#64748b;">Código: ${error.code}</div>` : ''}
+                </div>
+            `,
+            icon: 'error',
+            confirmButtonText: 'Entendido',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#ef4444'
+        });
+    }
+};
+
+console.log('✅ Depurador de notificaciones activado');
+console.log('📱 Funciones:');
+console.log('   - notificarRepartidor(pedidoId) → Envía notificación a repartidor');
+console.log('   - probarNotificacionSimple() → Prueba la Cloud Function');
 </script>
 
 </body>

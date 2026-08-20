@@ -2849,7 +2849,60 @@
         console.log('✅ Sistema de diagnóstico activado');
         console.log('📱 Botones de prueba disponibles en el menú');
     </script>
+<script>
+// ============================================
+// FORZAR REGISTRO DE FIREBASE MESSAGING SW
+// ============================================
 
+setTimeout(async function() {
+    console.log('🔄 Forzando registro de firebase-messaging-sw.js...');
+    
+    try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        let yaRegistrado = false;
+        
+        for (const reg of registrations) {
+            if (reg.active && reg.active.scriptURL.includes('firebase-messaging-sw.js')) {
+                yaRegistrado = true;
+                console.log('✅ firebase-messaging-sw.js ya está registrado');
+            }
+        }
+        
+        if (!yaRegistrado) {
+            console.log('📤 Registrando firebase-messaging-sw.js...');
+            const reg = await navigator.serviceWorker.register(
+                '/AGUADULCE_EXPRESS_APP/cocina/firebase-messaging-sw.js',
+                { scope: '/' }
+            );
+            console.log('✅ firebase-messaging-sw.js registrado:', reg);
+            showToast('✅ Service Worker de notificaciones registrado', 'success');
+        }
+        
+        // Registrar token FCM
+        try {
+            const messaging = firebase.messaging();
+            const token = await messaging.getToken({
+                vapidKey: 'BJJGygKJ22PESP_kHcLxi125gFman4A76c2Gx3kvN6J-k9Wf9S6HC7fn9ju_3wpZmIlL6hF20_aOqxc4nIn8uG0'
+            });
+            console.log('📨 Token FCM:', token);
+            
+            if (token && currentUser) {
+                await db.ref(`restaurantes/${currentUser.uid}/fcmTokens/${token}`).set(true);
+                console.log('✅ Token guardado en Firebase');
+                showToast('✅ Notificaciones activadas', 'success');
+            }
+        } catch (error) {
+            console.error('❌ Error al obtener token:', error);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error al registrar SW:', error);
+    }
+    
+}, 5000);
+
+console.log('✅ Sistema de registro forzado de SW activado');
+</script>
     <!-- ============================================
     FIN DEL CÓDIGO
     ============================================ -->

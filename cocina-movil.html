@@ -4086,6 +4086,183 @@ console.log('📱 Funciones:');
 console.log('   - notificarRepartidor(pedidoId) → Envía notificación a repartidor');
 console.log('   - probarNotificacionSimple() → Prueba la Cloud Function');
 </script>
+<!-- ============================================
+   PANEL DE ERRORES 🐛 (SOLO DIAGNÓSTICO)
+   ============================================ -->
+
+<!-- Botón flotante -->
+<button id="btn-ver-errores" style="position:fixed; bottom:80px; right:20px; z-index:9998; background:#ef4444; color:white; border:none; border-radius:50%; width:60px; height:60px; font-size:28px; cursor:pointer; box-shadow:0 4px 15px rgba(239,68,68,0.5); display:none; align-items:center; justify-content:center;">
+    🐛
+    <span id="contador-errores" style="position:absolute; top:-5px; right:-5px; background:#f59e0b; color:#0f172a; border-radius:50%; width:24px; height:24px; font-size:12px; font-weight:bold; display:flex; align-items:center; justify-content:center;">0</span>
+</button>
+
+<!-- Panel de errores -->
+<div id="panel-errores" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:99999; background:#0f172a; border:2px solid #ef4444; border-radius:16px; padding:20px; width:90%; max-width:500px; max-height:80vh; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.8);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #334155; padding-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:24px;">🐛</span>
+            <span style="font-size:18px; font-weight:700; color:white;">Panel de Errores</span>
+            <span id="total-errores" style="background:#ef4444; color:white; padding:2px 12px; border-radius:9999px; font-size:12px;">0</span>
+        </div>
+        <button id="cerrar-panel-errores" style="background:transparent; border:none; color:#94a3b8; font-size:24px; cursor:pointer;">✕</button>
+    </div>
+    
+    <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+        <button class="filtro-error" data-filtro="todos" style="background:#f59e0b; color:#0f172a; border:none; padding:4px 12px; border-radius:9999px; font-size:11px; font-weight:600; cursor:pointer;">📋 Todos</button>
+        <button class="filtro-error" data-filtro="error" style="background:#ef4444; color:white; border:none; padding:4px 12px; border-radius:9999px; font-size:11px; font-weight:600; cursor:pointer;">❌ Errores</button>
+        <button class="filtro-error" data-filtro="warning" style="background:#f59e0b; color:#0f172a; border:none; padding:4px 12px; border-radius:9999px; font-size:11px; font-weight:600; cursor:pointer;">⚠️ Advertencias</button>
+        <button class="filtro-error" data-filtro="info" style="background:#3b82f6; color:white; border:none; padding:4px 12px; border-radius:9999px; font-size:11px; font-weight:600; cursor:pointer;">ℹ️ Info</button>
+        <button id="limpiar-errores" style="background:#334155; color:#94a3b8; border:none; padding:4px 12px; border-radius:9999px; font-size:11px; font-weight:600; cursor:pointer;">🗑️ Limpiar</button>
+    </div>
+    
+    <div id="lista-errores" style="overflow-y:auto; max-height:50vh; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+        <div style="text-align:center; color:#475569; padding:20px; font-size:14px;">No hay errores registrados</div>
+    </div>
+    
+    <div style="margin-top:12px; padding-top:12px; border-top:1px solid #334155; display:flex; gap:8px; justify-content:flex-end;">
+        <button id="exportar-errores" style="background:#334155; color:white; border:none; padding:6px 16px; border-radius:8px; font-size:12px; cursor:pointer;">📤 Exportar</button>
+        <button id="limpiar-todo" style="background:#ef4444; color:white; border:none; padding:6px 16px; border-radius:8px; font-size:12px; cursor:pointer;">🗑️ Limpiar todo</button>
+    </div>
+</div>
+
+<script>
+// ============================================
+// PANEL DE ERRORES - SOLO DIAGNÓSTICO
+// ============================================
+
+let erroresRegistrados = [];
+let filtroActual = 'todos';
+
+function registrarError(tipo, mensaje, detalles = null) {
+    const error = {
+        id: Date.now(),
+        timestamp: new Date().toLocaleString(),
+        tipo: tipo,
+        mensaje: mensaje,
+        detalles: detalles
+    };
+    erroresRegistrados.push(error);
+    console.log(`[${tipo.toUpperCase()}] ${mensaje}`, detalles || '');
+    actualizarContadorErrores();
+    renderizarListaErrores();
+    const btn = document.getElementById('btn-ver-errores');
+    if (btn) btn.style.display = 'flex';
+}
+
+function actualizarContadorErrores() {
+    const contador = document.getElementById('contador-errores');
+    const total = document.getElementById('total-errores');
+    if (contador) contador.textContent = erroresRegistrados.length;
+    if (total) total.textContent = erroresRegistrados.length;
+}
+
+function renderizarListaErrores() {
+    const lista = document.getElementById('lista-errores');
+    if (!lista) return;
+    
+    let filtrados = filtroActual === 'todos' ? erroresRegistrados : erroresRegistrados.filter(e => e.tipo === filtroActual);
+    filtrados = filtrados.sort((a, b) => b.id - a.id);
+    
+    if (filtrados.length === 0) {
+        lista.innerHTML = `<div style="text-align:center; color:#475569; padding:20px; font-size:14px;">${erroresRegistrados.length === 0 ? 'No hay errores registrados' : 'No hay errores de este tipo'}</div>`;
+        return;
+    }
+    
+    let html = '';
+    for (const error of filtrados) {
+        const colores = {
+            error: { bg: '#1a0a0a', border: '#ef4444', text: '#fca5a5', icon: '❌' },
+            warning: { bg: '#1a1a0a', border: '#f59e0b', text: '#fcd34d', icon: '⚠️' },
+            info: { bg: '#0a1a2e', border: '#3b82f6', text: '#93c5fd', icon: 'ℹ️' }
+        };
+        const estilo = colores[error.tipo] || colores.info;
+        html += `
+            <div style="background:${estilo.bg}; border-left:4px solid ${estilo.border}; border-radius:8px; padding:12px; margin-bottom:4px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span>${estilo.icon}</span>
+                        <span style="color:${estilo.text}; font-size:13px; font-weight:600;">${error.mensaje}</span>
+                    </div>
+                    <span style="color:#64748b; font-size:10px;">${error.timestamp}</span>
+                </div>
+                ${error.detalles ? `<div style="color:#94a3b8; font-size:11px; margin-top:4px; word-break:break-all; background:#0f172a; padding:8px; border-radius:4px; max-height:60px; overflow-y:auto;">${typeof error.detalles === 'string' ? error.detalles : JSON.stringify(error.detalles, null, 2)}</div>` : ''}
+            </div>
+        `;
+    }
+    lista.innerHTML = html;
+}
+
+// Eventos
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btn-ver-errores').addEventListener('click', function() {
+        document.getElementById('panel-errores').style.display = 'block';
+        renderizarListaErrores();
+    });
+    document.getElementById('cerrar-panel-errores').addEventListener('click', function() {
+        document.getElementById('panel-errores').style.display = 'none';
+    });
+    document.addEventListener('click', function(e) {
+        const panel = document.getElementById('panel-errores');
+        const btn = document.getElementById('btn-ver-errores');
+        if (panel && btn && panel.style.display === 'block') {
+            if (!panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.style.display = 'none';
+            }
+        }
+    });
+    document.querySelectorAll('.filtro-error').forEach(btn => {
+        btn.addEventListener('click', function() {
+            filtroActual = this.dataset.filtro;
+            document.querySelectorAll('.filtro-error').forEach(b => b.style.opacity = '0.5');
+            this.style.opacity = '1';
+            renderizarListaErrores();
+        });
+    });
+    document.querySelector('.filtro-error').style.opacity = '1';
+    document.getElementById('limpiar-errores').addEventListener('click', function() {
+        erroresRegistrados = [];
+        actualizarContadorErrores();
+        renderizarListaErrores();
+        document.getElementById('btn-ver-errores').style.display = 'none';
+    });
+    document.getElementById('exportar-errores').addEventListener('click', function() {
+        if (erroresRegistrados.length === 0) return;
+        const texto = erroresRegistrados.map(e => `[${e.timestamp}] [${e.tipo.toUpperCase()}] ${e.mensaje}\n${e.detalles ? JSON.stringify(e.detalles, null, 2) : ''}\n---`).join('\n');
+        const blob = new Blob([texto], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `errores_${new Date().toISOString().slice(0,10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+    document.getElementById('limpiar-todo').addEventListener('click', function() {
+        erroresRegistrados = [];
+        actualizarContadorErrores();
+        renderizarListaErrores();
+        document.getElementById('btn-ver-errores').style.display = 'none';
+    });
+});
+
+// Capturar errores globales
+window.addEventListener('error', function(e) {
+    registrarError('error', e.message || 'Error global', {
+        filename: e.filename,
+        lineno: e.lineno,
+        colno: e.colno,
+        stack: e.error?.stack || 'Sin stack'
+    });
+});
+
+window.addEventListener('unhandledrejection', function(e) {
+    registrarError('error', e.reason?.message || 'Promesa rechazada', {
+        reason: e.reason || 'Sin razón'
+    });
+});
+
+registrarError('info', '🚀 Panel de errores activado');
+console.log('✅ Panel de errores activado');
+</script>
 
 </body>
 </html>

@@ -1,32 +1,20 @@
 // ============================================
-// SERVICE WORKER PARA PWA DE COCINA
-// Aguadulce Express - Versión 2.0
+// SERVICE WORKER PARA PWA DE COCINA (CORREGIDO)
+// Aguadulce Express - Versión 3.0
 // ============================================
 
-const CACHE_NAME = 'aguadulce-cocina-v2';
+const CACHE_NAME = 'aguadulce-cocina-v3';
 const OFFLINE_URL = '/AGUADULCE_EXPRESS_APP/cocina/offline.html';
 
-// Recursos a cachear (prioridad crítica)
+// ⚠️ SOLO cachear recursos locales y CDNs críticos que SÍ funcionan
 const urlsToCache = [
   // HTML y manifest
   '/AGUADULCE_EXPRESS_APP/cocina/cocina.html',
-  '/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json',
-  
-  // CDNs (Firebase)
-  'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
-  'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js',
-  'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js',
-  
-  // CDNs (CSS)
-  'https://cdn.tailwindcss.com',
-  
-  // CDNs (Librerías)
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11'
+  '/AGUADULCE_EXPRESS_APP/cocina/manifest-cocina.json'
 ];
 
 // ============================================
-// INSTALACIÓN
+// INSTALACIÓN (CORREGIDA)
 // ============================================
 self.addEventListener('install', event => {
   console.log('📦 Service Worker instalando...');
@@ -35,15 +23,9 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('📂 Cache abierto, agregando recursos...');
-        return cache.addAll(urlsToCache)
-          .then(() => {
-            console.log('✅ Recursos cacheados exitosamente');
-            // Cachear página offline
-            return cache.add(OFFLINE_URL);
-          })
-          .catch(error => {
-            console.error('❌ Error al cachear:', error);
-          });
+        return cache.addAll(urlsToCache).catch(error => {
+          console.warn('⚠️ Error al cachear algunos recursos:', error);
+        });
       })
       .then(() => {
         console.log('🔄 Forzando activación...');
@@ -53,7 +35,7 @@ self.addEventListener('install', event => {
 });
 
 // ============================================
-// ACTIVACIÓN
+// ACTIVACIÓN (CORREGIDA)
 // ============================================
 self.addEventListener('activate', event => {
   console.log('⚡ Service Worker activando...');
@@ -71,199 +53,135 @@ self.addEventListener('activate', event => {
         );
       })
       .then(() => {
-        console.log('✅ Service Worker activado y controlando clientes');
+        console.log('✅ Service Worker activado');
         return self.clients.claim();
       })
   );
 });
 
 // ============================================
-// INTERCEPTAR PETICIONES (FETCH)
+// INTERCEPTAR PETICIONES (CORREGIDO)
 // ============================================
 self.addEventListener('fetch', event => {
-    const url = event.request.url;
-    
-    // 🔥 IGNORAR PETICIONES A GOOGLE MAPS Y FCM
-    if (url.includes('maps.googleapis.com') || 
-        url.includes('fcm.googleapis.com') ||
-        url.includes('googleapis.com') ||
-        url.includes('gstatic.com')) {
-        // Dejar que el navegador maneje directamente
-        return;
-    }
-    
-    // Ignorar peticiones de analytics y extensions
-    if (url.includes('google-analytics') ||
-        url.includes('chrome-extension')) {
-        return;
-    }
-    
-    event.respondWith(
-        caches.match(event.request)
-            .then(cachedResponse => {
-                if (cachedResponse) {
-                    console.log('📦 Cache hit:', event.request.url);
-                    return cachedResponse;
-                }
-                
-                console.log('🌐 Fetching:', event.request.url);
-                return fetch(event.request)
-                    .then(response => {
-                        if (!response || response.status !== 200 || response.type !== 'basic') {
-                            return response;
-                        }
-                        const responseToCache = response.clone();
-                        caches.open(CACHE_NAME).then(cache => {
-                            try {
-                                cache.put(event.request, responseToCache);
-                            } catch (error) {
-                                console.warn('⚠️ No se pudo cachear:', event.request.url);
-                            }
-                        });
-                        return response;
-                    })
-                    .catch(error => {
-                        console.error('❌ Error en fetch:', error);
-                        return caches.match(OFFLINE_URL).then(offlineResponse => {
-                            if (offlineResponse) {
-                                return offlineResponse;
-                            }
-                            return new Response(
-                                '🌐 Sin conexión a internet. Por favor, verifica tu conexión.',
-                                {
-                                    status: 503,
-                                    statusText: 'Service Unavailable',
-                                    headers: new Headers({
-                                        'Content-Type': 'text/plain'
-                                    })
-                                }
-                            );
-                        });
-                    });
-            })
-    );
+  const url = event.request.url;
+  
+  // 🔥 IGNORAR PETICIONES A CDNs EXTERNOS (NO CACHEAR)
+  if (url.includes('cdn.tailwindcss.com') ||
+      url.includes('cdn.jsdelivr.net') ||
+      url.includes('gstatic.com') ||
+      url.includes('googleapis.com') ||
+      url.includes('fcm.googleapis.com') ||
+      url.includes('maps.googleapis.com') ||
+      url.includes('google-analytics') ||
+      url.includes('chrome-extension')) {
+    // Dejar que el navegador maneje directamente (sin cache)
+    return;
+  }
+  
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        if (cachedResponse) {
+          console.log('📦 Cache hit:', event.request.url);
+          return cachedResponse;
+        }
+        
+        console.log('🌐 Fetching:', event.request.url);
+        return fetch(event.request).catch(() => {
+          // Si offline y es una página HTML, mostrar offline.html
+          if (event.request.headers.get('accept').includes('text/html')) {
+            return caches.match(OFFLINE_URL).then(response => {
+              if (response) return response;
+              return new Response('🌐 Sin conexión', { status: 503 });
+            });
+          }
+          return new Response('🌐 Sin conexión', { status: 503 });
+        });
+      })
+  );
 });
+
 // ============================================
-// GESTIÓN DE NOTIFICACIONES PUSH
+// NOTIFICACIONES PUSH (CORREGIDO PARA SILK)
 // ============================================
 self.addEventListener('push', event => {
   console.log('📨 Notificación push recibida:', event);
   
-  let data = {
-    title: 'Aguadulce Express',
-    body: 'Nuevo pedido en la cocina',
-    icon: 'https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg',
-    badge: 'https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg',
-    vibrate: [200, 100, 200],
-    sound: '/sounds/notification.mp3',
-    actions: [
-      {
-        action: 'ver',
-        title: '👀 Ver pedido',
-        icon: 'https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg'
-      },
-      {
-        action: 'cerrar',
-        title: '❌ Cerrar',
-        icon: 'https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg'
-      }
-    ]
-  };
+  let title = '🍳 Aguadulce Express';
+  let body = 'Nuevo pedido en la cocina';
+  let icon = 'https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg';
+  let url = '/AGUADULCE_EXPRESS_APP/cocina/cocina.html';
+  let pedidoId = null;
   
-  // Parsear datos si vienen en JSON
   if (event.data) {
     try {
-      const pushData = event.data.json();
-      data = { ...data, ...pushData };
+      const data = event.data.json();
+      console.log('📨 Datos push:', data);
+      title = data.titulo || data.title || title;
+      body = data.mensaje || data.body || body;
+      icon = data.icon || icon;
+      url = data.url || url;
+      pedidoId = data.pedidoId || data.data?.pedidoId || null;
     } catch (e) {
-      data.body = event.data.text();
+      body = event.data.text() || body;
     }
   }
   
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon,
-      badge: data.badge,
-      vibrate: data.vibrate,
-      actions: data.actions,
+    self.registration.showNotification(title, {
+      body: body,
+      icon: icon,
+      badge: icon,
+      vibrate: [200, 100, 200],
       data: {
-        url: data.url || '/AGUADULCE_EXPRESS_APP/cocina/cocina.html'
-      }
+        url: url,
+        pedidoId: pedidoId
+      },
+      actions: [
+        { action: 'ver', title: '👀 Ver pedido' },
+        { action: 'cerrar', title: '❌ Cerrar' }
+      ]
     })
   );
 });
 
 // ============================================
-// GESTIÓN DE CLICKS EN NOTIFICACIONES
+// CLICK EN NOTIFICACIONES
 // ============================================
 self.addEventListener('notificationclick', event => {
   console.log('🔔 Click en notificación:', event);
-  
   event.notification.close();
   
-  if (event.action === 'ver') {
-    // Abrir la app con el pedido específico
-    const url = event.notification.data.url || '/AGUADULCE_EXPRESS_APP/cocina/cocina.html';
-    
-    event.waitUntil(
-      clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true
-      })
-      .then(windowClients => {
-        // Si ya hay una ventana abierta, usarla
-        for (let client of windowClients) {
-          if (client.url === url && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        // Si no, abrir nueva ventana
-        if (clients.openWindow) {
-          return clients.openWindow(url);
-        }
-      })
-    );
-  } else if (event.action === 'cerrar') {
-    // Solo cerrar la notificación
-    console.log('❌ Notificación cerrada');
-  } else {
-    // Click en la notificación (sin acción)
-    const url = event.notification.data.url || '/AGUADULCE_EXPRESS_APP/cocina/cocina.html';
-    
-    event.waitUntil(
-      clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true
-      })
+  const url = event.notification.data?.url || '/AGUADULCE_EXPRESS_APP/cocina/cocina.html';
+  const pedidoId = event.notification.data?.pedidoId || null;
+  
+  // Si hay pedidoId, agregarlo a la URL
+  const targetUrl = pedidoId ? `${url}?pedido=${pedidoId}` : url;
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(windowClients => {
         for (let client of windowClients) {
-          if (client.url === url && 'focus' in client) {
+          if (client.url.includes('cocina.html') && 'focus' in client) {
             return client.focus();
           }
         }
         if (clients.openWindow) {
-          return clients.openWindow(url);
+          return clients.openWindow(targetUrl);
         }
       })
-    );
-  }
+  );
 });
 
 // ============================================
-// GESTIÓN DE MENSAJES
+// MENSAJES
 // ============================================
 self.addEventListener('message', event => {
   console.log('💬 Mensaje recibido:', event.data);
-  
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-// ============================================
-// LOGS DE INICIO
-// ============================================
-console.log('🚀 Service Worker de Aguadulce Express - Cocina');
+console.log('🚀 Service Worker de Aguadulce Express - Cocina v3');
 console.log(`📦 Cache: ${CACHE_NAME}`);
-console.log('📱 Versión 2.0 - Optimizado para tabletas');

@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aguadulce Express - Pedidos a Domicilio</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
+    <meta name="theme-color" content="#06b6d4">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Aguadulce">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+                      /* ✅ PARCHE DE VISIBILIDAD SEGURO (NO INTERFIERE CON LA APP) */
+        #panel-checkout {
+            display: none !important; /* Por defecto, oculto */
+        }
+        
+        /* Solo se activa cuando el JavaScript lo pone en block */
+        #panel-checkout[style*="display: block"] {
+            display: block !important;
+            position: fixed !important;
+            top: 0 !important; left: 0 !important;
+            width: 100vw !important; height: 100vh !important;
+            background: #0a0a0a !important;
+            z-index: 999999 !important;
+            padding: 20px !important;
+            overflow-y: auto !important;
+            min-height: 100vh !important;
+        }
+
+        /* Ajuste de márgenes para que no quede espacio en blanco */
+        #lista-cesta-checkout {
+            margin-bottom: 0px !important;
+            padding-bottom: 0px !important;
+        }
+        #desglose-pago {
+            margin-top: 0px !important;
+            padding-top: 0px !important;
+        }
+
+        :root { --cyan: #06b6d4; --dark: #020617; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--dark); color: white; margin: 0; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+        #loader { position: fixed; inset: 0; background: var(--dark); z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(6,182,212,0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .brand-header { position: relative; height: 180px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; }
+        #header-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 1; }
+        .brand-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(2,6,23,0.9) 0%, transparent 50%); }
+        .plato-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 15px; display: flex; align-items: center; gap: 15px; margin-bottom: 12px; cursor: pointer; transition: transform 0.2s; }
+        .plato-card:active { transform: scale(0.98); }
+        .plato-card.disabled { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; pointer-events: none; }
+        .step-tag { font-weight: 800; font-size: 10px; text-transform: uppercase; color: var(--cyan); letter-spacing: 1px; margin-bottom: 10px; display: block; }
+        .cat-chip { padding: 10px 20px; background: rgba(255,255,255,0.05); border-radius: 15px; font-size: 11px; font-weight: 800; white-space: nowrap; border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); cursor: pointer; transition: all 0.2s; }
+        .cat-chip.active { background: var(--cyan); color: var(--dark); border-color: var(--cyan); }
+        .cat-chip.disabled { opacity: 0.5; cursor: not-allowed; background: #1e293b; color: #64748b; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .marquee { overflow: hidden; white-space: nowrap; background: rgba(6,182,212,0.1); padding: 8px 0; border-bottom: 1px solid rgba(6,182,212,0.2); }
+        .marquee p { display: inline-block; padding-left: 100%; animation: marquee 25s linear infinite; font-size: 10px; font-weight: 800; color: var(--cyan); text-transform: uppercase; }
+        @keyframes marquee { 0% { transform: translate(0,0); } 100% { transform: translate(-100%,0); } }
+        input, select { background: rgba(255,255,255,0.05)!important; border: 1px solid rgba(255,255,255,0.1)!important; padding: 14px!important; border-radius: 12px!important; color: white!important; width: 100%; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; justify-content: center; align-items: center; z-index: 10000; backdrop-filter: blur(5px); }
+        .registration-card { background: #1a1a2e; border-radius: 20px; padding: 30px; width: 90%; max-width: 400px; text-align: center; border: 1px solid #333; }
+        .tracking-step { flex: 1; text-align: center; }
+        .tracking-step .step-dot { width: 42px; height: 42px; margin: auto; margin-bottom: 10px; border-radius: 999px; background: #1e293b; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; color: white; border: 2px solid rgba(255,255,255,0.08); transition: all 0.3s; }
+        .tracking-step.active .step-dot { background: #06b6d4; color: black; box-shadow: 0 0 20px #06b6d4; border-color: #06b6d4; }
+        .tracking-step p { font-size: 10px; font-weight: 800; text-transform: uppercase; color: rgba(255,255,255,0.4); }
+        .tracking-step.active p { color: #06b6d4; }
+        .toast-notify { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #06b6d4; color: #020617; padding: 12px 24px; border-radius: 50px; font-weight: 800; font-size: 14px; z-index: 10001; animation: fadeInOut 1.5s ease forwards; box-shadow: 0 0 20px rgba(6,182,212,0.5); white-space: nowrap; }
+        @keyframes fadeInOut { 0% { opacity: 0; transform: translateX(-50%) translateY(20px); } 15% { opacity: 1; transform: translateX(-50%) translateY(0); } 85% { opacity: 1; transform: translateX(-50%) translateY(0); } 100% { opacity: 0; transform: translateX(-50%) translateY(-20px); visibility: hidden; } }
+        .hidden { display: none!important; }
+        .grupo-opciones { margin-bottom: 20px; background: rgba(255,255,255,0.03); border-radius: 20px; padding: 15px; }
+        .grupo-titulo { font-weight: 800; font-size: 12px; text-transform: uppercase; margin-bottom: 12px; color: var(--cyan); }
+        .opcion-obligatorio { color: #ef4444; font-size: 9px; margin-left: 8px; }
+        .opcion-opcional { color: #64748b; font-size: 9px; margin-left: 8px; }
+        .opciones-lista { display: flex; flex-direction: column; gap: 10px; }
+        .opcion-item { display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 16px; cursor: pointer; }
+        .opcion-item input { width: 20px; height: 20px; margin: 0; accent-color: var(--cyan); }
+        .opcion-nombre { flex: 1; font-weight: 600; font-size: 13px; }
+        .opcion-precio { color: var(--cyan); font-weight: 800; font-size: 11px; }
+        .grupo-opciones.incompleto { border: 1px solid #ef4444; background: rgba(239,68,68,0.1); }
+        .sin-opciones { text-align: center; padding: 20px; color: #64748b; font-style: italic; }
+        .legal-footer { margin-top: 40px; padding: 20px 0 30px; text-align: center; border-top: 1px solid rgba(255,255,255,0.05); }
+        .legal-footer a { color: #06b6d4; text-decoration: none; font-size: 10px; margin: 0 8px; display: inline-block; }
+        .legal-footer p { font-size: 8px; color: rgba(255,255,255,0.3); margin-top: 10px; }
+        #app-container { min-height: 100vh; padding-bottom: 100px; display: flex; flex-direction: column; justify-content: space-between; }
+        .swal2-container { z-index: 99999999!important; }
+        .swal2-popup { z-index: 99999999!important; }
+        .modal-overlay { z-index: 9999!important; }
+    </style>
+</head>
+<body>
+
+<div id="loader"><div class="spinner mb-4"></div><p class="text-cyan-400 text-[10px] font-black uppercase">Cargando Aguadulce Express...</p></div>
+
+<header class="brand-header">
+    <div id="header-bg"></div>
+    <div class="brand-overlay"></div>
+    <div class="relative z-10 flex items-center gap-4">
+        <img id="app-logo" src="" class="w-12 h-12 rounded-full border-2 border-cyan-400 bg-white">
+        <div>
+            <h1 class="text-xl font-black italic uppercase text-left">Aguadulce</h1>
+            <p class="text-cyan-400 text-[8px] font-black uppercase tracking-widest text-left">Express</p>
+        </div>
+    </div>
+</header>
+
+<div id="cintillo-mensajes" class="marquee"><p id="texto-anuncio">¡Bienvenidos a Aguadulce Express! Los mejores restaurantes en tu puerta...</p></div>
+
+<main id="app-container" class="px-5 py-6"></main>
+
+<div id="cesta-flotante" class="fixed bottom-6 left-4 right-4 bg-white text-black p-0 rounded-[2rem] hidden flex-col z-[100] shadow-2xl overflow-hidden border-2 border-cyan-400">
+    <div class="p-5 flex items-center gap-4" onclick="abrirRevision()">
+        <div class="bg-cyan-400 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl">🛒</div>
+        <div class="flex-1 text-left">
+            <span id="cesta-info" class="font-black text-sm italic uppercase block text-black">0 PRODUCTOS</span>
+            <span id="cesta-total" class="font-bold text-cyan-600 text-xs uppercase tracking-tighter">0.00€ TOTAL</span>
+        </div>
+        <button onclick="vaciarCestaCompleta(); event.stopPropagation();" class="bg-red-500/20 text-red-400 p-3 rounded-xl font-black flex items-center justify-center mr-2 border border-red-500/30 hover:bg-red-500/30 transition-all"><span class="text-xs uppercase italic">🗑️ Vaciar</span></button>
+    </div>
+</div>
+
+<div id="modal-plato" style="display:none;position:fixed;inset:0;background:#020617;z-index:2000;overflow-y:auto;">
+    <button onclick="cerrarModalPlato()" class="absolute top-5 left-5 z-[1001] bg-black/60 w-10 h-10 rounded-full text-white">✕</button>
+    <img id="modal-img" src="" class="w-full h-[220px] object-cover" style="cursor:zoom-in">
+    <div class="p-6 pb-40 text-left">
+        <div class="flex justify-between items-start mb-6">
+            <div class="flex-1 pr-4">
+                <h2 id="modal-titulo" class="text-2xl font-black italic uppercase leading-tight"></h2>
+                <p id="modal-desc" class="text-white/50 text-xs mt-2"></p>
+            </div>
+            <div id="modal-precio-base" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-black text-lg">0€</div>
+        </div>
+        <div id="contenedor-pasos" class="space-y-8"></div>
+    </div>
+    <div class="fixed bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-[#020617] via-[#020617]">
+        <div class="flex items-center justify-center gap-6 mb-4 bg-white/5 py-3 rounded-2xl border border-white/10">
+            <button onclick="cambiarCantidadPlato(-1)" class="w-10 h-10 rounded-xl bg-white/10 text-white font-bold text-xl">-</button>
+            <span id="cant-plato-modal" class="text-xl font-black italic">1</span>
+            <button onclick="cambiarCantidadPlato(1)" class="w-10 h-10 rounded-xl bg-cyan-400 text-black font-bold text-xl">+</button>
+        </div>
+        <button id="btn-anadir-modal" onclick="añadirAlCarritoConOpciones()" class="w-full bg-cyan-400 text-black font-black py-5 rounded-2xl flex justify-between px-8">
+            <span>Añadir al Carrito</span>
+            <span id="total-modal-btn">0.00€</span>
+        </button>
+    </div>
+</div>
+
+<div id="panel-revision" style="display:none;position:fixed;inset:0;background:#020617;z-index:3000;overflow-y:auto;padding:20px;">
+    <div class="flex items-center gap-4 mb-8">
+        <button onclick="document.getElementById('panel-revision').style.display='none'" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
+        <h2 class="text-xl font-black italic uppercase text-white">Revisar Pedido</h2>
+    </div>
+    <p class="text-xs font-bold text-cyan-400 uppercase mb-6 text-left">¿Estás de acuerdo con tu elección?</p>
+    <div id="items-revision" class="space-y-4 mb-8 text-left"></div>
+    <div class="border-t border-white/10 pt-6">
+        <button onclick="abrirCheckout()" class="w-full bg-cyan-400 text-black py-6 rounded-2xl font-black uppercase italic shadow-lg shadow-cyan-400/20">CONFIRMAR Y IR AL PAGO</button>
+    </div>
+</div>
+
+<div id="panel-checkout" style="display:none;position:fixed;inset:0;background:#0a0a0a;z-index:4000;overflow-y:auto;padding:20px;">
+    <div class="flex items-center gap-4 mb-8">
+        <button onclick="cerrarCheckout()" class="w-10 h-10 rounded-xl bg-white/5 text-cyan-400">←</button>
+        <h2 class="text-xl font-black italic uppercase text-white">Caja de Pago</h2>
+    </div>
+    
+    <!-- ✅ ESTAS DOS LÍNEAS SON LAS QUE FALTABAN EN TU HTML ORIGINAL -->
+    <div id="lista-cesta-checkout" class="space-y-3 mb-0"></div>
+    <div id="desglose-pago"></div>
+    
+</div>
+
+<div id="modal-exito" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:10001;justify-content:center;align-items:center;backdrop-filter:blur(5px);">
+    <div style="background:#1a1a2e;border-radius:40px;padding:30px;width:90%;max-width:350px;text-align:center;border:1px solid #06b6d4;">
+        <div style="font-size:70px;margin-bottom:15px;">🎉</div>
+        <h3 style="font-size:24px;font-weight:900;margin-bottom:10px;color:#06b6d4;">¡Pedido Enviado!</h3>
+        <p id="exito-mensaje" style="color:white;margin-bottom:20px;">Tu pedido ha sido recibido</p>
+        <button onclick="cerrarModalExito()" class="bg-cyan-400 text-black font-black px-6 py-3 rounded-2xl uppercase">Ver seguimiento</button>
+    </div>
+</div>
+
+<div id="tracking-modal" style="display:none;position:fixed;inset:0;background:#020617;z-index:9999;overflow-y:auto;padding:20px;">
+    <div style="max-width:500px;margin:auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:30px;">
+            <div>
+                <h2 style="font-size:28px;font-weight:900;font-style:italic;text-transform:uppercase;color:white;">Tu Pedido</h2>
+                <p style="color:#06b6d4;font-size:12px;font-weight:800;text-transform:uppercase;">Seguimiento en tiempo real</p>
+            </div>
+            <button onclick="cerrarModalTracking()" style="width:50px;height:50px;border:none;border-radius:16px;background:rgba(255,255,255,0.06);color:white;font-size:20px;cursor:pointer;">✕</button>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:35px;padding:30px;">
+            <div style="text-align:center;margin-bottom:35px;">
+                <div id="tracking-emoji" style="font-size:60px;margin-bottom:15px;">🍽️</div>
+                <h3 id="tracking-estado" style="font-size:24px;font-weight:900;text-transform:uppercase;font-style:italic;color:white;margin-bottom:10px;">RECIBIDO</h3>
+                <p id="tracking-mensaje" style="font-size:13px;color:rgba(255,255,255,0.6);font-weight:700;">Procesando tu pedido...</p>
+            </div>
+            <div style="position:relative;height:10px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden;margin-bottom:45px;">
+                <div id="tracking-progress" style="width:10%;height:100%;background:#06b6d4;transition:all 0.5s ease;box-shadow:0 0 20px #06b6d4;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:10px;">
+                <div id="step-1" class="tracking-step"><div class="step-dot">1</div><p>Recibido</p></div>
+                <div id="step-2" class="tracking-step"><div class="step-dot">2</div><p>Preparando</p></div>
+                <div id="step-3" class="tracking-step"><div class="step-dot">3</div><p>En Camino</p></div>
+                <div id="step-4" class="tracking-step"><div class="step-dot">4</div><p>Entregado</p></div>
+            </div>
+            <div id="mensajes-repartidor" style="margin-top:25px;margin-bottom:15px;max-height:150px;overflow-y:auto;"></div>
+            <div style="margin-top:40px;padding:20px;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.15);border-radius:24px;">
+                <p style="font-size:11px;font-weight:900;text-transform:uppercase;color:#06b6d4;">Información del pedido</p>
+                <div id="tracking-info" style="font-size:13px;line-height:1.7;color:white;font-weight:600;">Cargando...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<button id="btn-reabrir-seguimiento" onclick="abrirModalTracking()" style="display:none;position:fixed;bottom:110px;right:20px;z-index:9998;background:#06b6d4;color:black;border:none;width:65px;height:65px;border-radius:22px;font-size:28px;font-weight:900;box-shadow:0 0 30px rgba(6,182,212,0.6);cursor:pointer;">📦</button>
+
+<audio id="audio-llegada" preload="auto"><source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg"></audio>
+
+<div id="modal-login" class="modal-overlay">
+    <div class="registration-card">
+        <div class="registration-header">
+            <h2 class="text-2xl font-black uppercase italic text-cyan-400">🍔 Aguadulce</h2>
+            <p class="text-gray-400 text-sm mt-2">Inicia sesión o regístrate</p>
+        </div>
+        <div class="registration-body mt-6">
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📧 Email</label>
+                <input type="email" id="login-email" placeholder="tu@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">🔒 Contraseña</label>
+                <input type="password" id="login-password" placeholder="••••••" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="flex gap-3 mb-4">
+                <button onclick="loginCliente()" class="flex-1 bg-cyan-400 text-black py-2 rounded-xl font-bold">Ingresar</button>
+                <button onclick="mostrarRegistro()" class="flex-1 bg-white/10 text-white py-2 rounded-xl font-bold">Registrarse</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modal-registro" class="modal-overlay">
+    <div class="registration-card" style="max-width: 500px; max-height: 80vh; overflow-y: auto;">
+        <div class="registration-header">
+            <h2 class="text-2xl font-black uppercase italic text-cyan-400">📝 Registro</h2>
+            <p class="text-gray-400 text-sm mt-2">Crea tu cuenta para hacer pedidos</p>
+        </div>
+        <div class="registration-body mt-6">
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">👤 Nombre Completo</label>
+                <input type="text" id="reg-nombre" placeholder="Ej. Juan Pérez" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📧 Email</label>
+                <input type="email" id="reg-email" placeholder="tu@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📱 Teléfono</label>
+                <input type="tel" id="reg-telf" placeholder="600000000" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">🔒 Contraseña</label>
+                <input type="password" id="reg-password" placeholder="Mínimo 6 caracteres" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📍 Calle y Número</label>
+                <input type="text" id="reg-calle" placeholder="Ej: Calle San Isidro 30" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">🏢 Edificio / Portal / Bloque</label>
+                <input type="text" id="reg-edificio" placeholder="Ej: Portal 1, Bloque A" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">🚪 Piso / Puerta / Apartamento</label>
+                <input type="text" id="reg-puerta" placeholder="Ej: 4ºA, Bajo, Local 3" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📝 Instrucciones adicionales</label>
+                <textarea id="reg-instrucciones" rows="2" placeholder="Ej: Timbrar 2 veces, dejar en recepción..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600"></textarea>
+            </div>
+            <div class="input-group text-left mb-4">
+                <label class="text-cyan-400 text-xs font-bold uppercase block mb-1">📮 Código Postal</label>
+                <input type="text" id="reg-cp" placeholder="04740" maxlength="5" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                <p class="text-white/40 text-[9px] mt-1">📌 Solo realizamos entregas en Roquetas de Mar (04740)</p>
+            </div>
+            <div class="legal-notice flex items-start gap-3 mb-6">
+                <input type="checkbox" id="reg-edad" class="w-5 h-5 accent-cyan-400 mt-0.5 flex-shrink-0">
+                <label class="text-[11px] text-gray-300 leading-tight text-left block">🍺 Declaro ser <strong>mayor de 18 años</strong>.</label>
+            </div>
+            <div class="legal-notice flex items-start gap-3 mb-6">
+                <input type="checkbox" id="reg-legal" class="w-5 h-5 accent-cyan-400 mt-0.5 flex-shrink-0">
+                <label class="text-[11px] text-gray-300 leading-tight text-left block">Acepto los <button type="button" onclick="verTerminos('terminos')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">términos</button> y <button type="button" onclick="verTerminos('privacidad')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">política de privacidad</button>.</label>
+            </div>
+            <button onclick="registrarCliente()" class="w-full bg-cyan-400 text-black font-black py-4 rounded-2xl uppercase italic">Registrarme</button>
+            <button onclick="cerrarRegistro()" class="w-full text-white/50 text-xs py-3 mt-2">Volver al inicio</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// 🔥 CONFIGURACIÓN DE FIREBASE
+// ============================================================
+let huellaDigitalTerminal = "";
+if (typeof FingerprintJS !== 'undefined') {
+    FingerprintJS.load().then(fp => fp.get()).then(result => { huellaDigitalTerminal = result.visitorId; console.log("🛡️ Escudo Antifraude Activo. ID:", huellaDigitalTerminal); }).catch(err => { console.warn("⚠️ Error en FingerprintJS:", err); huellaDigitalTerminal = "AE-FALLBACK-" + Date.now() + "-" + Math.random().toString(36).substring(2); });
+} else { huellaDigitalTerminal = "AE-NOFP-" + Date.now() + "-" + Math.random().toString(36).substring(2); }
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDw-EdjMC5S2nQTR3ownQBlHx2AcHZBy0A",
+    authDomain: "aguadulce-express-v2.firebaseapp.com",
+    databaseURL: "https://aguadulce-express-v2-default-rtdb.firebaseio.com",
+    projectId: "aguadulce-express-v2",
+    storageBucket: "aguadulce-express-v2.firebasestorage.app",
+    messagingSenderId: "897110914130",
+    appId: "1:897110914130:web:9289bbc7a1a1b34205b8b"
+};
+
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const auth = firebase.auth();
+
+let db = { menu: [], restaurantes: [], anuncios: [], legal: "", config: {}, horariosPorDia: {} };
+let cesta = [];
+let restauranteActivo = { id: null, nombre: "", foto: "" };
+let itemActual = { data: null, cantidad: 1, precioBase: 0, precioOpciones: 0, opcionesSeleccionadas: {}, obligatorioOk: true };
+let pantallaStack = ['home'];
+let navegando = false;
+let trackingListenerRef = null;
+let alarmaInterval = null;
+let audioElement = null;
+let procesandoPedidoActivo = false;
+let clienteActual = null;
+let mensajesGlobalListener = null;
+
+// 📌 ROQUETAS DE MAR - SOLO CÓDIGO POSTAL 04740
+const ZONAS_PERMITIDAS = ['04740'];
+const HORARIO_ALCOHOL = { activo: true, horaFin: 22, mensaje: "🍺 La venta de bebidas alcohólicas solo está permitida hasta las 22:00." };
+const CATEGORIAS_ALCOHOL = ['Cervezas', 'Licores', 'Vinos', 'Bebidas alcohólicas', 'Alcohol', 'Cerveza', 'Vino', 'Licor'];
+
+// ============================================================
+// 📍 FUNCIONES DE SEGURIDAD Y VALIDACIÓN
+// ============================================================
+
+function esEmailValido(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return false;
+    const dominiosValidos = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'protonmail.com', 'mail.com', 'gmx.com', 'googlemail.com', 'live.com', 'msn.com', 'aol.com', 'zoho.com', 'yandex.com', 'tutanota.com', 'fastmail.com'];
+    const dominio = email.split('@')[1];
+    return dominiosValidos.includes(dominio);
+}
+
+async function verificarHuellaUnica(huella, email) {
+    if (!huella) return true;
+    try {
+        const snapshot = await database.ref('clientes').once('value');
+        const clientes = snapshot.val() || {};
+        for (const [uid, data] of Object.entries(clientes)) {
+            if (data.huella === huella && data.email !== email) return false;
+        }
+        return true;
+    } catch (error) { return true; }
+}
+
+function validarZona(cp) {
+    if (!cp) { alertaError("Código postal requerido", "Indica tu código postal."); return false; }
+    if (!/^\d{5}$/.test(cp)) { alertaError("Código postal inválido", "Debe tener 5 dígitos."); return false; }
+    if (!ZONAS_PERMITIDAS.includes(cp)) { alertaError("Fuera de zona", `Solo entregamos en Roquetas de Mar (04740). CP: ${cp}`); return false; }
+    return true;
+}
+
+// ============================================================
+// 📍 CÁLCULO DE DISTANCIA Y ENVÍO CON GOOGLE MAPS
+// ============================================================
+
+const ZONAS_ROQUETAS = {
+    centro: { lat: 36.7642, lng: -2.6148 },
+    tarifaBase: 2.50,
+    tarifaPorKm: 0.50,
+    kmIncluidos: 3,
+    maxEnvio: 12.00,
+    minEnvio: 0.50,
+    usoPlataforma: 0.99,
+    descuentoMinPedido: 20.00,
+    descuentoPorcentaje: 0.10
+};
+
+async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
+    if (!direccionCliente || !direccionRestaurante) return null;
+
+    // ⚠️ IMPORTANTE: Usaremos un servicio proxy público para evitar el CORS
+    // Este servicio recibe la petición y la reenvía a Google Maps desde un servidor.
+    const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc';
+    const origen = encodeURIComponent(direccionRestaurante);
+    const destino = encodeURIComponent(direccionCliente);
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
+    
+    try {
+        // ✅ USAMOS UN PROXY PÚBLICO PARA SALTAR EL CORS (CORS Anywhere)
+        const proxyUrl = 'https://corsproxy.io/?'; 
+        const response = await fetch(proxyUrl + encodeURIComponent(url));
+        
+        if (!response.ok) {
+            console.warn(`⚠️ Proxy respondió con estado ${response.status}. Usando tarifa fija.`);
+            return null;
+        }
+
+        const data = await response.json();
+        
+        if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+            const distanciaMetros = data.rows[0].elements[0].distance.value;
+            const distanciaKm = distanciaMetros / 1000;
+            const tiempoTexto = data.rows[0].elements[0].duration.text;
+            return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
+        } else {
+            return null;
+        }
+    } catch (error) {
+        console.error('❌ Error de red en Maps (Proxy):', error);
+        return null;
+    }
+}
+function calcularCostoEnvio(distanciaKm, subtotalPedido) {
+    if (distanciaKm === null || distanciaKm === undefined) {
+        return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
+    }
+    let costoEnvio;
+    let mensaje = '';
+    let descuentoAplicado = false;
+    if (distanciaKm <= ZONAS_ROQUETAS.kmIncluidos) {
+        costoEnvio = ZONAS_ROQUETAS.tarifaBase;
+    } else {
+        const kmExtra = distanciaKm - ZONAS_ROQUETAS.kmIncluidos;
+        costoEnvio = ZONAS_ROQUETAS.tarifaBase + (kmExtra * ZONAS_ROQUETAS.tarifaPorKm);
+    }
+    if (subtotalPedido > ZONAS_ROQUETAS.descuentoMinPedido) {
+        const descuento = costoEnvio * ZONAS_ROQUETAS.descuentoPorcentaje;
+        costoEnvio = costoEnvio - descuento;
+        descuentoAplicado = true;
+        mensaje = `🎉 ¡Pedido superior a 20€! Has recibido un 10% de descuento en el envío (-${descuento.toFixed(2)}€)`;
+    }
+    if (costoEnvio > ZONAS_ROQUETAS.maxEnvio) costoEnvio = ZONAS_ROQUETAS.maxEnvio;
+    if (costoEnvio < ZONAS_ROQUETAS.minEnvio) costoEnvio = ZONAS_ROQUETAS.minEnvio;
+    costoEnvio = Math.ceil(costoEnvio * 20) / 20;
+    costoEnvio = Math.round(costoEnvio * 100) / 100;
+    const usoPlataforma = ZONAS_ROQUETAS.usoPlataforma;
+    const total = costoEnvio + usoPlataforma;
+    return { envio: costoEnvio, usoPlataforma: usoPlataforma, total: Math.round(total * 100) / 100, descuentoAplicado: descuentoAplicado, mensaje: mensaje, distanciaKm: distanciaKm };
+}
+
+function obtenerDireccionRestaurante() {
+    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE === restauranteActivo.id);
+    
+    // Si encontramos el restaurante y tiene una dirección guardada (en mayúsculas o minúsculas), la usamos
+    if (restaurante) {
+        if (restaurante.direccion) return restaurante.direccion;
+        if (restaurante.DIRECCION) return restaurante.DIRECCION;
+    }
+    
+    // Si no tiene dirección, usamos la dirección del Admin o un valor genérico
+    // IMPORTANTE: Si no tienes dirección en el Admin, usa esta coordenada genérica de Roquetas para que no falle.
+    return 'Roquetas de Mar, Almería, España';
+}
+async function calcularEnvioTiempoReal(direccionCliente) {
+    const direccionRestaurante = obtenerDireccionRestaurante();
+    if (!direccionCliente) return { km: null, tiempo: null };
+    const distanciaData = await calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante);
+    if (distanciaData && distanciaData.km !== null) {
+        return { km: distanciaData.km, tiempo: distanciaData.tiempo };
+    } else {
+        return { km: null, tiempo: null };
+    }
+}
+
+// ============================================================
+// 📌 FUNCIONES UTILITARIAS
+// ============================================================
+function sanitizarEmail(email) { if (!email) return ''; return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_'); }
+function alcoholDisponible() { return !HORARIO_ALCOHOL.activo || new Date().getHours() < HORARIO_ALCOHOL.horaFin; }
+
+function estaRestauranteAbiertoConDiaLibre(restaurant) {
+    const horariosRest = restaurant.horarios_dias;
+    if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
+    const ahora = new Date();
+    const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
+    const hoy = diasSemana[ahora.getDay()];
+    const horarioHoy = horariosRest[hoy];
+    if (!horarioHoy) return { abierto: false, horario: "Horario no configurado" };
+    if (horarioHoy.dia_libre === true) return { abierto: false, horario: "📅 Día libre" };
+    if (horarioHoy.activo === false) return { abierto: false, horario: "🚫 Cerrado hoy" };
+    const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
+    function conv(h) {
+        if (!h || h === 'CERRADO') return null;
+        let [hh, mm] = h.split(':');
+        return parseInt(hh) + parseInt(mm) / 60;
+    }
+    const a1 = conv(horarioHoy.apertura1);
+    const c1 = conv(horarioHoy.cierre1);
+    const a2 = conv(horarioHoy.apertura2);
+    const c2 = conv(horarioHoy.cierre2);
+    let abierto = false;
+    let horarioTexto = '';
+    if (a1 !== null && c1 !== null) {
+        if (horaActual >= a1 && horaActual < c1) abierto = true;
+        horarioTexto = `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
+    }
+    if (a2 !== null && c2 !== null) {
+        if (horaActual >= a2 && horaActual < c2) abierto = true;
+        if (horarioTexto) horarioTexto += ` / `;
+        horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
+    }
+    if (!horarioTexto) return { abierto: false, horario: "Sin horario" };
+    return { abierto: abierto, horario: abierto ? "ABIERTO" : `🕒 ${horarioTexto}` };
+}
+
+function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
+function euros(n) { return parseFloat(n || 0).toFixed(2) + "€"; }
+function guardarLocal(clave, valor) { localStorage.setItem(clave, JSON.stringify(valor)); }
+function leerLocal(clave, defecto = null) { try { const data = localStorage.getItem(clave); return data ? JSON.parse(data) : defecto; } catch { return defecto; } }
+function mostrarToast(mensaje, icono = "✅") { const toast = document.createElement('div'); toast.className = 'toast-notify'; toast.innerHTML = `${icono} ${escapeHTML(mensaje)}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 1500); }
+function alertaError(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "error", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
+function alertaInfo(titulo, texto) { Swal.fire({ title: titulo, text: texto, icon: "info", background: "#020617", color: "#fff", confirmButtonColor: "#06b6d4" }); }
+
+// ============================================================
+// 📋 POLÍTICA DE CANCELACIÓN Y TÉRMINOS
+// ============================================================
+function mostrarPoliticaCancelacion() {
+    Swal.fire({
+        title: '📋 Política de Cancelación por Ausencia',
+        html: `
+            <div class="text-left">
+                <p class="text-white font-bold text-lg">¿Qué pasa si no estás cuando el repartidor llega?</p>
+                <p class="text-white/70 text-sm mt-3">Cuando el repartidor llega a tu domicilio, <strong>esperará un máximo de 5 minutos</strong> en la puerta.</p>
+                <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mt-4">
+                    <p class="text-red-400 font-bold text-sm">🔴 Si no te presentas en ese tiempo:</p>
+                    <ul class="text-white/80 text-sm mt-2 space-y-2 list-disc pl-4">
+                        <li>❌ El pedido será <strong>cancelado automáticamente</strong></li>
+                        <li>💰 Se generará una <strong>deuda</strong> por el importe TOTAL del pedido</li>
+                        <li>📋 Quedarás registrado en la <strong>lista de morosos</strong></li>
+                        <li>🚫 No podrás hacer nuevos pedidos hasta regularizar tu situación</li>
+                    </ul>
+                </div>
+                <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mt-4">
+                    <p class="text-cyan-400 font-bold text-sm">✅ ¿Cómo regularizar tu situación?</p>
+                    <p class="text-white/70 text-sm mt-2">Contacta con nuestro equipo de soporte:</p>
+                    <p class="text-white text-sm font-medium">📧 soporteaguadulcexpress26@gmail.com</p>
+                    <p class="text-white text-sm font-medium">📞 643 261 881 (solo llamadas)</p>
+                </div>
+                <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mt-4">
+                    <p class="text-yellow-400 font-bold text-sm">💡 Recomendación</p>
+                    <p class="text-white/70 text-sm mt-2">Asegúrate de estar atento al seguimiento de tu pedido y de proporcionar una dirección y teléfono correctos.</p>
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#06b6d4',
+        confirmButtonText: '✅ Entendido, gracias'
+    });
+}
+
+async function verTerminos(tipo = 'terminos') {
+    let titulo = '', contenido = '';
+    if (tipo === 'terminos') {
+        titulo = '📋 TÉRMINOS DE SERVICIO';
+        contenido = `1. ACEPTACIÓN\nAl registrar sus datos y realizar un pedido a través de Aguadulce Express, el cliente acepta expresamente todas las condiciones aquí establecidas.\n\n2. PROCESO DE PEDIDO\nUna vez confirmado el pedido, recibirás un comprobante con el número de seguimiento. El tiempo de entrega estimado se muestra al finalizar la compra.\n\n3. POLÍTICA DE CANCELACIÓN Y DEUDA POR AUSENCIA\n⚠️ IMPORTANTE: Una vez confirmado el pedido, NO podrás cancelarlo.\n\nCuando el repartidor llega al domicilio indicado por el cliente, esperará un máximo de 5 (cinco) minutos en la puerta.\n\nSi transcurrido ese tiempo el cliente no se presenta para recibir el pedido:\n\n🔴 El pedido será CANCELADO AUTOMÁTICAMENTE.\n💰 Se generará una DEUDA por el importe TOTAL del pedido.\n📋 El cliente quedará registrado en la LISTA DE MOROSOS.\n🚫 El cliente NO podrá realizar nuevos pedidos hasta que regularice su situación.\n\nPara salir de la lista de morosos y poder seguir utilizando la plataforma, el cliente deberá:\n• Contactar con atención al cliente: soporteaguadulcexpress26@gmail.com\n• Regularizar la deuda pendiente.\n• Solicitar su reincorporación a la plataforma.\n\n4. RESPONSABILIDAD DEL CLIENTE\nEl cliente es el único responsable de proporcionar una dirección y número de teléfono correctos.\n\n5. DERECHO DE ADMISIÓN\nAguadulce Express se reserva el derecho de rechazar o cancelar pedidos en caso de deuda pendiente o uso fraudulento.\n\n6. MODIFICACIONES\nAguadulce Express podrá modificar estos términos en cualquier momento.\n\nAl marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado todas las condiciones aquí establecidas.`;
+    } else if (tipo === 'privacidad') {
+        titulo = '🔒 POLÍTICA DE PRIVACIDAD';
+        contenido = '1. RESPONSABLE DEL TRATAMIENTO\nAguadulce Express\n\n2. FINALIDAD DEL TRATAMIENTO\nGestionar los pedidos de comida a domicilio, incluyendo:\n- Procesamiento de pagos\n- Comunicación sobre el estado del pedido\n- Gestión de entregas\n\n3. DATOS RECOGIDOS\n- Nombre completo\n- Teléfono\n- Dirección de entrega\n- Código postal\n\n4. PLAZO DE CONSERVACIÓN\nLos datos se conservarán durante el tiempo que el cliente mantenga una cuenta activa, o hasta 2 años después del último pedido.\n\n5. DERECHOS DEL USUARIO\nPuede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad enviando un correo a soporte@aguadulceexpress.com\n\n6. SEGURIDAD\nImplementamos medidas técnicas y organizativas para garantizar la seguridad de sus datos.\n\n7. ACEPTACIÓN\nAl marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado la presente política de privacidad.';
+    } else if (tipo === 'aviso') {
+        titulo = '⚖️ AVISO LEGAL';
+        contenido = '1. IDENTIFICACIÓN DEL TITULAR\nTitular: Aguadulce Express\nEmail: soporte@aguadulceexpress.com\n\n2. ACTIVIDAD\nAgregador de restaurantes y supermercados para pedidos a domicilio.\n\n3. PROPIEDAD INTELECTUAL E INDUSTRIAL\nTodos los contenidos de esta aplicación (textos, logotipos, imágenes, diseño) son propiedad de Aguadulce Express o de sus respectivos titulares.\n\n4. RESPONSABILIDAD\nNo nos hacemos responsables de:\n- Retrasos en las entregas causados por circunstancias ajenas a nuestra voluntad\n- La calidad de los alimentos preparados por los restaurantes\n- Errores en las direcciones proporcionadas por el cliente\n\n5. LEY APLICABLE Y JURISDICCIÓN\nEstas condiciones se rigen por la ley española.\n\n6. CONTACTO\nPara cualquier consulta o reclamación, puede contactar a través del email soporte@aguadulceexpress.com.';
+    }
+    await Swal.fire({ title: titulo, html: `<div style="text-align:left;max-height:60vh;overflow-y:auto;padding:20px;background:#0f172a;border-radius:16px;font-size:14px;line-height:1.6;color:#e2e8f0;white-space:pre-wrap;">${contenido}</div>`, background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'ENTENDIDO' });
+}
+
+function agregarFooterLegal() {
+    const main = document.getElementById('app-container');
+    if (!main) return;
+    const footerExistente = document.getElementById('legal-footer-container');
+    if (footerExistente) footerExistente.remove();
+    const footer = document.createElement('div');
+    footer.id = 'legal-footer-container';
+    footer.className = 'legal-footer';
+    footer.innerHTML = `<div><a href="#" onclick="verTerminos('terminos'); return false;">📋 Términos de Servicio</a><a href="#" onclick="verTerminos('privacidad'); return false;">🔒 Política de Privacidad</a><a href="#" onclick="verTerminos('aviso'); return false;">⚖️ Aviso Legal</a></div><p>© 2026 Aguadulce Express | Comida a domicilio</p>`;
+    main.appendChild(footer);
+}
+
+// ============================================================
+// 📌 NAVEGACIÓN Y ESTADO
+// ============================================================
+function pushPantalla(pantalla) { if (pantallaStack[pantallaStack.length - 1] !== pantalla) { pantallaStack.push(pantalla); history.pushState({ pantalla }, null); } }
+
+function popPantalla() {
+    if (navegando) return;
+    navegando = true;
+    if (pantallaStack.length > 1) {
+        pantallaStack.pop();
+        const anterior = pantallaStack[pantallaStack.length - 1];
+        cerrarTodosLosPaneles();
+        if (anterior === 'home') renderHome();
+        else if (anterior === 'restaurante') renderMenu();
+        else if (anterior === 'revision') abrirRevision();
+        else if (anterior === 'checkout') abrirCheckout();
+        else if (anterior === 'tracking') abrirModalTracking();
+        else renderHome();
+        setTimeout(() => agregarFooterLegal(), 100);
+    } else {
+        Swal.fire({ title: '¿Salir?', text: '¿Cerrar sesión?', icon: 'question', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Sí', cancelButtonText: 'Cancelar', showCancelButton: true }).then(result => { if (!result.isConfirmed) history.pushState({ pantalla: 'home' }, null); navegando = false; });
+        return;
+    }
+    navegando = false;
+}
+
+function cerrarTodosLosPaneles() {
+    document.getElementById('modal-plato').style.display = 'none';
+    document.getElementById('panel-revision').style.display = 'none';
+    document.getElementById('panel-checkout').style.display = 'none';
+    document.getElementById('tracking-modal').style.display = 'none';
+    document.getElementById('modal-registro').style.display = 'none';
+    document.getElementById('modal-login').style.display = 'none';
+}
+
+window.addEventListener('popstate', () => popPantalla());
+if (!window.navegacionIniciada) { history.replaceState({ pantalla: 'home' }, null); window.navegacionIniciada = true; }
+
+function guardarCesta() { guardarLocal("ae_cesta", cesta); guardarLocal("ae_restaurante", restauranteActivo); }
+function cargarCesta() { cesta = leerLocal("ae_cesta", []); restauranteActivo = leerLocal("ae_restaurante", { id: null, nombre: "", foto: "" }); actualizarCestaVisual(); }
+function actualizarCestaVisual() {
+    const barra = document.getElementById("cesta-flotante");
+    const total = cesta.reduce((acc, item) => acc + (item.total || 0), 0);
+    if (cesta.length === 0) barra.classList.add("hidden");
+    else barra.classList.remove("hidden");
+    const info = document.getElementById("cesta-info");
+    const totalTxt = document.getElementById("cesta-total");
+    if (info) info.innerText = `${cesta.length} PRODUCTOS`;
+    if (totalTxt) totalTxt.innerText = `${euros(total)} TOTAL`;
+    guardarCesta();
+}
+function vaciarCestaCompleta() { cesta = []; actualizarCestaVisual(); mostrarToast("Carrito vaciado", "🗑️"); }
+function eliminarDeCesta(id) { cesta = cesta.filter(item => item.id !== id); actualizarCestaVisual(); abrirRevision(); }
+function obtenerCliente() { 
+    const cliente = leerLocal("ae_cliente", null);
+    if (cliente && !cliente.uid) {
+        const user = firebase.auth().currentUser;
+        if (user) { cliente.uid = user.uid; guardarLocal("ae_cliente", cliente); }
+    }
+    return cliente;
+}
+function guardarCliente(cliente) { guardarLocal("ae_cliente", cliente); }
+
+// ============================================================
+// 🔧 FUNCIONES AÑADIDAS PARA CORREGIR EL CAJÓN DE PAGO
+// ============================================================
+
+function actualizarClienteUI() {
+    const box = document.getElementById('info-cliente-logueado');
+    if (box) {
+        const c = obtenerCliente();
+        box.innerHTML = c ? `<strong>${escapeHTML(c.nombre)}</strong><br>📞 ${c.telefono}<br>📍 ${c.calle}${c.puerta ? `, ${c.puerta}` : ''}<br>${c.instrucciones ? `📝 ${c.instrucciones}` : ''}` : "No identificado";
+    }
+}
+
+function cerrarSesion() {
+    auth.signOut().then(() => {
+        localStorage.removeItem('ae_cliente');
+        localStorage.removeItem('ae_cesta');
+        cesta = [];
+        restauranteActivo = { id: null, nombre: "", foto: "" };
+        clienteActual = null;
+        actualizarCestaVisual();
+        cerrarCheckout();
+        renderHome();
+        Swal.fire({ title: '👋 Sesión cerrada', text: 'Vuelve pronto', icon: 'info', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }).catch(error => alertaError("Error", error.message));
+}
+
+// ============================================================
+// 🔧 FUNCIONES DE MODALES (PARA QUE APAREZCA EL LOGIN)
+// ============================================================
+
+function mostrarModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
+function cerrarModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+
+// ============================================================
+// 🔐 REGISTRO Y LOGIN
+// ============================================================
+async function loginCliente() {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!email || !password) { alertaError("Error", "Completa email y contraseña"); return; }
+    try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const uid = userCredential.user.uid;
+        const perfilSnap = await database.ref(`clientes/${uid}`).once('value');
+        const perfil = perfilSnap.val();
+        if (perfil) { perfil.uid = uid; localStorage.setItem('ae_cliente', JSON.stringify(perfil)); }
+        cerrarModal('modal-login');
+        Swal.fire({ title: '✅ Bienvenido', text: `Hola ${perfil?.nombre || email}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+        renderHome();
+    } catch (error) { alertaError("Error", error.message); }
+}
+
+async function registrarCliente() {
+    const nombre = document.getElementById('reg-nombre').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    const telefono = document.getElementById('reg-telf').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const calle = document.getElementById('reg-calle').value.trim();
+    const edificio = document.getElementById('reg-edificio').value.trim();
+    const puerta = document.getElementById('reg-puerta').value.trim();
+    const instrucciones = document.getElementById('reg-instrucciones').value.trim();
+    const cp = document.getElementById('reg-cp').value.trim();
+    const legal = document.getElementById('reg-legal').checked;
+    const edad = document.getElementById('reg-edad').checked;
+    
+    if (!nombre || !email || !telefono || !password || !calle || !cp) { alertaError("Error", "Completa todos los campos obligatorios"); return; }
+    if (!esEmailValido(email)) { alertaError("Email inválido", "El email debe ser real (Gmail, Yahoo, Hotmail, etc.)"); return; }
+    if (!/^\d{5}$/.test(cp)) { alertaError("CP inválido", "Debe tener 5 dígitos"); return; }
+    if (!ZONAS_PERMITIDAS.includes(cp)) { alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)"); return; }
+    if (!legal) { alertaError("Acepta términos", "Debes aceptar los términos"); return; }
+    if (!edad) { alertaError("Mayor de edad", "Debes ser mayor de 18 años para registrarte"); return; }
+    if (huellaDigitalTerminal) {
+        const huellaUnica = await verificarHuellaUnica(huellaDigitalTerminal, email);
+        if (!huellaUnica) { alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono."); return; }
+    }
+    
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const uid = userCredential.user.uid;
+        await userCredential.user.sendEmailVerification();
+        const direccionCompleta = `${calle}${edificio ? ', ' + edificio : ''}${puerta ? ', ' + puerta : ''}, ${cp}`;
+        const perfilCliente = { uid, nombre, email, telefono, calle, edificio: edificio || '', puerta: puerta || '', instrucciones: instrucciones || '', cp, direccion_completa: direccionCompleta, mayorEdad: edad, creado_en: Date.now(), moroso: false, deuda_total: 0, huella: huellaDigitalTerminal || '' };
+        await database.ref(`clientes/${uid}`).set(perfilCliente);
+        localStorage.setItem('ae_cliente', JSON.stringify(perfilCliente));
+        cerrarRegistro();
+        await Swal.fire({ title: '📧 Verifica tu email', text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam. Puedes seguir usando la app mientras tanto.`, icon: 'info', timer: 5000, showConfirmButton: true, background: '#020617', color: 'white' });
+        renderHome();
+    } catch (error) { console.error('❌ Error en registro:', error); alertaError("Error", error.message); }
+}
+
+function cerrarSesion() {
+    auth.signOut().then(() => {
+        localStorage.removeItem('ae_cliente'); localStorage.removeItem('ae_cesta'); cesta = []; restauranteActivo = { id: null, nombre: "", foto: "" }; clienteActual = null; actualizarCestaVisual(); cerrarCheckout(); renderHome();
+        Swal.fire({ title: '👋 Sesión cerrada', text: 'Vuelve pronto', icon: 'info', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }).catch(error => alertaError("Error", error.message));
+}
+function mostrarRegistro() { cerrarModal('modal-login'); document.getElementById('modal-registro').style.display = 'flex'; }
+function cerrarRegistro() { document.getElementById('modal-registro').style.display = 'none'; document.getElementById('modal-login').style.display = 'flex'; }
+function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; document.getElementById('panel-revision').style.display = 'block'; }
+
+// ============================================================
+// 📡 CARGA DE DATOS
+// ============================================================
+async function cargarBaseDatos() {
+    try {
+        const restaurantesSnap = await database.ref('restaurantes').once('value');
+        const restaurantesRaw = restaurantesSnap.val() || {};
+        db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({ pin, ...data, horarios_dias: data.horarios_dias || null, orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 }));
+        db.restaurantes.sort((a, b) => { const ordenA = a.orden_manual; const ordenB = b.orden_manual; if (ordenA !== ordenB) return ordenA - ordenB; const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); return nombreA.localeCompare(nombreB); });
+        const menuSnap = await database.ref('menu_general').once('value'); db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
+        const horariosSnap = await database.ref('horarios_restaurantes').once('value'); const horariosRaw = horariosSnap.val(); db.horariosPorDia = {}; if (horariosRaw && typeof horariosRaw === 'object') { for (const [idRest, horariosDias] of Object.entries(horariosRaw)) { db.horariosPorDia[idRest] = horariosDias; } }
+        const fondosSnap = await database.ref('fondos_cabecera').once('value'); const fondos = fondosSnap.val() || {}; let fondoActivo = null; for (const [id, data] of Object.entries(fondos)) { if (data.activo === true) { fondoActivo = data; break; } }
+        const headerBg = document.getElementById('header-bg'); if (headerBg && fondoActivo) { headerBg.style.backgroundImage = `url(${fondoActivo.url})`; headerBg.style.backgroundSize = 'cover'; headerBg.style.backgroundPosition = 'center'; }
+        const appLogo = document.getElementById('app-logo'); const configSnapTemp = await database.ref('config').once('value'); const configDataTemp = configSnapTemp.val(); if (configDataTemp && configDataTemp.LOGO_URL) { appLogo.src = configDataTemp.LOGO_URL; } else { appLogo.src = "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg"; }
+        const anunciosSnap = await database.ref('anuncios').once('value'); const anunciosData = anunciosSnap.val(); if (anunciosData && Array.isArray(anunciosData)) { db.anuncios = anunciosData; const textoAnuncio = document.getElementById('texto-anuncio'); const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI'); if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { textoAnuncio.innerText = anuncioActivo.TEXTO; } }
+    } catch (error) { console.error("❌ Error:", error); throw error; }
+}
+
+// ============================================================
+// 🏠 RENDERIZAR HOME
+// ============================================================
+function renderHome() {
+    const app = document.getElementById("app-container"); if (!app) return;
+    let html = `<div id="banner-container" class="mb-4"></div><div class="flex items-center justify-between mb-4 mt-2"><div class="flex items-center gap-2"><span class="text-cyan-400 text-sm font-black uppercase tracking-wider">🍽️ SELECCIONA UN RESTAURANTE</span><div class="h-px flex-1 bg-gradient-to-r from-cyan-500/50 to-transparent ml-4 w-20"></div></div></div>`;
+    db.restaurantes.forEach(rest => {
+        const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
+        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${rest.FOTO}','${rest.ESTADO}')"` : ''}><img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-100"><div class="absolute inset-0 bg-gradient-to-t from-black"></div><div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}</div>`;
+    });
+    app.innerHTML = html; agregarFooterLegal(); cargarBanners();
+}
+
+async function cargarBanners() {
+    const snapshot = await database.ref('banners').once('value'); const banners = snapshot.val() || {};
+    const container = document.getElementById('banner-container'); if (!container) return;
+    if (Object.keys(banners).length === 0) { container.innerHTML = '<div class="text-center text-white/50 text-xs p-2">Sin promociones</div>'; return; }
+    let html = '<div class="flex overflow-x-auto gap-3 p-3 no-scrollbar">';
+    for (const [id, data] of Object.entries(banners)) { if (data.activo !== false) { html += `<div class="min-w-[280px] bg-slate-800 rounded-2xl overflow-hidden"><img src="${data.imagen}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/400x200?text=Sin+Imagen'"><div class="p-3"><p class="font-bold text-sm">${data.titulo}</p>${data.link ? `<a href="${data.link}" class="text-cyan-400 text-xs">Ver más →</a>` : ''}</div></div>`; } }
+    html += '</div>'; container.innerHTML = html;
+}
+
+function abrirRestaurante(id, nombre, foto, estado) {
+    const restaurante = db.restaurantes.find(r => r.ID_RESTAURANTE == id); if (restaurante) { const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(restaurante); if (!abierto) { alertaInfo("RESTAURANTE CERRADO", horario); return; } }
+    if (cesta.length > 0 && restauranteActivo.id && restauranteActivo.id !== id) { alertaInfo("PEDIDO ACTIVO", "Ya tienes productos de otro restaurante"); return; }
+    restauranteActivo = { id, nombre, foto }; guardarCesta(); renderMenu(); pushPantalla('restaurante');
+}
+
+function renderMenu() {
+    const app = document.getElementById("app-container");
+    const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(restauranteActivo.id));
+    const categorias = [...new Set(platos.map(p => p.CATEGORIA || "General"))];
+    const alcoholActivo = alcoholDisponible();
+    let html = `<div class="flex items-center gap-4 mb-6"><button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-black/40 border border-white/10 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate">${escapeHTML(restauranteActivo.nombre)}</h2></div>`;
+    if (!alcoholActivo) html += `<div class="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-center text-xs text-red-400">${HORARIO_ALCOHOL.mensaje}</div>`;
+    html += `<div class="flex overflow-x-auto gap-2 mb-6 no-scrollbar"><div class="cat-chip active" onclick="filtrarCategoria('TODOS', this)">TODOS</div>`;
+    categorias.forEach(cat => { const deshabilitada = CATEGORIAS_ALCOHOL.includes(cat) && !alcoholActivo; html += `<div class="cat-chip ${deshabilitada ? 'disabled' : ''}" data-categoria="${cat}" onclick="${!deshabilitada ? `filtrarCategoria('${cat}', this)` : ''}">${escapeHTML(cat)}${deshabilitada ? ' 🔒' : ''}</div>`; });
+    html += `</div><div id="lista-platos" class="space-y-3">`;
+    platos.forEach(plato => {
+        const deshabilitado = CATEGORIAS_ALCOHOL.includes(plato.CATEGORIA || "General") && !alcoholActivo;
+        html += `<div class="plato-card ${deshabilitado ? 'disabled' : ''}" data-cat="${plato.CATEGORIA || "General"}" ${!deshabilitado ? `onclick='abrirDetalle(${JSON.stringify(plato).replace(/'/g, "&apos;")})'` : ''}><div class="flex-1 text-left"><h4 class="font-black text-sm uppercase leading-none mb-1">${escapeHTML(plato.PLATO)}${deshabilitado ? ' 🔒' : ''}</h4><p class="text-cyan-400 font-black text-xs">${euros(plato.PRECIO)}</p></div><img src="${plato.FOTO_PLATO}" class="w-16 h-16 rounded-xl object-cover"></div>`;
+    });
+    html += `</div>`; app.innerHTML = html; agregarFooterLegal();
+}
+
+function volverHome() { while (pantallaStack.length > 1) pantallaStack.pop(); renderHome(); }
+function filtrarCategoria(cat, el) { document.querySelectorAll(".cat-chip").forEach(c => c.classList.remove("active")); el.classList.add("active"); document.querySelectorAll(".plato-card").forEach(card => { card.style.display = (cat === "TODOS" || card.dataset.cat === cat) ? "flex" : "none"; }); }
+
+function abrirDetalle(p) {
+    pushPantalla('plato');
+    itemActual = { id: p.ID_PLATO || Date.now(), data: p, cantidad: 1, precioBase: parseFloat(p.PRECIO) || 0, precioOpciones: 0, opcionesSeleccionadas: {}, obligatorioOk: !(p.EXTRAS_PARSEADOS?.some(g => g.required === true)) };
+    document.getElementById('modal-titulo').innerText = p.PLATO;
+    document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
+    document.getElementById('modal-precio-base').innerText = euros(itemActual.precioBase);
+    const modalImg = document.getElementById('modal-img'); modalImg.src = p.FOTO_PLATO;
+    modalImg.onclick = function() { let lb = document.getElementById('lightbox'); if (!lb) { lb = document.createElement('div'); lb.id = 'lightbox'; lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:20000;display:flex;align-items:center;justify-content:center;'; document.body.appendChild(lb); } lb.innerHTML = '<div class="w-[90%] max-w-md relative"><img src="' + p.FOTO_PLATO + '" class="w-full rounded-2xl"><button onclick="document.body.removeChild(document.getElementById(\'lightbox\'))" class="absolute -top-12 right-2 bg-white/10 text-white w-8 h-8 rounded-full">✕</button></div>'; };
+    renderizarOpciones(p); document.getElementById('cant-plato-modal').innerText = "1"; actualizarTotalModal(); document.getElementById('modal-plato').style.display = 'block';
+}
+
+function renderizarOpciones(p) {
+    const cont = document.getElementById('contenedor-pasos'); let html = '';
+    const extras = p.EXTRAS_PARSEADOS || p.EXTRAS || p.extras;
+    if (extras && Array.isArray(extras) && extras.length) {
+        extras.forEach((grupo, idx) => {
+            const requerido = grupo.required ? '<span class="opcion-obligatorio">(Obligatorio)</span>' : '<span class="opcion-opcional">(Opcional)</span>';
+            const tipo = grupo.tipo || (grupo.max === 1 ? 'radio' : 'checkbox');
+            html += `<div class="grupo-opciones" data-grupo="${idx}" data-tipo="${tipo}" data-max="${grupo.max || (tipo === 'radio' ? 1 : 99)}"><div class="grupo-titulo">${escapeHTML(grupo.nombre || 'Elige')} ${requerido}</div><div class="opciones-lista">`;
+            grupo.opciones?.forEach(op => {
+                const precioText = op.precio > 0 ? `+${euros(op.precio)}` : 'Incluido';
+                html += `<label class="opcion-item" data-precio="${op.precio || 0}"><input type="${tipo}" name="grupo_${idx}" value="${escapeHTML(op.nombre)}" data-precio="${op.precio || 0}" onchange="cambiarOpcion(this, ${idx}, '${escapeHTML(op.nombre)}', ${op.precio || 0})"><span class="opcion-nombre">${escapeHTML(op.nombre)}</span><span class="opcion-precio">${precioText}</span></label>`;
+            });
+            html += `</div></div>`;
+        });
+    } else { html = '<div class="sin-opciones">Sin opciones adicionales</div>'; }
+    cont.innerHTML = html; itemActual.opcionesSeleccionadas = {}; itemActual.precioOpciones = 0; actualizarTotalModal();
+}
+
+function cambiarOpcion(input, grupoId, opcionNombre, precio) {
+    const grupo = document.querySelector(`.grupo-opciones[data-grupo="${grupoId}"]`);
+    const tipo = grupo?.dataset.tipo; const max = parseInt(grupo?.dataset.max) || 1;
+    if (!itemActual.opcionesSeleccionadas[grupoId]) itemActual.opcionesSeleccionadas[grupoId] = [];
+    if (tipo === 'radio') { itemActual.opcionesSeleccionadas[grupoId] = [opcionNombre]; }
+    else {
+        if (input.checked) { if (itemActual.opcionesSeleccionadas[grupoId].length < max) { itemActual.opcionesSeleccionadas[grupoId].push(opcionNombre); } else { input.checked = false; mostrarToast(`Máximo ${max} opciones`, "⚠️"); return; } }
+        else { itemActual.opcionesSeleccionadas[grupoId] = itemActual.opcionesSeleccionadas[grupoId].filter(n => n !== opcionNombre); }
+    }
+    recalcularPrecioOpciones(); actualizarTotalModal(); validarObligatorios();
+}
+
+function recalcularPrecioOpciones() {
+    let total = 0;
+    for (const [gid, selec] of Object.entries(itemActual.opcionesSeleccionadas)) {
+        const grupo = document.querySelector(`.grupo-opciones[data-grupo="${gid}"]`);
+        if (grupo && selec.length) { grupo.querySelectorAll('.opcion-item input').forEach(inp => { if (selec.includes(inp.value)) total += parseFloat(inp.dataset.precio) || 0; }); }
+    }
+    itemActual.precioOpciones = total;
+}
+function actualizarTotalModal() {
+    const total = (itemActual.precioBase + itemActual.precioOpciones) * itemActual.cantidad;
+    document.getElementById('total-modal-btn').innerText = euros(total);
+}
+function cambiarCantidadPlato(inc) { let nc = itemActual.cantidad + inc; if (nc >= 1) { itemActual.cantidad = nc; document.getElementById('cant-plato-modal').innerText = nc; actualizarTotalModal(); } }
+function validarObligatorios() {
+    let ok = true; document.querySelectorAll('.grupo-opciones').forEach((grupo, idx) => { const oblig = grupo.querySelector('.opcion-obligatorio') !== null; const selec = itemActual.opcionesSeleccionadas[idx] || []; if (oblig && selec.length === 0) { ok = false; grupo.classList.add('incompleto'); } else { grupo.classList.remove('incompleto'); } });
+    itemActual.obligatorioOk = ok; const btn = document.getElementById('btn-anadir-modal'); if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '0.5'; } return ok;
+}
+function añadirAlCarritoConOpciones() {
+    if (!validarObligatorios()) { mostrarToast("⚠️ Completa las opciones obligatorias", "⚠️"); return; }
+    const totalUnitario = itemActual.precioBase + itemActual.precioOpciones; const totalProducto = totalUnitario * itemActual.cantidad;
+    let opcionesTexto = ''; for (const selec of Object.values(itemActual.opcionesSeleccionadas)) { if (selec.length) opcionesTexto += `${selec.join(', ')} | `; } opcionesTexto = opcionesTexto.slice(0, -3);
+    cesta.push({ id: Date.now(), nombre: itemActual.data.PLATO, foto: itemActual.data.FOTO_PLATO, cantidad: itemActual.cantidad, precio_unitario: itemActual.precioBase, opciones: opcionesTexto, extras_precio: itemActual.precioOpciones, total: totalProducto, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, categoria: itemActual.data.CATEGORIA });
+    cerrarModalPlato(); actualizarCestaVisual(); mostrarToast(`${itemActual.data.PLATO} x${itemActual.cantidad} añadido`, "🍽️");
+}
+function cerrarModalPlato() { document.getElementById('modal-plato').style.display = 'none'; }
+
+function abrirRevision() {
+    const cliente = obtenerCliente(); if (!cliente || !cliente.uid) { alertaError("⚠️ Necesitas registrarte", "Para ver tu carrito y hacer pedidos debes crear una cuenta o iniciar sesión."); mostrarModal('modal-login'); return; }
+    if (cesta.length === 0) { mostrarToast("Carrito vacío", "🛒"); return; }
+    pushPantalla('revision');
+    const container = document.getElementById('items-revision');
+    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${escapeHTML(item.opciones)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
+    document.getElementById('panel-revision').style.display = 'block'; agregarFooterLegal();
+}
+
+// ============================================================
+// 💳 CAJÓN DE PAGO - VERSIÓN LIGERA Y A PRUEBA DE FALLOS
+// ============================================================
+async function abrirCheckout() {
+    try {
+        // ✅ 1. FORZAMOS LA APERTURA DEL CAJÓN Y MOSTRAMOS CARGA
+        const panel = document.getElementById('panel-checkout');
+        const contenedorProductos = document.getElementById('lista-cesta-checkout');
+        const contenedorDesglose = document.getElementById('desglose-pago');
+
+        // Configuración visual forzada
+        panel.className = '';
+        panel.setAttribute('style', '');
+        panel.style.cssText = `
+            display: block !important; position: fixed !important; top: 0 !important; left: 0 !important;
+            width: 100vw !important; height: 100vh !important; background: #0a0a0a !important;
+            z-index: 99999999 !important; visibility: visible !important; opacity: 1 !important;
+            padding: 20px !important; overflow-y: auto !important; margin: 0 !important;
+        `;
+
+        document.getElementById('panel-revision').style.display = 'none';
+        if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-10">🔄 Cargando tu pedido...</div>';
+        if (contenedorDesglose) contenedorDesglose.innerHTML = '';
+
+        // ✅ 2. VALIDACIONES INICIALES
+        const cliente = obtenerCliente();
+        if (!cliente || !cliente.uid) {
+            alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión.");
+            mostrarModal('modal-login'); return;
+        }
+        if (localStorage.getItem('ae_pedido_activo')) {
+            alertaInfo("Pedido en curso", "Ya tienes un pedido activo. Finalízalo antes de hacer otro."); return;
+        }
+        if (!cesta || cesta.length === 0) {
+            mostrarToast("🛒 Tu carrito está vacío", "⚠️"); return;
+        }
+
+        // ✅ 3. CÁLCULO DE PRECIOS (Plan B + Google Maps en segundo plano)
+        let subtotal = 0;
+        cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
+
+        // Precio base (Plan B: 2.50€)
+        let envio = 2.50;
+        let descuentoAplicado = false;
+        let mensajeDescuento = '';
+        let envioCalculado = calcularCostoEnvio(null, subtotal);
+        envio = envioCalculado.envio || 2.50;
+        descuentoAplicado = envioCalculado.descuentoAplicado;
+        mensajeDescuento = envioCalculado.mensaje || '';
+        const usoPlataforma = 0.99;
+        const total = subtotal + envio + usoPlataforma;
+
+        // Guardamos para el envío final
+        window._costoEnvioActual = envio;
+        window._usoPlataformaActual = usoPlataforma;
+        window._subtotalActual = subtotal;
+
+        // ✅ 4. RENDERIZADO DEL CAJÓN (CON PLAN B)
+        if (contenedorProductos) {
+            contenedorProductos.innerHTML = cesta.map(item => `
+                <div class="flex justify-between text-sm py-2 border-b border-white/10">
+                    <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
+                    <span class="font-bold text-cyan-400">${euros(item.total)}</span>
+                </div>
+            `).join('');
+        }
+
+        if (contenedorDesglose) {
+            contenedorDesglose.innerHTML = `
+                <!-- Datos del Cliente -->
+                <div class="bg-slate-800/50 rounded-2xl p-4 border border-white/10 mb-4 flex justify-between items-start">
+                    <div>
+                        <p class="text-cyan-400 text-xs font-black uppercase mb-1">Entregar a:</p>
+                        <p class="font-bold text-white text-base">${escapeHTML(cliente.nombre)}</p>
+                        <p class="text-sm text-white/80">${escapeHTML(cliente.direccion_completa)}</p>
+                        <p class="text-[10px] text-white/50 mt-1">📞 ${escapeHTML(cliente.telefono)}</p>
+                    </div>
+                    <button onclick="cambiarDireccionCliente()" class="bg-cyan-600/20 text-cyan-400 px-3 py-1 rounded-xl text-xs font-bold hover:bg-cyan-600/30 transition">
+                        📝 Cambiar
+                    </button>
+                </div>
+
+                <!-- Resumen de Precios -->
+                <div class="mt-2 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
+                    <div class="flex justify-between text-sm"><span class="text-white/70">Subtotal</span><span>${euros(subtotal)}</span></div>
+                    ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span>- ${euros(envioCalculado.envio - envio)}</span></div>` : ''}
+                    <div class="flex justify-between text-sm"><span class="text-white/70">📱 Uso de plataforma</span><span>${euros(usoPlataforma)}</span></div>
+                    <div class="flex justify-between text-sm"><span class="text-white/70">🚚 Envío</span><span>${euros(envio)}</span></div>
+                    <div class="border-t border-white/20 my-2 pt-2"></div>
+                    <div class="flex justify-between text-xl font-black">
+                        <span>TOTAL</span>
+                        <span class="text-cyan-400 text-2xl">${euros(total)}</span>
+                    </div>
+                </div>
+
+                <!-- 💵 EFECTIVO -->
+                <div class="mt-4 p-4 bg-slate-800/50 rounded-2xl border border-slate-700">
+                    <p class="text-cyan-400 text-xs font-bold uppercase mb-1">💵 Efectivo - ¿Con cuánto pagas?</p>
+                    <p class="text-white/40 text-[10px] mb-2">Indica el importe para saber tu cambio.</p>
+                    <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej. 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg">
+                </div>
+
+                <!-- 💳 FORMA DE PAGO -->
+                <div class="mt-4">
+                    <p class="text-cyan-400 text-xs font-bold uppercase mb-2">💳 Forma de Pago</p>
+                    <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 text-white">
+                        <option value="Efectivo">Efectivo (Pagar al recibir)</option>
+                        <option value="Tarjeta">Tarjeta (Pagar al recibir)</option>
+                    </select>
+                </div>
+
+                <!-- 🔘 ÚNICO BOTÓN DE ACCIÓN + LEGALES -->
+                <div class="mt-8">
+                    <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all">
+                        💳 PROCESAR ORDEN
+                    </button>
+                    <div class="flex flex-wrap justify-center gap-2 mt-3 text-[10px] text-white/30">
+                        <button onclick="mostrarPoliticaCancelacion()" class="underline hover:text-white/60">📋 Política de cancelación</button>
+                        <span>•</span>
+                        <button onclick="verTerminos('terminos')" class="underline hover:text-white/60">📜 Términos</button>
+                        <span>•</span>
+                        <button onclick="verTerminos('privacidad')" class="underline hover:text-white/60">🔒 Privacidad</button>
+                    </div>
+                </div>
+            `;
+        }
+        agregarFooterLegal();
+
+               // ✅ 5. ACTUALIZACIÓN EN SEGUNDO PLANO CON GOOGLE MAPS
+        // Se ejecuta sin esperar, para no bloquear la visualización
+        setTimeout(async () => {
+            try {
+                const envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
+                if (envioData && envioData.km !== null) {
+                    const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
+                    window._costoEnvioActual = nuevoCalculo.envio || 2.50;
+                    
+                    // 🔥 LAS 3 LÍNEAS QUE ACTUALIZAN LA PANTALLA:
+                    const totalActual = subtotal + window._costoEnvioActual + 0.99;
+                    // Actualizar el texto del envío
+                    const envioText = document.querySelector('#desglose-pago .flex.justify-between.text-sm:nth-child(3) span:last-child');
+                    if (envioText) envioText.innerText = euros(window._costoEnvioActual);
+                    // Actualizar el texto del total
+                    const totalText = document.querySelector('#desglose-pago .flex.justify-between.text-xl.font-black span:last-child');
+                    if (totalText) totalText.innerText = euros(totalActual);
+                    
+                    console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
+                }
+            } catch (e) { /* Silencioso, el plan B ya está activo */ }
+        }, 100);
+
+        console.log("✅ Cajón dibujado y visible correctamente.");
+
+    } catch (error) {
+        console.error("❌ ERROR EN abrirCheckout:", error);
+        alertaError("Error", "El cajón de pago no pudo cargarse. Revisa la consola.");
+    }
+}
+
+// ============================================================
+// 🛡️ PROCESAR PEDIDO (SEGURIDAD Y ENVÍO)
+// ============================================================
+async function nuevoProcesarPedido() {
+    if (procesandoPedidoActivo) return;
+    procesandoPedidoActivo = true;
+
+    const btnProcesar = document.getElementById('btn-procesar-orden');
+    if (btnProcesar) { btnProcesar.disabled = true; btnProcesar.innerHTML = '<span class="spinner-border"></span> PROCESANDO...'; btnProcesar.style.opacity = '0.7'; }
+
+    try {
+        const cliente = obtenerCliente();
+        if (!cliente || !cliente.uid) throw new Error("No se pudo identificar al cliente.");
+        const user = firebase.auth().currentUser; if (!user) throw new Error("No estás autenticado.");
+
+        const uid = user.uid; const email = cliente.email; const telefono = cliente.telefono;
+
+       // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (Antifraude - Con 2 Advertencias)
+const pedidosSnap = await database.ref('pedidos').once('value');
+const todosLosPedidos = pedidosSnap.val() || {};
+
+let tienePedidoActivo = false;
+let pedidoActivoId = null;
+
+for (const [id, p] of Object.entries(todosLosPedidos)) {
+    if (p.uid_cliente === uid) {
+        const estado = p.estado || '';
+        const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
+        if (estaActivo) {
+            tienePedidoActivo = true;
+            pedidoActivoId = id;
+            break;
+        }
+    }
+}
+
+if (tienePedidoActivo) {
+    // Gestionar intentos de pedido duplicado
+    const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
+    const intentosSnap = await intentosRef.once('value');
+    let intentos = intentosSnap.val() || 0;
+    intentos++;
+    await intentosRef.set(intentos);
+    
+    if (intentos >= 3) {
+        // 🔴 Bloquear cliente (3er intento)
+        const emailSanitizado = sanitizarEmail(email);
+        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
+            email_original: email,
+            nombre: cliente.nombre,
+            motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
+            deuda: 0,
+            fecha: Date.now(),
+            activo: true
+        });
+        throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
+    } else {
+        // ⚠️ Advertencia (1er o 2do intento)
+        const mensaje = `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`;
+        
+        // Mostrar SweetAlert con el mensaje
+        await Swal.fire({
+            title: '⚠️ Pedido en curso',
+            text: mensaje,
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+            background: '#020617',
+            color: 'white'
+        });
+        
+        // Detener el proceso de pedido
+        return;
+    }
+}
+
+        // ✅ 2. VERIFICACIÓN DE DEUDA (Lista Negra Tradicional)
+        const emailSanitizado = sanitizarEmail(email);
+        const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
+        const moroso = morosoSnap.val();
+        if (moroso && moroso.activo === true && moroso.deuda > 0) {
+            throw new Error(`⚠️ Cuenta bloqueada por deuda.\nMotivo: ${moroso.motivo}\nDeuda: ${(moroso.deuda || 0).toFixed(2)}€`);
+        }
+        if (cesta.length === 0) throw new Error("El carrito está vacío.");
+
+        // 📊 3. CÁLCULOS FINALES
+        let subtotal = 0; cesta.forEach(item => subtotal += item.total || 0);
+        const envio = window._costoEnvioActual || 2.50;
+        const usoYServicios = window._usoPlataformaActual || 0.99;
+        const total = subtotal + envio + usoYServicios;
+
+        const metodo = document.getElementById('metodo-pago')?.value || "Efectivo";
+        let montoPaga = null;
+        if (metodo === "Efectivo") {
+            const montoInput = document.getElementById('monto-paga');
+            if (montoInput && montoInput.value) { montoPaga = parseFloat(montoInput.value); if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null; }
+        }
+
+        // 📦 4. CONSTRUIR Y ENVIAR PEDIDO
+const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+const pedido = {
+    id: idPedido, 
+    id_pedido: idPedido, 
+    uid_cliente: uid,
+    uid_restaurante: restauranteActivo.id,  // ← 🔥 SOLO AGREGAR ESTA LÍNEA
+    cliente_nombre: cliente.nombre, 
+    cliente_telefono: cliente.telefono, 
+    cliente_email: cliente.email,
+    direccion: cliente.direccion_completa, 
+    cp: cliente.cp,
+    items: cesta.map(item => ({ 
+        nombre: item.nombre, 
+        cantidad: item.cantidad, 
+        precio_unitario: item.precio_unitario, 
+        opciones: item.opciones || "", 
+        extras_precio: item.extras_precio || 0, 
+        total: item.total 
+    })),
+    subtotal, 
+    envio, 
+    usoYServicios, 
+    total, 
+    metodo_pago: metodo,
+    restaurante_id: restauranteActivo.id, 
+    restaurante_nombre: restauranteActivo.nombre,
+    estado: "RECIBIDO", 
+    fecha: Date.now(), 
+    timestamp: Date.now()
+};
+        if (montoPaga) pedido.monto_paga = montoPaga;
+
+        await database.ref('pedidos/' + idPedido).set(pedido);
+
+        // ✅ 5. LIMPIEZA Y REDIRECCIÓN AL SEGUIMIENTO
+        cesta = []; actualizarCestaVisual(); cerrarCheckout();
+        iniciarSeguimientoPedido(idPedido); abrirModalTracking();
+        Swal.fire({ title: '🎉 ¡Pedido Enviado!', text: `Total: ${euros(total)}`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#020617', color: 'white' });
+
+    } catch (error) {
+        console.error("❌ Error al enviar pedido:", error);
+        alertaError("Error", error.message || "No se pudo procesar el pedido.");
+    } finally {
+        procesandoPedidoActivo = false;
+        if (btnProcesar) { btnProcesar.disabled = false; btnProcesar.innerHTML = "💳 PROCESAR ORDEN"; btnProcesar.style.opacity = "1"; }
+    }
+}
+// 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
+async function cambiarDireccionCliente() {
+    const { value: nuevaDireccion } = await Swal.fire({
+        title: '📝 Cambiar dirección de entrega',
+        html: `
+            <p class="text-sm text-white/70 mb-3">Indica la dirección donde quieres recibir el pedido.</p>
+            <input id="nueva-calle" class="swal2-input" placeholder="Calle y número (Ej: Avda. de la Playa 15)">
+            <input id="nueva-puerta" class="swal2-input" placeholder="Piso, puerta o apartamento (opcional)">
+            <input id="nuevo-cp" class="swal2-input" placeholder="Código Postal (Ej: 04740)" value="04740">
+        `,
+        focusConfirm: false, showCancelButton: true, confirmButtonText: '✅ Actualizar y recalcular', cancelButtonText: 'Cancelar', background: '#020617', color: 'white',
+        preConfirm: () => {
+            const calle = document.getElementById('nueva-calle').value.trim();
+            const puerta = document.getElementById('nueva-puerta').value.trim();
+            const cp = document.getElementById('nuevo-cp').value.trim();
+            if (!calle) { Swal.showValidationMessage('La dirección es obligatoria'); return false; }
+            if (!ZONAS_PERMITIDAS.includes(cp)) { Swal.showValidationMessage('Solo entregamos en Roquetas de Mar (04740)'); return false; }
+            return calle + (puerta ? ', ' + puerta : '') + ', ' + cp;
+        }
+    });
+
+    if (nuevaDireccion) {
+        const cliente = obtenerCliente();
+        cliente.direccion_completa = nuevaDireccion;
+        guardarCliente(cliente);
+        mostrarToast("Recalculando costo de envío...", "🔄");
+        await abrirCheckout();
+    }
+}
+
+
+// ============================================================
+// 🎯 SEGUIMIENTO Y NOTIFICACIONES
+// ============================================================
+function iniciarSeguimientoPedido(idPedido) {
+    if (!idPedido) return false;
+    localStorage.setItem('ae_pedido_activo', idPedido); localStorage.setItem('ae_tracking_id', idPedido);
+    const container = document.getElementById('mensajes-repartidor'); if (container) container.innerHTML = '';
+    if (trackingListenerRef) trackingListenerRef.off();
+    trackingListenerRef = database.ref('pedidos/' + idPedido);
+    trackingListenerRef.on('value', (snap) => { if (snap.val()) actualizarInterfazSeguimiento(snap.val()); });
+    if (window.mensajesListenerRef) window.mensajesListenerRef.off();
+    window.mensajesListenerRef = database.ref('mensajes/' + idPedido);
+    window.mensajesListenerRef.on('child_added', (snap) => { const mensaje = snap.val(); if (mensaje && (mensaje.emisor === 'repartidor' || mensaje.emisor === 'sistema')) { mostrarMensajeRepartidor(mensaje); } });
+    document.getElementById('btn-reabrir-seguimiento').style.display = 'flex';
+    return true;
+}
+
+function actualizarInterfazSeguimiento(data) {
+    const estado = (data.estado || '').toUpperCase();
+    const cfg = {
+        'RECIBIDO': { w: '15%', txt: 'RECIBIDO', msg: '✅ Pedido recibido', emoji: '📥', paso: 1 },
+        'COCCIÓN': { w: '35%', txt: 'PREPARANDO', msg: '👨‍🍳 El restaurante está preparando tu pedido', emoji: '🍳', paso: 2 },
+        'LISTO': { w: '50%', txt: 'LISTO', msg: '📦 Pedido listo, repartidor en camino', emoji: '📦', paso: 2 },
+        'EN_REPARTO': { w: '70%', txt: 'EN CAMINO', msg: '🛵 Tu pedido está en camino', emoji: '🛵', paso: 3 },
+        'EN_PUERTA': { w: '85%', txt: '¡LLEGÓ!', msg: '🔔 El repartidor está en tu puerta', emoji: '🔔', paso: 3 },
+        'ENTREGADO': { w: '100%', txt: 'ENTREGADO', msg: '🎉 Pedido entregado. ¡Gracias!', emoji: '✅', paso: 4 },
+        'RECHAZADO': { w: '100%', txt: 'RECHAZADO', msg: '❌ Pedido rechazado por el restaurante', emoji: '❌', paso: 0 },
+        'CANCELADO_POR_AUSENCIA': { w: '100%', txt: 'CANCELADO', msg: '❌ Pedido cancelado por ausencia', emoji: '❌', paso: 0 }
+    };
+    const config = cfg[estado] || cfg['RECIBIDO'];
+    document.getElementById('tracking-progress').style.width = config.w;
+    document.getElementById('tracking-estado').innerText = config.txt;
+    document.getElementById('tracking-mensaje').innerText = config.msg;
+    document.getElementById('tracking-emoji').innerText = config.emoji;
+    for (let i = 1; i <= 4; i++) { const stepElement = document.getElementById(`step-${i}`); if (stepElement) stepElement.classList.toggle('active', i <= config.paso); }
+    if (estado === 'RECHAZADO') {
+        document.getElementById('tracking-info').innerHTML = `<div style="text-align:center; color: #ef4444;"><p style="font-size:18px;">❌ PEDIDO RECHAZADO</p><p>El restaurante no pudo preparar tu pedido.</p><p>✅ No se ha realizado ningún cargo.</p><hr style="margin:15px 0; border-color:#ef4444;"><p>Puedes realizar un nuevo pedido cuando lo desees.</p><button onclick="cerrarTrackingPorRechazo()" class="mt-4 bg-cyan-500 text-black px-6 py-2 rounded-xl font-bold">✅ ACEPTAR Y VOLVER</button></div>`;
+        return;
+    }
+    if (estado === 'CANCELADO_POR_AUSENCIA') {
+        const deuda = data.deuda_generada || data.total || 0;
+        mostrarCancelacionConContacto(data.id || data.id_pedido, deuda);
+        document.getElementById('tracking-info').innerHTML = `<div style="text-align:center; color: #ef4444;"><p style="font-size:18px;">❌ PEDIDO CANCELADO</p><p>Motivo: No se presentó a recibir el pedido</p><p>Deuda generada: ${deuda.toFixed(2)}€</p><hr style="margin:15px 0; border-color:#ef4444;"><p style="color:#f97316;">📞 Tu cuenta ha sido bloqueada</p><p>Para resolver tu situación, contacta con soporte:</p><p>📧 soporteaguadulcexpress26@gmail.com</p><button onclick="window.location.href='mailto:soporteaguadulcexpress26@gmail.com'" class="mt-3 bg-cyan-500 text-black px-4 py-2 rounded-xl text-sm font-bold">📧 Contactar soporte</button></div>`;
+        return;
+    }
+    if (estado === 'ENTREGADO') {
+        if (alarmaInterval) clearInterval(alarmaInterval);
+        Swal.fire({ title: '🎉 ¡Pedido Entregado!', html: `<div class="text-center"><div class="text-6xl mb-3">🍕</div><p class="text-lg font-bold">¡Gracias por confiar en nosotros!</p><p class="text-sm mt-2">Esperamos que disfrutes tu pedido.</p><p class="text-xs text-cyan-400 mt-3">✨ Aguadulce Express - Siempre contigo ✨</p></div>`, icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Volver al inicio', timer: 5000, timerProgressBar: true, allowOutsideClick: false }).then(() => {
+            if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+            if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+            if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+            localStorage.removeItem('ae_pedido_activo'); localStorage.removeItem('ae_tracking_id');
+            document.getElementById('tracking-modal').style.display = 'none'; document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+            while (pantallaStack.length > 1) pantallaStack.pop(); renderHome();
+        });
+        return;
+    }
+    document.getElementById('tracking-info').innerHTML = `<div style="display:grid; gap:8px;"><div><span style="color:#06b6d4;">📋 Pedido:</span> ${escapeHTML(data.id_pedido || data.id || '---')}</div><div><span style="color:#06b6d4;">👤 Cliente:</span> ${escapeHTML(data.cliente_nombre || '---')}</div><div><span style="color:#06b6d4;">💰 Total:</span> ${(data.total || 0).toFixed(2)}€</div><div><span style="color:#06b6d4;">📦 Estado:</span> ${config.txt}</div></div>`;
+}
+
+function mostrarMensajeRepartidor(mensaje) {
+    const container = document.getElementById('mensajes-repartidor'); if (!container) return;
+    let bgColor, borderColor, textColor, icono, titulo;
+    if (mensaje.emisor === 'repartidor') { bgColor = 'bg-cyan-500/10'; borderColor = 'border-cyan-500/30'; textColor = 'text-cyan-400'; icono = '🛵'; titulo = 'REPARTIDOR'; }
+    else if (mensaje.emisor === 'sistema') { bgColor = 'bg-red-500/20'; borderColor = 'border-red-500/50'; textColor = 'text-red-400'; icono = '⚠️'; titulo = 'SISTEMA'; }
+    else { bgColor = 'bg-white/10'; borderColor = 'border-white/20'; textColor = 'text-white/70'; icono = '📱'; titulo = 'MENSAJE'; }
+    const mensajeHtml = `<div class="${bgColor} border ${borderColor} rounded-xl p-3 mb-2"><div class="flex items-start gap-2"><span class="${textColor} text-xl">${icono}</span><div class="flex-1"><p class="${textColor} text-xs font-bold">${titulo}</p><p class="text-white text-sm whitespace-pre-line">${escapeHTML(mensaje.texto)}</p><p class="text-white/40 text-[10px] mt-1">${new Date(mensaje.timestamp).toLocaleTimeString()}</p></div></div></div>`;
+    container.insertAdjacentHTML('afterbegin', mensajeHtml);
+    if (mensaje.emisor === 'repartidor') { const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); audio.play().catch(e => console.log); if (navigator.vibrate) navigator.vibrate(200); mostrarToast("📱 El repartidor te ha enviado un mensaje", "🔔"); }
+}
+
+function abrirModalTracking() { pushPantalla('tracking'); document.getElementById('tracking-modal').style.display = 'block'; setTimeout(() => agregarFooterLegal(), 100); }
+function cerrarModalTracking() { document.getElementById('tracking-modal').style.display = 'none'; }
+function cerrarModalExito() { document.getElementById('modal-exito').style.display = 'none'; abrirModalTracking(); }
+
+function restaurarPedidoActivo() { 
+    const id = localStorage.getItem('ae_pedido_activo'); 
+    if (id) { database.ref('pedidos/' + id).once('value').then(snap => { if (snap.val()) { iniciarSeguimientoPedido(id); iniciarEscuchaMensajesGlobal(); } else { limpiarSeguimientoCompleto(); } }); }
+}
+
+function iniciarEscuchaMensajesGlobal() {
+    const pedidoId = localStorage.getItem('ae_pedido_activo'); if (!pedidoId) return;
+    if (mensajesGlobalListener) mensajesGlobalListener.off();
+    mensajesGlobalListener = database.ref('mensajes/' + pedidoId);
+    mensajesGlobalListener.on('child_added', (snap) => {
+        const mensaje = snap.val();
+        if (mensaje && (mensaje.emisor === 'repartidor' || mensaje.emisor === 'sistema')) {
+            mostrarMensajeRepartidor(mensaje);
+            const modal = document.getElementById('tracking-modal');
+            if (modal && modal.style.display !== 'flex') {
+                Swal.fire({ title: '📱 Mensaje del repartidor', text: mensaje.texto.length > 80 ? mensaje.texto.substring(0, 80) + '...' : mensaje.texto, icon: 'info', toast: true, position: 'top-end', showConfirmButton: false, timer: 5000, background: '#06b6d4', color: 'white' });
+            }
+        }
+    });
+}
+
+function limpiarSeguimientoCompleto() {
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch (e) { } trackingListenerRef = null; }
+    localStorage.removeItem('ae_pedido_activo'); localStorage.removeItem('ae_tracking_id');
+    if (alarmaInterval) clearInterval(alarmaInterval);
+    if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
+    document.getElementById('btn-reabrir-seguimiento').style.display = 'none'; document.getElementById('tracking-modal').style.display = 'none';
+}
+
+async function mostrarCancelacionConContacto(pedidoId, deuda) {
+    const mensaje = `❌ PEDIDO CANCELADO POR AUSENCIA\n\n⚠️ No te presentaste a recibir tu pedido después de que el repartidor te avisó.\n\n💰 Deuda generada: ${deuda.toFixed(2)}€\n\n🚫 Tu cuenta ha sido BLOQUEADA temporalmente.\n\n📞 Para regularizar tu situación y volver a pedir, contacta con nuestro soporte:\n\n   ✉️ Email: soporteaguadulcexpress26@gmail.com\n   📞 Teléfono: 643 261 881 (solo llamadas)\n\n💡 Una vez regularizada la deuda, tu cuenta será reactivada automáticamente.\n\nGracias por tu comprensión.`;
+    await database.ref(`mensajes/${pedidoId}`).push({ emisor: 'sistema', texto: mensaje, tipo: 'cancelacion', timestamp: Date.now(), leido: false });
+    document.getElementById('tracking-modal').style.display = 'none'; document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    localStorage.removeItem('ae_pedido_activo'); localStorage.removeItem('ae_tracking_id');
+    Swal.fire({ title: '❌ Pedido Cancelado', html: `<div class="text-left"><p class="text-red-400 font-bold">⚠️ No te presentaste a recibir tu pedido</p><p>💰 <strong>Deuda generada:</strong> ${deuda.toFixed(2)}€</p><p>🚫 Tu cuenta ha sido bloqueada</p><hr class="my-3 border-white/20"><p class="text-cyan-400 text-sm">📞 Contacta con soporte para regularizar:</p><p class="text-xs">✉️ soporteaguadulcexpress26@gmail.com</p><p class="text-xs">📞 643 261 881 (solo llamadas)</p></div>`, icon: 'error', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: '✅ Entendido', showCancelButton: true, cancelButtonText: '📧 Enviar email', cancelButtonColor: '#ef4444', allowOutsideClick: false, allowEscapeKey: false }).then(result => {
+        if (result.dismiss === Swal.DismissReason.cancel) { window.location.href = 'mailto:soporteaguadulcexpress26@gmail.com'; }
+        while (pantallaStack.length > 1) pantallaStack.pop(); renderHome();
+    });
+}
+
+function cerrarTrackingPorRechazo() {
+    localStorage.removeItem('ae_pedido_activo'); localStorage.removeItem('ae_tracking_id');
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    document.getElementById('tracking-modal').style.display = 'none'; document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+    cesta = []; actualizarCestaVisual(); while (pantallaStack.length > 1) pantallaStack.pop(); renderHome();
+}
+
+function initAudio() { audioElement = document.getElementById('audio-llegada') || new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); return audioElement; }
+
+// ============================================================
+// 🚀 INICIO DE LA APP
+// ============================================================
+document.addEventListener('DOMContentLoaded', initApp);
+
+async function initApp() {
+    document.getElementById('loader').style.display = 'flex';
+    try {
+        cargarCesta(); actualizarClienteUI(); await cargarBaseDatos();
+        db.restaurantes.sort((a, b) => { const ordenA = a.orden_manual !== undefined ? a.orden_manual : 9999; const ordenB = b.orden_manual !== undefined ? b.orden_manual : 9999; if (ordenA !== ordenB) return ordenA - ordenB; const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); return nombreA.localeCompare(nombreB); });
+        renderHome(); restaurarPedidoActivo(); initAudio();
+        setTimeout(() => agregarFooterLegal(), 500);
+        const observer = new MutationObserver(() => { if (!document.getElementById('legal-footer-container')) agregarFooterLegal(); });
+        const appContainer = document.getElementById('app-container');
+        if (appContainer) observer.observe(appContainer, { childList: true, subtree: true });
+        console.log("✅ App iniciada correctamente");
+    } catch (e) { console.error("❌ Fallo en la carga inicial:", e); alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); }
+   finally { 
+        document.getElementById('loader').style.display = 'none'; 
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
+</script>
+</body>
+</html>

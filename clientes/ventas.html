@@ -20,11 +20,9 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        /* ✅ PARCHE DE VISIBILIDAD SEGURO (NO INTERFIERE CON LA APP) */
         #panel-checkout {
             display: none !important;
         }
-        
         #panel-checkout[style*="display: block"] {
             display: block !important;
             position: fixed !important;
@@ -421,7 +419,6 @@ async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurant
         return null;
     }
 }
-
 function calcularCostoEnvio(distanciaKm, subtotalPedido) {
     if (distanciaKm === null || distanciaKm === undefined) {
         return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
@@ -458,7 +455,6 @@ function obtenerDireccionRestaurante() {
     }
     return 'Roquetas de Mar, Almería, España';
 }
-
 async function calcularEnvioTiempoReal(direccionCliente) {
     const direccionRestaurante = obtenerDireccionRestaurante();
     if (!direccionCliente) return { km: null, tiempo: null };
@@ -476,101 +472,38 @@ async function calcularEnvioTiempoReal(direccionCliente) {
 function sanitizarEmail(email) { if (!email) return ''; return email.replace(/\./g, '_').replace(/[#$\[\]]/g, '_'); }
 function alcoholDisponible() { return !HORARIO_ALCOHOL.activo || new Date().getHours() < HORARIO_ALCOHOL.horaFin; }
 
-// ============================================================
-// 🔧 FUNCIÓN CORREGIDA: ESTA RESTAURANTE ABIERTO (CON FALLBACK)
-// ============================================================
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
-    // ✅ PRIMERO: Verificar si hay forzar_abierto
-    if (restaurant.forzar_abierto === true) {
-        return { abierto: true, horario: "ABIERTO (forzado)" };
-    }
-    
-    // ✅ SEGUNDO: Intentar con horarios_dias
     const horariosRest = restaurant.horarios_dias;
-    if (!horariosRest) {
-        // ✅ TERCERO: FALLBACK a horarioApertura/horarioCierre (método antiguo)
-        if (restaurant.horarioApertura && restaurant.horarioCierre) {
-            const ahora = new Date();
-            const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
-            const [hApertura, mApertura] = restaurant.horarioApertura.split(':');
-            const [hCierre, mCierre] = restaurant.horarioCierre.split(':');
-            const apertura = parseInt(hApertura) + parseInt(mApertura) / 60;
-            const cierre = parseInt(hCierre) + parseInt(mCierre) / 60;
-            const abierto = horaActual >= apertura && horaActual < cierre;
-            return { 
-                abierto: abierto, 
-                horario: abierto ? "ABIERTO" : `🕒 ${restaurant.horarioApertura}-${restaurant.horarioCierre}` 
-            };
-        }
-        return { abierto: false, horario: "Horario no disponible" };
-    }
-    
+    if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
     const ahora = new Date();
     const diasSemana = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
     const hoy = diasSemana[ahora.getDay()];
     const horarioHoy = horariosRest[hoy];
-    
-    if (!horarioHoy) {
-        // ✅ FALLBACK: Intentar con horarioApertura/horarioCierre si existe
-        if (restaurant.horarioApertura && restaurant.horarioCierre) {
-            const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
-            const [hApertura, mApertura] = restaurant.horarioApertura.split(':');
-            const [hCierre, mCierre] = restaurant.horarioCierre.split(':');
-            const apertura = parseInt(hApertura) + parseInt(mApertura) / 60;
-            const cierre = parseInt(hCierre) + parseInt(mCierre) / 60;
-            const abierto = horaActual >= apertura && horaActual < cierre;
-            return { 
-                abierto: abierto, 
-                horario: abierto ? "ABIERTO" : `🕒 ${restaurant.horarioApertura}-${restaurant.horarioCierre}` 
-            };
-        }
-        return { abierto: false, horario: "Horario no configurado" };
-    }
-    
+    if (!horarioHoy) return { abierto: false, horario: "Horario no configurado" };
     if (horarioHoy.dia_libre === true) return { abierto: false, horario: "📅 Día libre" };
     if (horarioHoy.activo === false) return { abierto: false, horario: "🚫 Cerrado hoy" };
-    
     const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
     function conv(h) {
         if (!h || h === 'CERRADO') return null;
         let [hh, mm] = h.split(':');
         return parseInt(hh) + parseInt(mm) / 60;
     }
-    
-    const a1 = conv(horarioHoy.apertura);
-    const c1 = conv(horarioHoy.cierre);
+    const a1 = conv(horarioHoy.apertura1);
+    const c1 = conv(horarioHoy.cierre1);
     const a2 = conv(horarioHoy.apertura2);
     const c2 = conv(horarioHoy.cierre2);
-    
     let abierto = false;
     let horarioTexto = '';
-    
     if (a1 !== null && c1 !== null) {
         if (horaActual >= a1 && horaActual < c1) abierto = true;
-        horarioTexto = `${horarioHoy.apertura}-${horarioHoy.cierre}`;
+        horarioTexto = `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
     }
     if (a2 !== null && c2 !== null) {
         if (horaActual >= a2 && horaActual < c2) abierto = true;
         if (horarioTexto) horarioTexto += ` / `;
         horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
     }
-    
-    // Si no hay horario configurado, FALLBACK al método antiguo
-    if (!horarioTexto) {
-        if (restaurant.horarioApertura && restaurant.horarioCierre) {
-            const [hApertura, mApertura] = restaurant.horarioApertura.split(':');
-            const [hCierre, mCierre] = restaurant.horarioCierre.split(':');
-            const apertura = parseInt(hApertura) + parseInt(mApertura) / 60;
-            const cierre = parseInt(hCierre) + parseInt(mCierre) / 60;
-            const abiertoFallback = horaActual >= apertura && horaActual < cierre;
-            return { 
-                abierto: abiertoFallback, 
-                horario: abiertoFallback ? "ABIERTO" : `🕒 ${restaurant.horarioApertura}-${restaurant.horarioCierre}` 
-            };
-        }
-        return { abierto: false, horario: "Sin horario" };
-    }
-    
+    if (!horarioTexto) return { abierto: false, horario: "Sin horario" };
     return { abierto: abierto, horario: abierto ? "ABIERTO" : `🕒 ${horarioTexto}` };
 }
 
@@ -711,6 +644,10 @@ function obtenerCliente() {
 }
 function guardarCliente(cliente) { guardarLocal("ae_cliente", cliente); }
 
+// ============================================================
+// 🔧 FUNCIONES AÑADIDAS PARA CORREGIR EL CAJÓN DE PAGO
+// ============================================================
+
 function actualizarClienteUI() {
     const box = document.getElementById('info-cliente-logueado');
     if (box) {
@@ -732,6 +669,10 @@ function cerrarSesion() {
         Swal.fire({ title: '👋 Sesión cerrada', text: 'Vuelve pronto', icon: 'info', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }).catch(error => alertaError("Error", error.message));
 }
+
+// ============================================================
+// 🔧 FUNCIONES DE MODALES (PARA QUE APAREZCA EL LOGIN)
+// ============================================================
 
 function mostrarModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
 function cerrarModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
@@ -946,14 +887,16 @@ function abrirRevision() {
 }
 
 // ============================================================
-// 💳 CAJÓN DE PAGO - VERSIÓN COMPLETA
+// 💳 CAJÓN DE PAGO - VERSIÓN LIGERA Y A PRUEBA DE FALLOS
 // ============================================================
 async function abrirCheckout() {
     try {
+        // ✅ 1. FORZAMOS LA APERTURA DEL CAJÓN Y MOSTRAMOS CARGA
         const panel = document.getElementById('panel-checkout');
         const contenedorProductos = document.getElementById('lista-cesta-checkout');
         const contenedorDesglose = document.getElementById('desglose-pago');
 
+        // Configuración visual forzada
         panel.className = '';
         panel.setAttribute('style', '');
         panel.style.cssText = `
@@ -967,6 +910,7 @@ async function abrirCheckout() {
         if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-10">🔄 Cargando tu pedido...</div>';
         if (contenedorDesglose) contenedorDesglose.innerHTML = '';
 
+        // ✅ 2. VALIDACIONES INICIALES
         const cliente = obtenerCliente();
         if (!cliente || !cliente.uid) {
             alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión.");
@@ -979,9 +923,11 @@ async function abrirCheckout() {
             mostrarToast("🛒 Tu carrito está vacío", "⚠️"); return;
         }
 
+        // ✅ 3. CÁLCULO DE PRECIOS (Plan B + Google Maps en segundo plano)
         let subtotal = 0;
         cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
 
+        // Precio base (Plan B: 2.50€)
         let envio = 2.50;
         let descuentoAplicado = false;
         let mensajeDescuento = '';
@@ -992,10 +938,12 @@ async function abrirCheckout() {
         const usoPlataforma = 0.99;
         const total = subtotal + envio + usoPlataforma;
 
+        // Guardamos para el envío final
         window._costoEnvioActual = envio;
         window._usoPlataformaActual = usoPlataforma;
         window._subtotalActual = subtotal;
 
+        // ✅ 4. RENDERIZADO DEL CAJÓN (CON PLAN B)
         if (contenedorProductos) {
             contenedorProductos.innerHTML = cesta.map(item => `
                 <div class="flex justify-between text-sm py-2 border-b border-white/10">
@@ -1007,6 +955,7 @@ async function abrirCheckout() {
 
         if (contenedorDesglose) {
             contenedorDesglose.innerHTML = `
+                <!-- Datos del Cliente -->
                 <div class="bg-slate-800/50 rounded-2xl p-4 border border-white/10 mb-4 flex justify-between items-start">
                     <div>
                         <p class="text-cyan-400 text-xs font-black uppercase mb-1">Entregar a:</p>
@@ -1019,6 +968,7 @@ async function abrirCheckout() {
                     </button>
                 </div>
 
+                <!-- Resumen de Precios -->
                 <div class="mt-2 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
                     <div class="flex justify-between text-sm"><span class="text-white/70">Subtotal</span><span>${euros(subtotal)}</span></div>
                     ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span>- ${euros(envioCalculado.envio - envio)}</span></div>` : ''}
@@ -1031,12 +981,14 @@ async function abrirCheckout() {
                     </div>
                 </div>
 
+                <!-- 💵 EFECTIVO -->
                 <div class="mt-4 p-4 bg-slate-800/50 rounded-2xl border border-slate-700">
                     <p class="text-cyan-400 text-xs font-bold uppercase mb-1">💵 Efectivo - ¿Con cuánto pagas?</p>
                     <p class="text-white/40 text-[10px] mb-2">Indica el importe para saber tu cambio.</p>
                     <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej. 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg">
                 </div>
 
+                <!-- 💳 FORMA DE PAGO -->
                 <div class="mt-4">
                     <p class="text-cyan-400 text-xs font-bold uppercase mb-2">💳 Forma de Pago</p>
                     <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 text-white">
@@ -1045,6 +997,7 @@ async function abrirCheckout() {
                     </select>
                 </div>
 
+                <!-- 🔘 ÚNICO BOTÓN DE ACCIÓN + LEGALES -->
                 <div class="mt-8">
                     <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all">
                         💳 PROCESAR ORDEN
@@ -1061,26 +1014,27 @@ async function abrirCheckout() {
         }
         agregarFooterLegal();
 
-        // ✅ CORREGIDO: Sin async/await dentro de setTimeout
-        setTimeout(() => {
-            calcularEnvioTiempoReal(cliente.direccion_completa)
-                .then(envioData => {
-                    if (envioData && envioData.km !== null) {
-                        const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
-                        window._costoEnvioActual = nuevoCalculo.envio || 2.50;
-                        
-                        const totalActual = subtotal + window._costoEnvioActual + 0.99;
-                        const envioText = document.querySelector('#desglose-pago .flex.justify-between.text-sm:nth-child(3) span:last-child');
-                        if (envioText) envioText.innerText = euros(window._costoEnvioActual);
-                        const totalText = document.querySelector('#desglose-pago .flex.justify-between.text-xl.font-black span:last-child');
-                        if (totalText) totalText.innerText = euros(totalActual);
-                        
-                        console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
-                    }
-                })
-                .catch(e => {
-                    console.log("ℹ️ Usando tarifa de envío por defecto (Plan B)");
-                });
+               // ✅ 5. ACTUALIZACIÓN EN SEGUNDO PLANO CON GOOGLE MAPS
+        // Se ejecuta sin esperar, para no bloquear la visualización
+        setTimeout(async () => {
+            try {
+                const envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
+                if (envioData && envioData.km !== null) {
+                    const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
+                    window._costoEnvioActual = nuevoCalculo.envio || 2.50;
+                    
+                    // 🔥 LAS 3 LÍNEAS QUE ACTUALIZAN LA PANTALLA:
+                    const totalActual = subtotal + window._costoEnvioActual + 0.99;
+                    // Actualizar el texto del envío
+                    const envioText = document.querySelector('#desglose-pago .flex.justify-between.text-sm:nth-child(3) span:last-child');
+                    if (envioText) envioText.innerText = euros(window._costoEnvioActual);
+                    // Actualizar el texto del total
+                    const totalText = document.querySelector('#desglose-pago .flex.justify-between.text-xl.font-black span:last-child');
+                    if (totalText) totalText.innerText = euros(totalActual);
+                    
+                    console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
+                }
+            } catch (e) { /* Silencioso, el plan B ya está activo */ }
         }, 100);
 
         console.log("✅ Cajón dibujado y visible correctamente.");
@@ -1090,6 +1044,7 @@ async function abrirCheckout() {
         alertaError("Error", "El cajón de pago no pudo cargarse. Revisa la consola.");
     }
 }
+
 // ============================================================
 // 🛡️ PROCESAR PEDIDO (SEGURIDAD Y ENVÍO)
 // ============================================================
@@ -1107,55 +1062,63 @@ async function nuevoProcesarPedido() {
 
         const uid = user.uid; const email = cliente.email; const telefono = cliente.telefono;
 
-        // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (Antifraude)
-        const pedidosSnap = await database.ref('pedidos').once('value');
-        const todosLosPedidos = pedidosSnap.val() || {};
+       // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (Antifraude - Con 2 Advertencias)
+const pedidosSnap = await database.ref('pedidos').once('value');
+const todosLosPedidos = pedidosSnap.val() || {};
 
-        let tienePedidoActivo = false;
-        let pedidoActivoId = null;
+let tienePedidoActivo = false;
+let pedidoActivoId = null;
 
-        for (const [id, p] of Object.entries(todosLosPedidos)) {
-            if (p.uid_cliente === uid) {
-                const estado = p.estado || '';
-                const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
-                if (estaActivo) {
-                    tienePedidoActivo = true;
-                    pedidoActivoId = id;
-                    break;
-                }
-            }
+for (const [id, p] of Object.entries(todosLosPedidos)) {
+    if (p.uid_cliente === uid) {
+        const estado = p.estado || '';
+        const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
+        if (estaActivo) {
+            tienePedidoActivo = true;
+            pedidoActivoId = id;
+            break;
         }
+    }
+}
 
-        if (tienePedidoActivo) {
-            const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
-            const intentosSnap = await intentosRef.once('value');
-            let intentos = intentosSnap.val() || 0;
-            intentos++;
-            await intentosRef.set(intentos);
-            
-            if (intentos >= 3) {
-                const emailSanitizado = sanitizarEmail(email);
-                await database.ref(`clientes_morosos/${emailSanitizado}`).set({
-                    email_original: email,
-                    nombre: cliente.nombre,
-                    motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
-                    deuda: 0,
-                    fecha: Date.now(),
-                    activo: true
-                });
-                throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
-            } else {
-                await Swal.fire({
-                    title: '⚠️ Pedido en curso',
-                    text: `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`,
-                    icon: 'warning',
-                    confirmButtonText: 'Entendido',
-                    background: '#020617',
-                    color: 'white'
-                });
-                return;
-            }
-        }
+if (tienePedidoActivo) {
+    // Gestionar intentos de pedido duplicado
+    const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
+    const intentosSnap = await intentosRef.once('value');
+    let intentos = intentosSnap.val() || 0;
+    intentos++;
+    await intentosRef.set(intentos);
+    
+    if (intentos >= 3) {
+        // 🔴 Bloquear cliente (3er intento)
+        const emailSanitizado = sanitizarEmail(email);
+        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
+            email_original: email,
+            nombre: cliente.nombre,
+            motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
+            deuda: 0,
+            fecha: Date.now(),
+            activo: true
+        });
+        throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
+    } else {
+        // ⚠️ Advertencia (1er o 2do intento)
+        const mensaje = `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`;
+        
+        // Mostrar SweetAlert con el mensaje
+        await Swal.fire({
+            title: '⚠️ Pedido en curso',
+            text: mensaje,
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+            background: '#020617',
+            color: 'white'
+        });
+        
+        // Detener el proceso de pedido
+        return;
+    }
+}
 
         // ✅ 2. VERIFICACIÓN DE DEUDA (Lista Negra Tradicional)
         const emailSanitizado = sanitizarEmail(email);
@@ -1180,36 +1143,36 @@ async function nuevoProcesarPedido() {
         }
 
         // 📦 4. CONSTRUIR Y ENVIAR PEDIDO
-        const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
-        const pedido = {
-            id: idPedido, 
-            id_pedido: idPedido, 
-            uid_cliente: uid,
-            uid_restaurante: restauranteActivo.id,
-            cliente_nombre: cliente.nombre, 
-            cliente_telefono: cliente.telefono, 
-            cliente_email: cliente.email,
-            direccion: cliente.direccion_completa, 
-            cp: cliente.cp,
-            items: cesta.map(item => ({ 
-                nombre: item.nombre, 
-                cantidad: item.cantidad, 
-                precio_unitario: item.precio_unitario, 
-                opciones: item.opciones || "", 
-                extras_precio: item.extras_precio || 0, 
-                total: item.total 
-            })),
-            subtotal, 
-            envio, 
-            usoYServicios, 
-            total, 
-            metodo_pago: metodo,
-            restaurante_id: restauranteActivo.id, 
-            restaurante_nombre: restauranteActivo.nombre,
-            estado: "RECIBIDO", 
-            fecha: Date.now(), 
-            timestamp: Date.now()
-        };
+const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+const pedido = {
+    id: idPedido, 
+    id_pedido: idPedido, 
+    uid_cliente: uid,
+    uid_restaurante: restauranteActivo.id,  // ← 🔥 SOLO AGREGAR ESTA LÍNEA
+    cliente_nombre: cliente.nombre, 
+    cliente_telefono: cliente.telefono, 
+    cliente_email: cliente.email,
+    direccion: cliente.direccion_completa, 
+    cp: cliente.cp,
+    items: cesta.map(item => ({ 
+        nombre: item.nombre, 
+        cantidad: item.cantidad, 
+        precio_unitario: item.precio_unitario, 
+        opciones: item.opciones || "", 
+        extras_precio: item.extras_precio || 0, 
+        total: item.total 
+    })),
+    subtotal, 
+    envio, 
+    usoYServicios, 
+    total, 
+    metodo_pago: metodo,
+    restaurante_id: restauranteActivo.id, 
+    restaurante_nombre: restauranteActivo.nombre,
+    estado: "RECIBIDO", 
+    fecha: Date.now(), 
+    timestamp: Date.now()
+};
         if (montoPaga) pedido.monto_paga = montoPaga;
 
         await database.ref('pedidos/' + idPedido).set(pedido);
@@ -1227,7 +1190,7 @@ async function nuevoProcesarPedido() {
         if (btnProcesar) { btnProcesar.disabled = false; btnProcesar.innerHTML = "💳 PROCESAR ORDEN"; btnProcesar.style.opacity = "1"; }
     }
 }
-
+// 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
 async function cambiarDireccionCliente() {
     const { value: nuevaDireccion } = await Swal.fire({
         title: '📝 Cambiar dirección de entrega',
@@ -1256,6 +1219,7 @@ async function cambiarDireccionCliente() {
         await abrirCheckout();
     }
 }
+
 
 // ============================================================
 // 🎯 SEGUIMIENTO Y NOTIFICACIONES
@@ -1305,7 +1269,16 @@ function actualizarInterfazSeguimiento(data) {
     if (estado === 'ENTREGADO') {
         if (alarmaInterval) clearInterval(alarmaInterval);
         Swal.fire({ title: '🎉 ¡Pedido Entregado!', html: `<div class="text-center"><div class="text-6xl mb-3">🍕</div><p class="text-lg font-bold">¡Gracias por confiar en nosotros!</p><p class="text-sm mt-2">Esperamos que disfrutes tu pedido.</p><p class="text-xs text-cyan-400 mt-3">✨ Aguadulce Express - Siempre contigo ✨</p></div>`, icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Volver al inicio', timer: 5000, timerProgressBar: true, allowOutsideClick: false }).then(() => {
-            cerrarModalTracking();
+            // ✅ CORRECCIÓN: Limpiar todo y volver al home
+            if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+            if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+            if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+            localStorage.removeItem('ae_pedido_activo');
+            localStorage.removeItem('ae_tracking_id');
+            document.getElementById('tracking-modal').style.display = 'none';
+            document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+            while (pantallaStack.length > 1) pantallaStack.pop();
+            renderHome();
         });
         return;
     }
@@ -1323,10 +1296,7 @@ function mostrarMensajeRepartidor(mensaje) {
     if (mensaje.emisor === 'repartidor') { const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); audio.play().catch(e => console.log); if (navigator.vibrate) navigator.vibrate(200); mostrarToast("📱 El repartidor te ha enviado un mensaje", "🔔"); }
 }
 
-// ============================================================
-// ✅ FUNCIONES CORREGIDAS: CIERRE Y RETORNO AL HOME
-// ============================================================
-
+// ✅ FUNCIÓN CORREGIDA: Cierra el modal de seguimiento y vuelve al home
 function cerrarModalTracking() {
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
@@ -1354,7 +1324,7 @@ function cerrarModalTracking() {
     while (pantallaStack.length > 1) pantallaStack.pop();
     renderHome();
 }
-
+// ✅ FUNCIÓN CORREGIDA: Cierra el modal de éxito y vuelve al home
 function cerrarModalExito() {
     document.getElementById('modal-exito').style.display = 'none';
     
@@ -1383,6 +1353,7 @@ function cerrarModalExito() {
     renderHome();
 }
 
+// ✅ FUNCIÓN CORREGIDA: Cierra el tracking por rechazo y vuelve al home
 function cerrarTrackingPorRechazo() {
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
@@ -1423,34 +1394,62 @@ function abrirModalTracking() {
 
 async function mostrarCancelacionConContacto(pedidoId, deuda) {
     const mensaje = `❌ PEDIDO CANCELADO POR AUSENCIA\n\n⚠️ No te presentaste a recibir tu pedido después de que el repartidor te avisó.\n\n💰 Deuda generada: ${deuda.toFixed(2)}€\n\n🚫 Tu cuenta ha sido BLOQUEADA temporalmente.\n\n📞 Para regularizar tu situación y volver a pedir, contacta con nuestro soporte:\n\n   ✉️ Email: soporteaguadulcexpress26@gmail.com\n   📞 Teléfono: 643 261 881 (solo llamadas)\n\n💡 Una vez regularizada la deuda, tu cuenta será reactivada automáticamente.\n\nGracias por tu comprensión.`;
-    await database.ref(`mensajes/${pedidoId}`).push({ emisor: 'sistema', texto: mensaje, tipo: 'cancelacion', timestamp: Date.now(), leido: false });
+    
+    await database.ref(`mensajes/${pedidoId}`).push({ 
+        emisor: 'sistema', 
+        texto: mensaje, 
+        tipo: 'cancelacion', 
+        timestamp: Date.now(), 
+        leido: false 
+    });
+    
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
-    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
-    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-    localStorage.removeItem('ae_pedido_activo'); localStorage.removeItem('ae_tracking_id');
-    Swal.fire({ title: '❌ Pedido Cancelado', html: `<div class="text-left"><p class="text-red-400 font-bold">⚠️ No te presentaste a recibir tu pedido</p><p>💰 <strong>Deuda generada:</strong> ${deuda.toFixed(2)}€</p><p>🚫 Tu cuenta ha sido bloqueada</p><hr class="my-3 border-white/20"><p class="text-cyan-400 text-sm">📞 Contacta con soporte para regularizar:</p><p class="text-xs">✉️ soporteaguadulcexpress26@gmail.com</p><p class="text-xs">📞 643 261 881 (solo llamadas)</p></div>`, icon: 'error', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: '✅ Entendido', showCancelButton: true, cancelButtonText: '📧 Enviar email', cancelButtonColor: '#ef4444', allowOutsideClick: false, allowEscapeKey: false }).then(result => {
+    
+    if (trackingListenerRef) { 
+        try { trackingListenerRef.off(); } catch(e) {} 
+        trackingListenerRef = null; 
+    }
+    if (window.mensajesListenerRef) { 
+        try { window.mensajesListenerRef.off(); } catch(e) {} 
+        window.mensajesListenerRef = null; 
+    }
+    if (mensajesGlobalListener) { 
+        try { mensajesGlobalListener.off(); } catch(e) {} 
+        mensajesGlobalListener = null; 
+    }
+    
+    localStorage.removeItem('ae_pedido_activo');
+    localStorage.removeItem('ae_tracking_id');
+    
+    Swal.fire({
+        title: '❌ Pedido Cancelado',
+        html: `<div class="text-left">
+            <p class="text-red-400 font-bold">⚠️ No te presentaste a recibir tu pedido</p>
+            <p>💰 <strong>Deuda generada:</strong> ${deuda.toFixed(2)}€</p>
+            <p>🚫 Tu cuenta ha sido bloqueada</p>
+            <hr class="my-3 border-white/20">
+            <p class="text-cyan-400 text-sm">📞 Contacta con soporte para regularizar:</p>
+            <p class="text-xs">✉️ soporteaguadulcexpress26@gmail.com</p>
+            <p class="text-xs">📞 643 261 881 (solo llamadas)</p>
+        </div>`,
+        icon: 'error',
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#06b6d4',
+        confirmButtonText: '✅ Entendido',
+        showCancelButton: true,
+        cancelButtonText: '📧 Enviar email',
+        cancelButtonColor: '#ef4444',
+        allowOutsideClick: false,
+        allowEscapeKey: false
+    }).then(result => {
         if (result.dismiss === Swal.DismissReason.cancel) {
             window.location.href = 'mailto:soporteaguadulcexpress26@gmail.com';
         }
-        localStorage.removeItem('ae_pedido_activo');
-        localStorage.removeItem('ae_tracking_id');
-        if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
-        if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
-        if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-        document.getElementById('tracking-modal').style.display = 'none';
-        document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
         while (pantallaStack.length > 1) pantallaStack.pop();
         renderHome();
     });
-}
-
-function abrirModalTracking() {
-    pushPantalla('tracking');
-    document.getElementById('tracking-modal').style.display = 'block';
-    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-    setTimeout(() => agregarFooterLegal(), 100);
 }
 
 function initAudio() { audioElement = document.getElementById('audio-llegada') || new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); return audioElement; }

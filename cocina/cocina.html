@@ -1384,21 +1384,177 @@
             empty.innerHTML = `<div style="font-size:1.5rem;margin-bottom:0.3rem;">${icono}</div><div>${mensaje}</div>`;
             container.appendChild(empty);
         }
+        // ============================================
+// NOTIFICAR REPARTIDOR - FUNCIÓN PERMANENTE
+// ============================================
+window.notificarRepartidor = async function(pedidoId) {
+    console.log('📤 Iniciando notificación al repartidor para pedido:', pedidoId);
+    
+    try {
+        // 1. OBTENER DATOS DEL PEDIDO
+        const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
+        const pedido = pedidoSnap.val();
+        
+        if (!pedido) {
+            console.error('❌ Pedido no encontrado');
+            showToast('❌ Pedido no encontrado', 'error');
+            return;
+        }
+        
+        console.log('📦 Pedido obtenido:', pedido);
+
+        // 2. BUSCAR REPARTIDORES ACTIVOS
+        const repartidoresSnap = await db.ref('repartidores')
+            .orderByChild('activo')
+            .equalTo(true)
+            .once('value');
+        
+        const repartidores = repartidoresSnap.val();
+        console.log('📊 Repartidores activos:', repartidores);
+        
+        if (!repartidores) {
+            console.warn('⚠️ No hay repartidores disponibles');
+            showToast('⚠️ No hay repartidores disponibles', 'warning');
+            return;
+        }
+
+        // 3. SELECCIONAR REPARTIDOR CON MENOS CARGA
+        let repartidorId = null;
+        let repartidorData = null;
+        let menorCarga = Infinity;
+        
+        for (const [uid, data] of Object.entries(repartidores)) {
+            // Contar pedidos activos de este repartidor
+            const pedidosActivosSnap = await db.ref('pedidos')
+                .orderByChild('uid_repartidor')
+                .equalTo(uid)
+                .once('value');
+            
+            const pedidosActivos = pedidosActivosSnap.val();
+            let carga = 0;
+            
+            if (pedidosActivos) {
+                for (const [pid, pData] of Object.entries(pedidosActivos)) {
+                    const estado = pData.estado ? pData.estado.toUpperCase() : '';
+                    if (estado === 'EN_REPARTO' || estado === 'LISTO' || estado === 'REPARTO' || estado === 'PENDIENTE') {
+                        carga++;
+                    }
+                }
+            }
+            
+            console.log(`🛵 Repartidor ${data.nombre || uid}: ${carga} pedidos activos`);
+            
+            if (carga < menorCarga) {
+                menorCarga = carga;
+                repartidorId = uid;
+                repartidorData = data;
+            }
+        }
+        
+        if (!repartidorId) {
+            console.warn('⚠️ No se pudo seleccionar un repartidor');
+            showToast('⚠️ No hay repartidores disponibles', 'warning');
+            return;
+        }
+        
+        console.log(`✅ Repartidor seleccionado: ${repartidorData.nombre || repartidorId} (${menorCarga} pedidos)`);
+
+        // 4. ASIGNAR REPARTIDOR AL PEDIDO
+        await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
+        await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
+        await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
+        await db.ref(`pedidos/${pedidoId}/historial`).push({
+            estado: 'coccion',
+            timestamp: Date.now(),
+            usuario: currentUser.uid,
+            accion: 'asignar_repartidor',
+            repartidor: repartidorId,
+            repartidor_nombre: repartidorData.nombre || 'Repartidor'
+        });
+
+        // 5. ENVIAR NOTIFICACIÓN PUSH
+        const token = repartidorData.token;
+        console.log('📱 Token del repartidor:', token ? '✅ Disponible' : '❌ No disponible');
+        
+        if (!token) {
+            console.warn('⚠️ Repartidor sin token FCM');
+            showToast('⚠️ El repartidor no tiene notificaciones activas', 'warning');
+            return;
+        }
+        
+        const titulo = '🛵 Nuevo pedido disponible';
+        const mensaje = `Recoge el pedido de ${pedido.cliente_nombre || 'cliente'} en ${pedido.restaurante_nombre || 'el restaurante'}`;
+        
+        console.log(`📤 Enviando notificación a ${repartidorData.nombre || repartidorId}`);
+        console.log(`📨 Título: ${titulo}`);
+        console.log(`📨 Mensaje: ${mensaje}`);
+        
+        try {
+            const enviarNotificacion = functions.httpsCallable('enviarNotificationPedido');
+            
+            const result = await enviarNotificacion({
+                token: token,
+                titulo: titulo,
+                mensaje: mensaje,
+                data: { 
+                    tipo: 'pedido', 
+                    uid: repartidorId,
+                    pedidoId: pedidoId
+                }
+            });
+            
+            console.log('✅ Notificación push enviada:', result.data);
+            showToast(`✅ Repartidor asignado: ${repartidorData.nombre || 'Repartidor'}`, 'success');
+            
+        } catch (error) {
+            console.error('❌ Error al enviar notificación:', error);
+            showToast('⚠️ Repartidor asignado pero notificación falló', 'warning');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error en notificarRepartidor:', error);
+        showToast('❌ Error al asignar repartidor', 'error');
+    }
+};
 
         // ============================================
         // 18. ACCIONES DE PEDIDOS
         // ============================================
-        window.aceptarPedido = async function(pedidoId) {
-            if (estaPausado) { showToast('⏸️ Restaurante en pausa', 'warning'); return; }
-            try {
-                await db.ref(`pedidos/${pedidoId}/estado`).set('coccion');
-                await db.ref(`pedidos/${pedidoId}/timestamp_inicio`).set(Date.now());
-                await db.ref(`pedidos/${pedidoId}/historial`).push({ estado: 'coccion', timestamp: Date.now(), usuario: currentUser.uid, accion: 'aceptado' });
-                showToast('✅ Pedido aceptado', 'success');
-                renderizarVista();
-                detenerSonidoRepetido();
-            } catch (error) { console.error('Error al aceptar pedido:', error); showToast('❌ Error al aceptar pedido', 'error'); }
-        };
+       window.aceptarPedido = async function(pedidoId) {
+    if (estaPausado) {
+        showToast('⏸️ Restaurante en pausa', 'warning');
+        return;
+    }
+    
+    try {
+        console.log('✅ Aceptando pedido:', pedidoId);
+        
+        // 1. ACTUALIZAR ESTADO DEL PEDIDO
+        await db.ref(`pedidos/${pedidoId}/estado`).set('coccion');
+        await db.ref(`pedidos/${pedidoId}/timestamp_inicio`).set(Date.now());
+        await db.ref(`pedidos/${pedidoId}/historial`).push({
+            estado: 'coccion',
+            timestamp: Date.now(),
+            usuario: currentUser.uid,
+            accion: 'aceptado'
+        });
+        
+        showToast('✅ Pedido aceptado, en preparación', 'success');
+        renderizarVista();
+        detenerSonidoRepetido();
+        
+        // ============================================
+        // 🔥 ESTA ES LA LÍNEA QUE FALTA - NOTIFICAR REPARTIDOR
+        // ============================================
+        console.log('📤 Notificando al repartidor...');
+        await notificarRepartidor(pedidoId);
+        // ============================================
+        
+    } catch (error) {
+        console.error('❌ Error al aceptar pedido:', error);
+        showToast('❌ Error al aceptar pedido', 'error');
+    }
+};
 
         window.rechazarPedido = async function(pedidoId) {
             const confirm = await Swal.fire({ title: '❌ ¿Rechazar pedido?', text: 'El cliente recibirá una notificación', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, rechazar', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white' });

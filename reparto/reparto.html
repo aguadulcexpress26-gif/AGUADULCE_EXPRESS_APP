@@ -996,57 +996,80 @@
         // ============================================================
         // 📡 ESCUCHA DE PEDIDOS
         // ============================================================
-        function iniciarEscuchaPedidos() {
-            if (pedidosListener) {
-                try { pedidosListener.off(); } catch(e) {}
-                pedidosListener = null;
+       function iniciarEscuchaPedidos() {
+    console.log('📡 Iniciando escucha de pedidos...');
+    
+    // ✅ DESCONECTAR LISTENER ANTERIOR
+    if (pedidosListener) {
+        try {
+            if (typeof pedidosListener.off === 'function') {
+                pedidosListener.off();
             }
+        } catch (e) {
+            console.warn('⚠️ Error al desconectar listener:', e);
+        }
+        pedidosListener = null;
+    }
 
-            const uid = repartidorActual.id;
+    // ✅ VERIFICAR QUE HAY REPARTIDOR
+    if (!repartidorActual || !repartidorActual.id) {
+        console.warn('⚠️ No hay repartidor actual');
+        return;
+    }
 
-            pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
-                const todosPedidos = snapshot.val() || {};
-                const pedidosPorRecoger = [];
-                const pedidosEnCamino = [];
-                const pedidosEntregados = [];
+    const uid = repartidorActual.id;
+    console.log('👤 Escuchando pedidos para repartidor:', uid);
+
+    try {
+        pedidosListener = database.ref('pedidos').on('value', (snapshot) => {
+            const todosPedidos = snapshot.val() || {};
+            const pedidosPorRecoger = [];
+            const pedidosEnCamino = [];
+            const pedidosEntregados = [];
+            
+            let nuevosPedidos = [];
+
+            for (const [id, data] of Object.entries(todosPedidos)) {
+                if (data.uid_repartidor !== uid) continue;
                 
-                let nuevosPedidos = [];
-
-                for (const [id, data] of Object.entries(todosPedidos)) {
-                    if (data.uid_repartidor !== uid) continue;
-                    
-                    const estado = data.estado || '';
-                    
-                    if (estado === 'ENTREGADO' || estado === 'CANCELADO_POR_AUSENCIA') {
-                        pedidosEntregados.push({ id, ...data });
-                    } else if (estado === 'EN_REPARTO') {
-                        pedidosEnCamino.push({ id, ...data });
-                    } else if (estado === 'LISTO' || estado === 'PENDIENTE') {
-                        pedidosPorRecoger.push({ id, ...data });
-                        if (!pedidosAnteriores[id]) {
-                            nuevosPedidos.push({ id, ...data });
-                        }
+                const estado = data.estado || '';
+                
+                if (estado === 'ENTREGADO' || estado === 'CANCELADO_POR_AUSENCIA') {
+                    pedidosEntregados.push({ id, ...data });
+                } else if (estado === 'EN_REPARTO') {
+                    pedidosEnCamino.push({ id, ...data });
+                } else if (estado === 'LISTO' || estado === 'PENDIENTE') {
+                    pedidosPorRecoger.push({ id, ...data });
+                    if (!pedidosAnteriores[id]) {
+                        nuevosPedidos.push({ id, ...data });
                     }
                 }
+            }
 
-                // ✅ NOTIFICAR NUEVOS PEDIDOS
-                for (const pedido of nuevosPedidos) {
-                    showToast(
-                        '📦 Nuevo pedido asignado',
-                        `Cliente: ${pedido.cliente_nombre} - Total: ${(pedido.total||0).toFixed(2)}€`,
-                        'dark',
-                        6000
-                    );
-                    reproducirSonido();
-                }
+            // ✅ NOTIFICAR NUEVOS PEDIDOS
+            for (const pedido of nuevosPedidos) {
+                showToast(
+                    '📦 Nuevo pedido asignado',
+                    `Cliente: ${pedido.cliente_nombre} - Total: ${(pedido.total||0).toFixed(2)}€`,
+                    'dark',
+                    6000
+                );
+                reproducirSonido();
+            }
 
-                pedidosAnteriores = todosPedidos;
+            pedidosAnteriores = todosPedidos;
 
-                renderizarColumnas(pedidosPorRecoger, pedidosEnCamino, pedidosEntregados);
-                actualizarContadores(pedidosPorRecoger.length, pedidosEnCamino.length, pedidosEntregados.length);
-                actualizarGanancias(pedidosEntregados);
-            });
-        }
+            renderizarColumnas(pedidosPorRecoger, pedidosEnCamino, pedidosEntregados);
+            actualizarContadores(pedidosPorRecoger.length, pedidosEnCamino.length, pedidosEntregados.length);
+            actualizarGanancias(pedidosEntregados);
+        });
+        
+        console.log('✅ Listener de pedidos activado correctamente');
+        
+    } catch (error) {
+        console.error('❌ Error al activar listener:', error);
+    }
+}
 
         // ============================================================
         // 📊 ACTUALIZAR CONTADORES
@@ -1283,37 +1306,105 @@
         // ============================================================
         // 📌 NAVEGACIÓN DEL MENÚ
         // ============================================================
-        function renderizarVista() {
-            // Las columnas se actualizan solas con el listener
-            // Esta función solo fuerza la recarga
-            if (pedidosListener) {
-                pedidosListener.off();
-                iniciarEscuchaPedidos();
+     function renderizarVista() {
+    console.log('🔄 Renderizando vista...');
+    
+    // ✅ SOLO REINICIAR EL LISTENER SI EXISTE Y TIENE EL MÉTODO off
+    if (pedidosListener && typeof pedidosListener.off === 'function') {
+        try {
+            pedidosListener.off();
+            pedidosListener = null;
+        } catch (e) {
+            console.warn('⚠️ Error al desconectar listener:', e);
+        }
+    }
+    
+    // ✅ REINICIAR LA ESCUCHA
+    if (repartidorActual && repartidorActual.id) {
+        iniciarEscuchaPedidos();
+    } else {
+        console.warn('⚠️ No hay repartidor actual, no se inicia listener');
+    }
+}
+
+
+      document.querySelectorAll('.menu-item[data-view]').forEach(item => {
+    item.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // ✅ ACTUALIZAR CLASE ACTIVE
+        document.querySelectorAll('.menu-item[data-view]').forEach(el => {
+            el.classList.remove('active');
+        });
+        this.classList.add('active');
+        
+        const view = this.dataset.view;
+        currentView = view;
+        
+        console.log('📌 Cambiando a vista:', view);
+        
+        if (view === 'activos') {
+            // ✅ FORZAR RECARGA DE PEDIDOS
+            renderizarVista();
+            
+        } else if (view === 'historial') {
+            showToast('📜 Historial', 'Cargando historial de pedidos...', 'info', 2000);
+            
+            // ✅ MOSTRAR HISTORIAL EN CONSOLA
+            if (repartidorActual && repartidorActual.id) {
+                firebase.database().ref('pedidos')
+                    .orderByChild('uid_repartidor')
+                    .equalTo(repartidorActual.id)
+                    .once('value')
+                    .then(snap => {
+                        const pedidos = snap.val();
+                        console.log('📜 HISTORIAL:', pedidos);
+                        if (pedidos) {
+                            const count = Object.keys(pedidos).length;
+                            showToast(`📜 Historial`, `${count} pedidos encontrados`, 'info', 3000);
+                        } else {
+                            showToast('📜 Historial', 'No hay pedidos en el historial', 'info', 2000);
+                        }
+                    });
+            }
+            
+        } else if (view === 'ganancias') {
+            showToast('💰 Ganancias', 'Cargando resumen de ganancias...', 'info', 2000);
+            
+            // ✅ CALCULAR GANANCIAS
+            if (repartidorActual && repartidorActual.id) {
+                firebase.database().ref('pedidos')
+                    .orderByChild('uid_repartidor')
+                    .equalTo(repartidorActual.id)
+                    .once('value')
+                    .then(snap => {
+                        const pedidos = snap.val() || {};
+                        let total = 0;
+                        let count = 0;
+                        const hoy = new Date();
+                        hoy.setHours(0, 0, 0, 0);
+                        
+                        for (const [id, p] of Object.entries(pedidos)) {
+                            if (p.estado === 'ENTREGADO') {
+                                const fecha = new Date(p.timestamp_entregado || p.fecha || 0);
+                                if (fecha >= hoy) {
+                                    total += p.total || 0;
+                                    count++;
+                                }
+                            }
+                        }
+                        
+                        showToast(
+                            '💰 Ganancias de hoy',
+                            `${count} pedidos - Total: ${total.toFixed(2)}€`,
+                            'success',
+                            4000
+                        );
+                    });
             }
         }
-
-        document.querySelectorAll('.menu-item[data-view]').forEach(item => {
-            item.addEventListener('click', function(e) {
-                e.preventDefault();
-                
-                document.querySelectorAll('.menu-item[data-view]').forEach(el => {
-                    el.classList.remove('active');
-                });
-                this.classList.add('active');
-                
-                const view = this.dataset.view;
-                currentView = view;
-                
-                if (view === 'activos') {
-                    renderizarVista();
-                } else if (view === 'historial') {
-                    // Mostrar historial (mantener funcionalidad)
-                    showToast('📜 Historial', 'Cargando historial de pedidos...', 'info', 2000);
-                } else if (view === 'ganancias') {
-                    showToast('💰 Ganancias', 'Cargando resumen de ganancias...', 'info', 2000);
-                }
-            });
-        });
+    });
+});
 
         // ============================================================
         // 🆘 ASISTENCIA

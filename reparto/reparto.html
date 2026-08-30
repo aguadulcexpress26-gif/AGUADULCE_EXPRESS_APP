@@ -1598,7 +1598,7 @@
             }
         }
 
-       // ============================================================
+      // ============================================================
 // 📌 NAVEGACIÓN DEL MENÚ (CON VISTAS COMPLETAS)
 // ============================================================
 document.querySelectorAll('.menu-item[data-view]').forEach(item => {
@@ -1632,10 +1632,60 @@ document.querySelectorAll('.menu-item[data-view]').forEach(item => {
 });
 
 // ============================================================
+// 🔄 RESTAURAR VISTA DE PEDIDOS ACTIVOS
+// ============================================================
+function restaurarVistaActivos() {
+    console.log('🔄 Restaurando vista de pedidos activos...');
+    
+    // ✅ ACTUALIZAR TÍTULO
+    const titleElement = document.querySelector('.main-header .page-title');
+    if (titleElement) {
+        titleElement.innerHTML = '📋 <span class="highlight">Pedidos</span> Activos';
+    }
+    
+    const container = document.getElementById('kanban-container');
+    if (!container) return;
+    
+    // ✅ RECONSTRUIR COLUMNAS
+    container.innerHTML = `
+        <!-- COLUMNA 1: POR RECOGER -->
+        <div class="kanban-column pending" id="columna-pendiente">
+            <div class="column-header">
+                <span class="title">📦 Por Recoger</span>
+                <span class="count" id="col-count-pendiente">0</span>
+            </div>
+            <div class="column-content" id="col-pendiente"></div>
+        </div>
+        
+        <!-- COLUMNA 2: EN CAMINO -->
+        <div class="kanban-column in-progress" id="columna-progreso">
+            <div class="column-header">
+                <span class="title">🛵 En Camino</span>
+                <span class="count" id="col-count-progreso">0</span>
+            </div>
+            <div class="column-content" id="col-progreso"></div>
+        </div>
+    `;
+    
+    // ✅ RESETEAR CONTADORES
+    setText('count-por-recoger', 0);
+    setText('count-en-camino', 0);
+    setText('col-count-pendiente', 0);
+    setText('col-count-progreso', 0);
+    setText('sidebar-badge', 0);
+}
+
+// ============================================================
 // 📊 MOSTRAR VISTA DE HISTORIAL
 // ============================================================
 function mostrarVistaHistorial() {
     console.log('📜 Mostrando vista de historial...');
+    
+    // ✅ ACTUALIZAR TÍTULO
+    const titleElement = document.querySelector('.main-header .page-title');
+    if (titleElement) {
+        titleElement.innerHTML = '📜 <span class="highlight">Historial</span>';
+    }
     
     const container = document.getElementById('kanban-container');
     if (!container) return;
@@ -1798,6 +1848,12 @@ function cargarHistorialCompleto() {
 function mostrarVistaGanancias() {
     console.log('💰 Mostrando vista de ganancias...');
     
+    // ✅ ACTUALIZAR TÍTULO
+    const titleElement = document.querySelector('.main-header .page-title');
+    if (titleElement) {
+        titleElement.innerHTML = '💰 <span class="highlight">Ganancias</span>';
+    }
+    
     const container = document.getElementById('kanban-container');
     if (!container) return;
     
@@ -1852,9 +1908,14 @@ function cargarGananciasCompleto() {
     
     const uid = repartidorActual.id;
     const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
     const inicioSemana = new Date(hoy);
-    inicioSemana.setDate(hoy.getDate() - hoy.getDay() + (hoy.getDay() === 0 ? -6 : 1));
+    const dia = hoy.getDay();
+    const diff = (dia === 0 ? 6 : dia - 1);
+    inicioSemana.setDate(hoy.getDate() - diff);
     inicioSemana.setHours(0, 0, 0, 0);
+    
     const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
     inicioMes.setHours(0, 0, 0, 0);
     
@@ -1864,7 +1925,8 @@ function cargarGananciasCompleto() {
         .once('value')
         .then(snap => {
             const pedidos = snap.val();
-            let totalHoy = 0, totalSemana = 0, totalMes = 0, countHoy = 0, countSemana = 0, countMes = 0;
+            let totalHoy = 0, totalSemana = 0, totalMes = 0;
+            let countHoy = 0, countSemana = 0, countMes = 0;
             let pedidosHoy = [], pedidosSemana = [], pedidosMes = [];
             
             if (pedidos) {
@@ -1884,7 +1946,7 @@ function cargarGananciasCompleto() {
                         countSemana++;
                         pedidosSemana.push({ id, ...data, fecha });
                     }
-                    if (fecha >= hoy.setHours(0,0,0,0)) {
+                    if (fecha >= hoy) {
                         totalHoy += monto;
                         countHoy++;
                         pedidosHoy.push({ id, ...data, fecha });
@@ -1920,18 +1982,23 @@ function cargarGananciasCompleto() {
                 <!-- Detalle de pedidos -->
                 <div style="margin-top:0.5rem;">
                     <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
-                        <button onclick="mostrarDetalleGanancias('hoy', ${JSON.stringify(pedidosHoy).replace(/"/g, '&quot;')})" 
+                        <button onclick="mostrarDetalleGanancias('hoy')" 
                                 style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:50px;padding:0.2rem 0.8rem;font-size:0.65rem;color:var(--text-secondary);cursor:pointer;">📅 Hoy (${countHoy})</button>
-                        <button onclick="mostrarDetalleGanancias('semana', ${JSON.stringify(pedidosSemana).replace(/"/g, '&quot;')})" 
+                        <button onclick="mostrarDetalleGanancias('semana')" 
                                 style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:50px;padding:0.2rem 0.8rem;font-size:0.65rem;color:var(--text-secondary);cursor:pointer;">📅 Semana (${countSemana})</button>
-                        <button onclick="mostrarDetalleGanancias('mes', ${JSON.stringify(pedidosMes).replace(/"/g, '&quot;')})" 
+                        <button onclick="mostrarDetalleGanancias('mes')" 
                                 style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:50px;padding:0.2rem 0.8rem;font-size:0.65rem;color:var(--text-secondary);cursor:pointer;">📅 Mes (${countMes})</button>
                     </div>
-                    <div id="detalle-ganancias" style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.5rem;border:1px solid var(--border-color);max-height:300px;overflow-y:auto;">
+                    <div id="detalle-ganancias" style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.5rem;border:1px solid var(--border-color);max-height:250px;overflow-y:auto;">
                         <div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:0.75rem;">Selecciona un período para ver el detalle</div>
                     </div>
                 </div>
             `;
+            
+            // Guardar datos para los botones de detalle
+            window._pedidosHoy = pedidosHoy;
+            window._pedidosSemana = pedidosSemana;
+            window._pedidosMes = pedidosMes;
         })
         .catch(error => {
             console.error('❌ Error cargando ganancias:', error);
@@ -1946,9 +2013,23 @@ function cargarGananciasCompleto() {
 // ============================================================
 // 📋 MOSTRAR DETALLE DE GANANCIAS POR PERÍODO
 // ============================================================
-function mostrarDetalleGanancias(periodo, pedidos) {
+function mostrarDetalleGanancias(periodo) {
     const container = document.getElementById('detalle-ganancias');
     if (!container) return;
+    
+    let pedidos = [];
+    let titulo = '';
+    
+    if (periodo === 'hoy') {
+        pedidos = window._pedidosHoy || [];
+        titulo = '📅 Hoy';
+    } else if (periodo === 'semana') {
+        pedidos = window._pedidosSemana || [];
+        titulo = '📅 Semana';
+    } else if (periodo === 'mes') {
+        pedidos = window._pedidosMes || [];
+        titulo = '📅 Mes';
+    }
     
     if (!pedidos || pedidos.length === 0) {
         container.innerHTML = `
@@ -1959,14 +2040,8 @@ function mostrarDetalleGanancias(periodo, pedidos) {
         return;
     }
     
-    const titulos = {
-        'hoy': '📅 Hoy',
-        'semana': '📅 Semana',
-        'mes': '📅 Mes'
-    };
-    
     let html = `
-        <div style="font-size:0.65rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.3rem;">${titulos[periodo] || 'Detalle'}</div>
+        <div style="font-size:0.65rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.3rem;">${titulo}</div>
     `;
     
     for (const p of pedidos) {
@@ -1987,52 +2062,6 @@ function mostrarDetalleGanancias(periodo, pedidos) {
     
     container.innerHTML = html;
 }
-
-// ============================================================
-// 🔄 RESTAURAR VISTA DE PEDIDOS ACTIVOS
-// ============================================================
-function restaurarVistaActivos() {
-    console.log('🔄 Restaurando vista de pedidos activos...');
-    
-    const container = document.getElementById('kanban-container');
-    if (!container) return;
-    
-    // ✅ ACTUALIZAR MENÚ
-    document.querySelectorAll('.menu-item[data-view]').forEach(el => {
-        el.classList.remove('active');
-        if (el.dataset.view === 'activos') {
-            el.classList.add('active');
-        }
-    });
-    
-    // ✅ CAMBIAR VISTA ACTUAL
-    currentView = 'activos';
-    
-    // ✅ RECONSTRUIR COLUMNAS
-    container.innerHTML = `
-        <!-- COLUMNA 1: POR RECOGER -->
-        <div class="kanban-column pending" id="columna-pendiente">
-            <div class="column-header">
-                <span class="title">📦 Por Recoger</span>
-                <span class="count" id="col-count-pendiente">0</span>
-            </div>
-            <div class="column-content" id="col-pendiente"></div>
-        </div>
-        
-        <!-- COLUMNA 2: EN CAMINO -->
-        <div class="kanban-column in-progress" id="columna-progreso">
-            <div class="column-header">
-                <span class="title">🛵 En Camino</span>
-                <span class="count" id="col-count-progreso">0</span>
-            </div>
-            <div class="column-content" id="col-progreso"></div>
-        </div>
-    `;
-    
-    // ✅ RECARGAR PEDIDOS
-    renderizarVista();
-}
-
         // ============================================================
         // 🆘 ASISTENCIA
         // ============================================================

@@ -868,7 +868,7 @@
     </div>
 
     <!-- ============================================
-    JAVASCRIPT PRINCIPAL
+    JAVASCRIPT PRINCIPAL (CORREGIDO)
     ============================================ -->
     <script>
         // ============================================================
@@ -895,7 +895,6 @@
         let pedidosListener = null;
         let currentView = 'activos';
         let pedidosAnteriores = {};
-        let intervaloContador = null;
 
         // ============================================================
         // 🛠️ SISTEMA DE TOASTS
@@ -972,7 +971,7 @@
         }
 
         // ============================================================
-        // 🔐 AUTENTICACIÓN
+        // 🔐 AUTENTICACIÓN CORREGIDA
         // ============================================================
         const loginForm = document.getElementById('login-form');
         const loginNombre = document.getElementById('login-nombre');
@@ -1000,12 +999,19 @@
             loginError.style.display = 'none';
             
             try {
+                // 🔥 PASO 1: AUTENTICAR ANÓNIMAMENTE PRIMERO
+                if (!auth.currentUser) {
+                    await auth.signInAnonymously();
+                }
+                console.log('✅ Autenticación anónima exitosa');
+                
+                // 🔥 PASO 2: AHORA LEER LA LISTA DE REPARTIDORES
                 const snapshot = await database.ref('repartidores').once('value');
                 const repartidores = snapshot.val() || {};
                 let encontrado = null;
                 
                 for (const [id, data] of Object.entries(repartidores)) {
-                    if (data.nombre.toLowerCase().trim() === nombre.toLowerCase().trim() && 
+                    if (data.nombre && data.nombre.toLowerCase().trim() === nombre.toLowerCase().trim() && 
                         data.password === password && 
                         data.activo !== false) {
                         encontrado = { id, ...data };
@@ -1017,25 +1023,24 @@
                     throw new Error('Credenciales incorrectas');
                 }
                 
+                // 🔥 PASO 3: GUARDAR SESIÓN
                 repartidorActual = encontrado;
                 localStorage.setItem('repartidor_actual', JSON.stringify(repartidorActual));
                 
+                // 🔥 PASO 4: MOSTRAR DASHBOARD
                 document.getElementById('login-container').classList.add('hidden');
                 document.getElementById('app').classList.remove('hidden');
-                
                 document.getElementById('sidebar-nombre').textContent = repartidorActual.nombre;
                 
                 showToast('✅ Bienvenido', `${repartidorActual.nombre}`, 'success', 3000);
                 
-                await auth.signInAnonymously();
-                
+                // 🔥 PASO 5: REGISTRAR TOKEN Y ESCUCHAR PEDIDOS
                 await registrarTokenNotificaciones(repartidorActual.id);
-                
                 iniciarEscuchaPedidos();
                 renderizarVista();
                 
             } catch (error) {
-                console.error('Error de login:', error);
+                console.error('❌ Error de login:', error);
                 loginError.textContent = error.message || 'Error al iniciar sesión';
                 loginError.style.display = 'block';
                 loginBtn.disabled = false;
@@ -1113,7 +1118,7 @@
         }
 
         // ============================================================
-        // 📡 ESCUCHA DE PEDIDOS (COMPLETA)
+        // 📡 ESCUCHA DE PEDIDOS
         // ============================================================
         function iniciarEscuchaPedidos() {
             console.log('📡 Iniciando escucha de pedidos...');
@@ -1149,7 +1154,6 @@
                         if (data.uid_repartidor !== uid) continue;
                         
                         const estado = data.estado || '';
-                        console.log(`📦 Pedido ${id}: estado=${estado}`);
                         
                         // ✅ IGNORAR ENTREGADOS Y CANCELADOS
                         if (estado === 'ENTREGADO' || estado === 'CANCELADO_POR_AUSENCIA') {
@@ -1268,7 +1272,6 @@
                 const card = document.createElement('div');
                 const estado = p.estado || '';
                 
-                // Determinar estilo según estado
                 let cardClass = 'order-card';
                 let badgeClass = '';
                 let badgeText = '';
@@ -1363,7 +1366,6 @@
         // 🎯 ACCIONES DE PEDIDOS
         // ============================================================
         
-        // 1. RECOGER PEDIDO
         window.recogerPedido = async function(pedidoId) {
             try {
                 await database.ref(`pedidos/${pedidoId}`).update({
@@ -1378,7 +1380,6 @@
             }
         };
 
-        // 2. LLEGAR AL DESTINO
         window.llegarDestino = async function(pedidoId) {
             try {
                 await database.ref(`pedidos/${pedidoId}`).update({
@@ -1393,7 +1394,6 @@
             }
         };
 
-        // 3. ABRIR MODAL DE COBRO MEJORADO
         window.abrirModalCobro = function(pedidoId) {
             database.ref(`pedidos/${pedidoId}`).once('value').then(snap => {
                 const p = snap.val();
@@ -1405,11 +1405,9 @@
                 const total = p.total || 0;
                 const cliente = p.cliente_nombre || 'Cliente';
                 const direccion = p.direccion || 'Sin dirección';
-                const metodoPago = p.metodo_pago || 'Efectivo';
                 const montoPagaCliente = p.monto_paga || total;
                 const cambioCalculado = montoPagaCliente - total;
                 
-                // Crear modal personalizado
                 const modalHTML = `
                     <div class="cobro-modal">
                         <div class="header">
@@ -1444,7 +1442,6 @@
                     </div>
                 `;
                 
-                // Mostrar modal
                 Swal.fire({
                     html: modalHTML,
                     showConfirmButton: false,
@@ -1457,7 +1454,6 @@
                     }
                 });
                 
-                // Guardar referencia al pedido para la función de confirmación
                 window.pedidoCobroId = pedidoId;
                 window.totalCobro = total;
                 
@@ -1467,7 +1463,6 @@
             });
         };
 
-        // Función para actualizar el cambio en tiempo real
         window.actualizarCambio = function(total) {
             const montoInput = document.getElementById('montoRecibido');
             const cambioInfo = document.getElementById('cambioInfo');
@@ -1486,12 +1481,10 @@
             }
         };
 
-        // Función para cerrar el modal de cobro
         window.cerrarModalCobro = function() {
             Swal.close();
         };
 
-        // Función para confirmar el cobro
         window.confirmarCobro = async function(pedidoId, total) {
             const montoInput = document.getElementById('montoRecibido');
             if (!montoInput) return;
@@ -1536,10 +1529,8 @@
             }
         };
 
-        // Mantener función original para compatibilidad
         window.entregarPedido = window.abrirModalCobro;
 
-        // 4. VER DETALLE
         window.verDetalle = async function(pedidoId) {
             const snap = await database.ref(`pedidos/${pedidoId}`).once('value');
             const p = snap.val();
@@ -1573,7 +1564,6 @@
             });
         };
 
-        // 5. GPS
         window.abrirGPS = function(pedidoId) {
             database.ref(`pedidos/${pedidoId}`).once('value', snap => {
                 const p = snap.val();
@@ -1773,9 +1763,9 @@
             }
         });
 
-        console.log('🛵 Aguadulce Express - App Repartidor V4');
+        console.log('🛵 Aguadulce Express - App Repartidor V4 (CORREGIDA)');
+        console.log('📱 Login: Autenticación anónima antes de leer repartidores');
         console.log('📱 Flujo completo: COCCIÓN → LISTO → RECOGER → EN CAMINO → LLEGAR → COBRAR');
-        console.log('📱 Modal de cobro mejorado con diseño profesional');
     </script>
 
 </body>

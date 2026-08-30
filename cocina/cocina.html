@@ -314,6 +314,20 @@
             align-items: center;
             gap: 0.75rem;
         }
+        
+        /* ESTADO DEL RESTAURANTE */
+        #estado-restaurante {
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 50px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
         .main-header .header-actions .btn-pausa {
             padding: 0.2rem 0.8rem;
             border-radius: 50px;
@@ -333,6 +347,23 @@
             color: white;
         }
         .main-header .header-actions .btn-pausa.inactive:hover { background: #059669; }
+        
+        /* BANNER DE ESTADO */
+        #estado-banner {
+            display: none;
+        }
+        #estado-banner.active {
+            display: block;
+        }
+        #estado-banner .banner-content {
+            background: var(--accent-red);
+            color: white;
+            text-align: center;
+            padding: 6px 12px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
         
         /* ============================================
            STATS BAR (COMPACTA)
@@ -819,9 +850,13 @@
                     <span class="page-title" id="page-title">📋 <span class="highlight">Pedidos</span> Activos</span>
                 </div>
                 <div class="header-actions">
+                    <div id="estado-restaurante">🔍 Verificando...</div>
                     <button class="btn-pausa inactive" id="btn-pausa-header" onclick="togglePausa()">⏸️ Pausar</button>
                 </div>
             </header>
+            
+            <!-- BANNER DE ESTADO DEL RESTAURANTE -->
+            <div id="estado-banner"></div>
             
             <!-- BANNER DE PAUSA -->
             <div id="pausa-banner" style="display:none;background:var(--accent-red);color:white;text-align:center;padding:4px;font-weight:600;font-size:0.75rem;flex-shrink:0;">
@@ -979,6 +1014,18 @@
                 await cargarEstadoPausa();
                 await cargarTiempoElaboracion();
                 await cargarConfiguracionImpresora();
+                
+                // ✅ MOSTRAR ESTADO DEL RESTAURANTE
+                await mostrarEstadoRestaurante();
+                
+                // ✅ ESCUCHAR CAMBIOS EN EL ESTADO
+                db.ref(`restaurantes/${restauranteId}/pausado`).on('value', () => {
+                    mostrarEstadoRestaurante();
+                });
+                db.ref(`restaurantes/${restauranteId}/horarios_dias`).on('value', () => {
+                    mostrarEstadoRestaurante();
+                });
+                
                 escucharPedidos();
                 setTimeout(() => renderizarVista(), 500);
             } else {
@@ -1082,13 +1129,23 @@
         };
 
         // ============================================
-        // 10. ESCUCHAR PEDIDOS
+        // 10. ESCUCHAR PEDIDOS (CON VERIFICACIÓN DE ESTADO)
         // ============================================
         function escucharPedidos() {
             pedidosListeners.forEach(ref => { try { ref.off(); } catch(e) {} });
             pedidosListeners = [];
             const pedidosRef = db.ref('pedidos');
-            pedidosRef.on('value', (snapshot) => {
+            pedidosRef.on('value', async (snapshot) => {
+                // ✅ VERIFICAR ESTADO DEL RESTAURANTE
+                const estado = await verificarEstadoRestaurante();
+                
+                // Si está cerrado, mostrar mensaje y no procesar pedidos
+                if (!estado.abierto && currentView === 'activos') {
+                    mostrarMensajeCerrado();
+                    actualizarContadores(0, 0);
+                    return;
+                }
+                
                 const pedidos = snapshot.val() || {};
                 const pedidosActuales = {};
                 for (const [id, data] of Object.entries(pedidos)) pedidosActuales[id] = data;
@@ -1104,8 +1161,8 @@
                     for (const pedido of nuevosPedidos) {
                         const cliente = pedido.cliente_nombre || pedido.clienteNombre || 'Cliente';
                         showToast(`📦 Nuevo pedido de ${cliente}`, 'info');
-                        const estado = pedido.estado ? pedido.estado.toLowerCase() : '';
-                        if (estado === 'recibido' || estado === 'pendiente') {
+                        const estadoPedido = pedido.estado ? pedido.estado.toLowerCase() : '';
+                        if (estadoPedido === 'recibido' || estadoPedido === 'pendiente') {
                             if (!sonidoActivo) iniciarSonidoRepetido(pedido.id);
                         }
                     }
@@ -1384,239 +1441,400 @@
             empty.innerHTML = `<div style="font-size:1.5rem;margin-bottom:0.3rem;">${icono}</div><div>${mensaje}</div>`;
             container.appendChild(empty);
         }
+
         // ============================================
-// ============================================
-// NOTIFICAR REPARTIDOR - CON SONIDO CORREGIDO
-// ============================================
-window.notificarRepartidor = async function(pedidoId) {
-    console.log('📤 Iniciando notificación al repartidor para pedido:', pedidoId);
-    
-    try {
-        // 1. OBTENER DATOS DEL PEDIDO
-        const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
-        const pedido = pedidoSnap.val();
-        
-        if (!pedido) {
-            console.error('❌ Pedido no encontrado');
-            showToast('❌ Pedido no encontrado', 'error');
-            return;
-        }
-        
-        console.log('📦 Pedido obtenido:', pedido);
-
-        // 2. BUSCAR REPARTIDORES ACTIVOS
-        const repartidoresSnap = await db.ref('repartidores')
-            .orderByChild('activo')
-            .equalTo(true)
-            .once('value');
-        
-        const repartidores = repartidoresSnap.val();
-        console.log('📊 Repartidores activos:', repartidores);
-        
-        if (!repartidores) {
-            console.warn('⚠️ No hay repartidores disponibles');
-            showToast('⚠️ No hay repartidores disponibles', 'warning');
-            return;
-        }
-
-        // 3. SELECCIONAR REPARTIDOR CON MENOS CARGA
-        let repartidorId = null;
-        let repartidorData = null;
-        let menorCarga = Infinity;
-        
-        for (const [uid, data] of Object.entries(repartidores)) {
-            const pedidosActivosSnap = await db.ref('pedidos')
-                .orderByChild('uid_repartidor')
-                .equalTo(uid)
-                .once('value');
+        // 🏪 VERIFICAR ESTADO DEL RESTAURANTE (HORARIOS)
+        // ============================================
+        async function verificarEstadoRestaurante() {
+            console.log('🔍 Verificando estado del restaurante...');
             
-            const pedidosActivos = pedidosActivosSnap.val();
-            let carga = 0;
+            try {
+                const snapshot = await db.ref(`restaurantes/${restauranteId}`).once('value');
+                const data = snapshot.val();
+                
+                if (!data) {
+                    console.warn('⚠️ Restaurante no encontrado');
+                    return { abierto: false, motivo: 'Restaurante no encontrado', horario: '' };
+                }
+                
+                // 1. Verificar si está activo
+                if (data.activo === false) {
+                    return { abierto: false, motivo: '🚫 Restaurante desactivado', horario: '' };
+                }
+                
+                // 2. Verificar si está en pausa
+                if (data.pausado === true) {
+                    return { abierto: false, motivo: '⏸️ Restaurante en pausa', horario: '' };
+                }
+                
+                // 3. Verificar horarios
+                const horarios = data.horarios_dias;
+                if (!horarios) {
+                    return { abierto: false, motivo: '📅 Sin horarios configurados', horario: '' };
+                }
+                
+                const ahora = new Date();
+                const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+                const hoy = diasSemana[ahora.getDay()];
+                const horarioHoy = horarios[hoy];
+                
+                if (!horarioHoy) {
+                    return { abierto: false, motivo: `📅 Sin horario para ${hoy}`, horario: '' };
+                }
+                
+                // Verificar día libre
+                if (horarioHoy.dia_libre === true) {
+                    return { abierto: false, motivo: '📅 Día libre hoy', horario: '' };
+                }
+                
+                if (horarioHoy.activo === false) {
+                    return { abierto: false, motivo: '🚫 Cerrado hoy', horario: '' };
+                }
+                
+                // Verificar horarios de apertura/cierre
+                const horaActual = ahora.getHours() + ahora.getMinutes() / 60;
+                
+                function conv(h) {
+                    if (!h || h === 'CERRADO') return null;
+                    const [hh, mm] = h.split(':');
+                    return parseInt(hh) + parseInt(mm) / 60;
+                }
+                
+                const a1 = conv(horarioHoy.apertura1);
+                const c1 = conv(horarioHoy.cierre1);
+                const a2 = conv(horarioHoy.apertura2);
+                const c2 = conv(horarioHoy.cierre2);
+                
+                let abierto = false;
+                let horarioTexto = '';
+                
+                if (a1 !== null && c1 !== null) {
+                    if (horaActual >= a1 && horaActual < c1) abierto = true;
+                    horarioTexto = `${horarioHoy.apertura1}-${horarioHoy.cierre1}`;
+                }
+                
+                if (a2 !== null && c2 !== null) {
+                    if (horaActual >= a2 && horaActual < c2) abierto = true;
+                    if (horarioTexto) horarioTexto += ` / `;
+                    horarioTexto += `${horarioHoy.apertura2}-${horarioHoy.cierre2}`;
+                }
+                
+                if (!horarioTexto) {
+                    return { abierto: false, motivo: '📅 Horario no disponible', horario: '' };
+                }
+                
+                return {
+                    abierto: abierto,
+                    motivo: abierto ? `✅ Abierto` : `🔴 Cerrado`,
+                    horario: horarioTexto,
+                    detalle: abierto ? `🟢 Abierto (${horarioTexto})` : `🔴 Cerrado (${horarioTexto})`
+                };
+                
+            } catch (error) {
+                console.error('❌ Error verificando estado:', error);
+                return { abierto: false, motivo: '❌ Error al verificar estado', horario: '' };
+            }
+        }
+
+        // ============================================
+        // 🏪 MOSTRAR ESTADO EN LA UI
+        // ============================================
+        async function mostrarEstadoRestaurante() {
+            const estado = await verificarEstadoRestaurante();
             
-            if (pedidosActivos) {
-                for (const [pid, pData] of Object.entries(pedidosActivos)) {
-                    const estado = pData.estado ? pData.estado.toUpperCase() : '';
-                    if (estado === 'EN_REPARTO' || estado === 'LISTO' || estado === 'REPARTO' || estado === 'PENDIENTE') {
-                        carga++;
-                    }
+            // Actualizar el elemento de estado en el header
+            const statusElement = document.getElementById('estado-restaurante');
+            if (statusElement) {
+                if (estado.abierto) {
+                    statusElement.innerHTML = `🟢 ${estado.motivo} (${estado.horario})`;
+                    statusElement.style.color = 'var(--accent-green)';
+                    statusElement.style.background = 'rgba(16,185,129,0.1)';
+                    statusElement.style.borderColor = 'rgba(16,185,129,0.3)';
+                } else {
+                    statusElement.innerHTML = `🔴 ${estado.motivo} ${estado.horario ? '(' + estado.horario + ')' : ''}`;
+                    statusElement.style.color = 'var(--accent-red)';
+                    statusElement.style.background = 'rgba(239,68,68,0.1)';
+                    statusElement.style.borderColor = 'rgba(239,68,68,0.3)';
                 }
             }
             
-            console.log(`🛵 Repartidor ${data.nombre || uid}: ${carga} pedidos activos`);
-            
-            if (carga < menorCarga) {
-                menorCarga = carga;
-                repartidorId = uid;
-                repartidorData = data;
+            // Mostrar/ocultar banner de estado
+            const bannerElement = document.getElementById('estado-banner');
+            if (bannerElement) {
+                if (!estado.abierto) {
+                    bannerElement.style.display = 'block';
+                    bannerElement.className = 'active';
+                    bannerElement.innerHTML = `
+                        <div class="banner-content">
+                            ⚠️ ${estado.motivo} ${estado.horario ? '- Horario: ' + estado.horario : ''}
+                        </div>
+                    `;
+                } else {
+                    bannerElement.style.display = 'none';
+                    bannerElement.className = '';
+                    bannerElement.innerHTML = '';
+                }
             }
+            
+            return estado;
         }
-        
-        if (!repartidorId) {
-            console.warn('⚠️ No se pudo seleccionar un repartidor');
-            showToast('⚠️ No hay repartidores disponibles', 'warning');
-            return;
-        }
-        
-        console.log(`✅ Repartidor seleccionado: ${repartidorData.nombre || repartidorId} (${menorCarga} pedidos)`);
 
-        // 4. ASIGNAR REPARTIDOR AL PEDIDO
-        await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
-        await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
-        await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
-        await db.ref(`pedidos/${pedidoId}/historial`).push({
-            estado: 'coccion',
-            timestamp: Date.now(),
-            usuario: currentUser.uid,
-            accion: 'asignar_repartidor',
-            repartidor: repartidorId,
-            repartidor_nombre: repartidorData.nombre || 'Repartidor'
-        });
-
-        // 5. ENVIAR NOTIFICACIÓN PUSH
-        const token = repartidorData.token;
-        console.log('📱 Token del repartidor:', token ? '✅ Disponible' : '❌ No disponible');
-        
-        if (!token) {
-            console.warn('⚠️ Repartidor sin token FCM');
-            showToast('⚠️ El repartidor no tiene notificaciones activas', 'warning');
-            return;
+        // ============================================
+        // 🏪 MOSTRAR MENSAJE DE CERRADO
+        // ============================================
+        function mostrarMensajeCerrado() {
+            const colPendiente = document.getElementById('col-pendiente');
+            const colCoccion = document.getElementById('col-coccion');
+            
+            const mensaje = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:var(--text-muted);text-align:center;height:100%;min-height:120px;">
+                    <div style="font-size:2.5rem;margin-bottom:0.5rem;">🔴</div>
+                    <div style="font-weight:700;font-size:1rem;">Restaurante Cerrado</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted);">No se recibirán nuevos pedidos</div>
+                    <div style="font-size:0.6rem;color:var(--text-muted);margin-top:0.3rem;">Verifica los horarios en el panel de administración</div>
+                </div>
+            `;
+            
+            if (colPendiente) colPendiente.innerHTML = mensaje;
+            if (colCoccion) colCoccion.innerHTML = mensaje;
         }
-        
-        const titulo = '🛵 Nuevo pedido disponible';
-        const mensaje = `Recoge el pedido de ${pedido.cliente_nombre || 'cliente'} en ${pedido.restaurante_nombre || 'el restaurante'}`;
-        
-        console.log(`📤 Enviando notificación a ${repartidorData.nombre || repartidorId}`);
-        console.log(`📨 Título: ${titulo}`);
-        console.log(`📨 Mensaje: ${mensaje}`);
-        
+
         // ============================================
-        // 🎵 REPRODUCIR SONIDO DE ÉXITO (CORREGIDO)
+        // NOTIFICAR REPARTIDOR - CON SONIDO CORREGIDO
         // ============================================
-        function reproducirSonidoExito() {
-            console.log('🔊 Reproduciendo sonido de éxito...');
+        window.notificarRepartidor = async function(pedidoId) {
+            console.log('📤 Iniciando notificación al repartidor para pedido:', pedidoId);
+            
             try {
-                // Usar múltiples fuentes por si una falla
-                const sonidos = [
-                    'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
-                    'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3',
-                    'https://www.soundjay.com/misc/sounds/positive-beep-02.mp3'
-                ];
+                // 1. OBTENER DATOS DEL PEDIDO
+                const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).once('value');
+                const pedido = pedidoSnap.val();
                 
-                // Intentar con el primer sonido
-                const audio = new Audio(sonidos[0]);
-                audio.volume = 1.0;
-                audio.play()
-                    .then(() => {
-                        console.log('✅ Sonido de éxito reproducido');
-                        showToast('🔊 Notificación enviada con sonido', 'success');
-                    })
-                    .catch((error) => {
-                        console.warn('⚠️ Sonido 1 falló, intentando con sonido 2...', error.message);
-                        // Intentar con segundo sonido
-                        const audio2 = new Audio(sonidos[1]);
-                        audio2.volume = 1.0;
-                        audio2.play()
+                if (!pedido) {
+                    console.error('❌ Pedido no encontrado');
+                    showToast('❌ Pedido no encontrado', 'error');
+                    return;
+                }
+                
+                console.log('📦 Pedido obtenido:', pedido);
+
+                // 2. BUSCAR REPARTIDORES ACTIVOS
+                const repartidoresSnap = await db.ref('repartidores')
+                    .orderByChild('activo')
+                    .equalTo(true)
+                    .once('value');
+                
+                const repartidores = repartidoresSnap.val();
+                console.log('📊 Repartidores activos:', repartidores);
+                
+                if (!repartidores) {
+                    console.warn('⚠️ No hay repartidores disponibles');
+                    showToast('⚠️ No hay repartidores disponibles', 'warning');
+                    return;
+                }
+
+                // 3. SELECCIONAR REPARTIDOR CON MENOS CARGA
+                let repartidorId = null;
+                let repartidorData = null;
+                let menorCarga = Infinity;
+                
+                for (const [uid, data] of Object.entries(repartidores)) {
+                    const pedidosActivosSnap = await db.ref('pedidos')
+                        .orderByChild('uid_repartidor')
+                        .equalTo(uid)
+                        .once('value');
+                    
+                    const pedidosActivos = pedidosActivosSnap.val();
+                    let carga = 0;
+                    
+                    if (pedidosActivos) {
+                        for (const [pid, pData] of Object.entries(pedidosActivos)) {
+                            const estado = pData.estado ? pData.estado.toUpperCase() : '';
+                            if (estado === 'EN_REPARTO' || estado === 'LISTO' || estado === 'REPARTO' || estado === 'PENDIENTE') {
+                                carga++;
+                            }
+                        }
+                    }
+                    
+                    console.log(`🛵 Repartidor ${data.nombre || uid}: ${carga} pedidos activos`);
+                    
+                    if (carga < menorCarga) {
+                        menorCarga = carga;
+                        repartidorId = uid;
+                        repartidorData = data;
+                    }
+                }
+                
+                if (!repartidorId) {
+                    console.warn('⚠️ No se pudo seleccionar un repartidor');
+                    showToast('⚠️ No hay repartidores disponibles', 'warning');
+                    return;
+                }
+                
+                console.log(`✅ Repartidor seleccionado: ${repartidorData.nombre || repartidorId} (${menorCarga} pedidos)`);
+
+                // 4. ASIGNAR REPARTIDOR AL PEDIDO
+                await db.ref(`pedidos/${pedidoId}/uid_repartidor`).set(repartidorId);
+                await db.ref(`pedidos/${pedidoId}/repartidor_nombre`).set(repartidorData.nombre || 'Repartidor');
+                await db.ref(`pedidos/${pedidoId}/timestamp_asignacion`).set(Date.now());
+                await db.ref(`pedidos/${pedidoId}/historial`).push({
+                    estado: 'coccion',
+                    timestamp: Date.now(),
+                    usuario: currentUser.uid,
+                    accion: 'asignar_repartidor',
+                    repartidor: repartidorId,
+                    repartidor_nombre: repartidorData.nombre || 'Repartidor'
+                });
+
+                // 5. ENVIAR NOTIFICACIÓN PUSH
+                const token = repartidorData.token;
+                console.log('📱 Token del repartidor:', token ? '✅ Disponible' : '❌ No disponible');
+                
+                if (!token) {
+                    console.warn('⚠️ Repartidor sin token FCM');
+                    showToast('⚠️ El repartidor no tiene notificaciones activas', 'warning');
+                    return;
+                }
+                
+                const titulo = '🛵 Nuevo pedido disponible';
+                const mensaje = `Recoge el pedido de ${pedido.cliente_nombre || 'cliente'} en ${pedido.restaurante_nombre || 'el restaurante'}`;
+                
+                console.log(`📤 Enviando notificación a ${repartidorData.nombre || repartidorId}`);
+                console.log(`📨 Título: ${titulo}`);
+                console.log(`📨 Mensaje: ${mensaje}`);
+                
+                // ============================================
+                // 🎵 REPRODUCIR SONIDO DE ÉXITO (CORREGIDO)
+                // ============================================
+                function reproducirSonidoExito() {
+                    console.log('🔊 Reproduciendo sonido de éxito...');
+                    try {
+                        // Usar múltiples fuentes por si una falla
+                        const sonidos = [
+                            'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
+                            'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3',
+                            'https://www.soundjay.com/misc/sounds/positive-beep-02.mp3'
+                        ];
+                        
+                        // Intentar con el primer sonido
+                        const audio = new Audio(sonidos[0]);
+                        audio.volume = 1.0;
+                        audio.play()
                             .then(() => {
-                                console.log('✅ Sonido 2 reproducido');
+                                console.log('✅ Sonido de éxito reproducido');
                                 showToast('🔊 Notificación enviada con sonido', 'success');
                             })
-                            .catch((error2) => {
-                                console.warn('⚠️ Sonido 2 falló, intentando con sonido 3...', error2.message);
-                                // Intentar con tercer sonido
-                                const audio3 = new Audio(sonidos[2]);
-                                audio3.volume = 1.0;
-                                audio3.play()
+                            .catch((error) => {
+                                console.warn('⚠️ Sonido 1 falló, intentando con sonido 2...', error.message);
+                                // Intentar con segundo sonido
+                                const audio2 = new Audio(sonidos[1]);
+                                audio2.volume = 1.0;
+                                audio2.play()
                                     .then(() => {
-                                        console.log('✅ Sonido 3 reproducido');
+                                        console.log('✅ Sonido 2 reproducido');
                                         showToast('🔊 Notificación enviada con sonido', 'success');
                                     })
-                                    .catch((error3) => {
-                                        console.warn('⚠️ Todos los sonidos fallaron:', error3.message);
-                                        showToast('📤 Notificación enviada (sonido no disponible)', 'info');
+                                    .catch((error2) => {
+                                        console.warn('⚠️ Sonido 2 falló, intentando con sonido 3...', error2.message);
+                                        // Intentar con tercer sonido
+                                        const audio3 = new Audio(sonidos[2]);
+                                        audio3.volume = 1.0;
+                                        audio3.play()
+                                            .then(() => {
+                                                console.log('✅ Sonido 3 reproducido');
+                                                showToast('🔊 Notificación enviada con sonido', 'success');
+                                            })
+                                            .catch((error3) => {
+                                                console.warn('⚠️ Todos los sonidos fallaron:', error3.message);
+                                                showToast('📤 Notificación enviada (sonido no disponible)', 'info');
+                                            });
                                     });
                             });
-                    });
+                        
+                        // Vibrar si es posible
+                        if (navigator.vibrate) {
+                            navigator.vibrate(200);
+                        }
+                        
+                    } catch (error) {
+                        console.warn('⚠️ Error general al reproducir sonido:', error);
+                        showToast('📤 Notificación enviada', 'info');
+                    }
+                }
                 
-                // Vibrar si es posible
-                if (navigator.vibrate) {
-                    navigator.vibrate(200);
+                try {
+                    const enviarNotificacion = functions.httpsCallable('enviarNotificationPedido');
+                    
+                    const result = await enviarNotificacion({
+                        token: token,
+                        titulo: titulo,
+                        mensaje: mensaje,
+                        data: { 
+                            tipo: 'pedido', 
+                            uid: repartidorId,
+                            pedidoId: pedidoId
+                        }
+                    });
+                    
+                    console.log('✅ Notificación push enviada:', result.data);
+                    
+                    // 🎵 REPRODUCIR SONIDO DE ÉXITO
+                    reproducirSonidoExito();
+                    
+                    showToast(`✅ Repartidor asignado: ${repartidorData.nombre || 'Repartidor'}`, 'success');
+                    
+                } catch (error) {
+                    console.error('❌ Error al enviar notificación:', error);
+                    showToast('⚠️ Repartidor asignado pero notificación falló', 'warning');
                 }
                 
             } catch (error) {
-                console.warn('⚠️ Error general al reproducir sonido:', error);
-                showToast('📤 Notificación enviada', 'info');
+                console.error('❌ Error en notificarRepartidor:', error);
+                showToast('❌ Error al asignar repartidor', 'error');
             }
-        }
-        
-        try {
-            const enviarNotificacion = functions.httpsCallable('enviarNotificationPedido');
-            
-            const result = await enviarNotificacion({
-                token: token,
-                titulo: titulo,
-                mensaje: mensaje,
-                data: { 
-                    tipo: 'pedido', 
-                    uid: repartidorId,
-                    pedidoId: pedidoId
-                }
-            });
-            
-            console.log('✅ Notificación push enviada:', result.data);
-            
-            // 🎵 REPRODUCIR SONIDO DE ÉXITO
-            reproducirSonidoExito();
-            
-            showToast(`✅ Repartidor asignado: ${repartidorData.nombre || 'Repartidor'}`, 'success');
-            
-        } catch (error) {
-            console.error('❌ Error al enviar notificación:', error);
-            showToast('⚠️ Repartidor asignado pero notificación falló', 'warning');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error en notificarRepartidor:', error);
-        showToast('❌ Error al asignar repartidor', 'error');
-    }
-};
+        };
+
         // ============================================
         // 18. ACCIONES DE PEDIDOS
         // ============================================
-       window.aceptarPedido = async function(pedidoId) {
-    if (estaPausado) {
-        showToast('⏸️ Restaurante en pausa', 'warning');
-        return;
-    }
-    
-    try {
-        console.log('✅ Aceptando pedido:', pedidoId);
-        
-        // 1. ACTUALIZAR ESTADO DEL PEDIDO
-        await db.ref(`pedidos/${pedidoId}/estado`).set('coccion');
-        await db.ref(`pedidos/${pedidoId}/timestamp_inicio`).set(Date.now());
-        await db.ref(`pedidos/${pedidoId}/historial`).push({
-            estado: 'coccion',
-            timestamp: Date.now(),
-            usuario: currentUser.uid,
-            accion: 'aceptado'
-        });
-        
-        showToast('✅ Pedido aceptado, en preparación', 'success');
-        renderizarVista();
-        detenerSonidoRepetido();
-        
-        // ============================================
-        // 🔥 ESTA ES LA LÍNEA QUE FALTA - NOTIFICAR REPARTIDOR
-        // ============================================
-        console.log('📤 Notificando al repartidor...');
-        await notificarRepartidor(pedidoId);
-        // ============================================
-        
-    } catch (error) {
-        console.error('❌ Error al aceptar pedido:', error);
-        showToast('❌ Error al aceptar pedido', 'error');
-    }
-};
+        window.aceptarPedido = async function(pedidoId) {
+            // ✅ VERIFICAR ESTADO DEL RESTAURANTE ANTES DE ACEPTAR
+            const estado = await verificarEstadoRestaurante();
+            
+            if (!estado.abierto) {
+                showToast(`⛔ ${estado.motivo}`, 'error');
+                return;
+            }
+            
+            if (estaPausado) {
+                showToast('⏸️ Restaurante en pausa', 'warning');
+                return;
+            }
+            
+            try {
+                console.log('✅ Aceptando pedido:', pedidoId);
+                
+                await db.ref(`pedidos/${pedidoId}/estado`).set('coccion');
+                await db.ref(`pedidos/${pedidoId}/timestamp_inicio`).set(Date.now());
+                await db.ref(`pedidos/${pedidoId}/historial`).push({
+                    estado: 'coccion',
+                    timestamp: Date.now(),
+                    usuario: currentUser.uid,
+                    accion: 'aceptado'
+                });
+                
+                showToast('✅ Pedido aceptado, en preparación', 'success');
+                renderizarVista();
+                detenerSonidoRepetido();
+                
+                console.log('📤 Notificando al repartidor...');
+                await notificarRepartidor(pedidoId);
+                
+            } catch (error) {
+                console.error('❌ Error al aceptar pedido:', error);
+                showToast('❌ Error al aceptar pedido', 'error');
+            }
+        };
 
         window.rechazarPedido = async function(pedidoId) {
             const confirm = await Swal.fire({ title: '❌ ¿Rechazar pedido?', text: 'El cliente recibirá una notificación', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, rechazar', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white' });
@@ -1985,6 +2203,7 @@ window.notificarRepartidor = async function(pedidoId) {
         console.log('🍳 Aguadulce Express - Panel de Cocina V3');
         console.log('📱 Solo 2 columnas: Entrada y Cocción');
         console.log('📱 Sidebar siempre visible');
+        console.log('📅 Sistema de horarios integrado');
     </script>
 
 </body>

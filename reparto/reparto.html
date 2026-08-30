@@ -1598,85 +1598,440 @@
             }
         }
 
-        // ============================================================
-        // 📌 NAVEGACIÓN DEL MENÚ
-        // ============================================================
-        document.querySelectorAll('.menu-item[data-view]').forEach(item => {
-            item.addEventListener('click', function(e) {
-                e.preventDefault();
+       // ============================================================
+// 📌 NAVEGACIÓN DEL MENÚ (CON VISTAS COMPLETAS)
+// ============================================================
+document.querySelectorAll('.menu-item[data-view]').forEach(item => {
+    item.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        document.querySelectorAll('.menu-item[data-view]').forEach(el => {
+            el.classList.remove('active');
+        });
+        this.classList.add('active');
+        
+        const view = this.dataset.view;
+        currentView = view;
+        
+        console.log('📌 Cambiando a vista:', view);
+        
+        if (view === 'activos') {
+            // ✅ RESTAURAR VISTA DE PEDIDOS ACTIVOS
+            restaurarVistaActivos();
+            renderizarVista();
+            
+        } else if (view === 'historial') {
+            // ✅ MOSTRAR VISTA DE HISTORIAL
+            mostrarVistaHistorial();
+            
+        } else if (view === 'ganancias') {
+            // ✅ MOSTRAR VISTA DE GANANCIAS
+            mostrarVistaGanancias();
+        }
+    });
+});
+
+// ============================================================
+// 📊 MOSTRAR VISTA DE HISTORIAL
+// ============================================================
+function mostrarVistaHistorial() {
+    console.log('📜 Mostrando vista de historial...');
+    
+    const container = document.getElementById('kanban-container');
+    if (!container) return;
+    
+    // Limpiar contenedor
+    container.innerHTML = '';
+    
+    // Crear vista de historial
+    const viewContainer = document.createElement('div');
+    viewContainer.className = 'view-container';
+    viewContainer.style.cssText = `
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-secondary);
+        border-radius: var(--radius);
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+        flex: 1;
+        margin: 0;
+    `;
+    
+    viewContainer.innerHTML = `
+        <div class="view-header" style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1.5rem;border-bottom:2px solid var(--border-color);flex-shrink:0;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="color:var(--accent-gold);font-weight:700;font-size:0.9rem;text-transform:uppercase;">📜 Historial de Pedidos</span>
+                <span style="background:var(--bg-card);padding:0.1rem 0.6rem;border-radius:50px;font-size:0.65rem;color:var(--text-muted);" id="col-count-historial">0</span>
+            </div>
+            <button onclick="restaurarVistaActivos()" 
+                    style="background:var(--accent-gold);color:#0f172a;padding:0.25rem 1rem;border-radius:50px;font-size:0.7rem;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                ← Volver
+            </button>
+        </div>
+        <div class="view-content" id="historial-contenido" style="flex:1;overflow-y:auto;padding:0.75rem 1.5rem;display:flex;flex-direction:column;gap:0.5rem;">
+            <div style="text-align:center;padding:2rem;color:var(--text-muted);">🔄 Cargando historial...</div>
+        </div>
+    `;
+    
+    container.appendChild(viewContainer);
+    
+    // Cargar historial
+    cargarHistorialCompleto();
+}
+
+// ============================================================
+// 📜 CARGAR HISTORIAL COMPLETO
+// ============================================================
+function cargarHistorialCompleto() {
+    const content = document.getElementById('historial-contenido');
+    const contador = document.getElementById('col-count-historial');
+    if (!content) return;
+    
+    if (!repartidorActual || !repartidorActual.id) {
+        content.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-muted);">⚠️ No hay repartidor autenticado</div>`;
+        return;
+    }
+    
+    const uid = repartidorActual.id;
+    
+    database.ref('pedidos')
+        .orderByChild('uid_repartidor')
+        .equalTo(uid)
+        .once('value')
+        .then(snap => {
+            const pedidos = snap.val();
+            let count = 0;
+            
+            if (!pedidos) {
+                content.innerHTML = `
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:var(--text-muted);text-align:center;">
+                        <div style="font-size:2rem;margin-bottom:0.5rem;">📭</div>
+                        <div>No hay pedidos en el historial</div>
+                    </div>
+                `;
+                if (contador) contador.textContent = '0';
+                return;
+            }
+            
+            // Filtrar solo entregados y cancelados
+            let historialPedidos = [];
+            for (const [id, data] of Object.entries(pedidos)) {
+                if (data.estado === 'ENTREGADO' || data.estado === 'CANCELADO_POR_AUSENCIA') {
+                    historialPedidos.push({ id, ...data });
+                }
+            }
+            
+            // Ordenar por fecha (más reciente primero)
+            historialPedidos.sort((a, b) => (b.timestamp_entregado || b.fecha || 0) - (a.timestamp_entregado || a.fecha || 0));
+            
+            count = historialPedidos.length;
+            if (contador) contador.textContent = count;
+            
+            if (count === 0) {
+                content.innerHTML = `
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;color:var(--text-muted);text-align:center;">
+                        <div style="font-size:2rem;margin-bottom:0.5rem;">📭</div>
+                        <div>No hay pedidos en el historial</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Renderizar tarjetas
+            content.innerHTML = '';
+            
+            for (const p of historialPedidos) {
+                const card = document.createElement('div');
+                card.className = 'order-card';
+                card.style.borderLeft = `4px solid ${p.estado === 'ENTREGADO' ? 'var(--accent-green)' : 'var(--accent-red)'}`;
                 
-                document.querySelectorAll('.menu-item[data-view]').forEach(el => {
-                    el.classList.remove('active');
-                });
-                this.classList.add('active');
+                const fecha = p.timestamp_entregado ? new Date(p.timestamp_entregado).toLocaleString() : 'Sin fecha';
+                const estado = p.estado === 'ENTREGADO' ? '✅ Entregado' : '❌ Cancelado';
+                const estadoColor = p.estado === 'ENTREGADO' ? 'var(--accent-green)' : 'var(--accent-red)';
                 
-                const view = this.dataset.view;
-                currentView = view;
-                
-                console.log('📌 Cambiando a vista:', view);
-                
-                if (view === 'activos') {
-                    renderizarVista();
-                    
-                } else if (view === 'historial') {
-                    showToast('📜 Historial', 'Cargando historial de pedidos...', 'info', 2000);
-                    
-                    if (repartidorActual && repartidorActual.id) {
-                        database.ref('pedidos')
-                            .orderByChild('uid_repartidor')
-                            .equalTo(repartidorActual.id)
-                            .once('value')
-                            .then(snap => {
-                                const pedidos = snap.val();
-                                let count = 0;
-                                if (pedidos) {
-                                    for (const [id, p] of Object.entries(pedidos)) {
-                                        if (p.estado === 'ENTREGADO' || p.estado === 'CANCELADO_POR_AUSENCIA') {
-                                            count++;
-                                        }
-                                    }
-                                }
-                                showToast('📜 Historial', `${count} pedidos completados`, 'info', 3000);
-                                console.log('📜 HISTORIAL:', pedidos);
-                            });
+                let productosHtml = '';
+                if (p.items && p.items.length > 0) {
+                    productosHtml = p.items.slice(0, 3).map(item => 
+                        `<span style="display:inline-block;background:var(--bg-secondary);padding:0.05rem 0.4rem;border-radius:50px;font-size:0.55rem;color:var(--text-secondary);border:1px solid var(--border-color);">${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                    if (p.items.length > 3) {
+                        productosHtml += `<span style="font-size:0.5rem;color:var(--text-muted);"> +${p.items.length-3} más</span>`;
                     }
+                } else {
+                    productosHtml = '<span style="font-size:0.65rem;color:var(--text-muted);">Sin productos</span>';
+                }
+                
+                card.innerHTML = `
+                    <div class="top">
+                        <span class="id">#${p.id_pedido || p.id.substring(0,8)}</span>
+                        <span class="time">${fecha}</span>
+                    </div>
+                    <div class="cliente">${escapeHTML(p.cliente_nombre || 'Cliente')}</div>
+                    <div class="direccion">${escapeHTML(p.direccion || 'Sin dirección')}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.3rem;padding-top:0.3rem;border-top:1px solid var(--border-color);">
+                        <span style="font-weight:700;color:var(--accent-gold);font-size:0.8rem;">${(p.total || 0).toFixed(2)}€</span>
+                        <span style="font-size:0.55rem;padding:0.1rem 0.5rem;border-radius:50px;background:${estadoColor}20;color:${estadoColor};font-weight:600;">${estado}</span>
+                    </div>
+                    <div class="productos" style="margin-top:0.3rem;">${productosHtml}</div>
+                `;
+                
+                content.appendChild(card);
+            }
+            
+            console.log(`📜 Historial: ${count} pedidos cargados`);
+        })
+        .catch(error => {
+            console.error('❌ Error cargando historial:', error);
+            content.innerHTML = `
+                <div style="text-align:center;padding:2rem;color:var(--accent-red);">
+                    ❌ Error al cargar el historial: ${error.message}
+                </div>
+            `;
+        });
+}
+
+// ============================================================
+// 💰 MOSTRAR VISTA DE GANANCIAS
+// ============================================================
+function mostrarVistaGanancias() {
+    console.log('💰 Mostrando vista de ganancias...');
+    
+    const container = document.getElementById('kanban-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const viewContainer = document.createElement('div');
+    viewContainer.className = 'view-container';
+    viewContainer.style.cssText = `
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-secondary);
+        border-radius: var(--radius);
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+        flex: 1;
+        margin: 0;
+    `;
+    
+    viewContainer.innerHTML = `
+        <div class="view-header" style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1.5rem;border-bottom:2px solid var(--border-color);flex-shrink:0;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="color:var(--accent-green);font-weight:700;font-size:0.9rem;text-transform:uppercase;">💰 Ganancias</span>
+            </div>
+            <button onclick="restaurarVistaActivos()" 
+                    style="background:var(--accent-gold);color:#0f172a;padding:0.25rem 1rem;border-radius:50px;font-size:0.7rem;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                ← Volver
+            </button>
+        </div>
+        <div class="view-content" id="ganancias-contenido" style="flex:1;overflow-y:auto;padding:0.75rem 1.5rem;display:flex;flex-direction:column;gap:0.75rem;">
+            <div style="text-align:center;padding:2rem;color:var(--text-muted);">🔄 Cargando ganancias...</div>
+        </div>
+    `;
+    
+    container.appendChild(viewContainer);
+    
+    cargarGananciasCompleto();
+}
+
+// ============================================================
+// 💰 CARGAR GANANCIAS COMPLETO
+// ============================================================
+function cargarGananciasCompleto() {
+    const content = document.getElementById('ganancias-contenido');
+    if (!content) return;
+    
+    if (!repartidorActual || !repartidorActual.id) {
+        content.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-muted);">⚠️ No hay repartidor autenticado</div>`;
+        return;
+    }
+    
+    const uid = repartidorActual.id;
+    const hoy = new Date();
+    const inicioSemana = new Date(hoy);
+    inicioSemana.setDate(hoy.getDate() - hoy.getDay() + (hoy.getDay() === 0 ? -6 : 1));
+    inicioSemana.setHours(0, 0, 0, 0);
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    inicioMes.setHours(0, 0, 0, 0);
+    
+    database.ref('pedidos')
+        .orderByChild('uid_repartidor')
+        .equalTo(uid)
+        .once('value')
+        .then(snap => {
+            const pedidos = snap.val();
+            let totalHoy = 0, totalSemana = 0, totalMes = 0, countHoy = 0, countSemana = 0, countMes = 0;
+            let pedidosHoy = [], pedidosSemana = [], pedidosMes = [];
+            
+            if (pedidos) {
+                for (const [id, data] of Object.entries(pedidos)) {
+                    if (data.estado !== 'ENTREGADO') continue;
                     
-                } else if (view === 'ganancias') {
-                    showToast('💰 Ganancias', 'Cargando resumen de ganancias...', 'info', 2000);
+                    const fecha = new Date(data.timestamp_entregado || data.fecha || 0);
+                    const monto = data.total || 0;
                     
-                    if (repartidorActual && repartidorActual.id) {
-                        database.ref('pedidos')
-                            .orderByChild('uid_repartidor')
-                            .equalTo(repartidorActual.id)
-                            .once('value')
-                            .then(snap => {
-                                const pedidos = snap.val() || {};
-                                let total = 0;
-                                let count = 0;
-                                const hoy = new Date();
-                                hoy.setHours(0, 0, 0, 0);
-                                
-                                for (const [id, p] of Object.entries(pedidos)) {
-                                    if (p.estado === 'ENTREGADO') {
-                                        const fecha = new Date(p.timestamp_entregado || p.fecha || 0);
-                                        if (fecha >= hoy) {
-                                            total += p.total || 0;
-                                            count++;
-                                        }
-                                    }
-                                }
-                                
-                                showToast(
-                                    '💰 Ganancias de hoy',
-                                    `${count} pedidos - Total: ${total.toFixed(2)}€`,
-                                    'success',
-                                    4000
-                                );
-                            });
+                    if (fecha >= inicioMes) {
+                        totalMes += monto;
+                        countMes++;
+                        pedidosMes.push({ id, ...data, fecha });
+                    }
+                    if (fecha >= inicioSemana) {
+                        totalSemana += monto;
+                        countSemana++;
+                        pedidosSemana.push({ id, ...data, fecha });
+                    }
+                    if (fecha >= hoy.setHours(0,0,0,0)) {
+                        totalHoy += monto;
+                        countHoy++;
+                        pedidosHoy.push({ id, ...data, fecha });
                     }
                 }
-            });
+            }
+            
+            // Ordenar por fecha (más reciente primero)
+            pedidosHoy.sort((a, b) => b.fecha - a.fecha);
+            pedidosSemana.sort((a, b) => b.fecha - a.fecha);
+            pedidosMes.sort((a, b) => b.fecha - a.fecha);
+            
+            content.innerHTML = `
+                <!-- Resumen -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;">
+                    <div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.75rem;text-align:center;border:1px solid var(--border-color);">
+                        <div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;">📅 Hoy</div>
+                        <div style="font-size:1.5rem;font-weight:900;color:var(--accent-green);">${totalHoy.toFixed(2)}€</div>
+                        <div style="font-size:0.6rem;color:var(--text-muted);">${countHoy} pedidos</div>
+                    </div>
+                    <div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.75rem;text-align:center;border:1px solid var(--border-color);">
+                        <div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;">📅 Semana</div>
+                        <div style="font-size:1.5rem;font-weight:900;color:var(--accent-gold);">${totalSemana.toFixed(2)}€</div>
+                        <div style="font-size:0.6rem;color:var(--text-muted);">${countSemana} pedidos</div>
+                    </div>
+                    <div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.75rem;text-align:center;border:1px solid var(--border-color);">
+                        <div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;">📅 Mes</div>
+                        <div style="font-size:1.5rem;font-weight:900;color:var(--accent-blue);">${totalMes.toFixed(2)}€</div>
+                        <div style="font-size:0.6rem;color:var(--text-muted);">${countMes} pedidos</div>
+                    </div>
+                </div>
+                
+                <!-- Detalle de pedidos -->
+                <div style="margin-top:0.5rem;">
+                    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
+                        <button onclick="mostrarDetalleGanancias('hoy', ${JSON.stringify(pedidosHoy).replace(/"/g, '&quot;')})" 
+                                style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:50px;padding:0.2rem 0.8rem;font-size:0.65rem;color:var(--text-secondary);cursor:pointer;">📅 Hoy (${countHoy})</button>
+                        <button onclick="mostrarDetalleGanancias('semana', ${JSON.stringify(pedidosSemana).replace(/"/g, '&quot;')})" 
+                                style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:50px;padding:0.2rem 0.8rem;font-size:0.65rem;color:var(--text-secondary);cursor:pointer;">📅 Semana (${countSemana})</button>
+                        <button onclick="mostrarDetalleGanancias('mes', ${JSON.stringify(pedidosMes).replace(/"/g, '&quot;')})" 
+                                style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:50px;padding:0.2rem 0.8rem;font-size:0.65rem;color:var(--text-secondary);cursor:pointer;">📅 Mes (${countMes})</button>
+                    </div>
+                    <div id="detalle-ganancias" style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.5rem;border:1px solid var(--border-color);max-height:300px;overflow-y:auto;">
+                        <div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:0.75rem;">Selecciona un período para ver el detalle</div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('❌ Error cargando ganancias:', error);
+            content.innerHTML = `
+                <div style="text-align:center;padding:2rem;color:var(--accent-red);">
+                    ❌ Error al cargar ganancias: ${error.message}
+                </div>
+            `;
         });
+}
+
+// ============================================================
+// 📋 MOSTRAR DETALLE DE GANANCIAS POR PERÍODO
+// ============================================================
+function mostrarDetalleGanancias(periodo, pedidos) {
+    const container = document.getElementById('detalle-ganancias');
+    if (!container) return;
+    
+    if (!pedidos || pedidos.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:0.75rem;">
+                📭 No hay pedidos en este período
+            </div>
+        `;
+        return;
+    }
+    
+    const titulos = {
+        'hoy': '📅 Hoy',
+        'semana': '📅 Semana',
+        'mes': '📅 Mes'
+    };
+    
+    let html = `
+        <div style="font-size:0.65rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.3rem;">${titulos[periodo] || 'Detalle'}</div>
+    `;
+    
+    for (const p of pedidos) {
+        const fecha = p.fecha ? new Date(p.fecha).toLocaleString() : 'Sin fecha';
+        html += `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:0.3rem 0;border-bottom:1px solid var(--border-color);">
+                <div>
+                    <span style="font-size:0.6rem;color:var(--text-muted);">#${p.id_pedido || p.id.substring(0,8)}</span>
+                    <span style="font-size:0.6rem;color:var(--text-secondary);margin-left:0.5rem;">${escapeHTML(p.cliente_nombre || 'Cliente')}</span>
+                </div>
+                <div>
+                    <span style="font-size:0.7rem;font-weight:700;color:var(--accent-gold);">${(p.total || 0).toFixed(2)}€</span>
+                    <span style="font-size:0.5rem;color:var(--text-muted);margin-left:0.3rem;">${fecha}</span>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+// ============================================================
+// 🔄 RESTAURAR VISTA DE PEDIDOS ACTIVOS
+// ============================================================
+function restaurarVistaActivos() {
+    console.log('🔄 Restaurando vista de pedidos activos...');
+    
+    const container = document.getElementById('kanban-container');
+    if (!container) return;
+    
+    // ✅ ACTUALIZAR MENÚ
+    document.querySelectorAll('.menu-item[data-view]').forEach(el => {
+        el.classList.remove('active');
+        if (el.dataset.view === 'activos') {
+            el.classList.add('active');
+        }
+    });
+    
+    // ✅ CAMBIAR VISTA ACTUAL
+    currentView = 'activos';
+    
+    // ✅ RECONSTRUIR COLUMNAS
+    container.innerHTML = `
+        <!-- COLUMNA 1: POR RECOGER -->
+        <div class="kanban-column pending" id="columna-pendiente">
+            <div class="column-header">
+                <span class="title">📦 Por Recoger</span>
+                <span class="count" id="col-count-pendiente">0</span>
+            </div>
+            <div class="column-content" id="col-pendiente"></div>
+        </div>
+        
+        <!-- COLUMNA 2: EN CAMINO -->
+        <div class="kanban-column in-progress" id="columna-progreso">
+            <div class="column-header">
+                <span class="title">🛵 En Camino</span>
+                <span class="count" id="col-count-progreso">0</span>
+            </div>
+            <div class="column-content" id="col-progreso"></div>
+        </div>
+    `;
+    
+    // ✅ RECARGAR PEDIDOS
+    renderizarVista();
+}
 
         // ============================================================
         // 🆘 ASISTENCIA

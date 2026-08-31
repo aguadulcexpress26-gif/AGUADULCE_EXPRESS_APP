@@ -930,7 +930,7 @@
                 <span class="badge red" id="sidebar-demoras">0</span>
             </button>
             
-            <!-- NUEVO: GANANCIAS -->
+            <!-- GANANCIAS -->
             <button class="menu-item" data-view="ganancias">
                 <span class="icon">💰</span>
                 <span>Ganancias</span>
@@ -2289,7 +2289,7 @@
         }
 
         // ============================================
-        // 29. NUEVO: VISTA GANANCIAS
+        // 29. VISTA GANANCIAS
         // ============================================
         function mostrarVistaGanancias() {
             console.log('💰 Mostrando vista de ganancias...');
@@ -2542,66 +2542,517 @@
         });
 
         // ============================================
-        // 31. REPARTO PERSONAL
+        // 31. CREAR ENVÍO (FUNCIÓN COMPLETA)
+        // ============================================
+        async function crearEnvio(data) {
+            console.log('🚚 Creando envío con datos:', data);
+            
+            try {
+                // 1. BUSCAR REPARTIDORES DISPONIBLES
+                const repartidoresSnap = await db.ref('repartidores')
+                    .orderByChild('activo')
+                    .equalTo(true)
+                    .once('value');
+                
+                const repartidores = repartidoresSnap.val();
+                if (!repartidores) {
+                    showToast('⚠️ No hay repartidores disponibles', 'warning');
+                    return;
+                }
+                
+                // 2. SELECCIONAR REPARTIDOR CON MENOS CARGA
+                let repartidorId = null;
+                let repartidorData = null;
+                let menorCarga = Infinity;
+                
+                for (const [uid, rData] of Object.entries(repartidores)) {
+                    const pedidosActivosSnap = await db.ref('pedidos')
+                        .orderByChild('uid_repartidor')
+                        .equalTo(uid)
+                        .once('value');
+                    
+                    const pedidosActivos = pedidosActivosSnap.val();
+                    let carga = 0;
+                    
+                    if (pedidosActivos) {
+                        for (const [pid, pData] of Object.entries(pedidosActivos)) {
+                            const estado = pData.estado ? pData.estado.toUpperCase() : '';
+                            if (estado !== 'ENTREGADO' && estado !== 'CANCELADO_POR_AUSENCIA') {
+                                carga++;
+                            }
+                        }
+                    }
+                    
+                    console.log(`🛵 Repartidor ${rData.nombre || uid}: ${carga} pedidos activos`);
+                    
+                    if (carga < menorCarga) {
+                        menorCarga = carga;
+                        repartidorId = uid;
+                        repartidorData = rData;
+                    }
+                }
+                
+                if (!repartidorId) {
+                    const keys = Object.keys(repartidores);
+                    if (keys.length > 0) {
+                        repartidorId = keys[0];
+                        repartidorData = repartidores[keys[0]];
+                        console.log('⚠️ Todos los repartidores ocupados, asignando al primero:', repartidorId);
+                    } else {
+                        showToast('⚠️ No hay repartidores disponibles', 'warning');
+                        return;
+                    }
+                }
+                
+                console.log(`✅ Repartidor seleccionado: ${repartidorData.nombre || repartidorId} (${menorCarga} pedidos)`);
+                
+                // 3. CREAR PEDIDO
+                const pedidoId = db.ref('pedidos').push().key;
+                
+                // Usar el costo de envío calculado (o valor por defecto)
+                const costoEnvio = data.costoEnvio || 3.50;
+                
+                const pedido = {
+                    uid_restaurante: restauranteId,
+                    restaurante_id: restauranteId,
+                    restaurante_nombre: document.getElementById('sidebar-restaurante').textContent || 'Restaurante',
+                    uid_repartidor: repartidorId,
+                    repartidor_nombre: repartidorData.nombre || 'Repartidor',
+                    uid_cliente: 'reparto_personal',
+                    cliente_nombre: data.cliente,
+                    cliente_telefono: data.telefono,
+                    direccion: data.direccion,
+                    items: [
+                        {
+                            nombre: '📦 Reparto Personal',
+                            cantidad: 1,
+                            precio_unitario: 0,
+                            total: 0
+                        }
+                    ],
+                    total: 0,
+                    subtotal: 0,
+                    envio: costoEnvio,
+                    estado: 'LISTO',
+                    tipo: 'reparto_personal',
+                    metodo_pago: data.pago === 'pagado' ? 'Pagado' : 'Contra entrega',
+                    nota: data.nota || '',
+                    debe_cobrar: data.pago === 'cobrar',
+                    timestamp: Date.now(),
+                    timestamp_inicio: Date.now(),
+                    timestamp_listo: Date.now(),
+                    tiempo_preparacion: 0,
+                    distancia_aproximada: window._distanciaCalculada || null,
+                    historial: [
+                        {
+                            estado: 'LISTO',
+                            timestamp: Date.now(),
+                            accion: 'creado_por_restaurante',
+                            tipo: 'reparto_personal'
+                        }
+                    ],
+                    reparto_personal: {
+                        creado_por: 'restaurante',
+                        fecha_creacion: Date.now(),
+                        nota: data.nota || '',
+                        estado_pago: data.pago,
+                        costo_envio_calculado: costoEnvio
+                    }
+                };
+                
+                await db.ref(`pedidos/${pedidoId}`).set(pedido);
+                console.log(`✅ Pedido ${pedidoId} creado correctamente`);
+                
+                // 4. CREAR REGISTRO EN ENVÍOS
+                const envioId = db.ref('envios').push().key;
+                const envio = {
+                    uid_restaurante: restauranteId,
+                    uid_repartidor: repartidorId,
+                    pedido_id: pedidoId,
+                    cliente_nombre: data.cliente,
+                    cliente_telefono: data.telefono,
+                    direccion: data.direccion,
+                    monto: 0,
+                    costo_envio: costoEnvio,
+                    estado_pago: data.pago === 'pagado' ? 'pagado' : 'pendiente',
+                    debe_cobrar: data.pago === 'cobrar',
+                    estado: 'entregado',
+                    tipo: 'reparto_personal',
+                    nota: data.nota || '',
+                    timestamp: Date.now(),
+                    distancia_aproximada: window._distanciaCalculada || null,
+                    historial: [
+                        {
+                            estado: 'entregado',
+                            timestamp: Date.now(),
+                            accion: 'creado_por_restaurante'
+                        }
+                    ]
+                };
+                
+                await db.ref(`envios/${envioId}`).set(envio);
+                console.log(`✅ Envío ${envioId} creado correctamente`);
+                
+                // 5. ENVIAR NOTIFICACIÓN AL REPARTIDOR
+                console.log('📤 Enviando notificación al repartidor...');
+                await notificarRepartidor(pedidoId);
+                
+                showToast(`✅ Reparto #${pedidoId.substring(0,8)} listo - Envío: ${costoEnvio.toFixed(2)}€`, 'success');
+                renderizarVista();
+                reproducirSonidoLlegada();
+                
+            } catch (error) {
+                console.error('❌ Error al crear envío:', error);
+                showToast('❌ Error al crear envío: ' + error.message, 'error');
+            }
+        }
+
+        // ============================================
+        // 32. NUEVO REPARTO - VERSIÓN MODERNA CON GOOGLE MAPS
         // ============================================
         window.abrirFormularioReparto = function() {
+            console.log('🚚 Abriendo formulario de nuevo reparto...');
+            
+            // Crear el modal con diseño moderno
             Swal.fire({
-                title: '🚚 Nuevo Reparto',
+                title: '🚚 Nuevo Reparto Personal',
                 html: `
-                    <div style="text-align:left;color:white;font-size:0.85rem;">
-                        <div style="margin-bottom:10px;"><label style="display:block;color:#94a3b8;font-size:0.7rem;">👤 Cliente *</label><input id="cliente-reparto" class="swal2-input" placeholder="Nombre" style="background:#1e293b;border:1px solid #334155;color:white;font-size:0.85rem;"></div>
-                        <div style="margin-bottom:10px;"><label style="display:block;color:#94a3b8;font-size:0.7rem;">📞 Teléfono *</label><input id="telefono-reparto" class="swal2-input" placeholder="Teléfono" style="background:#1e293b;border:1px solid #334155;color:white;font-size:0.85rem;"></div>
-                        <div style="margin-bottom:10px;"><label style="display:block;color:#94a3b8;font-size:0.7rem;">📍 Dirección *</label><input id="direccion-reparto" class="swal2-input" placeholder="Dirección" style="background:#1e293b;border:1px solid #334155;color:white;font-size:0.85rem;"></div>
-                        <div style="margin-bottom:10px;"><label style="display:block;color:#94a3b8;font-size:0.7rem;">💳 Pago</label><select id="pago-reparto" style="width:100%;padding:0.6rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:white;font-size:0.85rem;"><option value="pagado">✅ Pagado</option><option value="cobrar">💵 Cobrar en sitio</option></select></div>
+                    <div style="text-align:left;color:white;padding:4px;max-height:70vh;overflow-y:auto;">
+                        <!-- ==========================================
+                        DATOS DEL CLIENTE
+                        ========================================== -->
+                        <div style="background:linear-gradient(135deg, #1e293b, #0f172a);border-radius:16px;padding:16px;margin-bottom:16px;border:1px solid #334155;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                                <span style="font-size:18px;">👤</span>
+                                <span style="font-weight:700;font-size:14px;color:var(--accent-gold);">DATOS DEL CLIENTE</span>
+                            </div>
+                            
+                            <div style="margin-bottom:12px;">
+                                <label style="display:block;font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px;">
+                                    Nombre completo <span style="color:#ef4444;">*</span>
+                                </label>
+                                <input id="cliente-reparto" class="swal2-input" placeholder="Ej: Juan Pérez" 
+                                       style="width:100%;padding:12px 16px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;transition:all 0.3s;">
+                            </div>
+                            
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div>
+                                    <label style="display:block;font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px;">
+                                        📞 Teléfono <span style="color:#ef4444;">*</span>
+                                    </label>
+                                    <input id="telefono-reparto" class="swal2-input" placeholder="600000000" 
+                                           style="width:100%;padding:12px 16px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;transition:all 0.3s;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px;">
+                                        💳 Forma de pago
+                                    </label>
+                                    <select id="pago-reparto" 
+                                            style="width:100%;padding:12px 16px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;cursor:pointer;transition:all 0.3s;">
+                                        <option value="pagado" style="background:#0f172a;">✅ Ya está pagado</option>
+                                        <option value="cobrar" style="background:#0f172a;">💵 Cobrar en sitio</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ==========================================
+                        DIRECCIÓN Y ENVÍO
+                        ========================================== -->
+                        <div style="background:linear-gradient(135deg, #1e293b, #0f172a);border-radius:16px;padding:16px;margin-bottom:16px;border:1px solid #334155;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                                <span style="font-size:18px;">📍</span>
+                                <span style="font-weight:700;font-size:14px;color:var(--accent-blue);">DIRECCIÓN DE ENTREGA</span>
+                            </div>
+                            
+                            <div style="margin-bottom:12px;">
+                                <label style="display:block;font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px;">
+                                    Dirección completa <span style="color:#ef4444;">*</span>
+                                </label>
+                                <input id="direccion-reparto" class="swal2-input" placeholder="Calle, número, Roquetas de Mar" 
+                                       style="width:100%;padding:12px 16px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;transition:all 0.3s;">
+                                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:#f59e0b;background:#1e293b;padding:6px 12px;border-radius:8px;">
+                                    <span>⚠️</span>
+                                    <span>Solo disponible en <strong>Roquetas de Mar</strong> (C.P. 04740)</span>
+                                </div>
+                            </div>
+                            
+                            <!-- ==========================================
+                            CALCULADORA DE ENVÍO CON GOOGLE MAPS
+                            ========================================== -->
+                            <div style="background:#0f172a;border-radius:12px;padding:14px;border:2px solid #334155;transition:all 0.3s;" id="envio-calculator">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div>
+                                        <div style="display:flex;align-items:center;gap:6px;">
+                                            <span style="font-size:16px;">🚚</span>
+                                            <span style="font-weight:600;font-size:13px;color:#94a3b8;">Costo de envío</span>
+                                        </div>
+                                        <div style="font-size:10px;color:#64748b;margin-top:2px;">
+                                            Calculado según distancia desde el restaurante
+                                        </div>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <div id="costo-envio-display" style="font-size:22px;font-weight:900;color:#94a3b8;">
+                                            ⏳ Calcular
+                                        </div>
+                                        <div id="distancia-display" style="font-size:9px;color:#64748b;"></div>
+                                    </div>
+                                </div>
+                                <div id="envio-detalle" style="margin-top:8px;padding-top:8px;border-top:1px solid #334155;font-size:11px;color:#64748b;display:none;">
+                                    <div style="display:flex;justify-content:space-between;">
+                                        <span>Tarifa base:</span>
+                                        <span id="tarifa-base-display">2.50€</span>
+                                    </div>
+                                    <div style="display:flex;justify-content:space-between;">
+                                        <span>Distancia:</span>
+                                        <span id="distancia-km-display">0 km</span>
+                                    </div>
+                                    <div style="display:flex;justify-content:space-between;font-weight:700;color:var(--accent-gold);border-top:1px solid #334155;padding-top:4px;margin-top:4px;">
+                                        <span>Total envío:</span>
+                                        <span id="envio-total-display">0.00€</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ==========================================
+                        NOTA ADICIONAL
+                        ========================================== -->
+                        <div style="background:linear-gradient(135deg, #1e293b, #0f172a);border-radius:16px;padding:16px;border:1px solid #334155;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                                <span style="font-size:18px;">📝</span>
+                                <span style="font-weight:700;font-size:14px;color:var(--text-secondary);">NOTA ADICIONAL</span>
+                            </div>
+                            <textarea id="nota-reparto" 
+                                      placeholder="Instrucciones para el repartidor (opcional)"
+                                      style="width:100%;padding:12px 16px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;min-height:60px;outline:none;transition:all 0.3s;resize:vertical;"></textarea>
+                        </div>
+                        
+                        <div style="margin-top:12px;font-size:10px;color:#64748b;text-align:center;">
+                            <span style="color:#ef4444;">*</span> Campos obligatorios
+                        </div>
                     </div>
                 `,
-                confirmButtonText: '📨 Enviar',
+                confirmButtonText: '📨 Enviar a Repartidor',
                 showCancelButton: true,
                 cancelButtonText: 'Cancelar',
                 background: '#0f172a',
                 color: 'white',
                 confirmButtonColor: '#8b5cf6',
                 cancelButtonColor: '#334155',
-                width: '90%',
-                preConfirm: () => {
+                width: '92%',
+                maxWidth: '520px',
+                didOpen: () => {
+                    // ==========================================
+                    // CONFIGURAR CÁLCULO DE ENVÍO CON GOOGLE MAPS
+                    // ==========================================
+                    const direccionInput = document.getElementById('direccion-reparto');
+                    const costoDisplay = document.getElementById('costo-envio-display');
+                    const distanciaDisplay = document.getElementById('distancia-display');
+                    const envioDetalle = document.getElementById('envio-detalle');
+                    const tarifaBaseDisplay = document.getElementById('tarifa-base-display');
+                    const distanciaKmDisplay = document.getElementById('distancia-km-display');
+                    const envioTotalDisplay = document.getElementById('envio-total-display');
+                    const calculator = document.getElementById('envio-calculator');
+                    
+                    // Función para calcular el costo de envío
+                    async function calcularCostoEnvio(direccion) {
+                        if (!direccion || direccion.trim().length < 5) {
+                            costoDisplay.textContent = '📍 Escribe dirección';
+                            costoDisplay.style.color = '#94a3b8';
+                            envioDetalle.style.display = 'none';
+                            calculator.style.borderColor = '#334155';
+                            return null;
+                        }
+                        
+                        costoDisplay.textContent = '⏳ Calculando...';
+                        costoDisplay.style.color = '#f59e0b';
+                        distanciaDisplay.textContent = '🔄';
+                        
+                        try {
+                            // Obtener dirección del restaurante
+                            const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
+                            const restaurante = restSnap.val();
+                            const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
+                            
+                            if (!direccionRestaurante) {
+                                console.warn('⚠️ Restaurante sin dirección, usando tarifa fija');
+                                const costoFijo = 3.50;
+                                costoDisplay.textContent = `${costoFijo.toFixed(2)}€`;
+                                costoDisplay.style.color = '#10b981';
+                                distanciaDisplay.textContent = '📍 Sin distancia';
+                                envioDetalle.style.display = 'block';
+                                tarifaBaseDisplay.textContent = '3.50€ (fijo)';
+                                distanciaKmDisplay.textContent = '-- km';
+                                envioTotalDisplay.textContent = `${costoFijo.toFixed(2)}€`;
+                                calculator.style.borderColor = '#10b981';
+                                return costoFijo;
+                            }
+                            
+                            console.log(`📤 Calculando distancia: "${direccionRestaurante}" → "${direccion}"`);
+                            
+                            // Intentar usar la Cloud Function
+                            try {
+                                const calcularDistancia = functions.httpsCallable('calcularDistancia');
+                                const result = await calcularDistancia({
+                                    origen: direccionRestaurante,
+                                    destino: direccion
+                                });
+                                
+                                console.log('📨 Respuesta de Cloud Function:', result.data);
+                                
+                                if (result.data.success) {
+                                    const distanciaKm = result.data.distanciaKm;
+                                    const tiempo = result.data.tiempo || '';
+                                    
+                                    // Calcular costo
+                                    const tarifaKm = restaurante.tarifa_envio_km || 1.50;
+                                    const costoMinimo = restaurante.costo_envio_minimo || 3.00;
+                                    const costoMaximo = restaurante.costo_envio_maximo || 10.00;
+                                    
+                                    let costo = distanciaKm * tarifaKm;
+                                    costo = Math.max(costo, costoMinimo);
+                                    costo = Math.min(costo, costoMaximo);
+                                    costo = Math.round(costo * 100) / 100;
+                                    
+                                    console.log(`📍 Distancia: ${distanciaKm.toFixed(2)} km → Costo: ${costo.toFixed(2)}€`);
+                                    
+                                    costoDisplay.textContent = `${costo.toFixed(2)}€`;
+                                    costoDisplay.style.color = '#10b981';
+                                    distanciaDisplay.textContent = `📍 ${distanciaKm.toFixed(1)} km ${tiempo ? '· ' + tiempo : ''}`;
+                                    
+                                    envioDetalle.style.display = 'block';
+                                    tarifaBaseDisplay.textContent = `${costoMinimo.toFixed(2)}€`;
+                                    distanciaKmDisplay.textContent = `${distanciaKm.toFixed(1)} km`;
+                                    envioTotalDisplay.textContent = `${costo.toFixed(2)}€`;
+                                    calculator.style.borderColor = '#10b981';
+                                    
+                                    // Guardar costo para el envío
+                                    window._costoEnvioCalculado = costo;
+                                    window._distanciaCalculada = distanciaKm;
+                                    
+                                    return costo;
+                                } else {
+                                    console.warn('⚠️ Cloud Function falló, usando cálculo alternativo');
+                                    return calcularCostoAlternativo(direccion);
+                                }
+                            } catch (cfError) {
+                                console.warn('⚠️ Error en Cloud Function:', cfError);
+                                return calcularCostoAlternativo(direccion);
+                            }
+                            
+                        } catch (error) {
+                            console.error('❌ Error calculando envío:', error);
+                            const costoFijo = 3.50;
+                            costoDisplay.textContent = `${costoFijo.toFixed(2)}€`;
+                            costoDisplay.style.color = '#f59e0b';
+                            distanciaDisplay.textContent = '⚠️ Estimado';
+                            envioDetalle.style.display = 'block';
+                            tarifaBaseDisplay.textContent = '3.50€ (estimado)';
+                            distanciaKmDisplay.textContent = '-- km';
+                            envioTotalDisplay.textContent = `${costoFijo.toFixed(2)}€`;
+                            calculator.style.borderColor = '#f59e0b';
+                            window._costoEnvioCalculado = costoFijo;
+                            return costoFijo;
+                        }
+                    }
+                    
+                    // Función alternativa (sin Google Maps)
+                    function calcularCostoAlternativo(direccion) {
+                        // Si contiene "Roquetas" o "04740", usar tarifa normal
+                        const esRoquetas = direccion.toLowerCase().includes('roquetas') || direccion.includes('04740');
+                        const costo = esRoquetas ? 3.50 : 5.00;
+                        
+                        costoDisplay.textContent = `${costo.toFixed(2)}€`;
+                        costoDisplay.style.color = '#f59e0b';
+                        distanciaDisplay.textContent = esRoquetas ? '📍 Zona Roquetas' : '📍 Fuera de zona';
+                        envioDetalle.style.display = 'block';
+                        tarifaBaseDisplay.textContent = `${costo.toFixed(2)}€`;
+                        distanciaKmDisplay.textContent = '-- km';
+                        envioTotalDisplay.textContent = `${costo.toFixed(2)}€`;
+                        calculator.style.borderColor = '#f59e0b';
+                        window._costoEnvioCalculado = costo;
+                        return costo;
+                    }
+                    
+                    // Evento: calcular al escribir la dirección (con debounce)
+                    let timeoutId = null;
+                    direccionInput.addEventListener('input', function() {
+                        clearTimeout(timeoutId);
+                        const dir = this.value.trim();
+                        if (dir.length < 5) {
+                            costoDisplay.textContent = '📍 Escribe dirección';
+                            costoDisplay.style.color = '#94a3b8';
+                            envioDetalle.style.display = 'none';
+                            calculator.style.borderColor = '#334155';
+                            return;
+                        }
+                        timeoutId = setTimeout(() => {
+                            calcularCostoEnvio(dir);
+                        }, 800);
+                    });
+                    
+                    // Evento: calcular al perder el foco
+                    direccionInput.addEventListener('blur', function() {
+                        const dir = this.value.trim();
+                        if (dir.length >= 5) {
+                            calcularCostoEnvio(dir);
+                        }
+                    });
+                    
+                    // Si hay una dirección predefinida, calcular
+                    if (direccionInput.value.trim().length >= 5) {
+                        setTimeout(() => calcularCostoEnvio(direccionInput.value.trim()), 500);
+                    }
+                },
+                preConfirm: async () => {
                     const cliente = document.getElementById('cliente-reparto').value.trim();
                     const telefono = document.getElementById('telefono-reparto').value.trim();
                     const direccion = document.getElementById('direccion-reparto').value.trim();
-                    if (!cliente || !telefono || !direccion) {
-                        Swal.showValidationMessage('❌ Completa todos los campos');
+                    const pago = document.getElementById('pago-reparto').value;
+                    const nota = document.getElementById('nota-reparto').value.trim();
+                    const costoEnvio = window._costoEnvioCalculado || 3.50;
+                    
+                    if (!cliente) {
+                        Swal.showValidationMessage('❌ El nombre del cliente es obligatorio');
                         return false;
                     }
-                    return { cliente, telefono, direccion, pago: document.getElementById('pago-reparto').value };
+                    if (!telefono) {
+                        Swal.showValidationMessage('❌ El teléfono es obligatorio');
+                        return false;
+                    }
+                    if (!direccion) {
+                        Swal.showValidationMessage('❌ La dirección es obligatoria');
+                        return false;
+                    }
+                    
+                    // Validar que la dirección esté en Roquetas
+                    const esRoquetas = direccion.toLowerCase().includes('roquetas') || direccion.includes('04740');
+                    if (!esRoquetas) {
+                        const confirm = await Swal.fire({
+                            title: '⚠️ Fuera de zona',
+                            text: 'La dirección no parece estar en Roquetas de Mar. ¿Quieres continuar?',
+                            icon: 'warning',
+                            showCancelButton: true,
+                            confirmButtonText: 'Sí, continuar',
+                            cancelButtonText: 'Cancelar',
+                            background: '#0f172a',
+                            color: 'white'
+                        });
+                        if (!confirm.isConfirmed) return false;
+                    }
+                    
+                    return { cliente, telefono, direccion, pago, nota, costoEnvio };
                 }
             }).then(async (result) => {
                 if (result.isConfirmed) {
-                    try {
-                        const repartidoresSnap = await db.ref('repartidores').orderByChild('activo').equalTo(true).once('value');
-                        const repartidores = repartidoresSnap.val();
-                        if (!repartidores) { showToast('⚠️ No hay repartidores', 'warning'); return; }
-                        let repartidorId = Object.keys(repartidores)[0];
-                        const pedidoId = db.ref('pedidos').push().key;
-                        await db.ref(`pedidos/${pedidoId}`).set({
-                            uid_restaurante: restauranteId, restaurante_id: restauranteId,
-                            restaurante_nombre: document.getElementById('sidebar-restaurante').textContent || 'Restaurante',
-                            uid_repartidor: repartidorId, repartidor_nombre: repartidores[repartidorId].nombre || 'Repartidor',
-                            uid_cliente: 'reparto_personal', cliente_nombre: result.value.cliente,
-                            cliente_telefono: result.value.telefono, direccion: result.value.direccion,
-                            items: [{ nombre: '📦 Reparto Personal', cantidad: 1, precio_unitario: 0, total: 0 }],
-                            total: 0, envio: 5.00, estado: 'LISTO', tipo: 'reparto_personal',
-                            metodo_pago: result.value.pago === 'pagado' ? 'Pagado' : 'Contra entrega',
-                            timestamp: Date.now(), timestamp_inicio: Date.now(), timestamp_listo: Date.now(),
-                            historial: [{ estado: 'LISTO', timestamp: Date.now(), accion: 'creado' }]
-                        });
-                        showToast('✅ Reparto enviado', 'success');
-                        renderizarVista();
-                    } catch (error) { console.error('Error:', error); showToast('❌ Error', 'error'); }
+                    await crearEnvio(result.value);
                 }
             });
         };
 
         // ============================================
-        // 32. INICIALIZAR
+        // 33. INICIALIZAR
         // ============================================
         console.log('🍳 Aguadulce Express - Panel de Cocina V4');
         console.log('📱 Solo 2 columnas: Entrada y Cocción');
@@ -2611,6 +3062,7 @@
         console.log('🔤 Ajuste de tamaño de fuente integrado');
         console.log('🆔 IDs de pedidos resaltados');
         console.log('🐛 Corrección de tarjetas duplicadas');
+        console.log('🚚 Nuevo Reparto con cálculo de envío por Google Maps');
     </script>
 
 </body>

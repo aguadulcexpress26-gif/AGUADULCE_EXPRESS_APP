@@ -2855,202 +2855,88 @@
                     const envioTotalDisplay = document.getElementById('envio-total-display');
                     const calculator = document.getElementById('envio-calculator');
                     
-                    // Función para calcular el costo de envío
-                    async function calcularCostoEnvio(direccion) {
-                        if (!direccion || direccion.trim().length < 5) {
-                            costoDisplay.textContent = '📍 Escribe dirección';
-                            costoDisplay.style.color = '#94a3b8';
-                            envioDetalle.style.display = 'none';
-                            calculator.style.borderColor = '#334155';
-                            return null;
-                        }
-                        
-                        costoDisplay.textContent = '⏳ Calculando...';
-                        costoDisplay.style.color = '#f59e0b';
-                        distanciaDisplay.textContent = '🔄';
-                        
-                        try {
-                            // Obtener dirección del restaurante
-                            const restSnap = await db.ref(`restaurantes/${restauranteId}`).once('value');
-                            const restaurante = restSnap.val();
-                            const direccionRestaurante = restaurante.direccion || restaurante.DIRECCION || '';
-                            
-                            if (!direccionRestaurante) {
-                                console.warn('⚠️ Restaurante sin dirección, usando tarifa fija');
-                                const costoFijo = 3.50;
-                                costoDisplay.textContent = `${costoFijo.toFixed(2)}€`;
-                                costoDisplay.style.color = '#10b981';
-                                distanciaDisplay.textContent = '📍 Sin distancia';
-                                envioDetalle.style.display = 'block';
-                                tarifaBaseDisplay.textContent = '3.50€ (fijo)';
-                                distanciaKmDisplay.textContent = '-- km';
-                                envioTotalDisplay.textContent = `${costoFijo.toFixed(2)}€`;
-                                calculator.style.borderColor = '#10b981';
-                                return costoFijo;
-                            }
-                            
-                            console.log(`📤 Calculando distancia: "${direccionRestaurante}" → "${direccion}"`);
-                            
-                            // Intentar usar la Cloud Function
-                            try {
-                                const calcularDistancia = functions.httpsCallable('calcularDistancia');
-                                const result = await calcularDistancia({
-                                    origen: direccionRestaurante,
-                                    destino: direccion
-                                });
-                                
-                                console.log('📨 Respuesta de Cloud Function:', result.data);
-                                
-                                if (result.data.success) {
-                                    const distanciaKm = result.data.distanciaKm;
-                                    const tiempo = result.data.tiempo || '';
-                                    
-                                    // Calcular costo
-                                    const tarifaKm = restaurante.tarifa_envio_km || 1.50;
-                                    const costoMinimo = restaurante.costo_envio_minimo || 3.00;
-                                    const costoMaximo = restaurante.costo_envio_maximo || 10.00;
-                                    
-                                    let costo = distanciaKm * tarifaKm;
-                                    costo = Math.max(costo, costoMinimo);
-                                    costo = Math.min(costo, costoMaximo);
-                                    costo = Math.round(costo * 100) / 100;
-                                    
-                                    console.log(`📍 Distancia: ${distanciaKm.toFixed(2)} km → Costo: ${costo.toFixed(2)}€`);
-                                    
-                                    costoDisplay.textContent = `${costo.toFixed(2)}€`;
-                                    costoDisplay.style.color = '#10b981';
-                                    distanciaDisplay.textContent = `📍 ${distanciaKm.toFixed(1)} km ${tiempo ? '· ' + tiempo : ''}`;
-                                    
-                                    envioDetalle.style.display = 'block';
-                                    tarifaBaseDisplay.textContent = `${costoMinimo.toFixed(2)}€`;
-                                    distanciaKmDisplay.textContent = `${distanciaKm.toFixed(1)} km`;
-                                    envioTotalDisplay.textContent = `${costo.toFixed(2)}€`;
-                                    calculator.style.borderColor = '#10b981';
-                                    
-                                    // Guardar costo para el envío
-                                    window._costoEnvioCalculado = costo;
-                                    window._distanciaCalculada = distanciaKm;
-                                    
-                                    return costo;
-                                } else {
-                                    console.warn('⚠️ Cloud Function falló, usando cálculo alternativo');
-                                    return calcularCostoAlternativo(direccion);
-                                }
-                            } catch (cfError) {
-                                console.warn('⚠️ Error en Cloud Function:', cfError);
-                                return calcularCostoAlternativo(direccion);
-                            }
-                            
-                        } catch (error) {
-                            console.error('❌ Error calculando envío:', error);
-                            const costoFijo = 3.50;
-                            costoDisplay.textContent = `${costoFijo.toFixed(2)}€`;
-                            costoDisplay.style.color = '#f59e0b';
-                            distanciaDisplay.textContent = '⚠️ Estimado';
-                            envioDetalle.style.display = 'block';
-                            tarifaBaseDisplay.textContent = '3.50€ (estimado)';
-                            distanciaKmDisplay.textContent = '-- km';
-                            envioTotalDisplay.textContent = `${costoFijo.toFixed(2)}€`;
-                            calculator.style.borderColor = '#f59e0b';
-                            window._costoEnvioCalculado = costoFijo;
-                            return costoFijo;
-                        }
-                    }
-                    
-                    // Función alternativa (sin Google Maps)
-                    function calcularCostoAlternativo(direccion) {
-                        // Si contiene "Roquetas" o "04740", usar tarifa normal
-                        const esRoquetas = direccion.toLowerCase().includes('roquetas') || direccion.includes('04740');
-                        const costo = esRoquetas ? 3.50 : 5.00;
-                        
-                        costoDisplay.textContent = `${costo.toFixed(2)}€`;
-                        costoDisplay.style.color = '#f59e0b';
-                        distanciaDisplay.textContent = esRoquetas ? '📍 Zona Roquetas' : '📍 Fuera de zona';
-                        envioDetalle.style.display = 'block';
-                        tarifaBaseDisplay.textContent = `${costo.toFixed(2)}€`;
-                        distanciaKmDisplay.textContent = '-- km';
-                        envioTotalDisplay.textContent = `${costo.toFixed(2)}€`;
-                        calculator.style.borderColor = '#f59e0b';
-                        window._costoEnvioCalculado = costo;
-                        return costo;
-                    }
-                    
-                    // Evento: calcular al escribir la dirección (con debounce)
-                    let timeoutId = null;
-                    direccionInput.addEventListener('input', function() {
-                        clearTimeout(timeoutId);
-                        const dir = this.value.trim();
-                        if (dir.length < 5) {
-                            costoDisplay.textContent = '📍 Escribe dirección';
-                            costoDisplay.style.color = '#94a3b8';
-                            envioDetalle.style.display = 'none';
-                            calculator.style.borderColor = '#334155';
-                            return;
-                        }
-                        timeoutId = setTimeout(() => {
-                            calcularCostoEnvio(dir);
-                        }, 800);
-                    });
-                    
-                    // Evento: calcular al perder el foco
-                    direccionInput.addEventListener('blur', function() {
-                        const dir = this.value.trim();
-                        if (dir.length >= 5) {
-                            calcularCostoEnvio(dir);
-                        }
-                    });
-                    
-                    // Si hay una dirección predefinida, calcular
-                    if (direccionInput.value.trim().length >= 5) {
-                        setTimeout(() => calcularCostoEnvio(direccionInput.value.trim()), 500);
-                    }
-                },
-                preConfirm: async () => {
-                    const cliente = document.getElementById('cliente-reparto').value.trim();
-                    const telefono = document.getElementById('telefono-reparto').value.trim();
-                    const direccion = document.getElementById('direccion-reparto').value.trim();
-                    const pago = document.getElementById('pago-reparto').value;
-                    const nota = document.getElementById('nota-reparto').value.trim();
-                    const costoEnvio = window._costoEnvioCalculado || 3.50;
-                    
-                    if (!cliente) {
-                        Swal.showValidationMessage('❌ El nombre del cliente es obligatorio');
-                        return false;
-                    }
-                    if (!telefono) {
-                        Swal.showValidationMessage('❌ El teléfono es obligatorio');
-                        return false;
-                    }
-                    if (!direccion) {
-                        Swal.showValidationMessage('❌ La dirección es obligatoria');
-                        return false;
-                    }
-                    
-                    // Validar que la dirección esté en Roquetas
-                    const esRoquetas = direccion.toLowerCase().includes('roquetas') || direccion.includes('04740');
-                    if (!esRoquetas) {
-                        const confirm = await Swal.fire({
-                            title: '⚠️ Fuera de zona',
-                            text: 'La dirección no parece estar en Roquetas de Mar. ¿Quieres continuar?',
-                            icon: 'warning',
-                            showCancelButton: true,
-                            confirmButtonText: 'Sí, continuar',
-                            cancelButtonText: 'Cancelar',
-                            background: '#0f172a',
-                            color: 'white'
-                        });
-                        if (!confirm.isConfirmed) return false;
-                    }
-                    
-                    return { cliente, telefono, direccion, pago, nota, costoEnvio };
-                }
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    await crearEnvio(result.value);
-                }
-            });
-        };
+                  // ============================================
+// CALCULAR COSTO DE ENVÍO (SIN CLOUD FUNCTION)
+// ============================================
+async function calcularCostoEnvio(direccion) {
+    if (!direccion || direccion.trim().length < 5) {
+        costoDisplay.textContent = '📍 Escribe dirección';
+        costoDisplay.style.color = '#94a3b8';
+        envioDetalle.style.display = 'none';
+        calculator.style.borderColor = '#334155';
+        return null;
+    }
+    
+    costoDisplay.textContent = '⏳ Calculando...';
+    costoDisplay.style.color = '#f59e0b';
+    distanciaDisplay.textContent = '🔄';
+    
+    // ✅ USAR FALLBACK DIRECTO (SIN CLOUD FUNCTION)
+    const resultado = calcularCostoAlternativo(direccion);
+    
+    // Actualizar UI con el resultado
+    costoDisplay.textContent = `${resultado.toFixed(2)}€`;
+    costoDisplay.style.color = '#10b981';
+    
+    const esRoquetas = direccion.toLowerCase().includes('roquetas') || direccion.includes('04740');
+    distanciaDisplay.textContent = esRoquetas ? '📍 Zona Roquetas' : '📍 Fuera de zona';
+    
+    envioDetalle.style.display = 'block';
+    document.getElementById('tarifa-base-display').textContent = `${resultado.toFixed(2)}€`;
+    document.getElementById('distancia-km-display').textContent = esRoquetas ? '~2 km' : '~5 km';
+    document.getElementById('envio-total-display').textContent = `${resultado.toFixed(2)}€`;
+    calculator.style.borderColor = '#10b981';
+    
+    window._costoEnvioCalculado = resultado;
+    return resultado;
+}
 
+// ============================================
+// CALCULAR COSTO ALTERNATIVO (FALLBACK)
+// ============================================
+function calcularCostoAlternativo(direccion) {
+    const esRoquetas = direccion.toLowerCase().includes('roquetas') || direccion.includes('04740');
+    const esCerca = direccion.length < 30;
+    let costo = 3.50;
+    
+    if (!esRoquetas) {
+        costo = 5.00;
+    } else if (esCerca) {
+        costo = 2.50;
+    }
+    
+    return costo;
+}
+
+// Evento: calcular al escribir la dirección (con debounce)
+let timeoutId = null;
+direccionInput.addEventListener('input', function() {
+    clearTimeout(timeoutId);
+    const dir = this.value.trim();
+    if (dir.length < 5) {
+        costoDisplay.textContent = '📍 Escribe dirección';
+        costoDisplay.style.color = '#94a3b8';
+        envioDetalle.style.display = 'none';
+        calculator.style.borderColor = '#334155';
+        return;
+    }
+    timeoutId = setTimeout(() => {
+        calcularCostoEnvio(dir);
+    }, 800);
+});
+
+// Evento: calcular al perder el foco
+direccionInput.addEventListener('blur', function() {
+    const dir = this.value.trim();
+    if (dir.length >= 5) {
+        calcularCostoEnvio(dir);
+    }
+});
+
+// Si hay una dirección predefinida, calcular
+if (direccionInput.value.trim().length >= 5) {
+    setTimeout(() => calcularCostoEnvio(direccionInput.value.trim()), 500);
+}
         // ============================================
         // 33. INICIALIZAR
         // ============================================

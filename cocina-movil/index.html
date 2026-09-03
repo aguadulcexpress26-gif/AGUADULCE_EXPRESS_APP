@@ -1107,58 +1107,71 @@
         }
 
         // ============================================
-        // 5. CONFIGURACIÓN DEL SERVICE WORKER (CORREGIDO)
-        // ============================================
-        async function configurarServiceWorker() {
-            if (!('serviceWorker' in navigator)) {
-                console.warn('⚠️ Service Workers no soportados');
-                return false;
-            }
-            
-            try {
-                // 1. Desregistrar cualquier SW antiguo en la raíz
-                const registrations = await navigator.serviceWorker.getRegistrations();
-                for (const reg of registrations) {
-                    if (reg.scope === 'https://aguadulcexpress26-gif.github.io/') {
-                        console.log('🧹 Desregistrando SW antiguo de la raíz...');
-                        await reg.unregister();
-                    }
-                }
-                
-                // 2. Registrar SW en la ruta correcta
-                const registration = await navigator.serviceWorker.register(
-                    '/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js',
-                    { scope: '/AGUADULCE_EXPRESS_APP/' }
-                );
-                console.log('✅ Service Worker registrado en:', registration.scope);
-                
-                // 3. Esperar a que esté activo
-                await navigator.serviceWorker.ready;
-                console.log('✅ Service Worker activo y listo');
-                
-                // 4. Configurar Firebase Messaging con el SW registrado
-                try {
-                    const messaging = firebase.messaging();
-                    await messaging.useServiceWorker(registration);
-                    messagingInicializado = true;
-                    console.log('✅ Firebase Messaging configurado con SW personalizado');
-                } catch (msgError) {
-                    console.warn('⚠️ Error configurando Firebase Messaging:', msgError);
-                    messagingInicializado = false;
-                }
-                
-                swRegistration = registration;
-                return true;
-                
-            } catch (error) {
-                console.error('❌ Error configurando Service Worker:', error);
-                messagingInicializado = false;
-                return false;
+// 5. CONFIGURACIÓN DEL SERVICE WORKER
+// ============================================
+async function configurarServiceWorker() {
+    if (!('serviceWorker' in navigator)) {
+        console.warn('⚠️ Service Workers no soportados');
+        return false;
+    }
+    
+    try {
+        // Desregistrar SW antiguos
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+            if (reg.scope === 'https://aguadulcexpress26-gif.github.io/') {
+                console.log('🧹 Desregistrando SW antiguo de la raíz...');
+                await reg.unregister();
             }
         }
+        
+        // Registrar SW en la ruta correcta
+        const registration = await navigator.serviceWorker.register(
+            '/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js',
+            { scope: '/AGUADULCE_EXPRESS_APP/' }
+        );
+        console.log('✅ Service Worker registrado en:', registration.scope);
+        
+        await navigator.serviceWorker.ready;
+        console.log('✅ Service Worker activo y listo');
+        
+        // Configurar Firebase Messaging
+        try {
+            const messaging = firebase.messaging();
+            
+            // Método 1: useServiceWorker (si existe)
+            if (typeof messaging.useServiceWorker === 'function') {
+                await messaging.useServiceWorker(registration);
+                console.log('✅ Messaging configurado con useServiceWorker');
+                messagingInicializado = true;
+            } 
+            // Método 2: getToken con serviceWorkerRegistration
+            else {
+                console.log('🔄 Usando método alternativo para Messaging');
+                const token = await messaging.getToken({
+                    serviceWorkerRegistration: registration
+                });
+                console.log('✅ Messaging configurado con getToken');
+                messagingInicializado = true;
+            }
+            
+        } catch (msgError) {
+            console.warn('⚠️ Error en Messaging:', msgError.message);
+            messagingInicializado = false;
+        }
+        
+        swRegistration = registration;
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Error configurando SW:', error);
+        messagingInicializado = false;
+        return false;
+    }
+}
 
-        // Ejecutar la configuración del SW inmediatamente (antes del login)
-        configurarServiceWorker();
+// Ejecutar inmediatamente
+configurarServiceWorker();
 
         // ============================================
         // 6. AUTENTICACIÓN

@@ -1058,6 +1058,7 @@
         let impresoraConfigurada = false;
         let nombreImpresora = '';
         let swRegistration = null;
+        let messagingInicializado = false;
         
         // ============================================
         // 3. CONTROL DE TAMAÑO DE FUENTE
@@ -1106,45 +1107,58 @@
         }
 
         // ============================================
-        // 5. SERVICE WORKER Y FIREBASE MESSAGING
+        // 5. CONFIGURACIÓN DEL SERVICE WORKER (CORREGIDO)
         // ============================================
-        async function registrarServiceWorker() {
+        async function configurarServiceWorker() {
             if (!('serviceWorker' in navigator)) {
                 console.warn('⚠️ Service Workers no soportados');
-                return null;
+                return false;
             }
             
             try {
+                // 1. Desregistrar cualquier SW antiguo en la raíz
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (const reg of registrations) {
+                    if (reg.scope === 'https://aguadulcexpress26-gif.github.io/') {
+                        console.log('🧹 Desregistrando SW antiguo de la raíz...');
+                        await reg.unregister();
+                    }
+                }
+                
+                // 2. Registrar SW en la ruta correcta
                 const registration = await navigator.serviceWorker.register(
                     '/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js',
                     { scope: '/AGUADULCE_EXPRESS_APP/' }
                 );
                 console.log('✅ Service Worker registrado en:', registration.scope);
+                
+                // 3. Esperar a que esté activo
                 await navigator.serviceWorker.ready;
-                console.log('✅ Service Worker activo');
+                console.log('✅ Service Worker activo y listo');
+                
+                // 4. Configurar Firebase Messaging con el SW registrado
+                try {
+                    const messaging = firebase.messaging();
+                    await messaging.useServiceWorker(registration);
+                    messagingInicializado = true;
+                    console.log('✅ Firebase Messaging configurado con SW personalizado');
+                } catch (msgError) {
+                    console.warn('⚠️ Error configurando Firebase Messaging:', msgError);
+                    messagingInicializado = false;
+                }
+                
                 swRegistration = registration;
-                return registration;
+                return true;
+                
             } catch (error) {
-                console.error('❌ Error registrando SW:', error);
-                return null;
+                console.error('❌ Error configurando Service Worker:', error);
+                messagingInicializado = false;
+                return false;
             }
         }
 
-        async function inicializarFirebaseMessaging() {
-            try {
-                const registration = await navigator.serviceWorker.ready;
-                const messaging = firebase.messaging();
-                await messaging.useServiceWorker(registration);
-                console.log('✅ Firebase Messaging configurado correctamente');
-                return messaging;
-            } catch (error) {
-                console.warn('⚠️ Error inicializando Messaging:', error);
-                return null;
-            }
-        }
-
-        // Registrar SW al inicio
-        registrarServiceWorker();
+        // Ejecutar la configuración del SW inmediatamente (antes del login)
+        configurarServiceWorker();
 
         // ============================================
         // 6. AUTENTICACIÓN
@@ -1200,8 +1214,10 @@
                 await cargarTiempoElaboracion();
                 await cargarConfiguracionImpresora();
                 
-                // Inicializar Firebase Messaging después del login
-                await inicializarFirebaseMessaging();
+                // Asegurar que Messaging esté configurado (por si no se hizo antes)
+                if (!messagingInicializado) {
+                    await configurarServiceWorker();
+                }
                 
                 await mostrarEstadoRestaurante();
                 
@@ -2017,16 +2033,33 @@
         };
 
         window.rechazarPedido = async function(pedidoId) {
-            const confirm = await Swal.fire({ title: '❌ ¿Rechazar pedido?', text: 'El cliente recibirá una notificación', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, rechazar', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white' });
+            const confirm = await Swal.fire({ 
+                title: '❌ ¿Rechazar pedido?', 
+                text: 'El cliente recibirá una notificación', 
+                icon: 'warning', 
+                showCancelButton: true, 
+                confirmButtonText: 'Sí, rechazar', 
+                cancelButtonText: 'Cancelar', 
+                background: '#0f172a', 
+                color: 'white' 
+            });
             if (!confirm.isConfirmed) return;
             try {
                 await db.ref(`pedidos/${pedidoId}/estado`).set('rechazado');
                 await db.ref(`pedidos/${pedidoId}/motivo_rechazo`).set('Rechazado por el restaurante');
-                await db.ref(`pedidos/${pedidoId}/historial`).push({ estado: 'rechazado', timestamp: Date.now(), usuario: currentUser.uid, accion: 'rechazado' });
+                await db.ref(`pedidos/${pedidoId}/historial`).push({ 
+                    estado: 'rechazado', 
+                    timestamp: Date.now(), 
+                    usuario: currentUser.uid, 
+                    accion: 'rechazado' 
+                });
                 showToast('❌ Pedido rechazado', 'error');
                 renderizarVista();
                 detenerSonidoRepetido();
-            } catch (error) { console.error('Error al rechazar pedido:', error); showToast('❌ Error al rechazar pedido', 'error'); }
+            } catch (error) { 
+                console.error('Error al rechazar pedido:', error); 
+                showToast('❌ Error al rechazar pedido', 'error'); 
+            }
         };
 
         window.marcarListo = async function(pedidoId) {
@@ -2041,15 +2074,29 @@
                 await db.ref(`pedidos/${pedidoId}/estado`).set('LISTO');
                 await db.ref(`pedidos/${pedidoId}/tiempo_preparacion`).set(tiempoPreparacion);
                 await db.ref(`pedidos/${pedidoId}/timestamp_listo`).set(Date.now());
-                await db.ref(`pedidos/${pedidoId}/historial`).push({ estado: 'LISTO', timestamp: Date.now(), usuario: currentUser.uid, accion: 'marcado_listo' });
+                await db.ref(`pedidos/${pedidoId}/historial`).push({ 
+                    estado: 'LISTO', 
+                    timestamp: Date.now(), 
+                    usuario: currentUser.uid, 
+                    accion: 'marcado_listo' 
+                });
                 if (demora > 0) {
                     await db.ref(`pedidos/${pedidoId}/demora`).set(demora);
-                    await db.ref(`pedidos/${pedidoId}/historial`).push({ estado: 'demora_registrada', timestamp: Date.now(), usuario: currentUser.uid, demora, accion: 'registrar_demora' });
+                    await db.ref(`pedidos/${pedidoId}/historial`).push({ 
+                        estado: 'demora_registrada', 
+                        timestamp: Date.now(), 
+                        usuario: currentUser.uid, 
+                        demora, 
+                        accion: 'registrar_demora' 
+                    });
                     showToast(`⏱️ Demora: ${demora} min`, 'warning');
                 }
                 showToast(`✅ Pedido listo (${tiempoPreparacion} min)`, 'success');
                 renderizarVista();
-            } catch (error) { console.error('Error al marcar listo:', error); showToast('❌ Error al marcar listo', 'error'); }
+            } catch (error) { 
+                console.error('Error al marcar listo:', error); 
+                showToast('❌ Error al marcar listo', 'error'); 
+            }
         };
 
         // ============================================
@@ -2067,7 +2114,9 @@
                             <span style="color:var(--accent-gold);">$${(item.total || 0).toFixed(2)}</span>
                         </div>`
                     ).join('');
-                } else { productosList = '<div style="color:var(--text-muted);font-size:0.8rem;">Sin productos</div>'; }
+                } else { 
+                    productosList = '<div style="color:var(--text-muted);font-size:0.8rem;">Sin productos</div>'; 
+                }
                 Swal.fire({
                     title: `📋 Pedido #${data.id_pedido || pedidoId.substring(0,8)}`,
                     html: `
@@ -2093,7 +2142,10 @@
                     color: '#f1f5f9',
                     confirmButtonColor: '#f59e0b'
                 });
-            }).catch((error) => { console.error('Error:', error); showToast('❌ Error', 'error'); });
+            }).catch((error) => { 
+                console.error('Error:', error); 
+                showToast('❌ Error', 'error'); 
+            });
         };
 
         // ============================================
@@ -2120,7 +2172,10 @@
 <script>setTimeout(()=>{window.print();setTimeout(()=>window.close(),500);},500);<\/script>
 </body></html>`);
                 ventana.document.close();
-            }).catch((error) => { console.error('Error:', error); showToast('❌ Error', 'error'); });
+            }).catch((error) => { 
+                console.error('Error:', error); 
+                showToast('❌ Error', 'error'); 
+            });
         };
 
         window.imprimirComandaConImpresora = function(pedidoId) {
@@ -2192,7 +2247,11 @@
             db.ref('pedidos').once('value').then(snap => {
                 const pedidos = snap.val();
                 let count = 0;
-                if (!pedidos) { content.innerHTML = `<div class="empty"><div class="icon">📜</div><div>No hay pedidos</div></div>`; if (contador) contador.textContent = '0'; return; }
+                if (!pedidos) { 
+                    content.innerHTML = `<div class="empty"><div class="icon">📜</div><div>No hay pedidos</div></div>`; 
+                    if (contador) contador.textContent = '0'; 
+                    return; 
+                }
                 for (const [id, data] of Object.entries(pedidos)) {
                     const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
                     if (restId !== restauranteId) continue;
@@ -2254,19 +2313,36 @@
                 const pedidos = snapshot.val();
                 const content = document.getElementById('demoras-contenido');
                 const contador = document.getElementById('col-count-demoras');
-                if (!pedidos) { content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; if (contador) contador.textContent = '0'; return; }
+                if (!pedidos) { 
+                    content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; 
+                    if (contador) contador.textContent = '0'; 
+                    return; 
+                }
                 let demoras = [], totalDemora = 0, countDemora = 0;
                 for (const [id, data] of Object.entries(pedidos)) {
                     const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
                     if (restId !== restauranteId) continue;
                     const demora = data.demora || data.tiempo_demora || 0;
                     if (demora > 0) {
-                        demoras.push({ id, id_pedido: data.id_pedido || id.substring(0, 8), cliente: data.cliente_nombre || 'Cliente', total: data.total || 0, demora, fecha: data.timestamp ? new Date(data.timestamp) : null, items: data.items || [] });
-                        totalDemora += demora; countDemora++;
+                        demoras.push({ 
+                            id, 
+                            id_pedido: data.id_pedido || id.substring(0, 8), 
+                            cliente: data.cliente_nombre || 'Cliente', 
+                            total: data.total || 0, 
+                            demora, 
+                            fecha: data.timestamp ? new Date(data.timestamp) : null, 
+                            items: data.items || [] 
+                        });
+                        totalDemora += demora; 
+                        countDemora++;
                     }
                 }
                 demoras.sort((a, b) => b.demora - a.demora);
-                if (demoras.length === 0) { content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; if (contador) contador.textContent = '0'; return; }
+                if (demoras.length === 0) { 
+                    content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; 
+                    if (contador) contador.textContent = '0'; 
+                    return; 
+                }
                 if (contador) contador.textContent = demoras.length;
                 let html = `<div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.3rem 0.8rem;border:1px solid var(--border-color);margin-bottom:0.4rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:0.75rem;">
                     <div><span style="color:var(--text-muted);">📊 Total:</span> <strong style="color:var(--accent-red);">${countDemora}</strong></div>
@@ -2825,6 +2901,7 @@
                 confirmButtonColor: '#8b5cf6',
                 cancelButtonColor: '#334155',
                 width: '92%',
+                // maxWidth eliminado - ya no es necesario
                 didOpen: () => {
                     const direccionInput = document.getElementById('direccion-reparto');
                     const costoDisplay = document.getElementById('costo-envio-display');
@@ -2913,6 +2990,10 @@
                                 }
                             } catch (cfError) {
                                 console.warn('⚠️ Error en Cloud Function:', cfError);
+                                // Si el error es de Service Worker, usar fallback
+                                if (cfError.message && cfError.message.includes('service worker')) {
+                                    console.warn('🔧 Fallback por error de Service Worker');
+                                }
                                 return calcularCostoAlternativo(direccion);
                             }
                             
@@ -3033,24 +3114,7 @@
         console.log('🐛 Corrección de tarjetas duplicadas');
         console.log('🚚 Nuevo Reparto con cálculo de envío por Google Maps');
         console.log('📱 Notificaciones push con Service Worker personalizado');
-    </script>
-
-    <!-- ============================================
-    SERVICE WORKER
-    ============================================ -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker
-                .register('/AGUADULCE_EXPRESS_APP/firebase-messaging-sw.js', {
-                    scope: '/AGUADULCE_EXPRESS_APP/'
-                })
-                .then(reg => {
-                    console.log('✅ Service Worker registrado:', reg.scope);
-                })
-                .catch(err => {
-                    console.error('❌ Error SW:', err);
-                });
-        }
+        console.log('✅ Service Worker configurado para PC y Tableta');
     </script>
 
 </body>

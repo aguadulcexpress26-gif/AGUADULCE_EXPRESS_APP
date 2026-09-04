@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Panel de Diseño - Tabla Interactiva Pro</title>
+    <title>Panel de Diseño Pro v60</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -71,6 +71,12 @@
             cursor: not-allowed;
         }
 
+        .btn-hdr.primary {
+            background: #d4af37;
+            color: #121214;
+            border: none;
+        }
+
         .workspace {
             display: flex;
             flex: 1;
@@ -80,7 +86,7 @@
 
         /* Sidebar Lateral */
         .sidebar {
-            width: 280px;
+            width: 290px;
             background: #1e1e24;
             border-right: 1px solid #2e2e38;
             display: flex;
@@ -161,6 +167,19 @@
             border: 1px solid #333;
         }
 
+        /* Panel de Capas / Objetos */
+        .layer-item {
+            background: #262630;
+            border: 1px solid #2e2e38;
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.75rem;
+        }
+
         /* Área de Lienzo / Tabla */
         .viewport-container {
             flex: 1;
@@ -230,11 +249,17 @@
     <header>
         <div class="brand">
             <i class="fa-solid fa-wand-magic-sparkles"></i>
-            <span>Tabla de Diseño Pro</span>
+            <span>Diseño Pro v60</span>
         </div>
         <div class="top-actions">
             <button class="btn-hdr" id="btn-undo" onclick="undoAction()" disabled>
-                <i class="fa-solid fa-rotate-left"></i> Retroceder
+                <i class="fa-solid fa-rotate-left"></i> Deshacer
+            </button>
+            <button class="btn-hdr" onclick="saveProject()">
+                <i class="fa-solid fa-floppy-disk"></i> Guardar
+            </button>
+            <button class="btn-hdr" onclick="exportImage()">
+                <i class="fa-solid fa-download"></i> Exportar
             </button>
             <button class="btn-hdr" onclick="clearCanvas()">
                 <i class="fa-solid fa-trash-can"></i> Limpiar
@@ -246,13 +271,15 @@
         <!-- Sidebar Panel -->
         <div class="sidebar">
             <div class="panel-tabs">
-                <button class="tab-btn active" onclick="switchTab('fabrics')">Telas</button>
-                <button class="tab-btn" onclick="switchTab('accessories')">Accesorios</button>
+                <button class="tab-btn active" onclick="switchTab('fabrics', event)">Telas</button>
+                <button class="tab-btn" onclick="switchTab('accessories', event)">Accesorios</button>
+                <button class="tab-btn" onclick="switchTab('shapes', event)">Formas</button>
+                <button class="tab-btn" onclick="switchTab('layers', event)">Capas</button>
             </div>
 
             <!-- Tab Telas -->
             <div id="tab-fabrics" class="tab-content active">
-                <div class="section-title">Selección de Telas</div>
+                <div class="section-title">Patrones & Telas</div>
                 <div class="grid-cards">
                     <div class="card-opt" onclick="applyFabricPattern('stripes')">
                         <div class="fabric-prev" style="background: repeating-linear-gradient(45deg, #000 0, #000 5px, #fff 5px, #fff 10px);"></div>
@@ -271,7 +298,7 @@
 
             <!-- Tab Accesorios -->
             <div id="tab-accessories" class="tab-content">
-                <div class="section-title">Agregar Accesorios</div>
+                <div class="section-title">Catálogo Accesorios</div>
                 <div class="grid-cards">
                     <div class="card-opt" onclick="addAccessory('hat')">
                         <i class="fa-solid fa-hat-wizard" style="font-size:1.8rem; color:#d4af37;"></i>
@@ -287,11 +314,32 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Tab Formas Báscias -->
+            <div id="tab-shapes" class="tab-content">
+                <div class="section-title">Modelos Base</div>
+                <div class="grid-cards">
+                    <div class="card-opt" onclick="addBasicShape('rect')">
+                        <i class="fa-solid fa-square" style="font-size:1.8rem; color:#8e8e9e;"></i>
+                        <span style="font-size:0.75rem;">Rectángulo</span>
+                    </div>
+                    <div class="card-opt" onclick="addBasicShape('circle')">
+                        <i class="fa-solid fa-circle" style="font-size:1.8rem; color:#8e8e9e;"></i>
+                        <span style="font-size:0.75rem;">Círculo</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Capas -->
+            <div id="tab-layers" class="tab-content">
+                <div class="section-title">Gestión de Capas</div>
+                <div id="layers-list"></div>
+            </div>
         </div>
 
-        <!-- Lienzo de Trabajo con Panning y Pinch-to-Zoom -->
+        <!-- Área de Lienzo / Tabla -->
         <div class="viewport-container" id="viewport">
-            <div class="touch-hint"><i class="fa-solid fa-hand-pointer"></i> Usa 2 dedos para Zoom / Mover tabla</div>
+            <div class="touch-hint"><i class="fa-solid fa-hand-pointer"></i> 2 Dedos: Zoom / Panorámica</div>
             
             <div class="canvas-card" id="canvas-wrapper">
                 <canvas id="mainCanvas" width="450" height="650"></canvas>
@@ -314,12 +362,13 @@
         let historyStack = [];
         let isUndoState = false;
 
-        // --- SISTEMA DE RETROCESO (UNDO) ---
+        // --- HISTORIAL Y DESHACER (UNDO) ---
         function saveCanvasState() {
             if (isUndoState) return;
-            if (historyStack.length >= 15) historyStack.shift();
-            historyStack.push(JSON.stringify(canvas.toJSON(['layerId'])));
+            if (historyStack.length >= 20) historyStack.shift();
+            historyStack.push(JSON.stringify(canvas.toJSON(['layerId', 'name'])));
             document.getElementById('btn-undo').disabled = false;
+            updateLayersList();
         }
 
         function undoAction() {
@@ -328,12 +377,13 @@
                 return;
             }
             isUndoState = true;
-            historyStack.pop(); // Elimina el estado actual
+            historyStack.pop();
             const previousState = historyStack[historyStack.length - 1];
             
             canvas.loadFromJSON(previousState, function() {
                 canvas.renderAll();
                 isUndoState = false;
+                updateLayersList();
                 if (historyStack.length <= 1) {
                     document.getElementById('btn-undo').disabled = true;
                 }
@@ -342,6 +392,7 @@
 
         canvas.on('object:added', saveCanvasState);
         canvas.on('object:modified', saveCanvasState);
+        canvas.on('object:removed', saveCanvasState);
 
         // --- TELAS Y PATRONES ---
         function applyFabricPattern(type) {
@@ -375,23 +426,89 @@
                 canvas.renderAll();
                 saveCanvasState();
             } else {
-                alert("Selecciona la figura o vestido en la tabla para aplicarle la tela.");
+                alert("Selecciona un objeto en la tabla para aplicarle la tela.");
             }
         }
 
-        // --- ACCESORIOS ---
+        // --- ELEMENTOS Y ACCESORIOS ---
         function addAccessory(type) {
             let shape;
             if (type === 'hat') {
-                shape = new fabric.Triangle({ width: 80, height: 40, fill: '#d4af37', left: 185, top: 40 });
+                shape = new fabric.Triangle({ width: 80, height: 40, fill: '#d4af37', left: 185, top: 40, name: 'Sombrero' });
             } else if (type === 'glasses') {
-                shape = new fabric.Rect({ width: 70, height: 20, fill: '#111', left: 190, top: 90, rx: 5 });
+                shape = new fabric.Rect({ width: 70, height: 20, fill: '#111', left: 190, top: 90, rx: 5, name: 'Gafas' });
             } else {
-                shape = new fabric.Circle({ radius: 25, fill: '#e63946', left: 200, top: 250 });
+                shape = new fabric.Circle({ radius: 25, fill: '#e63946', left: 200, top: 250, name: 'Bolso' });
             }
             canvas.add(shape);
             canvas.setActiveObject(shape);
             canvas.renderAll();
+        }
+
+        function addBasicShape(type) {
+            let shape;
+            if (type === 'rect') {
+                shape = new fabric.Rect({ width: 100, height: 100, fill: '#3b82f6', left: 175, top: 200, name: 'Rectángulo' });
+            } else {
+                shape = new fabric.Circle({ radius: 50, fill: '#10b981', left: 175, top: 200, name: 'Círculo' });
+            }
+            canvas.add(shape);
+            canvas.setActiveObject(shape);
+            canvas.renderAll();
+        }
+
+        // --- GESTIÓN DE CAPAS ---
+        function updateLayersList() {
+            const list = document.getElementById('layers-list');
+            list.innerHTML = '';
+            const objects = canvas.getObjects();
+            
+            objects.forEach((obj, idx) => {
+                const item = document.createElement('div');
+                item.className = 'layer-item';
+                item.innerHTML = `
+                    <span>${obj.name || 'Objeto ' + (idx + 1)}</span>
+                    <button style="background:none; border:none; color:#e63946; cursor:pointer;" onclick="deleteLayer(${idx})">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                `;
+                item.onclick = (e) => {
+                    if (e.target.tagName !== 'I' && e.target.tagName !== 'BUTTON') {
+                        canvas.setActiveObject(obj);
+                        canvas.renderAll();
+                    }
+                };
+                list.appendChild(item);
+            });
+        }
+
+        function deleteLayer(idx) {
+            const obj = canvas.getObjects()[idx];
+            if (obj) {
+                canvas.remove(obj);
+                canvas.renderAll();
+            }
+        }
+
+        // --- GUARDAR, CARGAR Y EXPORTAR ---
+        function saveProject() {
+            const json = JSON.stringify(canvas.toJSON(['name']));
+            localStorage.setItem('saved_design_v60', json);
+            alert("Proyecto guardado correctamente.");
+        }
+
+        function exportImage() {
+            const dataURL = canvas.toDataURL({ format: 'png' });
+            const link = document.createElement('a');
+            link.download = 'diseño.png';
+            link.href = dataURL;
+            link.click();
+        }
+
+        function clearCanvas() {
+            canvas.clear();
+            canvas.backgroundColor = '#ffffff';
+            saveCanvasState();
         }
 
         // --- GESTO DE DOS DEDOS (PINCH TO ZOOM & PAN) ---
@@ -457,24 +574,26 @@
             if (e.touches.length === 0) isPanning = false;
         });
 
-        function switchTab(tabId) {
+        function switchTab(tabId, evt) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            event.target.classList.add('active');
+            evt.target.classList.add('active');
             document.getElementById('tab-' + tabId).classList.add('active');
-        }
-
-        function clearCanvas() {
-            canvas.clear();
-            canvas.backgroundColor = '#ffffff';
-            saveCanvasState();
         }
 
         // Carga Inicial
         window.onload = function() {
-            const bodyBase = new fabric.Rect({ width: 120, height: 260, fill: '#3b82f6', left: 165, top: 150, rx: 10 });
-            canvas.add(bodyBase);
-            saveCanvasState();
+            const saved = localStorage.getItem('saved_design_v60');
+            if (saved) {
+                canvas.loadFromJSON(saved, function() {
+                    canvas.renderAll();
+                    saveCanvasState();
+                });
+            } else {
+                const bodyBase = new fabric.Rect({ width: 120, height: 260, fill: '#3b82f6', left: 165, top: 150, rx: 10, name: 'Vestido Base' });
+                canvas.add(bodyBase);
+                saveCanvasState();
+            }
         };
     </script>
 </body>

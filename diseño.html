@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Estudio de Moda Digital</title>
+  <style>
+    :root {
+      --primary-color: #ff6b8b;
+      --secondary-color: #7d5fff;
+      --bg-color: #f8f9fa;
+      --panel-bg: #ffffff;
+      --text-color: #2f3542;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      color: white;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .btn-save {
+      background-color: #2ed573;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .main-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 50px);
+    }
+
+    /* Panel Izquierdo: Catálogo */
+    .sidebar {
+      width: 280px;
+      background: var(--panel-bg);
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    .tabs {
+      display: flex;
+      background: #eee;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px 5px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    .tab-btn.active {
+      background: white;
+      color: var(--primary-color);
+      border-bottom: 3px solid var(--primary-color);
+    }
+
+    .tab-content {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .grid-items {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .item-card {
+      border: 2px solid #eee;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .item-card:hover, .item-card.selected {
+      border-color: var(--primary-color);
+      background-color: #fff0f3;
+    }
+
+    .item-card svg {
+      width: 50px;
+      height: 70px;
+    }
+
+    /* Área Central: Canvas */
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #eef2f5;
+      position: relative;
+    }
+
+    .stage {
+      position: relative;
+      width: 400px;
+      height: 600px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    /* Capas de Renderizado */
+    .layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    #draw-canvas {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    /* Panel Derecho: Herramientas de Dibujo */
+    .toolbar {
+      width: 220px;
+      background: var(--panel-bg);
+      border-left: 1px solid #ddd;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .tool-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tool-group label {
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: #666;
+    }
+
+    .color-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 5px;
+    }
+
+    .color-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 0 3px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+
+    .btn-action {
+      background: #f1f2f6;
+      border: 1px solid #ccc;
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .btn-action.active {
+      background: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+    }
+
+    /* Responsive básico para Tablets */
+    @media (max-width: 768px) {
+      .main-container {
+        flex-direction: column;
+      }
+      .sidebar, .toolbar {
+        width: 100%;
+        height: 150px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>👗 Fashion Studio Creator</h1>
+    <button class="btn-save" onclick="downloadDesign()">💾 Guardar Diseño</button>
+  </header>
+
+  <div class="main-container">
+    
+    <!-- Catálogo de Opciones -->
+    <div class="sidebar">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('models')">Modelo</button>
+        <button class="tab-btn" onclick="switchTab('clothes')">Ropa</button>
+        <button class="tab-btn" onclick="switchTab('accessories')">Accesorios</button>
+      </div>
+
+      <!-- Modelos -->
+      <div id="tab-models" class="tab-content active">
+        <div class="grid-items">
+          <div class="item-card" onclick="selectModel('skin1')">
+            <span>Tono Claro</span>
+          </div>
+          <div class="item-card" onclick="selectModel('skin2')">
+            <span>Tono Medio</span>
+          </div>
+          <div class="item-card" onclick="selectModel('skin3')">
+            <span>Tono Oscuro</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ropa Base -->
+      <div id="tab-clothes" class="tab-content">
+        <div class="grid-items">
+          <div class="item-card" onclick="setGarment('dress1')">
+            <span>Vestido Gala</span>
+          </div>
+          <div class="item-card" onclick="setGarment('top_skirt')">
+            <span>Top + Falda</span>
+          </div>
+          <div class="item-card" onclick="setGarment('casual')">
+            <span>Casual Shorts</span>
+          </div>
+          <div class="item-card" onclick="setGarment('none')">
+            <span>Sin Ropa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Accesorios -->
+      <div id="tab-accessories" class="tab-content">
+        <div class="grid-items">
+          <div class="item-card" onclick="toggleAccessory('hat')">
+            <span>Sombrero</span>
+          </div>
+          <div class="item-card" onclick="toggleAccessory('bag')">
+            <span>Bolso</span>
+          </div>
+          <div class="item-card" onclick="toggleAccessory('glasses')">
+            <span>Gafas</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lienzo de Trabajo -->
+    <div class="canvas-area">
+      <div class="stage" id="stage">
+        <!-- Capa 1: Modelo SVG -->
+        <svg id="model-layer" class="layer" viewBox="0 0 400 600">
+          <!-- Cabeza, Cuerpo, Poses básicos -->
+          <g id="body">
+            <!-- Modelo/Maniquí base -->
+            <ellipse cx="200" cy="90" rx="25" ry="32" fill="#f1c27d" id="head"/>
+            <path d="M 185 120 L 215 120 L 220 230 L 180 230 Z" fill="#f1c27d" id="torso"/>
+            <rect x="182" y="230" width="15" height="280" fill="#f1c27d" rx="7"/>
+            <rect x="203" y="230" width="15" height="280" fill="#f1c27d" rx="7"/>
+            <!-- Brazos -->
+            <path d="M 185 125 L 155 240" stroke="#f1c27d" stroke-width="12" stroke-linecap="round"/>
+            <path d="M 215 125 L 245 240" stroke="#f1c27d" stroke-width="12" stroke-linecap="round"/>
+          </g>
+        </svg>
+
+        <!-- Capa 2: Ropa SVG Base -->
+        <svg id="garment-layer" class="layer" viewBox="0 0 400 600">
+          <g id="garment-group" fill="#ff4757"></g>
+        </svg>
+
+        <!-- Capa 3: Accesorios SVG -->
+        <svg id="accessory-layer" class="layer" viewBox="0 0 400 600">
+          <g id="acc-hat" style="display:none;">
+            <path d="M 150 70 Q 200 20 250 70 Z" fill="#2f3542"/>
+            <ellipse cx="200" cy="70" rx="65" ry="10" fill="#2f3542"/>
+          </g>
+          <g id="acc-glasses" style="display:none;">
+            <circle cx="188" cy="90" r="10" fill="none" stroke="#333" stroke-width="2"/>
+            <circle cx="212" cy="90" r="10" fill="none" stroke="#333" stroke-width="2"/>
+            <line x1="198" y1="90" x2="202" y2="90" stroke="#333" stroke-width="2"/>
+          </g>
+          <g id="acc-bag" style="display:none;">
+            <rect x="240" y="230" width="35" height="30" rx="4" fill="#e1b12c"/>
+            <path d="M 248 230 Q 257 200 267 230" fill="none" stroke="#e1b12c" stroke-width="3"/>
+          </g>
+        </svg>
+
+        <!-- Capa 4: Canvas de Dibujo Libre a Mano Alzada -->
+        <canvas id="draw-canvas" class="layer" width="400" height="600"></canvas>
+      </div>
+    </div>
+
+    <!-- Panel de Herramientas de Dibujo -->
+    <div class="toolbar">
+      <div class="tool-group">
+        <label>Modo Pincel</label>
+        <button class="btn-action active" id="btn-draw" onclick="setMode('draw')">✏️ Dibujar</button>
+        <button class="btn-action" id="btn-erase" onclick="setMode('erase')">🧽 Borrar</button>
+        <button class="btn-action" onclick="clearCanvas()">🗑️ Limpiar Lienzo</button>
+      </div>
+
+      <div class="tool-group">
+        <label>Color de Pincel / Ropa</label>
+        <div class="color-picker-grid">
+          <div class="color-btn" style="background:#ff4757" onclick="setColor('#ff4757')"></div>
+          <div class="color-btn" style="background:#2ed573" onclick="setColor('#2ed573')"></div>
+          <div class="color-btn" style="background:#1e90ff" onclick="setColor('#1e90ff')"></div>
+          <div class="color-btn" style="background:#ffa502" onclick="setColor('#ffa502')"></div>
+          <div class="color-btn" style="background:#9b59b6" onclick="setColor('#9b59b6')"></div>
+          <div class="color-btn" style="background:#ffffff" onclick="setColor('#ffffff')"></div>
+          <div class="color-btn" style="background:#2f3542" onclick="setColor('#2f3542')"></div>
+          <div class="color-btn" style="background:#ff7f50" onclick="setColor('#ff7f50')"></div>
+          <div class="color-btn" style="background:#ff6b8b" onclick="setColor('#ff6b8b')"></div>
+          <input type="color" id="custom-color" onchange="setColor(this.value)" style="width:30px; height:30px; border:none; cursor:pointer;">
+        </div>
+      </div>
+
+      <div class="tool-group">
+        <label>Grosor de Pincel</label>
+        <input type="range" id="brush-size" min="1" max="25" value="4">
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Variables Globales
+    const canvas = document.getElementById('draw-canvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let currentMode = 'draw';
+    let currentColor = '#ff4757';
+    let currentGarmentColor = '#ff4757';
+
+    // Inicializar Canvas
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Manejo de Pestanas
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tabName).classList.add('active');
+    }
+
+    // Cambiar Tono de Piel
+    function selectModel(skin) {
+      const colors = {
+        skin1: '#f1c27d',
+        skin2: '#c68642',
+        skin3: '#8d5524'
+      };
+      const color = colors[skin];
+      document.getElementById('head').setAttribute('fill', color);
+      document.getElementById('torso').setAttribute('fill', color);
+      document.querySelectorAll('#body rect, #body path').forEach(el => el.setAttribute('fill', color));
+      document.querySelectorAll('#body path').forEach(el => el.setAttribute('stroke', color));
+    }
+
+    // Seleccionar Ropa Base
+    function setGarment(type) {
+      const garmentGroup = document.getElementById('garment-group');
+      garmentGroup.innerHTML = '';
+      garmentGroup.setAttribute('fill', currentGarmentColor);
+
+      if (type === 'dress1') {
+        // Vestido Elegante Lardo
+        garmentGroup.innerHTML = `
+          <path d="M 185 130 L 215 130 L 230 180 L 250 420 L 150 420 L 170 180 Z" />
+        `;
+      } else if (type === 'top_skirt') {
+        // Top y Falda Corta
+        garmentGroup.innerHTML = `
+          <path d="M 185 130 L 215 130 L 220 170 L 180 170 Z" />
+          <path d="M 178 180 L 222 180 L 240 280 L 160 280 Z" fill="${currentGarmentColor}"/>
+        `;
+      } else if (type === 'casual') {
+        // Shorts Casuales
+        garmentGroup.innerHTML = `
+          <path d="M 185 130 L 215 130 L 218 175 L 182 175 Z" />
+          <path d="M 180 180 L 220 180 L 225 240 L 202 240 L 200 200 L 198 240 L 175 240 Z" />
+        `;
+      }
+    }
+
+    // Activar/Desactivar Accesorios
+    function toggleAccessory(acc) {
+      const el = document.getElementById('acc-' + acc);
+      if (el) {
+        el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+      }
+    }
+
+    // Herramientas de Dibujo
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
+      document.getElementById('btn-erase').classList.toggle('active', mode === 'erase');
+    }
+
+    function setColor(color) {
+      currentColor = color;
+      currentGarmentColor = color;
+      
+      // Actualizar también el color de la ropa base si está presente
+      const garmentGroup = document.getElementById('garment-group');
+      if (garmentGroup) {
+        garmentGroup.setAttribute('fill', color);
+      }
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Eventos de Dibujo (Mouse y Touch para Tablets)
+    function startDrawing(e) {
+      isDrawing = true;
+      draw(e);
+    }
+
+    function stopDrawing() {
+      isDrawing = false;
+      ctx.beginPath();
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX || e.touches[0].clientX) - rect.left;
+      const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+      const brushSize = document.getElementById('brush-size').value;
+
+      ctx.lineWidth = brushSize;
+      
+      if (currentMode === 'erase') {
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = currentColor;
+      }
+
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    // Listeners para Mouse
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mousemove', draw);
+
+    // Listeners para Pantallas Táctiles (iPad / Tablet)
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e); });
+    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); });
+
+    // Exportar/Guardar Imagen Unificada
+    function downloadDesign() {
+      const stage = document.getElementById('stage');
+      
+      // Crear un canvas temporal para renderizar todo en una sola imagen
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = 400;
+      tempCanvas.height = 600;
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // Fondo Blanco
+      tempCtx.fillStyle = '#ffffff';
+      tempCtx.fillRect(0, 0, 400, 600);
+
+      // Convertir capas SVG a Imágenes para componer
+      const svgElements = ['model-layer', 'garment-layer', 'accessory-layer'];
+      let loadedImages = 0;
+
+      svgElements.forEach((svgId) => {
+        const svgEl = document.getElementById(svgId);
+        const xml = new XMLSerializer().serializeToString(svgEl);
+        const svg64 = btoa(unescape(encodeURIComponent(xml)));
+        const b64Start = 'data:image/svg+xml;base64,';
+        const image64 = b64Start + svg64;
+
+        const img = new Image();
+        img.onload = function() {
+          tempCtx.drawImage(img, 0, 0);
+          loadedImages++;
+
+          // Cuando todos los SVGs se renderizan, dibujamos la capa de dibujo libre encima
+          if (loadedImages === svgElements.length) {
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Descargar archivo
+            const link = document.createElement('a');
+            link.download = 'mi-diseno-de-moda.png';
+            link.href = tempCanvas.toDataURL('image/png');
+            link.click();
+          }
+        };
+        img.src = image64;
+      });
+    }
+
+    // Cargar vestido por defecto
+    setGarment('dress1');
+  </script>
+</body>
+</html>

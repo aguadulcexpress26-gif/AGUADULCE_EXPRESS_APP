@@ -1299,16 +1299,14 @@
     let currentColor = '#ff0000';
     let selectedPattern = null;
     let activeLayerId = 1;
-    let isPanning = false;
-    let lastPanX, lastPanY;
     
     // =============================================
-    // HISTORIAL MEJORADO - CON CONTADORES
+    // HISTORIAL SIMPLIFICADO - EVITA CONGELAMIENTO
     // =============================================
     let history = [];
     let historyIndex = -1;
-    const MAX_HISTORY = 100;
-    let isRestoringHistory = false;
+    const MAX_HISTORY = 50;
+    let isRestoring = false;
 
     let shapeTool = null;
     let isDrawingShape = false;
@@ -1379,7 +1377,6 @@
       renderLayers();
       renderProjects();
       
-      // Cargar figurín base como fondo
       loadBaseFemaleAsBackground();
       
       setupReferenceBox();
@@ -1390,7 +1387,6 @@
       setupMouseZoom();
       updateColorFromHue(0);
       
-      // Guardar estado inicial en historial
       saveToHistory();
       
       setTimeout(() => showToast('✨ Fashion Studio Pro cargado'), 500);
@@ -1480,7 +1476,6 @@
       }
       
       canvas.requestRenderAll();
-      showToast(`↕️ Moviendo ${direction}`);
     }
 
     // =============================================
@@ -1571,7 +1566,6 @@
       canvas.viewportTransform[5] = 0;
       canvas.renderAll();
       updateZoomDisplay();
-      showToast('🔍 Zoom reset');
     }
 
     function updateZoomDisplay() {
@@ -1644,20 +1638,14 @@
           canvas.freeDrawingBrush.strokeLineCap = 'square';
           canvas.freeDrawingBrush.strokeLineJoin = 'miter';
           canvas.freeDrawingBrush.width = size * 1.8;
-          canvas.freeDrawingBrush.shadow = new fabric.Shadow({
-            blur: 2,
-            color: 'rgba(0,0,0,0.3)'
-          });
+          canvas.freeDrawingBrush.shadow = new fabric.Shadow({ blur: 2, color: 'rgba(0,0,0,0.3)' });
           break;
         case 'brush':
           canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
           canvas.freeDrawingBrush.strokeLineCap = 'round';
           canvas.freeDrawingBrush.strokeLineJoin = 'round';
           canvas.freeDrawingBrush.width = size * 1.2;
-          canvas.freeDrawingBrush.shadow = new fabric.Shadow({
-            blur: 4,
-            color: 'rgba(0,0,0,0.2)'
-          });
+          canvas.freeDrawingBrush.shadow = new fabric.Shadow({ blur: 4, color: 'rgba(0,0,0,0.2)' });
           break;
         case 'spray':
           canvas.freeDrawingBrush = new fabric.SprayBrush(canvas);
@@ -1704,12 +1692,7 @@
     function changeBrushType() {
       setupBrush();
       const type = document.getElementById('brush-type').value;
-      const names = {
-        'pencil': '✏️ Lápiz',
-        'marker': '🖍️ Marcador',
-        'brush': '🖌️ Pincel',
-        'spray': '💨 Aerógrafo'
-      };
+      const names = { 'pencil': '✏️ Lápiz', 'marker': '🖍️ Marcador', 'brush': '🖌️ Pincel', 'spray': '💨 Aerógrafo' };
       showToast(`🖌️ ${names[type] || 'Pincel'} activado`);
     }
 
@@ -1781,7 +1764,6 @@
       canvas.sendToBack(modelGroup);
       canvas.renderAll();
       
-      // No guardar en historial para no afectar el undo/redo
       showToast('👤 Figurín fijado como fondo');
       closeSidebar();
     }
@@ -2369,23 +2351,19 @@
     }
 
     // =============================================
-    // HISTORIAL - CORREGIDO
+    // HISTORIAL - VERSIÓN SIMPLIFICADA Y ESTABLE
     // =============================================
     function saveToHistory() {
-      if (isRestoringHistory) return;
+      if (isRestoring) return;
       
-      // Eliminar historial futuro
+      // Limpiar historial futuro
       if (historyIndex < history.length - 1) {
         history = history.slice(0, historyIndex + 1);
       }
       
-      // Guardar solo objetos que no sean de fondo
-      const data = canvas.toJSON(['layerId', 'selectable', 'evented', 'isBackground']);
-      
-      // Filtrar objetos de fondo para no guardarlos en el historial
-      if (data.objects) {
-        data.objects = data.objects.filter(obj => obj.isBackground !== true);
-      }
+      // Guardar solo objetos que NO son de fondo
+      const objects = canvas.getObjects().filter(obj => obj.isBackground !== true);
+      const data = objects.map(obj => obj.toJSON());
       
       history.push(data);
       
@@ -2394,10 +2372,10 @@
       }
       historyIndex = history.length - 1;
       
-      updateHistoryCounters();
+      updateCounters();
     }
 
-    function updateHistoryCounters() {
+    function updateCounters() {
       document.getElementById('undo-count').textContent = historyIndex;
       document.getElementById('redo-count').textContent = history.length - historyIndex - 1;
     }
@@ -2405,61 +2383,54 @@
     function undoAction() {
       if (historyIndex > 0) {
         historyIndex--;
-        restoreHistory(history[historyIndex]);
+        restoreState(history[historyIndex]);
         showToast(`↩️ Deshacer (${historyIndex + 1}/${history.length})`);
       } else {
         showToast('No hay más acciones para deshacer');
       }
-      updateHistoryCounters();
+      updateCounters();
     }
 
     function redoAction() {
       if (historyIndex < history.length - 1) {
         historyIndex++;
-        restoreHistory(history[historyIndex]);
+        restoreState(history[historyIndex]);
         showToast(`↪️ Rehacer (${historyIndex + 1}/${history.length})`);
       } else {
         showToast('No hay más acciones para rehacer');
       }
-      updateHistoryCounters();
+      updateCounters();
     }
 
-    function restoreHistory(data) {
-      isRestoringHistory = true;
+    function restoreState(data) {
+      isRestoring = true;
       
-      // Guardar referencia al fondo actual
-      const backgroundObjects = canvas.getObjects().filter(obj => obj.isBackground === true);
-      
-      // Limpiar canvas pero mantener el fondo
+      // Eliminar todos los objetos que NO son de fondo
       canvas.getObjects().forEach(obj => {
         if (obj.isBackground !== true) {
           canvas.remove(obj);
         }
       });
       
-      // Cargar historial
-      if (data.objects && data.objects.length > 0) {
-        canvas.loadFromJSON(data, function() {
-          // Restaurar el fondo si existe
-          if (backgroundObjects.length > 0) {
-            backgroundObjects.forEach(bg => {
-              canvas.add(bg);
-              canvas.sendToBack(bg);
+      // Restaurar objetos del historial
+      if (data && data.length > 0) {
+        data.forEach(item => {
+          fabric.util.enlivenObjects([item], function(objects) {
+            objects.forEach(obj => {
+              obj.set({
+                isBackground: false,
+                selectable: true,
+                evented: true
+              });
+              canvas.add(obj);
             });
-          }
-          canvas.renderAll();
-          isRestoringHistory = false;
+            canvas.renderAll();
+            isRestoring = false;
+          });
         });
       } else {
-        // Si no hay objetos, solo mantener el fondo
-        if (backgroundObjects.length > 0) {
-          backgroundObjects.forEach(bg => {
-            canvas.add(bg);
-            canvas.sendToBack(bg);
-          });
-        }
         canvas.renderAll();
-        isRestoringHistory = false;
+        isRestoring = false;
       }
     }
 
@@ -2473,10 +2444,6 @@
         showToast('⚠️ No se puede eliminar el figurín de fondo'); 
         return; 
       }
-      if (active.layerId === 0) { 
-        showToast('⚠️ No se puede eliminar el figurín de fondo'); 
-        return; 
-      }
       if (confirm('¿Eliminar el objeto seleccionado?')) {
         canvas.remove(active);
         canvas.renderAll();
@@ -2486,12 +2453,11 @@
     }
 
     // =============================================
-    // CLEAR CANVAS - SOLO LIMPIA DISEÑOS, NO EL FONDO
+    // CLEAR CANVAS - SOLO LIMPIA DISEÑOS
     // =============================================
     function clearCanvas() {
       if (!confirm('¿Eliminar todos los diseños? El figurín de fondo se mantendrá.')) return;
       
-      // Eliminar todo excepto el fondo
       canvas.getObjects().forEach(obj => {
         if (obj.isBackground !== true) {
           canvas.remove(obj);
@@ -2514,15 +2480,13 @@
     function renderDraftProjects() {
       const container = document.getElementById('draft-projects-list');
       const drafts = JSON.parse(localStorage.getItem('draft_projects') || '[]');
-      const count = document.getElementById('draft-count');
-      count.textContent = drafts.length;
+      document.getElementById('draft-count').textContent = drafts.length;
 
       if (drafts.length === 0) {
         container.innerHTML = `
           <div class="empty-gallery" style="grid-column: span 2;">
             <i class="fa-regular fa-clock"></i>
             No hay trabajos en curso
-            <br><small>Los diseños se auto-guardan cada 30s</small>
           </div>
         `;
         return;
@@ -2544,15 +2508,13 @@
     function renderFinishedProjects() {
       const container = document.getElementById('finished-projects-list');
       const finished = JSON.parse(localStorage.getItem('finished_projects') || '[]');
-      const count = document.getElementById('finished-count');
-      count.textContent = finished.length;
+      document.getElementById('finished-count').textContent = finished.length;
 
       if (finished.length === 0) {
         container.innerHTML = `
           <div class="empty-gallery" style="grid-column: span 2;">
             <i class="fa-regular fa-check-circle"></i>
             No hay proyectos finalizados
-            <br><small>Finaliza un diseño para guardarlo aquí</small>
           </div>
         `;
         return;
@@ -2574,10 +2536,10 @@
     function loadProject(key, index) {
       const projects = JSON.parse(localStorage.getItem(key) || '[]');
       if (!projects[index]) return;
-      if (!confirm(`¿Cargar "${projects[index].name}"? Se perderán los cambios actuales.`)) return;
+      if (!confirm(`¿Cargar "${projects[index].name}"?`)) return;
       
-      // Mantener el fondo actual
-      const backgroundObjects = canvas.getObjects().filter(obj => obj.isBackground === true);
+      // Mantener el fondo
+      const backgrounds = canvas.getObjects().filter(obj => obj.isBackground === true);
       
       // Eliminar diseños actuales
       canvas.getObjects().forEach(obj => {
@@ -2601,16 +2563,14 @@
         canvas.add(img);
         
         // Restaurar fondo
-        if (backgroundObjects.length > 0) {
-          backgroundObjects.forEach(bg => {
-            canvas.add(bg);
-            canvas.sendToBack(bg);
-          });
-        }
+        backgrounds.forEach(bg => {
+          canvas.add(bg);
+          canvas.sendToBack(bg);
+        });
         
         canvas.renderAll();
         saveToHistory();
-        showToast(`📂 Proyecto "${projects[index].name}" cargado`);
+        showToast(`📂 Proyecto cargado`);
         closeSidebar();
       });
     }
@@ -2618,7 +2578,7 @@
     function deleteProject(key, index) {
       const projects = JSON.parse(localStorage.getItem(key) || '[]');
       if (!projects[index]) return;
-      if (!confirm(`¿Eliminar "${projects[index].name}" permanentemente?`)) return;
+      if (!confirm(`¿Eliminar "${projects[index].name}"?`)) return;
       
       projects.splice(index, 1);
       localStorage.setItem(key, JSON.stringify(projects));
@@ -2630,65 +2590,49 @@
       const name = prompt("Nombre del diseño:", "Diseño " + new Date().toLocaleDateString());
       if (!name) return;
       
-      // Ocultar temporalmente el fondo para guardar solo el diseño
+      // Ocultar fondo temporalmente
       const backgrounds = canvas.getObjects().filter(obj => obj.isBackground === true);
       backgrounds.forEach(bg => bg.set('visible', false));
       
       const dataUrl = canvas.toDataURL({ format: 'png', quality: 0.9 });
       
-      // Restaurar fondo
       backgrounds.forEach(bg => bg.set('visible', true));
       canvas.renderAll();
       
       const key = isFinished ? 'finished_projects' : 'draft_projects';
       let projects = JSON.parse(localStorage.getItem(key) || '[]');
-      projects.push({ 
-        name: name, 
-        image: dataUrl, 
-        date: new Date().toISOString()
-      });
+      projects.push({ name, image: dataUrl, date: new Date().toISOString() });
       localStorage.setItem(key, JSON.stringify(projects));
       renderProjects();
-      showToast(`💾 "${name}" guardado en ${isFinished ? 'Finalizados' : 'En Curso'}`);
+      showToast(`💾 "${name}" guardado`);
     }
 
     function autoSave() {
       try {
-        // Ocultar temporalmente el fondo para guardar solo el diseño
         const backgrounds = canvas.getObjects().filter(obj => obj.isBackground === true);
         backgrounds.forEach(bg => bg.set('visible', false));
         
         const dataUrl = canvas.toDataURL({ format: 'png', quality: 0.9 });
         
-        // Restaurar fondo
         backgrounds.forEach(bg => bg.set('visible', true));
         canvas.renderAll();
         
         localStorage.setItem('auto_save_image', dataUrl);
         localStorage.setItem('auto_save_time', new Date().toISOString());
         
-        // Guardar como borrador automático
+        // Guardar en borradores
         const drafts = JSON.parse(localStorage.getItem('draft_projects') || '[]');
         const autoIndex = drafts.findIndex(p => p.name === 'Auto-guardado');
         if (autoIndex !== -1) {
-          drafts[autoIndex] = { 
-            name: 'Auto-guardado', 
-            image: dataUrl, 
-            date: new Date().toISOString() 
-          };
+          drafts[autoIndex] = { name: 'Auto-guardado', image: dataUrl, date: new Date().toISOString() };
         } else {
-          drafts.unshift({ 
-            name: 'Auto-guardado', 
-            image: dataUrl, 
-            date: new Date().toISOString() 
-          });
+          drafts.unshift({ name: 'Auto-guardado', image: dataUrl, date: new Date().toISOString() });
           if (drafts.length > 10) drafts.pop();
         }
         localStorage.setItem('draft_projects', JSON.stringify(drafts));
         renderProjects();
-        showToast('💾 Auto-guardado completado');
       } catch(e) {
-        console.error('Error en auto-guardado:', e);
+        console.error('Auto-guardado error:', e);
       }
     }
 
@@ -2713,7 +2657,7 @@
         case 'select':
           document.querySelector('.tool-btn[title="Seleccionar/Mover"]')?.classList.add('active');
           canvas.selection = true;
-          showToast('🖱️ Selección - Arrastra para mover objetos');
+          showToast('🖱️ Selección');
           break;
         case 'erase':
           document.querySelector('.tool-btn[title="Borrador"]')?.classList.add('active');
@@ -2742,20 +2686,16 @@
     });
 
     canvas.on('path:created', function() { 
-      // Asegurar que los trazos no sean de fondo
-      if (canvas.freeDrawingBrush) {
-        const path = canvas.freeDrawingBrush._finalizeAndAddPath();
-        if (path) {
-          path.set('layerId', activeLayerId);
-          path.set('isBackground', false);
-        }
+      const path = canvas.freeDrawingBrush._finalizeAndAddPath();
+      if (path) {
+        path.set('layerId', activeLayerId);
+        path.set('isBackground', false);
       }
       saveToHistory(); 
     });
     
     canvas.on('object:added', function() { 
-      if (!isRestoringHistory) {
-        // Asegurar que los objetos nuevos no sean de fondo
+      if (!isRestoring) {
         canvas.getObjects().forEach(obj => {
           if (obj.isBackground === undefined) {
             obj.set('isBackground', false);
@@ -2766,11 +2706,11 @@
     });
     
     canvas.on('object:modified', function() { 
-      if (!isRestoringHistory) saveToHistory(); 
+      if (!isRestoring) saveToHistory(); 
     });
     
     canvas.on('object:removed', function() { 
-      if (!isRestoringHistory) saveToHistory(); 
+      if (!isRestoring) saveToHistory(); 
     });
 
     // =============================================
@@ -2837,7 +2777,7 @@
         if (isResizing) { isResizing = false; }
       });
 
-      // Touch support
+      // Touch
       let touchStartX, touchStartY, touchOrigX, touchOrigY, touchStartW, touchStartH;
       
       box.addEventListener('touchstart', function(e) {
@@ -2926,13 +2866,12 @@
     // =============================================
     setInterval(autoSave, 30000);
 
-    // Cargar auto-guardado al inicio
+    // Cargar auto-guardado
     try {
       const autoSaveImage = localStorage.getItem('auto_save_image');
       if (autoSaveImage) {
         setTimeout(() => {
           fabric.Image.fromURL(autoSaveImage, function(img) {
-            // Solo cargar si hay un diseño guardado
             if (img.width > 10) {
               const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
               img.set({
@@ -2954,16 +2893,11 @@
       }
     } catch(e) {}
 
-    console.log('✨ Fashion Studio Pro v6 cargado');
+    console.log('✨ Fashion Studio Pro v7 - Estable');
     console.log('🛡️ Figurín fijado como fondo - No se borra');
-    console.log('🔄 Historial mejorado con contadores');
-    console.log('📐 Herramientas de formas: líneas, círculos, rectángulos');
-    console.log('🎨 Pinceles diferenciados: Lápiz, Marcador, Pincel, Aerógrafo');
-    console.log('🔒 Capas con bloqueo y opacidad ajustable');
-    console.log('📂 Carga de figurines desde carpeta externa');
+    console.log('🔄 Historial simplificado - No se congela');
+    console.log('📐 Herramientas de formas completas');
     console.log('💾 Auto-guardado cada 30 segundos');
-    console.log('📁 Galería de Trabajos en Curso y Finalizados');
-    console.log('🖱️ Zoom con rueda del mouse + botones + gestos táctiles');
   </script>
 </body>
 </html>

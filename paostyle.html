@@ -1044,10 +1044,16 @@
       <span style="color:var(--accent-gold); font-size:0.55rem; opacity:0.8;">Pro</span>
     </div>
     <div class="header-actions">
-      <button class="header-btn" onclick="undoAction()" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
-      <button class="header-btn" onclick="redoAction()" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
+      <button class="header-btn" onclick="undoAction()" title="Deshacer (Ctrl+Z)">
+        <i class="fa-solid fa-rotate-left"></i>
+        <span style="font-size:0.4rem; margin-left:2px;" id="undo-count">0</span>
+      </button>
+      <button class="header-btn" onclick="redoAction()" title="Rehacer (Ctrl+Y)">
+        <i class="fa-solid fa-rotate-right"></i>
+        <span style="font-size:0.4rem; margin-left:2px;" id="redo-count">0</span>
+      </button>
       <button class="header-btn danger" onclick="deleteSelected()" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
-      <button class="header-btn" onclick="clearCanvas()" title="Limpiar"><i class="fa-solid fa-broom"></i></button>
+      <button class="header-btn" onclick="clearCanvas()" title="Limpiar Diseño"><i class="fa-solid fa-broom"></i></button>
       <button class="header-btn primary" onclick="autoSave()"><i class="fa-solid fa-clock"></i> <span>Auto</span></button>
       <button class="header-btn primary" onclick="saveProject(false)"><i class="fa-solid fa-floppy-disk"></i> <span>Guardar</span></button>
       <button class="header-btn primary" onclick="saveProject(true)"><i class="fa-solid fa-check"></i> <span>Finalizar</span></button>
@@ -1084,6 +1090,9 @@
         </div>
         <div class="section-label">Figurines Profesionales</div>
         <div class="figurine-grid" id="figurine-list"></div>
+        <div style="margin-top:8px; font-size:0.5rem; color:var(--text-muted); text-align:center;">
+          <i class="fa-solid fa-info-circle"></i> El figurín se fija como fondo y no se borra
+        </div>
       </div>
 
       <!-- ===== COLORES ===== -->
@@ -1292,9 +1301,15 @@
     let activeLayerId = 1;
     let isPanning = false;
     let lastPanX, lastPanY;
+    
+    // =============================================
+    // HISTORIAL MEJORADO - CON CONTADORES
+    // =============================================
     let history = [];
     let historyIndex = -1;
-    const MAX_HISTORY = 50;
+    const MAX_HISTORY = 100;
+    let isRestoringHistory = false;
+
     let shapeTool = null;
     let isDrawingShape = false;
     let shapeStart = null;
@@ -1363,7 +1378,10 @@
       renderFabrics();
       renderLayers();
       renderProjects();
-      loadBaseFemale();
+      
+      // Cargar figurín base como fondo
+      loadBaseFemaleAsBackground();
+      
       setupReferenceBox();
       setupZoomGestures();
       setupKeyboardShortcuts();
@@ -1371,7 +1389,10 @@
       setupShapeDrawing();
       setupMouseZoom();
       updateColorFromHue(0);
+      
+      // Guardar estado inicial en historial
       saveToHistory();
+      
       setTimeout(() => showToast('✨ Fashion Studio Pro cargado'), 500);
     };
 
@@ -1415,7 +1436,7 @@
     }
 
     // =============================================
-    // ZOOM CON RUEDA DEL MOUSE (NUEVO - ESTABLE)
+    // ZOOM CON RUEDA DEL MOUSE
     // =============================================
     function setupMouseZoom() {
       const viewport = document.getElementById('canvas-viewport');
@@ -1445,7 +1466,7 @@
     }
 
     // =============================================
-    // MOVER LIENZO CON BOTONES (NUEVO - ESTABLE)
+    // MOVER LIENZO CON BOTONES
     // =============================================
     function moveCanvas(direction) {
       const step = 30 / currentZoom;
@@ -1463,7 +1484,7 @@
     }
 
     // =============================================
-    // ZOOM GESTURES (TOUCH - ESTABLE)
+    // ZOOM GESTURES (TOUCH)
     // =============================================
     function setupZoomGestures() {
       const viewport = document.getElementById('canvas-viewport');
@@ -1604,7 +1625,7 @@
     }
 
     // =============================================
-    // BRUSH SETTINGS - CON DIFERENCIAS
+    // BRUSH SETTINGS
     // =============================================
     function setupBrush() {
       if (currentMode !== 'draw') return;
@@ -1617,7 +1638,6 @@
           canvas.freeDrawingBrush.strokeLineCap = 'round';
           canvas.freeDrawingBrush.strokeLineJoin = 'round';
           canvas.freeDrawingBrush.shadow = null;
-          showToast('✏️ Lápiz activado');
           break;
         case 'marker':
           canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
@@ -1628,7 +1648,6 @@
             blur: 2,
             color: 'rgba(0,0,0,0.3)'
           });
-          showToast('🖍️ Marcador activado');
           break;
         case 'brush':
           canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
@@ -1639,14 +1658,12 @@
             blur: 4,
             color: 'rgba(0,0,0,0.2)'
           });
-          showToast('🖌️ Pincel activado');
           break;
         case 'spray':
           canvas.freeDrawingBrush = new fabric.SprayBrush(canvas);
           canvas.freeDrawingBrush.sprayWidth = size * 3;
           canvas.freeDrawingBrush.sprayDensity = 8;
           canvas.freeDrawingBrush.shadow = null;
-          showToast('💨 Aerógrafo activado');
           break;
         default:
           canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
@@ -1697,12 +1714,12 @@
     }
 
     // =============================================
-    // FIGURINES
+    // FIGURINES - COMO FONDO FIJO
     // =============================================
     function renderFigurines() {
       const container = document.getElementById('figurine-list');
       container.innerHTML = figurines.map((fig, i) => `
-        <div class="figurine-card" onclick="loadFigurine('${fig.pose}')">
+        <div class="figurine-card" onclick="loadFigurineAsBackground('${fig.pose}')">
           <div class="preview"><i class="${fig.icon}" style="font-size:1.5rem; color:var(--text-muted);"></i></div>
           <span>${fig.name}</span>
         </div>
@@ -1716,13 +1733,13 @@
           <div class="preview"><img src="${item.image}" style="width:100%;height:100%;object-fit:contain;"></div>
           <span>${item.name}</span>
         `;
-        card.onclick = () => loadCustomFigurine(item.image);
+        card.onclick = () => loadCustomFigurineAsBackground(item.image);
         container.appendChild(card);
       });
     }
 
-    function loadFigurine(pose) {
-      clearBaseModel();
+    function loadFigurineAsBackground(pose) {
+      removeBaseBackground();
       let modelGroup;
       const baseColor = '#c4c4d4';
       
@@ -1748,16 +1765,85 @@
       modelGroup.set({
         selectable: false,
         evented: false,
+        hasControls: false,
+        hasBorders: false,
+        lockMovementX: true,
+        lockMovementY: true,
+        lockRotation: true,
+        lockScalingX: true,
+        lockScalingY: true,
         opacity: layers[0].opacity,
-        layerId: 0
+        layerId: 0,
+        isBackground: true
       });
 
       canvas.add(modelGroup);
       canvas.sendToBack(modelGroup);
       canvas.renderAll();
-      saveToHistory();
-      showToast('👤 Figurín cargado');
+      
+      // No guardar en historial para no afectar el undo/redo
+      showToast('👤 Figurín fijado como fondo');
       closeSidebar();
+    }
+
+    function loadCustomFigurineAsBackground(dataUrl) {
+      fabric.Image.fromURL(dataUrl, function(img) {
+        removeBaseBackground();
+        const scale = Math.min((canvas.width - 40) / img.width, (canvas.height - 40) / img.height);
+        img.set({
+          scaleX: scale, 
+          scaleY: scale,
+          left: (canvas.width - img.width * scale) / 2,
+          top: (canvas.height - img.height * scale) / 2,
+          selectable: false, 
+          evented: false,
+          hasControls: false,
+          hasBorders: false,
+          lockMovementX: true,
+          lockMovementY: true,
+          lockRotation: true,
+          lockScalingX: true,
+          lockScalingY: true,
+          opacity: layers[0].opacity, 
+          layerId: 0,
+          isBackground: true
+        });
+        canvas.add(img);
+        canvas.sendToBack(img);
+        canvas.renderAll();
+        showToast('📸 Figurín fijado como fondo');
+        closeSidebar();
+      });
+    }
+
+    function loadBaseFemaleAsBackground() {
+      removeBaseBackground();
+      const model = createFrontalFigurine('#c4c4d4');
+      model.set({
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+        lockMovementX: true,
+        lockMovementY: true,
+        lockRotation: true,
+        lockScalingX: true,
+        lockScalingY: true,
+        opacity: layers[0].opacity,
+        layerId: 0,
+        isBackground: true
+      });
+      canvas.add(model);
+      canvas.sendToBack(model);
+      canvas.renderAll();
+    }
+
+    function removeBaseBackground() {
+      canvas.getObjects().forEach(obj => {
+        if (obj.isBackground === true) {
+          canvas.remove(obj);
+        }
+      });
     }
 
     function createFrontalFigurine(color) {
@@ -1812,29 +1898,6 @@
       });
     }
 
-    function loadBaseFemale() {
-      clearBaseModel();
-      const model = createFrontalFigurine('#c4c4d4');
-      model.set({
-        selectable: false,
-        evented: false,
-        opacity: layers[0].opacity,
-        layerId: 0
-      });
-      canvas.add(model);
-      canvas.sendToBack(model);
-      canvas.renderAll();
-      saveToHistory();
-    }
-
-    function clearBaseModel() {
-      canvas.getObjects().forEach(obj => {
-        if (obj.layerId === 0 && obj.type === 'group') {
-          canvas.remove(obj);
-        }
-      });
-    }
-
     function uploadCustomFigurine(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -1845,30 +1908,11 @@
         saved.push({ id: Date.now(), image: dataUrl, name: file.name.replace(/\.[^/.]+$/, '') });
         localStorage.setItem('saved_figurines', JSON.stringify(saved));
         renderFigurines();
-        loadCustomFigurine(dataUrl);
+        loadCustomFigurineAsBackground(dataUrl);
         showToast('📸 Figurín cargado');
         closeSidebar();
       };
       reader.readAsDataURL(file);
-    }
-
-    function loadCustomFigurine(dataUrl) {
-      fabric.Image.fromURL(dataUrl, function(img) {
-        clearBaseModel();
-        const scale = Math.min((canvas.width - 40) / img.width, (canvas.height - 40) / img.height);
-        img.set({
-          scaleX: scale, scaleY: scale,
-          left: (canvas.width - img.width * scale) / 2,
-          top: (canvas.height - img.height * scale) / 2,
-          selectable: false, evented: false, opacity: layers[0].opacity, layerId: 0
-        });
-        canvas.add(img);
-        canvas.sendToBack(img);
-        canvas.renderAll();
-        saveToHistory();
-        showToast('📸 Figurín cargado');
-        closeSidebar();
-      });
     }
 
     // =============================================
@@ -1927,7 +1971,8 @@
         selectable: true,
         evented: true,
         layerId: activeLayerId,
-        opacity: layers.find(l => l.id === activeLayerId)?.opacity || 1
+        opacity: layers.find(l => l.id === activeLayerId)?.opacity || 1,
+        isBackground: false
       });
 
       canvas.add(shape);
@@ -1962,6 +2007,11 @@
     function applyFabricToTarget(target) {
       if (!target) {
         showToast('Selecciona una prenda');
+        return;
+      }
+
+      if (target.isBackground === true) {
+        showToast('No se puede aplicar tela al figurín de fondo');
         return;
       }
 
@@ -2075,6 +2125,7 @@
     function setupShapeDrawing() {
       canvas.on('mouse:down', function(opt) {
         if (!shapeTool || currentMode !== 'select') return;
+        if (opt.target && opt.target.isBackground === true) return;
         if (opt.target && opt.target.layerId !== undefined) return;
         
         isDrawingShape = true;
@@ -2108,7 +2159,8 @@
               stroke: stroke,
               strokeWidth: strokeWidth,
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'dashed':
@@ -2117,7 +2169,8 @@
               strokeWidth: strokeWidth,
               strokeDashArray: [10, 8],
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'dotted':
@@ -2126,7 +2179,8 @@
               strokeWidth: strokeWidth,
               strokeDashArray: [2, 6],
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'circle':
@@ -2139,7 +2193,8 @@
               stroke: stroke,
               strokeWidth: strokeWidth,
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'square':
@@ -2153,7 +2208,8 @@
               stroke: stroke,
               strokeWidth: strokeWidth,
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'rectangle':
@@ -2166,7 +2222,8 @@
               stroke: stroke,
               strokeWidth: strokeWidth,
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'triangle':
@@ -2179,7 +2236,8 @@
               stroke: stroke,
               strokeWidth: strokeWidth,
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           case 'ellipse':
@@ -2192,7 +2250,8 @@
               stroke: stroke,
               strokeWidth: strokeWidth,
               selectable: true,
-              layerId: activeLayerId
+              layerId: activeLayerId,
+              isBackground: false
             });
             break;
           default:
@@ -2297,7 +2356,9 @@
       if (!confirm(`¿Eliminar "${layers.find(l => l.id === id).name}"?`)) return;
       
       canvas.getObjects().forEach(obj => {
-        if (obj.layerId === id) canvas.remove(obj);
+        if (obj.layerId === id && obj.isBackground !== true) {
+          canvas.remove(obj);
+        }
       });
       layers = layers.filter(l => l.id !== id);
       if (activeLayerId === id) activeLayerId = 0;
@@ -2308,7 +2369,142 @@
     }
 
     // =============================================
-    // PROJECTS - CON GALERÍAS COMPLETAS
+    // HISTORIAL - CORREGIDO
+    // =============================================
+    function saveToHistory() {
+      if (isRestoringHistory) return;
+      
+      // Eliminar historial futuro
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+      
+      // Guardar solo objetos que no sean de fondo
+      const data = canvas.toJSON(['layerId', 'selectable', 'evented', 'isBackground']);
+      
+      // Filtrar objetos de fondo para no guardarlos en el historial
+      if (data.objects) {
+        data.objects = data.objects.filter(obj => obj.isBackground !== true);
+      }
+      
+      history.push(data);
+      
+      if (history.length > MAX_HISTORY) {
+        history.shift();
+      }
+      historyIndex = history.length - 1;
+      
+      updateHistoryCounters();
+    }
+
+    function updateHistoryCounters() {
+      document.getElementById('undo-count').textContent = historyIndex;
+      document.getElementById('redo-count').textContent = history.length - historyIndex - 1;
+    }
+
+    function undoAction() {
+      if (historyIndex > 0) {
+        historyIndex--;
+        restoreHistory(history[historyIndex]);
+        showToast(`↩️ Deshacer (${historyIndex + 1}/${history.length})`);
+      } else {
+        showToast('No hay más acciones para deshacer');
+      }
+      updateHistoryCounters();
+    }
+
+    function redoAction() {
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        restoreHistory(history[historyIndex]);
+        showToast(`↪️ Rehacer (${historyIndex + 1}/${history.length})`);
+      } else {
+        showToast('No hay más acciones para rehacer');
+      }
+      updateHistoryCounters();
+    }
+
+    function restoreHistory(data) {
+      isRestoringHistory = true;
+      
+      // Guardar referencia al fondo actual
+      const backgroundObjects = canvas.getObjects().filter(obj => obj.isBackground === true);
+      
+      // Limpiar canvas pero mantener el fondo
+      canvas.getObjects().forEach(obj => {
+        if (obj.isBackground !== true) {
+          canvas.remove(obj);
+        }
+      });
+      
+      // Cargar historial
+      if (data.objects && data.objects.length > 0) {
+        canvas.loadFromJSON(data, function() {
+          // Restaurar el fondo si existe
+          if (backgroundObjects.length > 0) {
+            backgroundObjects.forEach(bg => {
+              canvas.add(bg);
+              canvas.sendToBack(bg);
+            });
+          }
+          canvas.renderAll();
+          isRestoringHistory = false;
+        });
+      } else {
+        // Si no hay objetos, solo mantener el fondo
+        if (backgroundObjects.length > 0) {
+          backgroundObjects.forEach(bg => {
+            canvas.add(bg);
+            canvas.sendToBack(bg);
+          });
+        }
+        canvas.renderAll();
+        isRestoringHistory = false;
+      }
+    }
+
+    // =============================================
+    // DELETE SELECTED - PROTEJE EL FONDO
+    // =============================================
+    function deleteSelected() {
+      const active = canvas.getActiveObject();
+      if (!active) { showToast('Selecciona un objeto'); return; }
+      if (active.isBackground === true) { 
+        showToast('⚠️ No se puede eliminar el figurín de fondo'); 
+        return; 
+      }
+      if (active.layerId === 0) { 
+        showToast('⚠️ No se puede eliminar el figurín de fondo'); 
+        return; 
+      }
+      if (confirm('¿Eliminar el objeto seleccionado?')) {
+        canvas.remove(active);
+        canvas.renderAll();
+        saveToHistory();
+        showToast('🗑️ Objeto eliminado');
+      }
+    }
+
+    // =============================================
+    // CLEAR CANVAS - SOLO LIMPIA DISEÑOS, NO EL FONDO
+    // =============================================
+    function clearCanvas() {
+      if (!confirm('¿Eliminar todos los diseños? El figurín de fondo se mantendrá.')) return;
+      
+      // Eliminar todo excepto el fondo
+      canvas.getObjects().forEach(obj => {
+        if (obj.isBackground !== true) {
+          canvas.remove(obj);
+        }
+      });
+      
+      canvas.renderAll();
+      saveToHistory();
+      showToast('🧹 Diseños eliminados (fondo conservado)');
+    }
+
+    // =============================================
+    // PROJECTS
     // =============================================
     function renderProjects() {
       renderDraftProjects();
@@ -2380,17 +2576,38 @@
       if (!projects[index]) return;
       if (!confirm(`¿Cargar "${projects[index].name}"? Se perderán los cambios actuales.`)) return;
       
+      // Mantener el fondo actual
+      const backgroundObjects = canvas.getObjects().filter(obj => obj.isBackground === true);
+      
+      // Eliminar diseños actuales
+      canvas.getObjects().forEach(obj => {
+        if (obj.isBackground !== true) {
+          canvas.remove(obj);
+        }
+      });
+      
       fabric.Image.fromURL(projects[index].image, function(img) {
-        canvas.clear();
-        canvas.backgroundColor = '#ffffff';
         const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
         img.set({
-          scaleX: scale, scaleY: scale,
+          scaleX: scale, 
+          scaleY: scale,
           left: (canvas.width - img.width * scale) / 2,
           top: (canvas.height - img.height * scale) / 2,
-          selectable: false, evented: false
+          selectable: true,
+          evented: true,
+          layerId: 1,
+          isBackground: false
         });
         canvas.add(img);
+        
+        // Restaurar fondo
+        if (backgroundObjects.length > 0) {
+          backgroundObjects.forEach(bg => {
+            canvas.add(bg);
+            canvas.sendToBack(bg);
+          });
+        }
+        
         canvas.renderAll();
         saveToHistory();
         showToast(`📂 Proyecto "${projects[index].name}" cargado`);
@@ -2413,7 +2630,16 @@
       const name = prompt("Nombre del diseño:", "Diseño " + new Date().toLocaleDateString());
       if (!name) return;
       
+      // Ocultar temporalmente el fondo para guardar solo el diseño
+      const backgrounds = canvas.getObjects().filter(obj => obj.isBackground === true);
+      backgrounds.forEach(bg => bg.set('visible', false));
+      
       const dataUrl = canvas.toDataURL({ format: 'png', quality: 0.9 });
+      
+      // Restaurar fondo
+      backgrounds.forEach(bg => bg.set('visible', true));
+      canvas.renderAll();
+      
       const key = isFinished ? 'finished_projects' : 'draft_projects';
       let projects = JSON.parse(localStorage.getItem(key) || '[]');
       projects.push({ 
@@ -2428,14 +2654,21 @@
 
     function autoSave() {
       try {
+        // Ocultar temporalmente el fondo para guardar solo el diseño
+        const backgrounds = canvas.getObjects().filter(obj => obj.isBackground === true);
+        backgrounds.forEach(bg => bg.set('visible', false));
+        
         const dataUrl = canvas.toDataURL({ format: 'png', quality: 0.9 });
-        // Guardar como auto-save
+        
+        // Restaurar fondo
+        backgrounds.forEach(bg => bg.set('visible', true));
+        canvas.renderAll();
+        
         localStorage.setItem('auto_save_image', dataUrl);
         localStorage.setItem('auto_save_time', new Date().toISOString());
         
-        // También guardar como borrador automático
+        // Guardar como borrador automático
         const drafts = JSON.parse(localStorage.getItem('draft_projects') || '[]');
-        // Buscar si ya existe un auto-guardado para actualizar
         const autoIndex = drafts.findIndex(p => p.name === 'Auto-guardado');
         if (autoIndex !== -1) {
           drafts[autoIndex] = { 
@@ -2449,7 +2682,6 @@
             image: dataUrl, 
             date: new Date().toISOString() 
           });
-          // Mantener máximo 10 auto-guardados
           if (drafts.length > 10) drafts.pop();
         }
         localStorage.setItem('draft_projects', JSON.stringify(drafts));
@@ -2509,70 +2741,37 @@
       }
     });
 
-    canvas.on('path:created', function() { saveToHistory(); });
-    canvas.on('object:added', function() { if (!canvas._loadingFromHistory) saveToHistory(); });
-    canvas.on('object:modified', function() { saveToHistory(); });
-    canvas.on('object:removed', function() { saveToHistory(); });
-
-    // =============================================
-    // HISTORY (UNDO/REDO)
-    // =============================================
-    function saveToHistory() {
-      if (historyIndex < history.length - 1) {
-        history = history.slice(0, historyIndex + 1);
-      }
-      history.push(canvas.toJSON(['layerId', 'selectable', 'evented']));
-      if (history.length > MAX_HISTORY) history.shift();
-      historyIndex = history.length - 1;
-    }
-
-    function undoAction() {
-      if (historyIndex > 0) {
-        historyIndex--;
-        loadHistory(history[historyIndex]);
-        showToast('↩️ Deshacer');
-      } else {
-        showToast('No hay más acciones');
-      }
-    }
-
-    function redoAction() {
-      if (historyIndex < history.length - 1) {
-        historyIndex++;
-        loadHistory(history[historyIndex]);
-        showToast('↪️ Rehacer');
-      } else {
-        showToast('No hay más acciones');
-      }
-    }
-
-    function loadHistory(data) {
-      canvas._loadingFromHistory = true;
-      canvas.clear();
-      canvas.backgroundColor = '#ffffff';
-      canvas.loadFromJSON(data, function() {
-        canvas.renderAll();
-        canvas._loadingFromHistory = false;
-        if (!canvas.getObjects().some(obj => obj.layerId === 0)) {
-          loadBaseFemale();
+    canvas.on('path:created', function() { 
+      // Asegurar que los trazos no sean de fondo
+      if (canvas.freeDrawingBrush) {
+        const path = canvas.freeDrawingBrush._finalizeAndAddPath();
+        if (path) {
+          path.set('layerId', activeLayerId);
+          path.set('isBackground', false);
         }
-      });
-    }
-
-    // =============================================
-    // DELETE SELECTED
-    // =============================================
-    function deleteSelected() {
-      const active = canvas.getActiveObject();
-      if (!active) { showToast('Selecciona un objeto'); return; }
-      if (active.layerId === 0) { showToast('No se puede eliminar el figurín'); return; }
-      if (confirm('¿Eliminar el objeto seleccionado?')) {
-        canvas.remove(active);
-        canvas.renderAll();
-        saveToHistory();
-        showToast('🗑️ Objeto eliminado');
       }
-    }
+      saveToHistory(); 
+    });
+    
+    canvas.on('object:added', function() { 
+      if (!isRestoringHistory) {
+        // Asegurar que los objetos nuevos no sean de fondo
+        canvas.getObjects().forEach(obj => {
+          if (obj.isBackground === undefined) {
+            obj.set('isBackground', false);
+          }
+        });
+        saveToHistory(); 
+      }
+    });
+    
+    canvas.on('object:modified', function() { 
+      if (!isRestoringHistory) saveToHistory(); 
+    });
+    
+    canvas.on('object:removed', function() { 
+      if (!isRestoringHistory) saveToHistory(); 
+    });
 
     // =============================================
     // KEYBOARD SHORTCUTS
@@ -2710,18 +2909,6 @@
     }
 
     // =============================================
-    // CLEAR CANVAS
-    // =============================================
-    function clearCanvas() {
-      if (!confirm('¿Limpiar todo el lienzo?')) return;
-      canvas.clear();
-      canvas.backgroundColor = '#ffffff';
-      loadBaseFemale();
-      saveToHistory();
-      showToast('🧹 Lienzo limpiado');
-    }
-
-    // =============================================
     // TOAST
     // =============================================
     let toastTimeout;
@@ -2743,24 +2930,33 @@
     try {
       const autoSaveImage = localStorage.getItem('auto_save_image');
       if (autoSaveImage) {
-        fabric.Image.fromURL(autoSaveImage, function(img) {
-          canvas.clear();
-          canvas.backgroundColor = '#ffffff';
-          const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
-          img.set({
-            scaleX: scale, scaleY: scale,
-            left: (canvas.width - img.width * scale) / 2,
-            top: (canvas.height - img.height * scale) / 2,
-            selectable: false, evented: false
+        setTimeout(() => {
+          fabric.Image.fromURL(autoSaveImage, function(img) {
+            // Solo cargar si hay un diseño guardado
+            if (img.width > 10) {
+              const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+              img.set({
+                scaleX: scale, 
+                scaleY: scale,
+                left: (canvas.width - img.width * scale) / 2,
+                top: (canvas.height - img.height * scale) / 2,
+                selectable: true,
+                evented: true,
+                layerId: 1,
+                isBackground: false
+              });
+              canvas.add(img);
+              canvas.renderAll();
+              showToast('💾 Auto-guardado recuperado');
+            }
           });
-          canvas.add(img);
-          canvas.renderAll();
-          showToast('💾 Auto-guardado recuperado');
-        });
+        }, 1000);
       }
     } catch(e) {}
 
-    console.log('✨ Fashion Studio Pro v5 cargado');
+    console.log('✨ Fashion Studio Pro v6 cargado');
+    console.log('🛡️ Figurín fijado como fondo - No se borra');
+    console.log('🔄 Historial mejorado con contadores');
     console.log('📐 Herramientas de formas: líneas, círculos, rectángulos');
     console.log('🎨 Pinceles diferenciados: Lápiz, Marcador, Pincel, Aerógrafo');
     console.log('🔒 Capas con bloqueo y opacidad ajustable');
@@ -2768,7 +2964,6 @@
     console.log('💾 Auto-guardado cada 30 segundos');
     console.log('📁 Galería de Trabajos en Curso y Finalizados');
     console.log('🖱️ Zoom con rueda del mouse + botones + gestos táctiles');
-    console.log('↕️ Movimiento del lienzo con botones de flecha');
   </script>
 </body>
 </html>

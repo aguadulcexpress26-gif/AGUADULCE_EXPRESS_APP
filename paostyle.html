@@ -1301,12 +1301,13 @@
     let activeLayerId = 1;
     
     // =============================================
-    // HISTORIAL SIMPLIFICADO - EVITA CONGELAMIENTO
+    // HISTORIAL - VERSIÓN CORREGIDA (SIN BUCLE)
     // =============================================
     let history = [];
     let historyIndex = -1;
-    const MAX_HISTORY = 50;
+    const MAX_HISTORY = 30;
     let isRestoring = false;
+    let saveTimeout = null;
 
     let shapeTool = null;
     let isDrawingShape = false;
@@ -1387,7 +1388,10 @@
       setupMouseZoom();
       updateColorFromHue(0);
       
-      saveToHistory();
+      // Guardar estado inicial con un pequeño retraso
+      setTimeout(function() {
+        saveToHistory();
+      }, 100);
       
       setTimeout(() => showToast('✨ Fashion Studio Pro cargado'), 500);
     };
@@ -2351,28 +2355,42 @@
     }
 
     // =============================================
-    // HISTORIAL - VERSIÓN SIMPLIFICADA Y ESTABLE
+    // HISTORIAL - CORREGIDO (SIN BUCLE INFINITO)
     // =============================================
     function saveToHistory() {
+      // Evitar guardar durante restauración
       if (isRestoring) return;
       
-      // Limpiar historial futuro
-      if (historyIndex < history.length - 1) {
-        history = history.slice(0, historyIndex + 1);
+      // Limpiar timeout anterior
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
       }
       
-      // Guardar solo objetos que NO son de fondo
-      const objects = canvas.getObjects().filter(obj => obj.isBackground !== true);
-      const data = objects.map(obj => obj.toJSON());
-      
-      history.push(data);
-      
-      if (history.length > MAX_HISTORY) {
-        history.shift();
-      }
-      historyIndex = history.length - 1;
-      
-      updateCounters();
+      // Usar timeout para evitar múltiples guardados seguidos
+      saveTimeout = setTimeout(function() {
+        // Limpiar historial futuro
+        if (historyIndex < history.length - 1) {
+          history = history.slice(0, historyIndex + 1);
+        }
+        
+        // Obtener solo objetos de diseño (no fondo)
+        const designObjects = canvas.getObjects().filter(obj => obj.isBackground !== true);
+        
+        // Guardar solo si hay objetos o es el estado inicial
+        if (designObjects.length > 0 || history.length === 0) {
+          // Guardar los objetos como JSON
+          const objectsData = designObjects.map(obj => obj.toJSON());
+          history.push(objectsData);
+          
+          if (history.length > MAX_HISTORY) {
+            history.shift();
+          }
+          historyIndex = history.length - 1;
+        }
+        
+        updateCounters();
+        saveTimeout = null;
+      }, 200);
     }
 
     function updateCounters() {
@@ -2405,7 +2423,10 @@
     function restoreState(data) {
       isRestoring = true;
       
-      // Eliminar todos los objetos que NO son de fondo
+      // Guardar el fondo actual
+      const backgrounds = canvas.getObjects().filter(obj => obj.isBackground === true);
+      
+      // Eliminar todos los objetos de diseño
       canvas.getObjects().forEach(obj => {
         if (obj.isBackground !== true) {
           canvas.remove(obj);
@@ -2414,21 +2435,31 @@
       
       // Restaurar objetos del historial
       if (data && data.length > 0) {
-        data.forEach(item => {
-          fabric.util.enlivenObjects([item], function(objects) {
-            objects.forEach(obj => {
-              obj.set({
-                isBackground: false,
-                selectable: true,
-                evented: true
-              });
-              canvas.add(obj);
+        fabric.util.enlivenObjects(data, function(objects) {
+          objects.forEach(obj => {
+            obj.set({
+              isBackground: false,
+              selectable: true,
+              evented: true
             });
-            canvas.renderAll();
-            isRestoring = false;
+            canvas.add(obj);
           });
+          
+          // Restaurar fondo
+          backgrounds.forEach(bg => {
+            canvas.add(bg);
+            canvas.sendToBack(bg);
+          });
+          
+          canvas.renderAll();
+          isRestoring = false;
         });
       } else {
+        // Restaurar fondo
+        backgrounds.forEach(bg => {
+          canvas.add(bg);
+          canvas.sendToBack(bg);
+        });
         canvas.renderAll();
         isRestoring = false;
       }
@@ -2676,7 +2707,7 @@
     }
 
     // =============================================
-    // CANVAS EVENTS
+    // CANVAS EVENTS - EVITAN BUCLE INFINITO
     // =============================================
     canvas.on('mouse:down', function(opt) {
       if (currentMode === 'fill' && opt.target) {
@@ -2685,32 +2716,37 @@
       }
     });
 
+    // Usar eventos con timeout para evitar bucles
     canvas.on('path:created', function() { 
-      const path = canvas.freeDrawingBrush._finalizeAndAddPath();
-      if (path) {
-        path.set('layerId', activeLayerId);
-        path.set('isBackground', false);
-      }
-      saveToHistory(); 
+      setTimeout(function() {
+        const paths = canvas.getObjects().filter(obj => obj.type === 'path');
+        if (paths.length > 0) {
+          const lastPath = paths[paths.length - 1];
+          if (lastPath && lastPath.isBackground !== true) {
+            lastPath.set('layerId', activeLayerId);
+            lastPath.set('isBackground', false);
+          }
+        }
+        saveToHistory();
+      }, 50);
     });
     
-    canvas.on('object:added', function() { 
-      if (!isRestoring) {
-        canvas.getObjects().forEach(obj => {
-          if (obj.isBackground === undefined) {
-            obj.set('isBackground', false);
-          }
-        });
-        saveToHistory(); 
+    canvas.on('object:added', function(e) { 
+      if (!isRestoring && e.target && e.target.isBackground !== true) {
+        setTimeout(saveToHistory, 50);
       }
     });
     
     canvas.on('object:modified', function() { 
-      if (!isRestoring) saveToHistory(); 
+      if (!isRestoring) {
+        setTimeout(saveToHistory, 50);
+      }
     });
     
     canvas.on('object:removed', function() { 
-      if (!isRestoring) saveToHistory(); 
+      if (!isRestoring) {
+        setTimeout(saveToHistory, 50);
+      }
     });
 
     // =============================================
@@ -2889,13 +2925,13 @@
               showToast('💾 Auto-guardado recuperado');
             }
           });
-        }, 1000);
+        }, 1500);
       }
     } catch(e) {}
 
-    console.log('✨ Fashion Studio Pro v7 - Estable');
+    console.log('✨ Fashion Studio Pro v8 - Estable (Sin bucles)');
     console.log('🛡️ Figurín fijado como fondo - No se borra');
-    console.log('🔄 Historial simplificado - No se congela');
+    console.log('🔄 Historial con timeout - No se congela');
     console.log('📐 Herramientas de formas completas');
     console.log('💾 Auto-guardado cada 30 segundos');
   </script>

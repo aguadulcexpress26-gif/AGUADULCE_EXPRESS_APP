@@ -1360,7 +1360,7 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         return;
     }
     
-    // ✅ VERIFICAR SOPORTE BLUETOOTH
+    // Verificar soporte Bluetooth
     if (!navigator.bluetooth) {
         Swal.fire({
             title: '❌ No soportado',
@@ -1386,48 +1386,61 @@ window.imprimirComandaConImpresora = function(pedidoId) {
             return; 
         }
         
-        // Obtener nombre del restaurante
         const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
         
-        // Generar texto de la comanda
-        let texto = '===============================\n';
-        texto += '   🍔 AGUADULCE EXPRESS\n';
-        texto += '   📋 COMANDA DE COCINA\n';
+        // ✅ GENERAR TEXTO SIN EMOJIS PARA IMPRESORA TERMICA
+        let texto = '';
+        
+        // Comandos ESC/POS básicos
+        texto += '\x1B\x40'; // Inicializar impresora
+        texto += '\x1B\x61\x01'; // Centrar texto
+        texto += '\x1B\x45\x01'; // Negrita activada
         texto += '===============================\n';
-        texto += `   Pedido: #${data.id_pedido || pedidoId.substring(0,8)}\n`;
-        texto += `   Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
+        texto += '   AGUADULCE EXPRESS\n';
+        texto += '   COMANDA DE COCINA\n';
+        texto += '===============================\n';
+        texto += '\x1B\x45\x00'; // Negrita desactivada
+        texto += '\x1B\x61\x00'; // Alinear a la izquierda
+        
+        texto += `Pedido: #${data.id_pedido || pedidoId.substring(0,8)}\n`;
+        texto += `Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
         texto += '-------------------------------\n';
-        texto += `   Cliente: ${data.cliente_nombre || 'Sin nombre'}\n`;
-        texto += `   Teléfono: ${data.cliente_telefono || 'Sin teléfono'}\n`;
-        texto += `   Dirección: ${data.direccion || 'Sin dirección'}\n`;
+        texto += `Cliente: ${data.cliente_nombre || 'Sin nombre'}\n`;
+        texto += `Telefono: ${data.cliente_telefono || 'Sin telefono'}\n`;
+        texto += `Direccion: ${data.direccion || 'Sin direccion'}\n`;
         texto += '-------------------------------\n';
-        texto += '   📦 PRODUCTOS:\n';
+        texto += 'PRODUCTOS:\n';
         
         if (data.items && data.items.length > 0) {
             for (const item of data.items) {
                 const cantidad = item.cantidad || 1;
                 const nombre = item.nombre || 'Producto';
-                texto += `   ${cantidad}x ${nombre}\n`;
+                texto += `  ${cantidad}x ${nombre}\n`;
             }
         } else {
-            texto += '   Sin productos\n';
+            texto += '  Sin productos\n';
         }
         
         texto += '-------------------------------\n';
-        texto += `   TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
+        texto += '\x1B\x45\x01'; // Negrita activada
+        texto += `TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
+        texto += '\x1B\x45\x00'; // Negrita desactivada
         texto += '===============================\n';
-        texto += `   Preparado por: ${nombreRestaurante}\n`;
-        texto += '   ¡Gracias por su pedido! 🍕\n';
+        texto += `Preparado por: ${nombreRestaurante}\n`;
+        texto += 'Gracias por su pedido!\n';
         texto += '===============================\n';
         
-        console.log('📄 Comanda generada:');
+        // Comandos de corte de papel
+        texto += '\x1B\x69'; // Cortar papel
+        texto += '\n\n\n\n\n\n\n\n'; // Avanzar papel
+        
+        console.log('📄 Comanda generada (sin emojis):');
         console.log(texto);
         
         // ✅ INTENTAR IMPRIMIR DIRECTAMENTE POR BLUETOOTH
         try {
             console.log('🔄 Buscando impresora Bluetooth...');
             
-            // Buscar dispositivo Bluetooth
             const device = await navigator.bluetooth.requestDevice({
                 filters: [
                     { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
@@ -1442,20 +1455,17 @@ window.imprimirComandaConImpresora = function(pedidoId) {
             
             console.log('📱 Dispositivo encontrado:', device.name);
             
-            // Conectar al dispositivo
             const server = await device.gatt.connect();
             console.log('✅ Conectado al dispositivo GATT');
             
-            // Obtener el servicio de impresión
             const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
             console.log('✅ Servicio de impresión encontrado');
             
-            // Obtener la característica de escritura
             const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
             console.log('✅ Característica de escritura encontrada');
             
-            // Convertir texto a bytes y enviar
-            const encoder = new TextEncoder();
+            // ✅ CONVERTIR TEXTO A BYTES CON CODIFICACIÓN CORRECTA
+            const encoder = new TextEncoder('utf-8');
             const dataBytes = encoder.encode(texto);
             
             // Enviar en paquetes de 20 bytes (límite BLE)
@@ -1475,12 +1485,14 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         } catch (bluetoothError) {
             console.warn('⚠️ Error en Bluetooth:', bluetoothError);
             
-            // ✅ FALLBACK: Mostrar vista previa si Bluetooth falla
+            // ✅ FALLBACK: Mostrar vista previa sin emojis
+            const textoPreview = texto.replace(/\x1B/g, '').replace(/\x40/g, '').replace(/\x61/g, '').replace(/\x45/g, '').replace(/\x69/g, '');
+            
             Swal.fire({
                 title: '🖨️ Comanda de Cocina',
                 html: `
                     <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
-${texto}
+${textoPreview}
                     </div>
                     <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
                         ⚠️ No se pudo conectar con la impresora Bluetooth.<br>

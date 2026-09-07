@@ -1360,11 +1360,24 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         return;
     }
     
+    // ✅ VERIFICAR SOPORTE BLUETOOTH
+    if (!navigator.bluetooth) {
+        Swal.fire({
+            title: '❌ No soportado',
+            text: 'Este navegador no soporta Bluetooth. Usa Chrome en Android.',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        });
+        return;
+    }
+    
     // Obtener datos del pedido Y del restaurante
     Promise.all([
         db.ref(`pedidos/${pedidoId}`).once('value'),
         db.ref(`restaurantes/${restauranteId}`).once('value')
-    ]).then(([pedidoSnap, restauranteSnap]) => {
+    ]).then(async ([pedidoSnap, restauranteSnap]) => {
         const data = pedidoSnap.val();
         const restaurante = restauranteSnap.val();
         
@@ -1373,7 +1386,7 @@ window.imprimirComandaConImpresora = function(pedidoId) {
             return; 
         }
         
-        // ✅ OBTENER NOMBRE DEL RESTAURANTE
+        // Obtener nombre del restaurante
         const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
         
         // Generar texto de la comanda
@@ -1410,39 +1423,90 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         console.log('📄 Comanda generada:');
         console.log(texto);
         
-        // ✅ MOSTRAR VISTA PREVIA DEL RECIBO
-        Swal.fire({
-            title: '🖨️ Comanda de Cocina',
-            html: `
-                <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
-${texto}
-                </div>
-                <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
-                    Impresora: <strong style="color:#f59e0b;">${nombreImpresora}</strong>
-                </div>
-            `,
-            confirmButtonText: '🖨️ Imprimir',
-            showCancelButton: true,
-            cancelButtonText: 'Cancelar',
-            background: '#0f172a',
-            color: 'white',
-            confirmButtonColor: '#f59e0b',
-            cancelButtonColor: '#334155',
-            width: '92%',
-            preConfirm: () => {
-                console.log('🖨️ Enviando a impresora:', nombreImpresora);
-                showToast('🖨️ Imprimiendo comanda en ' + nombreImpresora, 'info');
-                window.imprimirComanda(pedidoId);
-                return true;
+        // ✅ INTENTAR IMPRIMIR DIRECTAMENTE POR BLUETOOTH
+        try {
+            console.log('🔄 Buscando impresora Bluetooth...');
+            
+            // Buscar dispositivo Bluetooth
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [
+                    { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
+                    { namePrefix: 'Printer' },
+                    { namePrefix: 'POS' },
+                    { namePrefix: 'Blue' },
+                    { namePrefix: 'BT' },
+                    { name: nombreImpresora }
+                ],
+                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+            });
+            
+            console.log('📱 Dispositivo encontrado:', device.name);
+            
+            // Conectar al dispositivo
+            const server = await device.gatt.connect();
+            console.log('✅ Conectado al dispositivo GATT');
+            
+            // Obtener el servicio de impresión
+            const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+            console.log('✅ Servicio de impresión encontrado');
+            
+            // Obtener la característica de escritura
+            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+            console.log('✅ Característica de escritura encontrada');
+            
+            // Convertir texto a bytes y enviar
+            const encoder = new TextEncoder();
+            const dataBytes = encoder.encode(texto);
+            
+            // Enviar en paquetes de 20 bytes (límite BLE)
+            const chunkSize = 20;
+            for (let i = 0; i < dataBytes.length; i += chunkSize) {
+                const chunk = dataBytes.slice(i, i + chunkSize);
+                await characteristic.writeValue(chunk);
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
-        });
+            
+            console.log('✅ Datos enviados a la impresora');
+            await server.disconnect();
+            console.log('✅ Desconectado de la impresora');
+            
+            showToast('🖨️ Comanda enviada a ' + device.name, 'success');
+            
+        } catch (bluetoothError) {
+            console.warn('⚠️ Error en Bluetooth:', bluetoothError);
+            
+            // ✅ FALLBACK: Mostrar vista previa si Bluetooth falla
+            Swal.fire({
+                title: '🖨️ Comanda de Cocina',
+                html: `
+                    <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
+${texto}
+                    </div>
+                    <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
+                        ⚠️ No se pudo conectar con la impresora Bluetooth.<br>
+                        Impresora: <strong style="color:#f59e0b;">${nombreImpresora}</strong>
+                    </div>
+                `,
+                confirmButtonText: '📄 Vista previa',
+                showCancelButton: true,
+                cancelButtonText: 'Cancelar',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#334155',
+                width: '92%'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.imprimirComanda(pedidoId);
+                }
+            });
+        }
         
     }).catch((error) => { 
         console.error('Error al obtener datos:', error); 
         showToast('❌ Error al imprimir', 'error'); 
     });
 };
-
 // ============================================
 // IMPRIMIR COMADA (VERSIÓN NORMAL)
 // ============================================

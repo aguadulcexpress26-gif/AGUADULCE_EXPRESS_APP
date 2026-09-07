@@ -2371,162 +2371,162 @@ function mostrarMensajeVacio(columnaId, icono, mensaje) {
                 });
             };
 
-            // ============================================
-            // 24. CREAR ENVÍO
-            // ============================================
-            async function crearEnvio(data) {
-                console.log('🚚 Creando envío con datos:', data);
-                
-                try {
-                    const repartidoresSnap = await db.ref('repartidores')
-                        .orderByChild('activo')
-                        .equalTo(true)
-                        .once('value');
-                    
-                    const repartidores = repartidoresSnap.val();
-                    if (!repartidores) {
-                        showToast('⚠️ No hay repartidores disponibles', 'warning');
-                        return;
+           // ============================================
+// 24. CREAR ENVÍO
+// ============================================
+async function crearEnvio(data) {
+    console.log('🚚 Creando envío con datos:', data);
+    
+    try {
+        const repartidoresSnap = await db.ref('repartidores')
+            .orderByChild('activo')
+            .equalTo(true)
+            .once('value');
+        
+        const repartidores = repartidoresSnap.val();
+        if (!repartidores) {
+            showToast('⚠️ No hay repartidores disponibles', 'warning');
+            return;
+        }
+        
+        let repartidorId = null;
+        let repartidorData = null;
+        let menorCarga = Infinity;
+        
+        for (const [uid, rData] of Object.entries(repartidores)) {
+            const pedidosActivosSnap = await db.ref('pedidos')
+                .orderByChild('uid_repartidor')
+                .equalTo(uid)
+                .once('value');
+            
+            const pedidosActivos = pedidosActivosSnap.val();
+            let carga = 0;
+            
+            if (pedidosActivos) {
+                for (const [pid, pData] of Object.entries(pedidosActivos)) {
+                    const estado = pData.estado ? pData.estado.toUpperCase() : '';
+                    if (estado !== 'ENTREGADO' && estado !== 'CANCELADO_POR_AUSENCIA') {
+                        carga++;
                     }
-                    
-                    let repartidorId = null;
-                    let repartidorData = null;
-                    let menorCarga = Infinity;
-                    
-                    for (const [uid, rData] of Object.entries(repartidores)) {
-                        const pedidosActivosSnap = await db.ref('pedidos')
-                            .orderByChild('uid_repartidor')
-                            .equalTo(uid)
-                            .once('value');
-                        
-                        const pedidosActivos = pedidosActivosSnap.val();
-                        let carga = 0;
-                        
-                        if (pedidosActivos) {
-                            for (const [pid, pData] of Object.entries(pedidosActivos)) {
-                                const estado = pData.estado ? pData.estado.toUpperCase() : '';
-                                if (estado !== 'ENTREGADO' && estado !== 'CANCELADO_POR_AUSENCIA') {
-                                    carga++;
-                                }
-                            }
-                        }
-                        
-                        if (carga < menorCarga) {
-                            menorCarga = carga;
-                            repartidorId = uid;
-                            repartidorData = rData;
-                        }
-                    }
-                    
-                    if (!repartidorId) {
-                        const keys = Object.keys(repartidores);
-                        if (keys.length > 0) {
-                            repartidorId = keys[0];
-                            repartidorData = repartidores[keys[0]];
-                        } else {
-                            showToast('⚠️ No hay repartidores disponibles', 'warning');
-                            return;
-                        }
-                    }
-                    
-                    console.log(`✅ Repartidor seleccionado: ${repartidorData.nombre || repartidorId}`);
-                    
-                    const pedidoId = db.ref('pedidos').push().key;
-                    const costoEnvio = data.costoEnvio || 3.50;
-                    
-                    const pedido = {
-                        uid_restaurante: restauranteId,
-                        restaurante_id: restauranteId,
-                        restaurante_nombre: 'Restaurante',
-                        uid_repartidor: repartidorId,
-                        repartidor_nombre: repartidorData.nombre || 'Repartidor',
-                        uid_cliente: 'reparto_personal',
-                        cliente_nombre: data.cliente,
-                        cliente_telefono: data.telefono,
-                        direccion: data.direccion,
-                        items: [
-                            {
-                                nombre: '📦 Reparto Personal',
-                                cantidad: 1,
-                                precio_unitario: 0,
-                                total: 0
-                            }
-                        ],
-                        total: 0,
-                        subtotal: 0,
-                        envio: costoEnvio,
-                        estado: 'LISTO',
-                        tipo: 'reparto_personal',
-                        metodo_pago: data.pago === 'pagado' ? 'Pagado' : 'Contra entrega',
-                        nota: data.nota || '',
-                        debe_cobrar: data.pago === 'cobrar',
-                        timestamp: Date.now(),
-                        timestamp_inicio: Date.now(),
-                        timestamp_listo: Date.now(),
-                        tiempo_preparacion: 0,
-                        distancia_aproximada: window._distanciaCalculada || null,
-                        historial: [
-                            {
-                                estado: 'LISTO',
-                                timestamp: Date.now(),
-                                accion: 'creado_por_restaurante',
-                                tipo: 'reparto_personal'
-                            }
-                        ],
-                        reparto_personal: {
-                            creado_por: 'restaurante',
-                            fecha_creacion: Date.now(),
-                            nota: data.nota || '',
-                            estado_pago: data.pago,
-                            costo_envio_calculado: costoEnvio
-                        }
-                    };
-                    
-                    await db.ref(`pedidos/${pedidoId}`).set(pedido);
-                    console.log(`✅ Pedido ${pedidoId} creado correctamente`);
-                    
-                    const envioId = db.ref('envios').push().key;
-                    const envio = {
-                        uid_restaurante: restauranteId,
-                        uid_repartidor: repartidorId,
-                        pedido_id: pedidoId,
-                        cliente_nombre: data.cliente,
-                        cliente_telefono: data.telefono,
-                        direccion: data.direccion,
-                        monto: 0,
-                        costo_envio: costoEnvio,
-                        estado_pago: data.pago === 'pagado' ? 'pagado' : 'pendiente',
-                        debe_cobrar: data.pago === 'cobrar',
-                        estado: 'entregado',
-                        tipo: 'reparto_personal',
-                        nota: data.nota || '',
-                        timestamp: Date.now(),
-                        distancia_aproximada: window._distanciaCalculada || null,
-                        historial: [
-                            {
-                                estado: 'entregado',
-                                timestamp: Date.now(),
-                                accion: 'creado_por_restaurante'
-                            }
-                        ]
-                    };
-                    
-                    await db.ref(`envios/${envioId}`).set(envio);
-                    console.log(`✅ Envío ${envioId} creado correctamente`);
-                    
-                    await notificarRepartidor(pedidoId);
-                    
-                    showToast(`✅ Reparto #${pedidoId.substring(0,8)} listo - Envío: ${costoEnvio.toFixed(2)}€`, 'success');
-                    renderizarVista();
-                    reproducirSonidoLlegada();
-                    
-                } catch (error) {
-                    console.error('❌ Error al crear envío:', error);
-                    showToast('❌ Error al crear envío: ' + error.message, 'error');
                 }
             }
+            
+            if (carga < menorCarga) {
+                menorCarga = carga;
+                repartidorId = uid;
+                repartidorData = rData;
+            }
+        }
+        
+        if (!repartidorId) {
+            const keys = Object.keys(repartidores);
+            if (keys.length > 0) {
+                repartidorId = keys[0];
+                repartidorData = repartidores[keys[0]];
+            } else {
+                showToast('⚠️ No hay repartidores disponibles', 'warning');
+                return;
+            }
+        }
+        
+        console.log(`✅ Repartidor seleccionado: ${repartidorData.nombre || repartidorId}`);
+        
+        const pedidoId = db.ref('pedidos').push().key;
+        const costoEnvio = data.costoEnvio || 3.50;
+        
+        const pedido = {
+            uid_restaurante: restauranteId,
+            restaurante_id: restauranteId,
+            restaurante_nombre: 'Restaurante',
+            uid_repartidor: repartidorId,
+            repartidor_nombre: repartidorData.nombre || 'Repartidor',
+            uid_cliente: 'reparto_personal',
+            cliente_nombre: data.cliente,
+            cliente_telefono: data.telefono,
+            direccion: data.direccion,
+            items: [
+                {
+                    nombre: '📦 Reparto Personal',
+                    cantidad: 1,
+                    precio_unitario: 0,
+                    total: 0
+                }
+            ],
+            total: 0,
+            subtotal: 0,
+            envio: costoEnvio,
+            estado: 'LISTO',
+            tipo: 'reparto_personal',
+            metodo_pago: data.pago === 'pagado' ? 'Pagado' : 'Contra entrega',
+            nota: data.nota || '',
+            debe_cobrar: data.pago === 'cobrar',
+            timestamp: Date.now(),
+            timestamp_inicio: Date.now(),
+            timestamp_listo: Date.now(),
+            tiempo_preparacion: 0,
+            distancia_aproximada: window._distanciaCalculada || null,
+            historial: [
+                {
+                    estado: 'LISTO',
+                    timestamp: Date.now(),
+                    accion: 'creado_por_restaurante',
+                    tipo: 'reparto_personal'
+                }
+            ],
+            reparto_personal: {
+                creado_por: 'restaurante',
+                fecha_creacion: Date.now(),
+                nota: data.nota || '',
+                estado_pago: data.pago,
+                costo_envio_calculado: costoEnvio
+            }
+        };
+        
+        await db.ref(`pedidos/${pedidoId}`).set(pedido);
+        console.log(`✅ Pedido ${pedidoId} creado correctamente`);
+        
+        const envioId = db.ref('envios').push().key;
+        const envio = {
+            uid_restaurante: restauranteId,
+            uid_repartidor: repartidorId,
+            pedido_id: pedidoId,
+            cliente_nombre: data.cliente,
+            cliente_telefono: data.telefono,
+            direccion: data.direccion,
+            monto: 0,
+            costo_envio: costoEnvio,
+            estado_pago: data.pago === 'pagado' ? 'pagado' : 'pendiente',
+            debe_cobrar: data.pago === 'cobrar',
+            estado: 'entregado',
+            tipo: 'reparto_personal',
+            nota: data.nota || '',
+            timestamp: Date.now(),
+            distancia_aproximada: window._distanciaCalculada || null,
+            historial: [
+                {
+                    estado: 'entregado',
+                    timestamp: Date.now(),
+                    accion: 'creado_por_restaurante'
+                }
+            ]
+        };
+        
+        await db.ref(`envios/${envioId}`).set(envio);
+        console.log(`✅ Envío ${envioId} creado correctamente`);
+        
+        await notificarRepartidor(pedidoId);
+        
+        showToast(`✅ Reparto #${pedidoId.substring(0,8)} listo - Envío: ${costoEnvio.toFixed(2)}€`, 'success');
+        renderizarVista();
+        reproducirSonidoLlegada();
+        
+    } catch (error) {
+        console.error('❌ Error al crear envío:', error);
+        showToast('❌ Error al crear envío: ' + error.message, 'error');
+    }
+}
 
-            // ============================================
+// ============================================
 // 25. VISTA HISTORIAL - COMPLETO Y CORREGIDO
 // ============================================
 function mostrarVistaHistorial() {
@@ -2557,12 +2557,11 @@ function mostrarVistaHistorial() {
         </div>
     `;
     
-    // Cargar inmediatamente con el filtro por defecto
     setTimeout(() => cargarHistorialFiltrado(), 200);
 }
 
 // ============================================
-// 25b. CARGAR HISTORIAL FILTRADO - CORREGIDO
+// 25b. CARGAR HISTORIAL FILTRADO
 // ============================================
 function cargarHistorialFiltrado() {
     console.log('🔍 Cargando historial filtrado...');
@@ -2576,11 +2575,9 @@ function cargarHistorialFiltrado() {
         return;
     }
     
-    // ✅ VERIFICAR QUE RESTAURANTEID EXISTE
     if (!restauranteId) {
         console.warn('⏳ Esperando restauranteId...');
         content.innerHTML = `<div class="empty"><div class="icon">⏳</div><div>Esperando datos del restaurante...</div></div>`;
-        // Reintentar después de 1 segundo
         setTimeout(() => cargarHistorialFiltrado(), 1000);
         return;
     }
@@ -2588,7 +2585,6 @@ function cargarHistorialFiltrado() {
     const filtroSeleccionado = filtro ? filtro.value : 'todos';
     console.log(`📋 Filtro seleccionado: "${filtroSeleccionado}"`);
     
-    // Mostrar mensaje de carga
     content.innerHTML = `<div class="empty"><div class="icon">⏳</div><div>Cargando pedidos...</div></div>`;
     
     db.ref('pedidos').once('value').then(snap => {
@@ -2604,7 +2600,6 @@ function cargarHistorialFiltrado() {
         let html = '';
         let pedidosFiltrados = [];
         
-        // PRIMERO: RECOLECTAR PEDIDOS QUE CUMPLEN CONDICIONES
         for (const [id, data] of Object.entries(pedidos)) {
             const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
             if (restId !== restauranteId) continue;
@@ -2612,11 +2607,9 @@ function cargarHistorialFiltrado() {
             const estado = data.estado ? data.estado.toLowerCase() : '';
             const tipo = data.tipo || 'normal';
             
-            // APLICAR FILTRO POR TIPO
             if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') continue;
             if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') continue;
             
-            // SOLO MOSTRAR PEDIDOS FINALIZADOS
             if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado' || estado === 'listo') {
                 count++;
                 pedidosFiltrados.push({
@@ -2628,20 +2621,18 @@ function cargarHistorialFiltrado() {
             }
         }
         
-        console.log(`📊 Total de pedidos filtrados: ${count} (filtro: "${filtroSeleccionado}")`);
+        console.log(`📊 Total: ${count} pedidos (filtro: "${filtroSeleccionado}")`);
         
-        // ORDENAR POR FECHA (más reciente primero)
         pedidosFiltrados.sort((a, b) => {
             const fechaA = a.data.timestamp || 0;
             const fechaB = b.data.timestamp || 0;
             return fechaB - fechaA;
         });
         
-        // RENDERIZAR
         if (pedidosFiltrados.length === 0) {
             let mensajeVacio = 'No hay pedidos en el historial';
-            if (filtroSeleccionado === 'ventas') mensajeVacio = 'No hay ventas en el historial';
-            if (filtroSeleccionado === 'repartos') mensajeVacio = 'No hay repartos en el historial';
+            if (filtroSeleccionado === 'ventas') mensajeVacio = 'No hay ventas';
+            if (filtroSeleccionado === 'repartos') mensajeVacio = 'No hay repartos';
             content.innerHTML = `<div class="empty"><div class="icon">📭</div><div>${mensajeVacio}</div></div>`;
         } else {
             for (const item of pedidosFiltrados) {
@@ -2704,355 +2695,371 @@ function cargarHistorialFiltrado() {
         
     }).catch(error => {
         console.error('❌ Error cargando historial:', error);
-        content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error al cargar: ${error.message}</div></div>`;
+        content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error: ${error.message}</div></div>`;
     });
 }
 
-            // ============================================
-            // 26. VISTA DEMORAS
-            // ============================================
-            function mostrarVistaDemoras() {
-                const container = document.getElementById('kanban-container');
-                container.innerHTML = `
-                    <div class="view-container">
-                        <div class="view-header">
-                            <span class="title" style="color:var(--accent-red);">⏱️ Demoras</span>
-                            <span style="background:var(--bg-card);padding:0.05rem 0.4rem;border-radius:50px;font-size:0.5rem;color:var(--text-muted);" id="col-count-demoras">0</span>
+// ============================================
+// 26. VISTA DEMORAS
+// ============================================
+function mostrarVistaDemoras() {
+    console.log('⏱️ Mostrando vista de demoras...');
+    
+    const container = document.getElementById('kanban-container');
+    container.innerHTML = `
+        <div class="view-container">
+            <div class="view-header">
+                <span class="title" style="color:var(--accent-red);">⏱️ Demoras</span>
+                <span style="background:var(--bg-card);padding:0.05rem 0.4rem;border-radius:50px;font-size:0.5rem;color:var(--text-muted);" id="col-count-demoras">0</span>
+            </div>
+            <div class="view-content" id="demoras-contenido">
+                <div class="empty"><div class="icon">⏱️</div><div>Cargando demoras...</div></div>
+            </div>
+        </div>
+    `;
+    
+    db.ref('pedidos').once('value').then((snapshot) => {
+        const pedidos = snapshot.val();
+        const content = document.getElementById('demoras-contenido');
+        const contador = document.getElementById('col-count-demoras');
+        
+        if (!pedidos) { 
+            content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; 
+            if (contador) contador.textContent = '0'; 
+            return; 
+        }
+        
+        let demoras = [], totalDemora = 0, countDemora = 0;
+        for (const [id, data] of Object.entries(pedidos)) {
+            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+            if (restId !== restauranteId) continue;
+            const demora = data.demora || data.tiempo_demora || 0;
+            if (demora > 0) {
+                demoras.push({ 
+                    id, 
+                    id_pedido: data.id_pedido || id.substring(0, 8), 
+                    cliente: data.cliente_nombre || 'Cliente', 
+                    total: data.total || 0, 
+                    demora, 
+                    fecha: data.timestamp ? new Date(data.timestamp) : null, 
+                    items: data.items || [] 
+                });
+                totalDemora += demora; 
+                countDemora++;
+            }
+        }
+        
+        demoras.sort((a, b) => b.demora - a.demora);
+        
+        if (demoras.length === 0) { 
+            content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras registradas</div></div>`; 
+            if (contador) contador.textContent = '0'; 
+            return; 
+        }
+        
+        if (contador) contador.textContent = demoras.length;
+        
+        let html = `<div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.2rem 0.5rem;border:1px solid var(--border-color);margin-bottom:0.3rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:0.65rem;">
+            <div><span style="color:var(--text-muted);">📊 Total:</span> <strong style="color:var(--accent-red);">${countDemora}</strong></div>
+            <div><span style="color:var(--text-muted);">⏱️ Promedio:</span> <strong style="color:var(--accent-gold);">${(totalDemora/countDemora).toFixed(0)} min</strong></div>
+        </div>`;
+        
+        for (const d of demoras) {
+            const color = d.demora > 30 ? 'var(--accent-red)' : d.demora > 15 ? 'var(--accent-gold)' : 'var(--accent-green)';
+            let prodHtml = '';
+            if (d.items && d.items.length > 0) {
+                prodHtml = d.items.slice(0, 3).map(item => `<span>${item.cantidad || 1}x ${item.nombre}</span>`).join('');
+                if (d.items.length > 3) prodHtml += `<span style="font-size:0.4rem;color:var(--text-muted);">+${d.items.length-3} más</span>`;
+            } else { prodHtml = '<span>Sin productos</span>'; }
+            
+            html += `
+                <div class="order-card" style="border-left:4px solid ${color};">
+                    <div class="top">
+                        <span class="id">#${d.id_pedido}</span>
+                        <span class="time">${d.fecha ? d.fecha.toLocaleString() : 'Sin fecha'}</span>
+                    </div>
+                    <div class="cliente">${escapeHTML(d.cliente)}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.15rem;">
+                        <span style="font-size:0.55rem;color:var(--text-muted);">⏱️ Demora</span>
+                        <span style="background:${color};color:#0f172a;padding:0.05rem 0.3rem;border-radius:50px;font-size:0.55rem;font-weight:700;">${d.demora} min</span>
+                    </div>
+                    <div class="productos">${prodHtml}</div>
+                    <div style="display:flex;justify-content:space-between;margin-top:0.15rem;padding-top:0.15rem;border-top:1px solid var(--border-color);">
+                        <span style="font-weight:700;color:var(--accent-gold);font-size:0.65rem;">$${d.total.toFixed(2)}</span>
+                        <button class="btn btn-secondary" onclick="verDetallePedido('${d.id}')" style="padding:0.05rem 0.3rem;font-size:0.5rem;">📋</button>
+                    </div>
+                </div>
+            `;
+        }
+        content.innerHTML = html;
+        
+    }).catch(error => {
+        console.error('❌ Error cargando demoras:', error);
+        const content = document.getElementById('demoras-contenido');
+        if (content) content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error: ${error.message}</div></div>`;
+    });
+}
+
+// ============================================
+// 27. VISTA GANANCIAS - COMPLETA
+// ============================================
+let totalGanancias = 0;
+
+function mostrarVistaGanancias() {
+    console.log('💰 Mostrando vista de ganancias...');
+    
+    const container = document.getElementById('kanban-container');
+    container.innerHTML = `
+        <div class="view-container">
+            <div class="view-header">
+                <span class="title" style="color:var(--accent-green);">💰 Ganancias del Restaurante</span>
+                <div class="filters">
+                    <select id="filtro-ganancias" onchange="cargarGanancias()">
+                        <option value="hoy">📅 Hoy</option>
+                        <option value="semana" selected>📅 Semana</option>
+                        <option value="mes">📅 Mes</option>
+                        <option value="quincena">📅 Quincena</option>
+                    </select>
+                    <button onclick="exportarGananciasExcel()" style="background:var(--accent-green);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
+                        📎 Excel
+                    </button>
+                    <button onclick="restaurarVistaColumnas()" style="background:var(--accent-gold);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
+                        ←
+                    </button>
+                </div>
+            </div>
+            <div class="view-content" id="ganancias-contenido">
+                <div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando ganancias...</div>
+            </div>
+        </div>
+    `;
+    
+    cargarGanancias();
+}
+
+function cargarGanancias() {
+    const content = document.getElementById('ganancias-contenido');
+    const filtro = document.getElementById('filtro-ganancias');
+    if (!content) return;
+    
+    const periodo = filtro ? filtro.value : 'semana';
+    content.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando datos...</div>';
+    
+    db.ref('pedidos').once('value').then(snap => {
+        const pedidos = snap.val();
+        if (!pedidos) {
+            content.innerHTML = `<div class="empty"><div class="icon">📊</div><div>No hay datos de ventas</div></div>`;
+            return;
+        }
+        
+        const ahora = new Date();
+        let fechaInicio;
+        
+        switch(periodo) {
+            case 'hoy':
+                fechaInicio = new Date(ahora);
+                fechaInicio.setHours(0, 0, 0, 0);
+                break;
+            case 'semana':
+                fechaInicio = new Date(ahora);
+                const dia = ahora.getDay();
+                const diff = (dia === 0 ? 6 : dia - 1);
+                fechaInicio.setDate(ahora.getDate() - diff);
+                fechaInicio.setHours(0, 0, 0, 0);
+                break;
+            case 'mes':
+                fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+                fechaInicio.setHours(0, 0, 0, 0);
+                break;
+            case 'quincena':
+                fechaInicio = new Date(ahora);
+                fechaInicio.setDate(ahora.getDate() <= 15 ? 1 : 16);
+                fechaInicio.setHours(0, 0, 0, 0);
+                break;
+            default:
+                fechaInicio = new Date(ahora);
+                fechaInicio.setDate(ahora.getDate() - 7);
+                fechaInicio.setHours(0, 0, 0, 0);
+        }
+        
+        let totalPedidos = 0;
+        let totalVentas = 0;
+        let totalComisiones = 0;
+        let totalLiquidar = 0;
+        let pedidosDetalle = [];
+        
+        for (const [id, data] of Object.entries(pedidos)) {
+            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+            if (restId !== restauranteId) continue;
+            
+            const fecha = new Date(data.fecha || data.timestamp || 0);
+            if (fecha < fechaInicio) continue;
+            
+            if (data.estado === 'ENTREGADO' || data.estado === 'LISTO') {
+                totalPedidos++;
+                
+                // ✅ CALCULAR BASE (neto)
+                let montoBase = data.base || data.subtotal || 0;
+                if (montoBase === 0 && data.total > 0) {
+                    const envio = data.envio || 0;
+                    const comision = data.comision_aplicada || (data.total * 0.1);
+                    montoBase = data.total - envio - comision;
+                }
+                
+                totalVentas += montoBase;
+                
+                const comision = data.comision_aplicada || (montoBase * 0.1);
+                totalComisiones += comision;
+                totalLiquidar += (montoBase - comision);
+                
+                pedidosDetalle.push({
+                    id: data.id_pedido || id.substring(0, 8),
+                    cliente: data.cliente_nombre || 'Cliente',
+                    total: montoBase,
+                    base: montoBase,
+                    envio: data.envio || 0,
+                    comision: comision,
+                    liquidar: montoBase - comision,
+                    fecha: fecha
+                });
+            }
+        }
+        
+        totalGanancias = totalVentas;
+        
+        // Actualizar contador en stats bar
+        const gananciasElement = document.getElementById('count-ganancias');
+        if (gananciasElement) gananciasElement.textContent = totalGanancias.toFixed(0);
+        
+        pedidosDetalle.sort((a, b) => b.fecha - a.fecha);
+        
+        let html = `
+            <div class="ganancias-resumen">
+                <div class="resumen-card">
+                    <div class="label">📦 Pedidos</div>
+                    <div class="value gold">${totalPedidos}</div>
+                </div>
+                <div class="resumen-card">
+                    <div class="label">💰 Base (Neto)</div>
+                    <div class="value green">${totalVentas.toFixed(2)}€</div>
+                </div>
+                <div class="resumen-card">
+                    <div class="label">🏪 Comisiones</div>
+                    <div class="value blue">${totalComisiones.toFixed(2)}€</div>
+                </div>
+                <div class="resumen-card">
+                    <div class="label">💵 A Liquidar</div>
+                    <div class="value purple">${totalLiquidar.toFixed(2)}€</div>
+                </div>
+            </div>
+        `;
+        
+        if (pedidosDetalle.length === 0) {
+            html += `<div class="empty"><div class="icon">📭</div><div>No hay pedidos en este período</div></div>`;
+        } else {
+            html += `<div class="ganancias-detalle" style="max-height:300px;overflow-y:auto;">`;
+            html += `<div style="font-size:0.55rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.2rem;">📋 Detalle de pedidos</div>`;
+            for (const p of pedidosDetalle) {
+                const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
+                html += `
+                    <div class="detalle-item">
+                        <div>
+                            <span class="cliente-nombre">#${p.id}</span>
+                            <span style="color:var(--text-secondary);margin-left:0.3rem;font-size:0.55rem;">${escapeHTML(p.cliente)}</span>
                         </div>
-                        <div class="view-content" id="demoras-contenido">
-                            <div class="empty"><div class="icon">⏱️</div><div>Cargando...</div></div>
+                        <div>
+                            <span class="pedido-total">${p.total.toFixed(2)}€</span>
+                            <span class="pedido-fecha" style="margin-left:0.3rem;">${fechaStr}</span>
                         </div>
                     </div>
                 `;
-                
-                db.ref('pedidos').once('value').then((snapshot) => {
-                    const pedidos = snapshot.val();
-                    const content = document.getElementById('demoras-contenido');
-                    const contador = document.getElementById('col-count-demoras');
-                    if (!pedidos) { 
-                        content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; 
-                        if (contador) contador.textContent = '0'; 
-                        return; 
-                    }
-                    
-                    let demoras = [], totalDemora = 0, countDemora = 0;
-                    for (const [id, data] of Object.entries(pedidos)) {
-                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                        if (restId !== restauranteId) continue;
-                        const demora = data.demora || data.tiempo_demora || 0;
-                        if (demora > 0) {
-                            demoras.push({ 
-                                id, 
-                                id_pedido: data.id_pedido || id.substring(0, 8), 
-                                cliente: data.cliente_nombre || 'Cliente', 
-                                total: data.total || 0, 
-                                demora, 
-                                fecha: data.timestamp ? new Date(data.timestamp) : null, 
-                                items: data.items || [] 
-                            });
-                            totalDemora += demora; 
-                            countDemora++;
-                        }
-                    }
-                    
-                    demoras.sort((a, b) => b.demora - a.demora);
-                    if (demoras.length === 0) { 
-                        content.innerHTML = `<div class="empty"><div class="icon">⏱️</div><div>No hay demoras</div></div>`; 
-                        if (contador) contador.textContent = '0'; 
-                        return; 
-                    }
-                    
-                    if (contador) contador.textContent = demoras.length;
-                    
-                    let html = `<div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.2rem 0.5rem;border:1px solid var(--border-color);margin-bottom:0.3rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:0.65rem;">
-                        <div><span style="color:var(--text-muted);">📊 Total:</span> <strong style="color:var(--accent-red);">${countDemora}</strong></div>
-                        <div><span style="color:var(--text-muted);">⏱️ Promedio:</span> <strong style="color:var(--accent-gold);">${(totalDemora/countDemora).toFixed(0)} min</strong></div>
-                    </div>`;
-                    
-                    for (const d of demoras) {
-                        const color = d.demora > 30 ? 'var(--accent-red)' : d.demora > 15 ? 'var(--accent-gold)' : 'var(--accent-green)';
-                        let prodHtml = '';
-                        if (d.items && d.items.length > 0) {
-                            prodHtml = d.items.slice(0, 3).map(item => `<span>${item.cantidad || 1}x ${item.nombre}</span>`).join('');
-                            if (d.items.length > 3) prodHtml += `<span style="font-size:0.4rem;color:var(--text-muted);">+${d.items.length-3} más</span>`;
-                        } else { prodHtml = '<span>Sin productos</span>'; }
-                        
-                        html += `
-                            <div class="order-card" style="border-left:4px solid ${color};">
-                                <div class="top">
-                                    <span class="id">#${d.id_pedido}</span>
-                                    <span class="time">${d.fecha ? d.fecha.toLocaleString() : 'Sin fecha'}</span>
-                                </div>
-                                <div class="cliente">${escapeHTML(d.cliente)}</div>
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.15rem;">
-                                    <span style="font-size:0.55rem;color:var(--text-muted);">⏱️ Demora</span>
-                                    <span style="background:${color};color:#0f172a;padding:0.05rem 0.3rem;border-radius:50px;font-size:0.55rem;font-weight:700;">${d.demora} min</span>
-                                </div>
-                                <div class="productos">${prodHtml}</div>
-                                <div style="display:flex;justify-content:space-between;margin-top:0.15rem;padding-top:0.15rem;border-top:1px solid var(--border-color);">
-                                    <span style="font-weight:700;color:var(--accent-gold);font-size:0.65rem;">$${d.total.toFixed(2)}</span>
-                                    <button class="btn btn-secondary" onclick="verDetallePedido('${d.id}')" style="padding:0.05rem 0.3rem;font-size:0.5rem;">📋</button>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    content.innerHTML = html;
-                }).catch(error => console.error('Error:', error));
             }
+            html += `</div>`;
+        }
+        
+        content.innerHTML = html;
+        
+        window._gananciasData = {
+            periodo: periodo,
+            totalPedidos: totalPedidos,
+            totalVentas: totalVentas,
+            totalComisiones: totalComisiones,
+            totalLiquidar: totalLiquidar,
+            detalle: pedidosDetalle
+        };
+        
+        console.log(`💰 Ganancias cargadas: ${totalPedidos} pedidos, ${totalVentas.toFixed(2)}€ base`);
+        
+    }).catch(error => {
+        console.error('Error cargando ganancias:', error);
+        content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error al cargar datos: ${error.message}</div></div>`;
+    });
+}
 
-            // ============================================
-            // 27. VISTA GANANCIAS
-            // ============================================
-            let totalGanancias = 0;
+function exportarGananciasExcel() {
+    const data = window._gananciasData;
+    if (!data || data.detalle.length === 0) {
+        Swal.fire({
+            title: '⚠️ Sin datos',
+            text: 'No hay datos para exportar en este período',
+            icon: 'warning',
+            background: '#0f172a',
+            color: 'white'
+        });
+        return;
+    }
+    
+    let csv = "Pedido,Cliente,Base (Neto),Comisión,A Liquidar,Fecha\n";
+    for (const p of data.detalle) {
+        const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
+        csv += `"${p.id}","${p.cliente}",${p.total.toFixed(2)},${p.comision.toFixed(2)},${p.liquidar.toFixed(2)},"${fechaStr}"\n`;
+    }
+    
+    csv += `\n"RESUMEN","","","","",""\n`;
+    csv += `"Total Pedidos",${data.totalPedidos},"","","",""\n`;
+    csv += `"Total Base",${data.totalVentas.toFixed(2)}€,"","","",""\n`;
+    csv += `"Total Comisiones",${data.totalComisiones.toFixed(2)}€,"","","",""\n`;
+    csv += `"Total A Liquidar",${data.totalLiquidar.toFixed(2)}€,"","","",""\n`;
+    
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.setAttribute("download", `ganancias_${data.periodo}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    Swal.fire({
+        title: '✅ Reporte exportado',
+        text: `Se exportaron ${data.detalle.length} pedidos`,
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        background: '#0f172a',
+        color: 'white'
+    });
+}
 
-            function mostrarVistaGanancias() {
-                console.log('💰 Mostrando vista de ganancias...');
-                
-                const container = document.getElementById('kanban-container');
-                container.innerHTML = `
-                    <div class="view-container">
-                        <div class="view-header">
-                            <span class="title" style="color:var(--accent-green);">💰 Ganancias del Restaurante</span>
-                            <div class="filters">
-                                <select id="filtro-ganancias" onchange="cargarGanancias()">
-                                    <option value="hoy">📅 Hoy</option>
-                                    <option value="semana" selected>📅 Semana</option>
-                                    <option value="mes">📅 Mes</option>
-                                    <option value="quincena">📅 Quincena</option>
-                                </select>
-                                <button onclick="exportarGananciasExcel()" style="background:var(--accent-green);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
-                                    📎 Excel
-                                </button>
-                                <button onclick="restaurarVistaColumnas()" style="background:var(--accent-gold);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
-                                    ←
-                                </button>
-                            </div>
-                        </div>
-                        <div class="view-content" id="ganancias-contenido">
-                            <div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando ganancias...</div>
-                        </div>
-                    </div>
-                `;
-                
-                cargarGanancias();
-            }
-
-            function cargarGanancias() {
-                const content = document.getElementById('ganancias-contenido');
-                const filtro = document.getElementById('filtro-ganancias');
-                if (!content) return;
-                
-                const periodo = filtro ? filtro.value : 'semana';
-                content.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando datos...</div>';
-                
-                db.ref('pedidos').once('value').then(snap => {
-                    const pedidos = snap.val();
-                    if (!pedidos) {
-                        content.innerHTML = `<div class="empty"><div class="icon">📊</div><div>No hay datos de ventas</div></div>`;
-                        return;
-                    }
-                    
-                    const ahora = new Date();
-                    let fechaInicio;
-                    
-                    switch(periodo) {
-                        case 'hoy':
-                            fechaInicio = new Date(ahora);
-                            fechaInicio.setHours(0, 0, 0, 0);
-                            break;
-                        case 'semana':
-                            fechaInicio = new Date(ahora);
-                            const dia = ahora.getDay();
-                            const diff = (dia === 0 ? 6 : dia - 1);
-                            fechaInicio.setDate(ahora.getDate() - diff);
-                            fechaInicio.setHours(0, 0, 0, 0);
-                            break;
-                        case 'mes':
-                            fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-                            fechaInicio.setHours(0, 0, 0, 0);
-                            break;
-                        case 'quincena':
-                            fechaInicio = new Date(ahora);
-                            fechaInicio.setDate(ahora.getDate() <= 15 ? 1 : 16);
-                            fechaInicio.setHours(0, 0, 0, 0);
-                            break;
-                        default:
-                            fechaInicio = new Date(ahora);
-                            fechaInicio.setDate(ahora.getDate() - 7);
-                            fechaInicio.setHours(0, 0, 0, 0);
-                    }
-                    
-                    let totalPedidos = 0;
-                    let totalVentas = 0;
-                    let totalComisiones = 0;
-                    let totalLiquidar = 0;
-                    let pedidosDetalle = [];
-                    
-                    for (const [id, data] of Object.entries(pedidos)) {
-                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                        if (restId !== restauranteId) continue;
-                        
-                        const fecha = new Date(data.fecha || data.timestamp || 0);
-                        if (fecha < fechaInicio) continue;
-                        
-                        if (data.estado === 'ENTREGADO' || data.estado === 'LISTO') {
-                            totalPedidos++;
-                            const monto = data.total || 0;
-                            totalVentas += monto;
-                            
-                            const comision = data.comision_aplicada || (monto * 0.1);
-                            totalComisiones += comision;
-                            totalLiquidar += (monto - comision);
-                            
-                            pedidosDetalle.push({
-                                id: data.id_pedido || id.substring(0, 8),
-                                cliente: data.cliente_nombre || 'Cliente',
-                                total: monto,
-                                fecha: fecha,
-                                comision: comision,
-                                liquidar: monto - comision
-                            });
-                        }
-                    }
-                    
-                    totalGanancias = totalVentas;
-                    actualizarContadores(
-                        parseInt(document.getElementById('count-pendiente').textContent) || 0,
-                        parseInt(document.getElementById('count-coccion').textContent) || 0,
-                        parseInt(document.getElementById('count-demoras').textContent) || 0
-                    );
-                    
-                    pedidosDetalle.sort((a, b) => b.fecha - a.fecha);
-                    
-                    let html = `
-                        <div class="ganancias-resumen">
-                            <div class="resumen-card">
-                                <div class="label">📦 Pedidos</div>
-                                <div class="value gold">${totalPedidos}</div>
-                            </div>
-                            <div class="resumen-card">
-                                <div class="label">💰 Ventas</div>
-                                <div class="value green">${totalVentas.toFixed(2)}€</div>
-                            </div>
-                            <div class="resumen-card">
-                                <div class="label">🏪 Comisiones</div>
-                                <div class="value blue">${totalComisiones.toFixed(2)}€</div>
-                            </div>
-                            <div class="resumen-card">
-                                <div class="label">💵 A Liquidar</div>
-                                <div class="value purple">${totalLiquidar.toFixed(2)}€</div>
-                            </div>
-                        </div>
-                    `;
-                    
-                    if (pedidosDetalle.length === 0) {
-                        html += `<div class="empty"><div class="icon">📭</div><div>No hay pedidos en este período</div></div>`;
-                    } else {
-                        html += `<div class="ganancias-detalle" style="max-height:300px;overflow-y:auto;">`;
-                        html += `<div style="font-size:0.55rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.2rem;">📋 Detalle de pedidos</div>`;
-                        for (const p of pedidosDetalle) {
-                            const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
-                            html += `
-                                <div class="detalle-item">
-                                    <div>
-                                        <span class="cliente-nombre">#${p.id}</span>
-                                        <span style="color:var(--text-secondary);margin-left:0.3rem;font-size:0.55rem;">${escapeHTML(p.cliente)}</span>
-                                    </div>
-                                    <div>
-                                        <span class="pedido-total">${p.total.toFixed(2)}€</span>
-                                        <span class="pedido-fecha" style="margin-left:0.3rem;">${fechaStr}</span>
-                                    </div>
-                                </div>
-                            `;
-                        }
-                        html += `</div>`;
-                    }
-                    
-                    content.innerHTML = html;
-                    
-                    window._gananciasData = {
-                        periodo: periodo,
-                        totalPedidos: totalPedidos,
-                        totalVentas: totalVentas,
-                        totalComisiones: totalComisiones,
-                        totalLiquidar: totalLiquidar,
-                        detalle: pedidosDetalle
-                    };
-                    
-                    console.log(`💰 Ganancias cargadas: ${totalPedidos} pedidos, ${totalVentas.toFixed(2)}€ ventas`);
-                    
-                }).catch(error => {
-                    console.error('Error cargando ganancias:', error);
-                    content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error al cargar datos: ${error.message}</div></div>`;
-                });
-            }
-
-            function exportarGananciasExcel() {
-                const data = window._gananciasData;
-                if (!data || data.detalle.length === 0) {
-                    Swal.fire({
-                        title: '⚠️ Sin datos',
-                        text: 'No hay datos para exportar en este período',
-                        icon: 'warning',
-                        background: '#0f172a',
-                        color: 'white'
-                    });
-                    return;
-                }
-                
-                let csv = "Pedido,Cliente,Total,Comisión,A Liquidar,Fecha\n";
-                for (const p of data.detalle) {
-                    const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
-                    csv += `"${p.id}","${p.cliente}",${p.total.toFixed(2)},${p.comision.toFixed(2)},${p.liquidar.toFixed(2)},"${fechaStr}"\n`;
-                }
-                
-                csv += `\n"RESUMEN","","","","",""\n`;
-                csv += `"Total Pedidos",${data.totalPedidos},"","","",""\n`;
-                csv += `"Total Ventas",${data.totalVentas.toFixed(2)}€,"","","",""\n`;
-                csv += `"Total Comisiones",${data.totalComisiones.toFixed(2)}€,"","","",""\n`;
-                csv += `"Total A Liquidar",${data.totalLiquidar.toFixed(2)}€,"","","",""\n`;
-                
-                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-                const link = document.createElement("a");
-                const url = URL.createObjectURL(blob);
-                link.href = url;
-                link.setAttribute("download", `ganancias_${data.periodo}_${new Date().toISOString().slice(0,10)}.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                
-                Swal.fire({
-                    title: '✅ Reporte exportado',
-                    text: `Se exportaron ${data.detalle.length} pedidos`,
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false,
-                    background: '#0f172a',
-                    color: 'white'
-                });
-            }
-
-            // ============================================
-            // 28. MENÚ NAVEGACIÓN
-            // ============================================
-            document.querySelectorAll('.nav-item[data-view]').forEach(item => {
-                item.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const view = this.dataset.view;
-                    console.log('📌 Menú click:', view);
-                    
-                    document.querySelectorAll('.nav-item[data-view]').forEach(el => {
-                        el.classList.remove('active');
-                    });
-                    this.classList.add('active');
-                    
-                    currentView = view;
-                    renderizarVista();
-                });
-            });
-
-            // ============================================
+// ============================================
+// 28. MENÚ NAVEGACIÓN
+// ============================================
+document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+    item.addEventListener('click', function(e) {
+        e.preventDefault();
+        const view = this.dataset.view;
+        console.log('📌 Menú click:', view);
+        
+        document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+            el.classList.remove('active');
+        });
+        this.classList.add('active');
+        
+        currentView = view;
+        renderizarVista();
+    });
+});            // ============================================
             // 29. INICIO
             // ============================================
             console.log('✅ App móvil lista');

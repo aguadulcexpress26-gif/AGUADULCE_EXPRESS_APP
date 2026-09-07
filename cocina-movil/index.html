@@ -1204,6 +1204,8 @@ async function cargarDatosRestaurante() {
 // ============================================
 // 10. CONFIGURACIÓN IMPRESORA
 // ============================================
+
+// ✅ FUNCIÓN: Cargar configuración de impresora desde Firebase
 async function cargarConfiguracionImpresora() {
     try {
         const snap = await db.ref(`restaurantes/${restauranteId}/impresora`).once('value');
@@ -1211,26 +1213,38 @@ async function cargarConfiguracionImpresora() {
         if (config && config.activo) {
             impresoraConfigurada = true;
             nombreImpresora = config.nombre || 'Impresora Bluetooth';
+            // ✅ GUARDAR ID DEL DISPOSITIVO PARA RECONEXIÓN RÁPIDA
+            window._impresoraDeviceId = config.deviceId || null;
+            
             const estadoEl = document.getElementById('estado-impresora');
-            if (estadoEl) estadoEl.textContent = '🟢';
-            console.log(`🖨️ Impresora configurada: ${nombreImpresora}`);
+            if (estadoEl) {
+                estadoEl.textContent = '🟢';
+                estadoEl.title = `Impresora: ${nombreImpresora}`;
+            }
+            console.log(`🖨️ Impresora configurada: ${nombreImpresora} (ID: ${config.deviceId || 'N/A'})`);
         } else {
             impresoraConfigurada = false;
+            nombreImpresora = '';
+            window._impresoraDeviceId = null;
+            
             const estadoEl = document.getElementById('estado-impresora');
-            if (estadoEl) estadoEl.textContent = '⭕';
+            if (estadoEl) {
+                estadoEl.textContent = '⭕';
+                estadoEl.title = 'No hay impresora configurada';
+            }
         }
     } catch (error) { 
         console.error('Error cargando impresora:', error);
+        impresoraConfigurada = false;
         const estadoEl = document.getElementById('estado-impresora');
         if (estadoEl) estadoEl.textContent = '⭕';
     }
 }
 
-// Configurar impresora inalámbrica vía Bluetooth
+// ✅ FUNCIÓN: Configurar impresora (guardar en Firebase)
 window.configurarImpresora = function() {
-    console.log('🖨️ Buscando impresoras Bluetooth...');
+    console.log('🖨️ Configurando impresora...');
     
-    // Verificar soporte Bluetooth
     if (!navigator.bluetooth) {
         Swal.fire({
             title: '❌ No soportado',
@@ -1244,15 +1258,21 @@ window.configurarImpresora = function() {
     }
     
     Swal.fire({
-        title: '🖨️ Buscar Impresora',
+        title: '🖨️ Configurar Impresora',
         html: `
             <div style="text-align:left;color:white;">
-                <p>🔍 Escaneando dispositivos Bluetooth...</p>
+                <p>🔍 Buscando impresoras Bluetooth...</p>
                 <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Asegúrate de que la impresora esté encendida</p>
                 <div id="impresoras-lista" style="margin-top:12px;max-height:200px;overflow-y:auto;">
                     <div style="color:#94a3b8;text-align:center;padding:12px;">⏳ Buscando...</div>
                 </div>
                 <div id="impresora-estado" style="margin-top:8px;font-size:11px;color:#64748b;"></div>
+                <div style="margin-top:12px;font-size:11px;color:#64748b;border-top:1px solid #334155;padding-top:8px;">
+                    💡 La impresora quedará guardada para futuras impresiones.
+                </div>
+                <div style="margin-top:8px;font-size:11px;color:#64748b;">
+                    🔄 Si ya tienes una impresora configurada, <a href="#" onclick="window.desvincularImpresora(); return false;" style="color:#ef4444;text-decoration:underline;">desvincular</a>
+                </div>
             </div>
         `,
         background: '#0f172a',
@@ -1275,7 +1295,9 @@ window.configurarImpresora = function() {
                         { namePrefix: 'Printer' },
                         { namePrefix: 'POS' },
                         { namePrefix: 'Blue' },
-                        { namePrefix: 'BT' }
+                        { namePrefix: 'BT' },
+                        { namePrefix: 'XPrinter' },
+                        { namePrefix: 'MP' }
                     ],
                     optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
                 });
@@ -1295,21 +1317,32 @@ window.configurarImpresora = function() {
                     estado.textContent = '✅ Impresora configurada correctamente';
                     estado.style.color = '#10b981';
                     
-                    // Guardar en Firebase
+                    // ✅ GUARDAR EN FIREBASE (PERMANENTE)
                     await db.ref(`restaurantes/${restauranteId}/impresora`).set({
                         activo: true,
                         nombre: device.name || 'Impresora Bluetooth',
                         deviceId: device.id,
+                        tipo: 'bluetooth',
                         timestamp: Date.now()
                     });
                     
+                    // ✅ ACTUALIZAR VARIABLES GLOBALES
                     impresoraConfigurada = true;
                     nombreImpresora = device.name || 'Impresora Bluetooth';
+                    window._impresoraDeviceId = device.id;
                     
+                    // ✅ ACTUALIZAR UI
                     const estadoEl = document.getElementById('estado-impresora');
-                    if (estadoEl) estadoEl.textContent = '🟢';
+                    if (estadoEl) {
+                        estadoEl.textContent = '🟢';
+                        estadoEl.title = `Impresora: ${nombreImpresora}`;
+                    }
                     
-                    showToast('✅ Impresora configurada correctamente', 'success');
+                    // ✅ GUARDAR EN LOCAL STORAGE PARA RECUPERACIÓN RÁPIDA
+                    localStorage.setItem('impresora_nombre', nombreImpresora);
+                    localStorage.setItem('impresora_id', device.id);
+                    
+                    showToast(`✅ Impresora "${nombreImpresora}" configurada correctamente`, 'success');
                 }
                 
             } catch (error) {
@@ -1334,13 +1367,83 @@ window.configurarImpresora = function() {
     });
 };
 
-// ============================================
-// IMPRIMIR COMADA CON IMPRESORA CONFIGURADA
-// ============================================
+// ✅ FUNCIÓN: Desvincular impresora
+window.desvincularImpresora = function() {
+    Swal.fire({
+        title: '⚠️ Desvincular Impresora',
+        text: '¿Seguro que quieres desvincular la impresora configurada?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, desvincular',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                await db.ref(`restaurantes/${restauranteId}/impresora`).remove();
+                impresoraConfigurada = false;
+                nombreImpresora = '';
+                window._impresoraDeviceId = null;
+                
+                localStorage.removeItem('impresora_nombre');
+                localStorage.removeItem('impresora_id');
+                
+                const estadoEl = document.getElementById('estado-impresora');
+                if (estadoEl) {
+                    estadoEl.textContent = '⭕';
+                    estadoEl.title = 'No hay impresora configurada';
+                }
+                
+                showToast('🖨️ Impresora desvinculada', 'info');
+            } catch (error) {
+                console.error('Error al desvincular:', error);
+                showToast('❌ Error al desvincular impresora', 'error');
+            }
+        }
+    });
+};
+
+// ✅ FUNCIÓN: Conectar a impresora guardada (reconexión rápida)
+async function conectarImpresoraGuardada() {
+    if (!impresoraConfigurada) {
+        console.warn('⚠️ No hay impresora configurada');
+        return null;
+    }
+    
+    try {
+        console.log('🔄 Reconectando a impresora guardada:', nombreImpresora);
+        
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [
+                { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
+                { name: nombreImpresora }
+            ],
+            optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+        });
+        
+        if (device) {
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+            
+            console.log('✅ Reconectado a:', device.name);
+            return { device, server, service, characteristic };
+        }
+        return null;
+        
+    } catch (error) {
+        console.warn('⚠️ Error reconectando:', error);
+        return null;
+    }
+}
+
+// ✅ FUNCIÓN: Imprimir comanda con impresora configurada
 window.imprimirComandaConImpresora = function(pedidoId) {
     console.log('🖨️ Preparando comanda para impresión...');
     
-    // Verificar impresora configurada
     if (!impresoraConfigurada) {
         Swal.fire({
             title: '⚠️ Sin impresora',
@@ -1360,7 +1463,6 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         return;
     }
     
-    // Verificar soporte Bluetooth
     if (!navigator.bluetooth) {
         Swal.fire({
             title: '❌ No soportado',
@@ -1373,7 +1475,6 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         return;
     }
     
-    // Obtener datos del pedido Y del restaurante
     Promise.all([
         db.ref(`pedidos/${pedidoId}`).once('value'),
         db.ref(`restaurantes/${restauranteId}`).once('value')
@@ -1390,17 +1491,15 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         
         // ✅ GENERAR TEXTO SIN EMOJIS PARA IMPRESORA TERMICA
         let texto = '';
-        
-        // Comandos ESC/POS básicos
-        texto += '\x1B\x40'; // Inicializar impresora
-        texto += '\x1B\x61\x01'; // Centrar texto
-        texto += '\x1B\x45\x01'; // Negrita activada
+        texto += '\x1B\x40'; // Inicializar
+        texto += '\x1B\x61\x01'; // Centrar
+        texto += '\x1B\x45\x01'; // Negrita ON
         texto += '===============================\n';
         texto += '   AGUADULCE EXPRESS\n';
         texto += '   COMANDA DE COCINA\n';
         texto += '===============================\n';
-        texto += '\x1B\x45\x00'; // Negrita desactivada
-        texto += '\x1B\x61\x00'; // Alinear a la izquierda
+        texto += '\x1B\x45\x00'; // Negrita OFF
+        texto += '\x1B\x61\x00'; // Alinear izquierda
         
         texto += `Pedido: #${data.id_pedido || pedidoId.substring(0,8)}\n`;
         texto += `Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
@@ -1422,70 +1521,63 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         }
         
         texto += '-------------------------------\n';
-        texto += '\x1B\x45\x01'; // Negrita activada
+        texto += '\x1B\x45\x01'; // Negrita ON
         texto += `TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
-        texto += '\x1B\x45\x00'; // Negrita desactivada
+        texto += '\x1B\x45\x00'; // Negrita OFF
         texto += '===============================\n';
         texto += `Preparado por: ${nombreRestaurante}\n`;
         texto += 'Gracias por su pedido!\n';
         texto += '===============================\n';
-        
-        // Comandos de corte de papel
         texto += '\x1B\x69'; // Cortar papel
-        texto += '\n\n\n\n\n\n\n\n'; // Avanzar papel
+        texto += '\n\n\n\n\n\n\n\n';
         
-        console.log('📄 Comanda generada (sin emojis):');
+        console.log('📄 Comanda generada:');
         console.log(texto);
         
-        // ✅ INTENTAR IMPRIMIR DIRECTAMENTE POR BLUETOOTH
+        // ✅ INTENTAR IMPRIMIR CON LA IMPRESORA GUARDADA
         try {
-            console.log('🔄 Buscando impresora Bluetooth...');
+            // Intentar reconectar con la impresora guardada
+            let connection = await conectarImpresoraGuardada();
             
-            const device = await navigator.bluetooth.requestDevice({
-                filters: [
-                    { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
-                    { namePrefix: 'Printer' },
-                    { namePrefix: 'POS' },
-                    { namePrefix: 'Blue' },
-                    { namePrefix: 'BT' },
-                    { name: nombreImpresora }
-                ],
-                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
-            });
+            // Si no se pudo reconectar, buscar manualmente
+            if (!connection) {
+                console.log('🔄 Buscando impresora manualmente...');
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [
+                        { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
+                        { name: nombreImpresora }
+                    ],
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+                });
+                
+                if (!device) throw new Error('No se encontró la impresora');
+                
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+                const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+                
+                connection = { device, server, service, characteristic };
+            }
             
-            console.log('📱 Dispositivo encontrado:', device.name);
-            
-            const server = await device.gatt.connect();
-            console.log('✅ Conectado al dispositivo GATT');
-            
-            const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
-            console.log('✅ Servicio de impresión encontrado');
-            
-            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
-            console.log('✅ Característica de escritura encontrada');
-            
-            // ✅ CONVERTIR TEXTO A BYTES CON CODIFICACIÓN CORRECTA
+            // ✅ ENVIAR DATOS
             const encoder = new TextEncoder('utf-8');
             const dataBytes = encoder.encode(texto);
             
-            // Enviar en paquetes de 20 bytes (límite BLE)
             const chunkSize = 20;
             for (let i = 0; i < dataBytes.length; i += chunkSize) {
                 const chunk = dataBytes.slice(i, i + chunkSize);
-                await characteristic.writeValue(chunk);
+                await connection.characteristic.writeValue(chunk);
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
             
-            console.log('✅ Datos enviados a la impresora');
-            await server.disconnect();
-            console.log('✅ Desconectado de la impresora');
-            
-            showToast('🖨️ Comanda enviada a ' + device.name, 'success');
+            await connection.server.disconnect();
+            console.log('✅ Comanda enviada a:', connection.device.name);
+            showToast(`🖨️ Comanda enviada a ${connection.device.name}`, 'success');
             
         } catch (bluetoothError) {
             console.warn('⚠️ Error en Bluetooth:', bluetoothError);
             
-            // ✅ FALLBACK: Mostrar vista previa sin emojis
+            // ✅ FALLBACK: Mostrar vista previa
             const textoPreview = texto.replace(/\x1B/g, '').replace(/\x40/g, '').replace(/\x61/g, '').replace(/\x45/g, '').replace(/\x69/g, '');
             
             Swal.fire({
@@ -1495,7 +1587,7 @@ window.imprimirComandaConImpresora = function(pedidoId) {
 ${textoPreview}
                     </div>
                     <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
-                        ⚠️ No se pudo conectar con la impresora Bluetooth.<br>
+                        ⚠️ No se pudo conectar con la impresora.<br>
                         Impresora: <strong style="color:#f59e0b;">${nombreImpresora}</strong>
                     </div>
                 `,
@@ -1519,11 +1611,11 @@ ${textoPreview}
         showToast('❌ Error al imprimir', 'error'); 
     });
 };
+
 // ============================================
 // IMPRIMIR COMADA (VERSIÓN NORMAL)
 // ============================================
 window.imprimirComanda = function(pedidoId) {
-    // Obtener datos del pedido Y del restaurante
     Promise.all([
         db.ref(`pedidos/${pedidoId}`).once('value'),
         db.ref(`restaurantes/${restauranteId}`).once('value')
@@ -1562,19 +1654,19 @@ window.imprimirComanda = function(pedidoId) {
             </style>
             </head><body>
             <div class="header">
-                <h1>🍔 AGUADULCE EXPRESS</h1>
+                <h2>AGUADULCE EXPRESS</h2>
                 <p>Comanda #${data.id_pedido || pedidoId.substring(0,8)}</p>
                 <p>${new Date(data.timestamp).toLocaleString()}</p>
             </div>
             <div>
-                <p><strong>👤 Cliente:</strong> ${data.cliente_nombre || 'Sin nombre'}</p>
-                <p><strong>📍 Dirección:</strong> ${data.direccion || 'Sin dirección'}</p>
+                <p><strong>Cliente:</strong> ${data.cliente_nombre || 'Sin nombre'}</p>
+                <p><strong>Direccion:</strong> ${data.direccion || 'Sin direccion'}</p>
             </div>
             <div>${productos.split('\n').map(p => `<div class="producto">${p}</div>`).join('')}</div>
             <div class="total">TOTAL: ${(data.total || 0).toFixed(2)}€</div>
             <div class="footer">
                 <strong>Preparado por: ${nombreRestaurante}</strong><br>
-                ¡Gracias por su pedido! 🍕
+                Gracias por su pedido!
             </div>
             <script>
                 setTimeout(()=>{

@@ -2801,244 +2801,81 @@ function mostrarVistaDemoras() {
 }
 
 // ============================================
-// 27. VISTA GANANCIAS - COMPLETA
+// 27. VISTA GANANCIAS - CON CONTRASEÑA
 // ============================================
-let totalGanancias = 0;
-
 function mostrarVistaGanancias() {
-    console.log('💰 Mostrando vista de ganancias...');
+    console.log('💰 Solicitando acceso a ganancias...');
     
-    const container = document.getElementById('kanban-container');
-    container.innerHTML = `
-        <div class="view-container">
-            <div class="view-header">
-                <span class="title" style="color:var(--accent-green);">💰 Ganancias del Restaurante</span>
-                <div class="filters">
-                    <select id="filtro-ganancias" onchange="cargarGanancias()">
-                        <option value="hoy">📅 Hoy</option>
-                        <option value="semana" selected>📅 Semana</option>
-                        <option value="mes">📅 Mes</option>
-                        <option value="quincena">📅 Quincena</option>
-                    </select>
-                    <button onclick="exportarGananciasExcel()" style="background:var(--accent-green);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
-                        📎 Excel
-                    </button>
-                    <button onclick="restaurarVistaColumnas()" style="background:var(--accent-gold);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
-                        ←
-                    </button>
+    // ✅ PEDIR CONTRASEÑA ANTES DE MOSTRAR
+    Swal.fire({
+        title: '🔒 Acceso Restringido',
+        html: `
+            <div style="text-align:left;color:white;">
+                <p style="margin-bottom:8px;font-size:14px;">Esta sección contiene información financiera del restaurante.</p>
+                <p style="margin-bottom:16px;font-size:12px;color:#94a3b8;">Ingresa la contraseña para continuar</p>
+                <input id="password-ganancias" type="password" class="swal2-input" placeholder="Contraseña" 
+                       style="width:100%;padding:12px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
+                <div style="margin-top:8px;font-size:11px;color:#64748b;text-align:center;">
+                    💡 Contraseña por defecto: <strong>admin123</strong>
                 </div>
             </div>
-            <div class="view-content" id="ganancias-contenido">
-                <div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando ganancias...</div>
-            </div>
-        </div>
-    `;
-    
-    cargarGanancias();
-}
-
-function cargarGanancias() {
-    const content = document.getElementById('ganancias-contenido');
-    const filtro = document.getElementById('filtro-ganancias');
-    if (!content) return;
-    
-    const periodo = filtro ? filtro.value : 'semana';
-    content.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando datos...</div>';
-    
-    db.ref('pedidos').once('value').then(snap => {
-        const pedidos = snap.val();
-        if (!pedidos) {
-            content.innerHTML = `<div class="empty"><div class="icon">📊</div><div>No hay datos de ventas</div></div>`;
-            return;
-        }
-        
-        const ahora = new Date();
-        let fechaInicio;
-        
-        switch(periodo) {
-            case 'hoy':
-                fechaInicio = new Date(ahora);
-                fechaInicio.setHours(0, 0, 0, 0);
-                break;
-            case 'semana':
-                fechaInicio = new Date(ahora);
-                const dia = ahora.getDay();
-                const diff = (dia === 0 ? 6 : dia - 1);
-                fechaInicio.setDate(ahora.getDate() - diff);
-                fechaInicio.setHours(0, 0, 0, 0);
-                break;
-            case 'mes':
-                fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-                fechaInicio.setHours(0, 0, 0, 0);
-                break;
-            case 'quincena':
-                fechaInicio = new Date(ahora);
-                fechaInicio.setDate(ahora.getDate() <= 15 ? 1 : 16);
-                fechaInicio.setHours(0, 0, 0, 0);
-                break;
-            default:
-                fechaInicio = new Date(ahora);
-                fechaInicio.setDate(ahora.getDate() - 7);
-                fechaInicio.setHours(0, 0, 0, 0);
-        }
-        
-        let totalPedidos = 0;
-        let totalVentas = 0;
-        let totalComisiones = 0;
-        let totalLiquidar = 0;
-        let pedidosDetalle = [];
-        
-        for (const [id, data] of Object.entries(pedidos)) {
-            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-            if (restId !== restauranteId) continue;
-            
-            const fecha = new Date(data.fecha || data.timestamp || 0);
-            if (fecha < fechaInicio) continue;
-            
-            if (data.estado === 'ENTREGADO' || data.estado === 'LISTO') {
-                totalPedidos++;
-                
-                // ✅ CALCULAR BASE (neto)
-                let montoBase = data.base || data.subtotal || 0;
-                if (montoBase === 0 && data.total > 0) {
-                    const envio = data.envio || 0;
-                    const comision = data.comision_aplicada || (data.total * 0.1);
-                    montoBase = data.total - envio - comision;
-                }
-                
-                totalVentas += montoBase;
-                
-                const comision = data.comision_aplicada || (montoBase * 0.1);
-                totalComisiones += comision;
-                totalLiquidar += (montoBase - comision);
-                
-                pedidosDetalle.push({
-                    id: data.id_pedido || id.substring(0, 8),
-                    cliente: data.cliente_nombre || 'Cliente',
-                    total: montoBase,
-                    base: montoBase,
-                    envio: data.envio || 0,
-                    comision: comision,
-                    liquidar: montoBase - comision,
-                    fecha: fecha
-                });
+        `,
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#8b5cf6',
+        confirmButtonText: '🔓 Ver Ganancias',
+        showCancelButton: true,
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const password = document.getElementById('password-ganancias').value;
+            // ✅ CONTRASEÑA - PUEDES CAMBIARLA AQUÍ
+            if (password === 'admin123') {
+                return true;
+            } else {
+                Swal.showValidationMessage('❌ Contraseña incorrecta');
+                return false;
             }
         }
-        
-        totalGanancias = totalVentas;
-        
-        // Actualizar contador en stats bar
-        const gananciasElement = document.getElementById('count-ganancias');
-        if (gananciasElement) gananciasElement.textContent = totalGanancias.toFixed(0);
-        
-        pedidosDetalle.sort((a, b) => b.fecha - a.fecha);
-        
-        let html = `
-            <div class="ganancias-resumen">
-                <div class="resumen-card">
-                    <div class="label">📦 Pedidos</div>
-                    <div class="value gold">${totalPedidos}</div>
-                </div>
-                <div class="resumen-card">
-                    <div class="label">💰 Base (Neto)</div>
-                    <div class="value green">${totalVentas.toFixed(2)}€</div>
-                </div>
-                <div class="resumen-card">
-                    <div class="label">🏪 Comisiones</div>
-                    <div class="value blue">${totalComisiones.toFixed(2)}€</div>
-                </div>
-                <div class="resumen-card">
-                    <div class="label">💵 A Liquidar</div>
-                    <div class="value purple">${totalLiquidar.toFixed(2)}€</div>
-                </div>
-            </div>
-        `;
-        
-        if (pedidosDetalle.length === 0) {
-            html += `<div class="empty"><div class="icon">📭</div><div>No hay pedidos en este período</div></div>`;
-        } else {
-            html += `<div class="ganancias-detalle" style="max-height:300px;overflow-y:auto;">`;
-            html += `<div style="font-size:0.55rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.2rem;">📋 Detalle de pedidos</div>`;
-            for (const p of pedidosDetalle) {
-                const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
-                html += `
-                    <div class="detalle-item">
-                        <div>
-                            <span class="cliente-nombre">#${p.id}</span>
-                            <span style="color:var(--text-secondary);margin-left:0.3rem;font-size:0.55rem;">${escapeHTML(p.cliente)}</span>
-                        </div>
-                        <div>
-                            <span class="pedido-total">${p.total.toFixed(2)}€</span>
-                            <span class="pedido-fecha" style="margin-left:0.3rem;">${fechaStr}</span>
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // ✅ MOSTRAR GANANCIAS
+            const container = document.getElementById('kanban-container');
+            if (!container) {
+                console.warn('⚠️ Contenedor kanban no encontrado');
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="view-container">
+                    <div class="view-header">
+                        <span class="title" style="color:var(--accent-green);">💰 Ganancias del Restaurante</span>
+                        <div class="filters">
+                            <select id="filtro-ganancias" onchange="cargarGanancias()">
+                                <option value="hoy">📅 Hoy</option>
+                                <option value="semana" selected>📅 Semana</option>
+                                <option value="mes">📅 Mes</option>
+                                <option value="quincena">📅 Quincena</option>
+                            </select>
+                            <button onclick="exportarGananciasExcel()" style="background:var(--accent-green);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
+                                📎 Excel
+                            </button>
+                            <button onclick="restaurarVistaColumnas()" style="background:var(--accent-gold);color:#0f172a;padding:0.1rem 0.5rem;border-radius:50px;font-size:0.5rem;font-weight:700;border:none;cursor:pointer;">
+                                ←
+                            </button>
                         </div>
                     </div>
-                `;
-            }
-            html += `</div>`;
+                    <div class="view-content" id="ganancias-contenido">
+                        <div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando ganancias...</div>
+                    </div>
+                </div>
+            `;
+            cargarGanancias();
+        } else {
+            console.log('🔒 Acceso a ganancias cancelado');
+            // Volver a la vista anterior
+            currentView = 'activos';
+            renderizarVista();
         }
-        
-        content.innerHTML = html;
-        
-        window._gananciasData = {
-            periodo: periodo,
-            totalPedidos: totalPedidos,
-            totalVentas: totalVentas,
-            totalComisiones: totalComisiones,
-            totalLiquidar: totalLiquidar,
-            detalle: pedidosDetalle
-        };
-        
-        console.log(`💰 Ganancias cargadas: ${totalPedidos} pedidos, ${totalVentas.toFixed(2)}€ base`);
-        
-    }).catch(error => {
-        console.error('Error cargando ganancias:', error);
-        content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error al cargar datos: ${error.message}</div></div>`;
-    });
-}
-
-function exportarGananciasExcel() {
-    const data = window._gananciasData;
-    if (!data || data.detalle.length === 0) {
-        Swal.fire({
-            title: '⚠️ Sin datos',
-            text: 'No hay datos para exportar en este período',
-            icon: 'warning',
-            background: '#0f172a',
-            color: 'white'
-        });
-        return;
-    }
-    
-    let csv = "Pedido,Cliente,Base (Neto),Comisión,A Liquidar,Fecha\n";
-    for (const p of data.detalle) {
-        const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
-        csv += `"${p.id}","${p.cliente}",${p.total.toFixed(2)},${p.comision.toFixed(2)},${p.liquidar.toFixed(2)},"${fechaStr}"\n`;
-    }
-    
-    csv += `\n"RESUMEN","","","","",""\n`;
-    csv += `"Total Pedidos",${data.totalPedidos},"","","",""\n`;
-    csv += `"Total Base",${data.totalVentas.toFixed(2)}€,"","","",""\n`;
-    csv += `"Total Comisiones",${data.totalComisiones.toFixed(2)}€,"","","",""\n`;
-    csv += `"Total A Liquidar",${data.totalLiquidar.toFixed(2)}€,"","","",""\n`;
-    
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.setAttribute("download", `ganancias_${data.periodo}_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    Swal.fire({
-        title: '✅ Reporte exportado',
-        text: `Se exportaron ${data.detalle.length} pedidos`,
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-        background: '#0f172a',
-        color: 'white'
     });
 }
 

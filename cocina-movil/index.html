@@ -1334,9 +1334,11 @@ window.configurarImpresora = function() {
     });
 };
 
-// Imprimir comanda con la impresora configurada
+// ============================================
+// IMPRIMIR COMADA CON IMPRESORA CONFIGURADA
+// ============================================
 window.imprimirComandaConImpresora = function(pedidoId) {
-    console.log('🖨️ Imprimiendo comanda...');
+    console.log('🖨️ Preparando comanda para impresión...');
     
     // Verificar impresora configurada
     if (!impresoraConfigurada) {
@@ -1358,13 +1360,21 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         return;
     }
     
-    // Obtener datos del pedido
-    db.ref(`pedidos/${pedidoId}`).once('value').then((snapshot) => {
-        const data = snapshot.val();
+    // Obtener datos del pedido Y del restaurante
+    Promise.all([
+        db.ref(`pedidos/${pedidoId}`).once('value'),
+        db.ref(`restaurantes/${restauranteId}`).once('value')
+    ]).then(([pedidoSnap, restauranteSnap]) => {
+        const data = pedidoSnap.val();
+        const restaurante = restauranteSnap.val();
+        
         if (!data) { 
             showToast('❌ Pedido no encontrado', 'error'); 
             return; 
         }
+        
+        // ✅ OBTENER NOMBRE DEL RESTAURANTE
+        const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
         
         // Generar texto de la comanda
         let texto = '===============================\n';
@@ -1393,46 +1403,116 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         texto += '-------------------------------\n';
         texto += `   TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
         texto += '===============================\n';
+        texto += `   Preparado por: ${nombreRestaurante}\n`;
         texto += '   ¡Gracias por su pedido! 🍕\n';
         texto += '===============================\n';
         
         console.log('📄 Comanda generada:');
         console.log(texto);
         
-        // Mostrar opciones de impresión
+        // ✅ MOSTRAR VISTA PREVIA DEL RECIBO
         Swal.fire({
-            title: '🖨️ Comanda lista',
+            title: '🖨️ Comanda de Cocina',
             html: `
-                <div style="text-align:left;color:white;">
-                    <p style="font-size:13px;color:#94a3b8;margin-bottom:8px;">
-                        📄 Comanda generada correctamente
-                    </p>
-                    <p style="font-size:12px;color:#64748b;">
-                        Impresora: <strong>${nombreImpresora}</strong>
-                    </p>
-                    <p style="font-size:12px;color:#64748b;margin-top:4px;">
-                        ⚠️ La impresión Bluetooth directa está en desarrollo.
-                        Usa "Vista previa" para imprimir en papel.
-                    </p>
+                <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
+${texto}
+                </div>
+                <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
+                    Impresora: <strong style="color:#f59e0b;">${nombreImpresora}</strong>
                 </div>
             `,
+            confirmButtonText: '🖨️ Imprimir',
             showCancelButton: true,
-            confirmButtonText: '📄 Vista previa',
             cancelButtonText: 'Cancelar',
             background: '#0f172a',
             color: 'white',
-            confirmButtonColor: '#f59e0b'
-        }).then((result) => {
-            if (result.isConfirmed) {
+            confirmButtonColor: '#f59e0b',
+            cancelButtonColor: '#334155',
+            width: '92%',
+            preConfirm: () => {
+                console.log('🖨️ Enviando a impresora:', nombreImpresora);
+                showToast('🖨️ Imprimiendo comanda en ' + nombreImpresora, 'info');
                 window.imprimirComanda(pedidoId);
+                return true;
             }
         });
         
-        showToast('📄 Comanda preparada', 'info');
+    }).catch((error) => { 
+        console.error('Error al obtener datos:', error); 
+        showToast('❌ Error al imprimir', 'error'); 
+    });
+};
+
+// ============================================
+// IMPRIMIR COMADA (VERSIÓN NORMAL)
+// ============================================
+window.imprimirComanda = function(pedidoId) {
+    // Obtener datos del pedido Y del restaurante
+    Promise.all([
+        db.ref(`pedidos/${pedidoId}`).once('value'),
+        db.ref(`restaurantes/${restauranteId}`).once('value')
+    ]).then(([pedidoSnap, restauranteSnap]) => {
+        const data = pedidoSnap.val();
+        const restaurante = restauranteSnap.val();
+        
+        if (!data) { 
+            showToast('❌ Pedido no encontrado', 'error'); 
+            return; 
+        }
+        
+        const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
+        
+        const ventana = window.open('', '_blank', 'width=400,height=600');
+        if (!ventana) { 
+            showToast('⚠️ Permite ventanas emergentes', 'warning'); 
+            return; 
+        }
+        
+        let productos = '';
+        if (data.items && data.items.length > 0) {
+            productos = data.items.map(item => `${item.cantidad || 1}x ${item.nombre}`).join('\n');
+        } else { 
+            productos = 'Sin productos'; 
+        }
+        
+        ventana.document.write(`
+            <!DOCTYPE html><html><head><title>Comanda</title>
+            <style>
+                body{font-family:'Courier New',monospace;padding:20px;background:white;color:black;font-size:14px;}
+                .header{text-align:center;border-bottom:2px dashed #333;padding-bottom:10px;}
+                .producto{padding:4px 0;border-bottom:1px dotted #ddd;}
+                .total{font-weight:bold;font-size:18px;text-align:right;border-top:2px solid #333;padding-top:10px;margin-top:10px;}
+                .footer{text-align:center;margin-top:15px;font-size:12px;color:#666;border-top:1px dashed #333;padding-top:10px;}
+            </style>
+            </head><body>
+            <div class="header">
+                <h1>🍔 AGUADULCE EXPRESS</h1>
+                <p>Comanda #${data.id_pedido || pedidoId.substring(0,8)}</p>
+                <p>${new Date(data.timestamp).toLocaleString()}</p>
+            </div>
+            <div>
+                <p><strong>👤 Cliente:</strong> ${data.cliente_nombre || 'Sin nombre'}</p>
+                <p><strong>📍 Dirección:</strong> ${data.direccion || 'Sin dirección'}</p>
+            </div>
+            <div>${productos.split('\n').map(p => `<div class="producto">${p}</div>`).join('')}</div>
+            <div class="total">TOTAL: ${(data.total || 0).toFixed(2)}€</div>
+            <div class="footer">
+                <strong>Preparado por: ${nombreRestaurante}</strong><br>
+                ¡Gracias por su pedido! 🍕
+            </div>
+            <script>
+                setTimeout(()=>{
+                    window.print();
+                    setTimeout(()=>window.close(),500);
+                },500);
+            <\/script>
+            </body></html>
+        `);
+        ventana.document.close();
         
     }).catch((error) => { 
-        console.error('Error al obtener pedido:', error); 
-        showToast('❌ Error al imprimir', 'error'); 
+        console.error('Error:', error); 
+        showToast('❌ Error', 'error'); 
     });
 };
             // ============================================

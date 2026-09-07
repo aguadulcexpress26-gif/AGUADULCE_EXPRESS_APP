@@ -2527,101 +2527,186 @@ function mostrarMensajeVacio(columnaId, icono, mensaje) {
             }
 
             // ============================================
-            // 25. VISTA HISTORIAL
-            // ============================================
-            function mostrarVistaHistorial() {
-                const container = document.getElementById('kanban-container');
-                container.innerHTML = `
-                    <div class="view-container">
-                        <div class="view-header">
-                            <span class="title" style="color:var(--accent-gold);">📜 Historial</span>
-                            <div class="filters">
-                                <select id="filtro-historial" onchange="cargarHistorialFiltrado()">
-                                    <option value="todos">📋 Todos</option>
-                                    <option value="ventas">🛒 Ventas</option>
-                                    <option value="repartos">📦 Repartos</option>
-                                </select>
-                                <span style="background:var(--bg-card);padding:0.05rem 0.4rem;border-radius:50px;font-size:0.5rem;color:var(--text-muted);" id="col-count-historial">0</span>
-                            </div>
+// 25. VISTA HISTORIAL - COMPLETO Y CORREGIDO
+// ============================================
+function mostrarVistaHistorial() {
+    console.log('📜 Mostrando historial...');
+    
+    const container = document.getElementById('kanban-container');
+    if (!container) {
+        console.warn('⚠️ Contenedor kanban no encontrado');
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="view-container">
+            <div class="view-header">
+                <span class="title" style="color:var(--accent-gold);">📜 Historial</span>
+                <div class="filters">
+                    <select id="filtro-historial" onchange="cargarHistorialFiltrado()">
+                        <option value="todos">📋 Todos</option>
+                        <option value="ventas">🛒 Ventas</option>
+                        <option value="repartos">📦 Repartos</option>
+                    </select>
+                    <span style="background:var(--bg-card);padding:0.05rem 0.4rem;border-radius:50px;font-size:0.5rem;color:var(--text-muted);" id="col-count-historial">0</span>
+                </div>
+            </div>
+            <div class="view-content" id="historial-contenido">
+                <div class="empty"><div class="icon">📜</div><div>Cargando historial...</div></div>
+            </div>
+        </div>
+    `;
+    
+    // Cargar inmediatamente con el filtro por defecto
+    setTimeout(() => cargarHistorialFiltrado(), 200);
+}
+
+// ============================================
+// 25b. CARGAR HISTORIAL FILTRADO - CORREGIDO
+// ============================================
+function cargarHistorialFiltrado() {
+    console.log('🔍 Cargando historial filtrado...');
+    
+    const content = document.getElementById('historial-contenido');
+    const contador = document.getElementById('col-count-historial');
+    const filtro = document.getElementById('filtro-historial');
+    
+    if (!content) {
+        console.warn('⚠️ Contenedor de historial no encontrado');
+        return;
+    }
+    
+    // ✅ VERIFICAR QUE RESTAURANTEID EXISTE
+    if (!restauranteId) {
+        console.warn('⏳ Esperando restauranteId...');
+        content.innerHTML = `<div class="empty"><div class="icon">⏳</div><div>Esperando datos del restaurante...</div></div>`;
+        // Reintentar después de 1 segundo
+        setTimeout(() => cargarHistorialFiltrado(), 1000);
+        return;
+    }
+    
+    const filtroSeleccionado = filtro ? filtro.value : 'todos';
+    console.log(`📋 Filtro seleccionado: "${filtroSeleccionado}"`);
+    
+    // Mostrar mensaje de carga
+    content.innerHTML = `<div class="empty"><div class="icon">⏳</div><div>Cargando pedidos...</div></div>`;
+    
+    db.ref('pedidos').once('value').then(snap => {
+        const pedidos = snap.val();
+        let count = 0;
+        
+        if (!pedidos) { 
+            content.innerHTML = `<div class="empty"><div class="icon">📜</div><div>No hay pedidos</div></div>`; 
+            if (contador) contador.textContent = '0'; 
+            return; 
+        }
+        
+        let html = '';
+        let pedidosFiltrados = [];
+        
+        // PRIMERO: RECOLECTAR PEDIDOS QUE CUMPLEN CONDICIONES
+        for (const [id, data] of Object.entries(pedidos)) {
+            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+            if (restId !== restauranteId) continue;
+            
+            const estado = data.estado ? data.estado.toLowerCase() : '';
+            const tipo = data.tipo || 'normal';
+            
+            // APLICAR FILTRO POR TIPO
+            if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') continue;
+            if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') continue;
+            
+            // SOLO MOSTRAR PEDIDOS FINALIZADOS
+            if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado' || estado === 'listo') {
+                count++;
+                pedidosFiltrados.push({
+                    id: id,
+                    data: data,
+                    estado: estado,
+                    tipo: tipo
+                });
+            }
+        }
+        
+        console.log(`📊 Total de pedidos filtrados: ${count} (filtro: "${filtroSeleccionado}")`);
+        
+        // ORDENAR POR FECHA (más reciente primero)
+        pedidosFiltrados.sort((a, b) => {
+            const fechaA = a.data.timestamp || 0;
+            const fechaB = b.data.timestamp || 0;
+            return fechaB - fechaA;
+        });
+        
+        // RENDERIZAR
+        if (pedidosFiltrados.length === 0) {
+            let mensajeVacio = 'No hay pedidos en el historial';
+            if (filtroSeleccionado === 'ventas') mensajeVacio = 'No hay ventas en el historial';
+            if (filtroSeleccionado === 'repartos') mensajeVacio = 'No hay repartos en el historial';
+            content.innerHTML = `<div class="empty"><div class="icon">📭</div><div>${mensajeVacio}</div></div>`;
+        } else {
+            for (const item of pedidosFiltrados) {
+                const data = item.data;
+                const estado = item.estado;
+                const esReparto = item.tipo === 'reparto_personal';
+                const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
+                
+                let productosHtml = '';
+                if (data.items && data.items.length > 0) {
+                    productosHtml = data.items.slice(0, 4).map(item => 
+                        `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+                    ).join('');
+                    if (data.items.length > 4) {
+                        productosHtml += `<span style="font-size:0.5rem;color:var(--text-muted);">+${data.items.length-4} más</span>`;
+                    }
+                } else {
+                    productosHtml = '<span>Sin productos</span>';
+                }
+                
+                let estadoIcono = '';
+                let estadoColor = '';
+                if (estado === 'entregado' || estado === 'listo') {
+                    estadoIcono = '✅';
+                    estadoColor = 'var(--accent-green)';
+                } else if (estado === 'cancelado' || estado === 'rechazado') {
+                    estadoIcono = '❌';
+                    estadoColor = 'var(--accent-red)';
+                } else {
+                    estadoIcono = '⏳';
+                    estadoColor = 'var(--accent-gold)';
+                }
+                
+                html += `
+                    <div class="order-card" style="border-left:4px solid ${esReparto ? 'var(--accent-purple)' : '#64748b'};">
+                        <div class="top">
+                            <span class="id">#${data.id_pedido || item.id.substring(0,8)}</span>
+                            <span class="time">${fecha}</span>
                         </div>
-                        <div class="view-content" id="historial-contenido">
-                            <div class="empty"><div class="icon">📜</div><div>Cargando...</div></div>
+                        <div class="cliente">${escapeHTML(data.cliente_nombre || 'Cliente')}</div>
+                        <div class="direccion">${escapeHTML(data.direccion || 'Sin dirección')}</div>
+                        <div style="display:flex;gap:0.2rem;margin-top:0.15rem;flex-wrap:wrap;">
+                            <span style="font-size:0.5rem;padding:0.05rem 0.3rem;border-radius:50px;background:${esReparto ? 'rgba(139,92,246,0.15)' : 'rgba(245,158,11,0.15)'};color:${esReparto ? 'var(--accent-purple)' : 'var(--accent-gold)'};">${esReparto ? '📦 Reparto' : '🛒 Venta'}</span>
+                            <span style="font-size:0.5rem;padding:0.05rem 0.3rem;border-radius:50px;background:rgba(16,185,129,0.15);color:${estadoColor};">${estadoIcono} ${estado.charAt(0).toUpperCase() + estado.slice(1)}</span>
+                        </div>
+                        <div class="productos">${productosHtml}</div>
+                        <div style="display:flex;justify-content:space-between;margin-top:0.2rem;padding-top:0.2rem;border-top:1px solid var(--border-color);">
+                            <span style="font-weight:700;color:var(--accent-gold);font-size:0.7rem;">$${(data.total || 0).toFixed(2)}</span>
+                            <button class="btn btn-secondary" onclick="verDetallePedido('${item.id}')" style="padding:0.05rem 0.3rem;font-size:0.5rem;">📋</button>
                         </div>
                     </div>
                 `;
-                cargarHistorialFiltrado();
             }
-
-            function cargarHistorialFiltrado() {
-                const content = document.getElementById('historial-contenido');
-                const contador = document.getElementById('col-count-historial');
-                const filtro = document.getElementById('filtro-historial');
-                if (!content) return;
-                const filtroSeleccionado = filtro ? filtro.value : 'todos';
-                content.innerHTML = '';
-                
-                db.ref('pedidos').once('value').then(snap => {
-                    const pedidos = snap.val();
-                    let count = 0;
-                    if (!pedidos) { 
-                        content.innerHTML = `<div class="empty"><div class="icon">📜</div><div>No hay pedidos</div></div>`; 
-                        if (contador) contador.textContent = '0'; 
-                        return; 
-                    }
-                    
-                    let html = '';
-                    for (const [id, data] of Object.entries(pedidos)) {
-                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-                        if (restId !== restauranteId) continue;
-                        const estado = data.estado ? data.estado.toLowerCase() : '';
-                        const tipo = data.tipo || 'normal';
-                        
-                        if (filtroSeleccionado === 'ventas' && tipo === 'reparto_personal') continue;
-                        if (filtroSeleccionado === 'repartos' && tipo !== 'reparto_personal') continue;
-                        
-                        if (estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado') {
-                            count++;
-                            const esReparto = tipo === 'reparto_personal';
-                            const fecha = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Sin fecha';
-                            
-                            let productosHtml = '';
-                            if (data.items && data.items.length > 0) {
-                                productosHtml = data.items.slice(0, 4).map(item => `<span>${item.cantidad || 1}x ${item.nombre}</span>`).join('');
-                                if (data.items.length > 4) {
-                                    productosHtml += `<span style="font-size:0.5rem;color:var(--text-muted);">+${data.items.length-4} más</span>`;
-                                }
-                            } else { productosHtml = '<span>Sin productos</span>'; }
-                            
-                            html += `
-                                <div class="order-card" style="border-left:4px solid ${esReparto ? 'var(--accent-purple)' : '#64748b'};">
-                                    <div class="top">
-                                        <span class="id">#${data.id_pedido || id.substring(0,8)}</span>
-                                        <span class="time">${fecha}</span>
-                                    </div>
-                                    <div class="cliente">${escapeHTML(data.cliente_nombre || 'Cliente')}</div>
-                                    <div class="direccion">${escapeHTML(data.direccion || 'Sin dirección')}</div>
-                                    <div style="display:flex;gap:0.2rem;margin-top:0.15rem;flex-wrap:wrap;">
-                                        <span style="font-size:0.5rem;padding:0.05rem 0.3rem;border-radius:50px;background:${esReparto ? 'rgba(139,92,246,0.15)' : 'rgba(245,158,11,0.15)'};color:${esReparto ? 'var(--accent-purple)' : 'var(--accent-gold)'};">${esReparto ? '📦 Reparto' : '🛒 Venta'}</span>
-                                        <span style="font-size:0.5rem;padding:0.05rem 0.3rem;border-radius:50px;background:rgba(16,185,129,0.15);color:var(--accent-green);">${estado === 'entregado' ? '✅ Entregado' : '❌ Cancelado'}</span>
-                                    </div>
-                                    <div class="productos">${productosHtml}</div>
-                                    <div style="display:flex;justify-content:space-between;margin-top:0.2rem;padding-top:0.2rem;border-top:1px solid var(--border-color);">
-                                        <span style="font-weight:700;color:var(--accent-gold);font-size:0.7rem;">$${(data.total || 0).toFixed(2)}</span>
-                                        <button class="btn btn-secondary" onclick="verDetallePedido('${id}')" style="padding:0.05rem 0.3rem;font-size:0.5rem;">📋</button>
-                                    </div>
-                                </div>
-                            `;
-                        }
-                    }
-                    
-                    if (contador) contador.textContent = count;
-                    if (count === 0) {
-                        content.innerHTML = `<div class="empty"><div class="icon">📜</div><div>No hay pedidos</div></div>`;
-                    } else {
-                        content.innerHTML = html;
-                    }
-                }).catch(error => console.error('Error:', error));
-            }
+            
+            content.innerHTML = html;
+        }
+        
+        if (contador) contador.textContent = count;
+        console.log(`✅ Historial actualizado: ${count} pedidos`);
+        
+    }).catch(error => {
+        console.error('❌ Error cargando historial:', error);
+        content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error al cargar: ${error.message}</div></div>`;
+    });
+}
 
             // ============================================
             // 26. VISTA DEMORAS

@@ -1,0 +1,2539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Panel Admin - Aguadulce Express</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .sidebar-item { transition: all 0.2s; cursor: pointer; }
+        .sidebar-item:hover { background: #1e293b; }
+        .sidebar-item.active { background: #f59e0b; color: #0f172a; }
+        .card { transition: transform 0.2s, box-shadow 0.2s; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        input, select, textarea { transition: all 0.2s; background: #1e293b; border: 1px solid #334155; color: white; border-radius: 12px; padding: 12px; width: 100%; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #f59e0b; }
+        
+        .modal { 
+            display: none !important; 
+            position: fixed; 
+            inset: 0; 
+            background: rgba(0,0,0,0.7); 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 50; 
+            padding: 16px; 
+        }
+        .modal.show { 
+            display: flex !important; 
+        }
+        .modal > div { 
+            background: #1e293b; 
+            border-radius: 16px; 
+            padding: 24px; 
+            width: 100%; 
+            max-width: 600px; 
+            max-height: 90vh; 
+            overflow-y: auto; 
+        }
+        
+        .swal2-input, .swal2-textarea, .swal2-select { background: #1e293b !important; color: white !important; border: 1px solid #334155 !important; }
+        .swal2-popup { border-radius: 16px !important; }
+        .user-email-display { font-size: 12px; color: #94a3b8; padding: 4px 12px; background: #1e293b; border-radius: 20px; border: 1px solid #334155; }
+        
+        .formulario-registro { display: none; }
+        .formulario-registro.visible { display: block; }
+        
+        .seleccion-item { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+        .seleccion-item .opcion-item { background: #0f172a; border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .badge { padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .comision-badge { background: rgba(6,182,212,0.2); color: #06b6d4; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+        
+        /* Scrollbar personalizada */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #f59e0b; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #d97706; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white">
+
+<!-- ==================== LOGIN ==================== -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center p-5">
+    <div class="bg-slate-800 rounded-2xl p-8 w-full max-w-md">
+        <h1 class="text-3xl font-bold text-center text-amber-400 mb-6">🍔 Admin Panel</h1>
+        <p class="text-white/50 text-xs text-center mb-6">INGRESA TUS CREDENCIALES</p>
+        <input type="email" id="adminEmail" placeholder="Email" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="password" id="adminPassword" placeholder="Contraseña" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-4">
+        <button onclick="loginAdmin()" class="w-full bg-amber-500 text-black font-bold py-3 rounded-xl hover:bg-amber-400 transition">INGRESAR</button>
+    </div>
+</div>
+
+<!-- ==================== ADMIN PANEL ==================== -->
+<div id="adminPanel" class="hidden min-h-screen flex">
+    <!-- Sidebar -->
+    <div class="w-72 bg-slate-800 p-4 flex flex-col overflow-y-auto">
+        <div class="flex items-center justify-between mb-6 px-3">
+            <div class="text-amber-400 text-2xl font-black">🍔 ADMIN</div>
+            <div id="adminEmailDisplay" class="user-email-display text-xs">Cargando...</div>
+        </div>
+        <div class="flex-1">
+            <div class="sidebar-item active p-3 rounded-xl mb-2" onclick="cambiarSeccion('restaurantes', this)">🏪 Restaurantes</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('horarios', this)">⏰ Horarios (7 días)</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('menus', this)">📋 Menús</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('pedidos', this)">🛒 Pedidos</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('historial', this)">📜 Historial</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('repartidores', this)">🛵 Repartidores</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('banners', this)">📢 Banners</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('fondos', this)">🎨 Fondos Cabecera</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('usuarios', this)">👥 Usuarios</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('reportes', this)">📊 Reportes</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('clientes', this)">⛔ Lista Negra</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('contable', this)">💰 Contable / Facturación</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('liquidaciones', this)">💵 Liquidaciones</div>
+        </div>
+        <button onclick="logoutAdmin()" class="bg-red-600/20 text-red-400 p-3 rounded-xl hover:bg-red-600/30 transition">🚪 Cerrar Sesión</button>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="flex-1 p-6 overflow-y-auto h-screen">
+        
+        <!-- ==================== RESTAURANTES ==================== -->
+        <div id="seccion-restaurantes" class="seccion">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">🏪 Restaurantes</h2>
+                <button onclick="abrirModalCreacion('restaurante')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Registro</button>
+            </div>
+            <div id="listaRestaurantes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+        
+        <!-- ==================== HORARIOS ==================== -->
+        <div id="seccion-horarios" class="seccion hidden">
+            <h2 class="text-2xl font-bold mb-6">⏰ Horarios (7 días)</h2>
+            <div class="bg-slate-800 rounded-2xl p-6 mb-6">
+                <label class="block mb-2">Seleccionar Restaurante</label>
+                <select id="horarioRestauranteSelect" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600"></select>
+            </div>
+            <div id="horariosConfig" class="bg-slate-800 rounded-2xl p-6"></div>
+        </div>
+        
+        <!-- ==================== MENÚS ==================== -->
+        <div id="seccion-menus" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">📋 Menús</h2>
+                <div class="flex gap-3">
+                    <select id="menuRestauranteSelect" class="p-3 rounded-xl bg-slate-700 border border-slate-600"></select>
+                    <button onclick="abrirModalProducto()" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Plato</button>
+                </div>
+            </div>
+            <div id="listaProductos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+        
+        <!-- ==================== PEDIDOS ==================== -->
+        <div id="seccion-pedidos" class="seccion hidden">
+            <h2 class="text-2xl font-bold mb-6">🛒 Pedidos en Tiempo Real</h2>
+            <div class="flex gap-3 mb-4 flex-wrap">
+                <select id="filtroEstadoPedido" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    <option value="todos">Todos</option>
+                    <option value="RECIBIDO">Pendientes</option>
+                    <option value="COCCIÓN">En Cocina</option>
+                    <option value="LISTO">Listos</option>
+                </select>
+                <select id="filtroRestaurantePedido" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    <option value="">Todos los restaurantes</option>
+                </select>
+            </div>
+            <div id="listaPedidosAdmin" class="space-y-4"></div>
+        </div>
+
+        <!-- ==================== HISTORIAL ==================== -->
+        <div id="seccion-historial" class="seccion hidden">
+            <h2 class="text-2xl font-bold mb-6">📜 Historial de Pedidos Entregados</h2>
+            <div id="listaHistorialAdmin" class="space-y-4"></div>
+        </div>
+        
+        <!-- ==================== REPARTIDORES ==================== -->
+        <div id="seccion-repartidores" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">🛵 Repartidores</h2>
+                <button onclick="abrirModalCreacion('repartidor')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Registro</button>
+            </div>
+            
+            <div class="bg-slate-800 rounded-2xl p-4 overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="border-b border-white/10 text-white/70 text-xs uppercase">
+                        <tr>
+                            <th class="p-3">Nombre</th>
+                            <th class="p-3">Email</th>
+                            <th class="p-3">Teléfono</th>
+                            <th class="p-3">Vehículo</th>
+                            <th class="p-3 text-center">Entregas</th>
+                            <th class="p-3 text-center">Estado</th>
+                            <th class="p-3 text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaRepartidores">
+                        <tr><td colspan="7" class="text-center text-white/50 p-6">Cargando repartidores...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- ==================== BANNERS ==================== -->
+        <div id="seccion-banners" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">📢 Banners Publicitarios</h2>
+                <button onclick="mostrarModal('modalBanner')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Banner</button>
+            </div>
+            <div id="listaBanners" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            <div class="mt-4 bg-slate-800/50 rounded-xl p-4 text-white/60 text-sm">ℹ️ Los banners se muestran en la pantalla de inicio de la APP Cliente</div>
+        </div>
+        
+        <!-- ==================== FONDOS CABECERA ==================== -->
+        <div id="seccion-fondos" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">🎨 Fondos de Cabecera</h2>
+                <button onclick="agregarFondoCabecera()" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Agregar Fondo</button>
+            </div>
+            <div id="listaFondos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+        
+        <!-- ==================== USUARIOS ==================== -->
+        <div id="seccion-usuarios" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">👥 Usuarios</h2>
+                <div class="flex gap-3">
+                    <select id="filtroRolUsuarios" class="p-3 rounded-xl bg-slate-700 border border-slate-600 text-sm" onchange="cargarUsuarios()">
+                        <option value="todos">Todos los roles</option>
+                        <option value="admin">Administradores</option>
+                        <option value="restaurante">Restaurantes</option>
+                        <option value="cocina">Cocina</option>
+                        <option value="repartidor">Repartidores</option>
+                        <option value="cliente">Clientes</option>
+                    </select>
+                    <button onclick="abrirModalCreacion('usuario')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">
+                        ➕ Nuevo Registro
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-slate-800 rounded-2xl p-4 overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="border-b border-white/10 text-white/70 text-xs uppercase">
+                        <tr>
+                            <th class="p-3">Nombre</th>
+                            <th class="p-3">Email</th>
+                            <th class="p-3">Teléfono</th>
+                            <th class="p-3">Rol</th>
+                            <th class="p-3">🔑 Contraseña</th>
+                            <th class="p-3 text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaUsuarios">
+                        <tr><td colspan="6" class="text-center text-white/50 p-6">Cargando usuarios...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- ==================== REPORTES ==================== -->
+        <div id="seccion-reportes" class="seccion hidden">
+            <h2 class="text-2xl font-bold mb-6">📊 Reportes</h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-slate-800 rounded-2xl p-6 text-center"><div class="text-3xl font-bold text-amber-400" id="totalVentasHoy">0</div><div class="text-white/50 text-sm">Ventas Hoy (€)</div></div>
+                <div class="bg-slate-800 rounded-2xl p-6 text-center"><div class="text-3xl font-bold text-amber-400" id="totalPedidosHoy">0</div><div class="text-white/50 text-sm">Pedidos Hoy</div></div>
+                <div class="bg-slate-800 rounded-2xl p-6 text-center"><div class="text-3xl font-bold text-amber-400" id="totalRepartidoresHoy">0</div><div class="text-white/50 text-sm">Repartidores Activos</div></div>
+                <div class="bg-slate-800 rounded-2xl p-6 text-center"><div class="text-3xl font-bold text-amber-400" id="productosVendidosHoy">0</div><div class="text-white/50 text-sm">Productos Vendidos</div></div>
+            </div>
+            <div id="reporteDetalle" class="bg-slate-800 rounded-2xl p-6"></div>
+        </div>
+
+        <!-- ==================== CLIENTES (Lista Negra) ==================== -->
+        <div id="seccion-clientes" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">⛔ Lista Negra</h2>
+                <button onclick="cargarListaNegra()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold">🔄 Refrescar</button>
+            </div>
+            <div class="bg-slate-800 rounded-2xl p-4 overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="border-b border-white/10 text-white/70 text-xs uppercase">
+                        <tr><th class="p-3">Email</th><th class="p-3">Nombre</th><th class="p-3">Motivo</th><th class="p-3 text-center">Deuda</th><th class="p-3 text-center">Acciones</th></tr>
+                    </thead>
+                    <tbody id="tablaListaNegra">
+                        <tr><td colspan="5" class="text-center text-white/50 p-6">No hay clientes en lista negra</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ==================== CONTABLE ==================== -->
+        <div id="seccion-contable" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6"><h2 class="text-2xl font-bold">💰 Contabilidad y Facturación</h2><div class="flex gap-3"><select id="periodoReporte" class="p-3 rounded-xl bg-slate-700 border border-slate-600"><option value="diario">Diario</option><option value="semanal">Semanal</option><option value="mensual">Mensual</option></select><button onclick="generarReporteContable()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold">📊 Generar Reporte</button><button onclick="exportarReporteExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">📎 Exportar Excel</button></div></div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"><div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">💰 Ventas Totales</p><p class="text-2xl font-bold text-cyan-400" id="totalVentasContable">0.00€</p></div><div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">🏪 Comisiones</p><p class="text-2xl font-bold text-yellow-400" id="totalComisionesContable">0.00€</p></div><div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">📢 Descuentos</p><p class="text-2xl font-bold text-red-400" id="totalDescuentosContable">0.00€</p></div><div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">💵 A Liquidar</p><p class="text-2xl font-bold text-emerald-400" id="totalLiquidarContable">0.00€</p></div></div>
+            <div class="bg-slate-800 rounded-2xl p-4"><h3 class="font-bold text-lg mb-4">📋 Detalle por Restaurante</h3><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="border-b border-white/10"><tr><th class="text-left p-2">Restaurante</th><th class="text-right p-2">Ventas</th><th class="text-right p-2">Comisión</th><th class="text-right p-2">Descuentos</th><th class="text-right p-2">A Liquidar</th><th class="text-center p-2">Estado</th><th class="text-center p-2">Acciones</th></tr></thead><tbody id="tablaReporteContable"></tbody></table></div></div>
+            <div class="mt-6 bg-slate-800 rounded-2xl p-4"><h3 class="font-bold text-lg mb-4">📜 Historial de Liquidaciones</h3><div id="historialLiquidacionesList" class="space-y-2 max-h-64 overflow-y-auto"></div></div>
+        </div>
+
+        <!-- ==================== LIQUIDACIONES ==================== -->
+        <div id="seccion-liquidaciones" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">💰 Liquidaciones de Restaurantes</h2>
+                <div class="flex gap-3">
+                    <select id="periodoSeleccion" class="p-3 rounded-xl bg-slate-700 border border-slate-600">
+                        <option value="semanal">Semanal (Lunes a Domingo)</option>
+                        <option value="quincenal">Quincenal</option>
+                        <option value="mensual">Mensual</option>
+                    </select>
+                    <button onclick="calcularLiquidaciones()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold">📊 Calcular</button>
+                    <button onclick="exportarLiquidacionesExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">📎 Exportar Excel</button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">💰 Total Ventas</p><p class="text-2xl font-bold text-cyan-400" id="liquidTotalVentas">0.00€</p></div>
+                <div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">🏪 Comisiones</p><p class="text-2xl font-bold text-yellow-400" id="liquidTotalComisiones">0.00€</p></div>
+                <div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">💵 A Liquidar</p><p class="text-2xl font-bold text-emerald-400" id="liquidTotalLiquidar">0.00€</p></div>
+                <div class="bg-slate-800 rounded-2xl p-4 text-center"><p class="text-white/50 text-xs">📜 Liquidado</p><p class="text-2xl font-bold text-purple-400" id="liquidTotalLiquidado">0.00€</p></div>
+            </div>
+            
+            <div class="bg-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-lg mb-4">📋 Detalle por Restaurante</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="border-b border-white/10">
+                            <tr><th class="text-left p-2">Restaurante</th><th class="text-right p-2">Pedidos</th><th class="text-right p-2">Ventas (€)</th><th class="text-right p-2">Comisión (%)</th><th class="text-right p-2">A Liquidar (€)</th><th class="text-center p-2">Estado</th><th class="text-center p-2">Acciones</th></tr>
+                        </thead>
+                        <tbody id="tablaLiquidaciones"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="mt-6 bg-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-lg mb-4">📜 Historial de Liquidaciones</h3>
+                <div id="historialLiquidacionesList2" class="space-y-2 max-h-64 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     MODALES
+     ============================================================ -->
+
+<!-- ==================== MODAL: CREAR REGISTRO UNIFICADO ==================== -->
+<div id="modalCrearUnificado" class="modal">
+    <div class="max-h-[90vh] overflow-y-auto">
+        <h3 class="text-xl font-bold mb-4" id="modalCrearTitulo">➕ Crear Nuevo Registro</h3>
+        
+        <!-- SELECTOR DE TIPO -->
+        <div class="mb-4">
+            <label class="block text-sm text-white/70 mb-1">Tipo de Registro *</label>
+            <select id="tipoRegistroSelect" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600" onchange="cambiarFormularioRegistro()">
+                <option value="restaurante">🏪 Restaurante</option>
+                <option value="repartidor">🛵 Repartidor</option>
+                <option value="usuario">👤 Usuario (Cliente)</option>
+                <option value="cocina">🍳 Personal Cocina</option>
+                <option value="admin">👑 Administrador</option>
+            </select>
+        </div>
+
+        <!-- ======================================== -->
+        <!-- FORMULARIO: RESTAURANTE                   -->
+        <!-- ======================================== -->
+        <div id="formRestaurante" class="formulario-registro visible">
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+                <p class="text-amber-400 font-bold text-sm mb-3">🏪 DATOS DEL RESTAURANTE</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Nombre del Restaurante *</label>
+                        <input type="text" id="regRestNombre" placeholder="Ej: Pizzería La Esquina" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Código PIN (opcional)</label>
+                        <input type="text" id="regRestPin" placeholder="Ej: ABC123" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                        <p class="text-white/40 text-xs mt-1">Dejar vacío para autogenerar</p>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <label class="block text-sm text-white/70 mb-1">Dirección completa *</label>
+                    <input type="text" id="regRestDireccion" placeholder="Calle Principal 123, Roquetas de Mar, 04740" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Comisión (%)</label>
+                        <input type="number" id="regRestComision" value="10" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Tiempo estimado (min)</label>
+                        <input type="number" id="regRestTiempo" value="30" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">URL del Logo</label>
+                        <input type="url" id="regRestFoto" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Horario Apertura</label>
+                        <input type="time" id="regRestApertura" value="09:00" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Horario Cierre</label>
+                        <input type="time" id="regRestCierre" value="23:00" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-slate-800/50 rounded-xl p-4">
+                <p class="text-cyan-400 font-bold text-sm mb-3">👤 DATOS DE USUARIO (Login)</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Email *</label>
+                        <input type="email" id="regRestEmail" placeholder="restaurante@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Contraseña *</label>
+                        <input type="password" id="regRestPassword" placeholder="Mínimo 6 caracteres" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="block text-sm text-white/70 mb-1">Teléfono</label>
+                    <input type="tel" id="regRestTelefono" placeholder="600000000" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================== -->
+        <!-- FORMULARIO: REPARTIDOR                   -->
+        <!-- ======================================== -->
+        <div id="formRepartidor" class="formulario-registro" style="display:none;">
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+                <p class="text-purple-400 font-bold text-sm mb-3">🛵 DATOS DEL REPARTIDOR</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Nombre completo *</label>
+                        <input type="text" id="regRepNombre" placeholder="Ej: Juan Pérez" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Email *</label>
+                        <input type="email" id="regRepEmail" placeholder="repartidor@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Contraseña *</label>
+                        <input type="password" id="regRepPassword" placeholder="Mínimo 6 caracteres" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Teléfono *</label>
+                        <input type="tel" id="regRepTelefono" placeholder="600000000" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Tipo de Vehículo *</label>
+                        <select id="regRepVehiculo" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                            <option value="Moto">🛵 Moto</option>
+                            <option value="Bici">🚲 Bicicleta</option>
+                            <option value="Coche">🚗 Coche</option>
+                            <option value="Furgoneta">🚐 Furgoneta</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Matrícula</label>
+                        <input type="text" id="regRepMatricula" placeholder="1234ABC" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Modelo</label>
+                        <input type="text" id="regRepModelo" placeholder="Yamaha FZ" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Estado</label>
+                        <select id="regRepEstado" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                            <option value="activo">🟢 Activo</option>
+                            <option value="inactivo">🔴 Inactivo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Zona de Cobertura</label>
+                        <input type="text" id="regRepZona" placeholder="Centro, Norte, Sur" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================== -->
+        <!-- FORMULARIO: USUARIO (Cliente)            -->
+        <!-- ======================================== -->
+        <div id="formUsuario" class="formulario-registro" style="display:none;">
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+                <p class="text-emerald-400 font-bold text-sm mb-3">👤 DATOS DEL USUARIO</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Nombre completo *</label>
+                        <input type="text" id="regUsrNombre" placeholder="Ej: María González" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Email *</label>
+                        <input type="email" id="regUsrEmail" placeholder="cliente@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Contraseña *</label>
+                        <input type="password" id="regUsrPassword" placeholder="Mínimo 6 caracteres" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Teléfono</label>
+                        <input type="tel" id="regUsrTelefono" placeholder="600000000" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Dirección de entrega</label>
+                        <input type="text" id="regUsrDireccion" placeholder="Calle Principal 123" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Fecha de nacimiento</label>
+                        <input type="date" id="regUsrNacimiento" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================== -->
+        <!-- FORMULARIO: COCINA                       -->
+        <!-- ======================================== -->
+        <div id="formCocina" class="formulario-registro" style="display:none;">
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+                <p class="text-cyan-400 font-bold text-sm mb-3">🍳 DATOS DEL PERSONAL DE COCINA</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Nombre completo *</label>
+                        <input type="text" id="regCocNombre" placeholder="Ej: Chef Pérez" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Email *</label>
+                        <input type="email" id="regCocEmail" placeholder="cocina@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Contraseña *</label>
+                        <input type="password" id="regCocPassword" placeholder="Mínimo 6 caracteres" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Teléfono</label>
+                        <input type="tel" id="regCocTelefono" placeholder="600000000" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Restaurante asociado *</label>
+                        <select id="regCocRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                            <option value="">Seleccionar restaurante</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Puesto</label>
+                        <select id="regCocPuesto" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                            <option value="Jefe de Cocina">👨‍🍳 Jefe de Cocina</option>
+                            <option value="Ayudante">🔪 Ayudante</option>
+                            <option value="Cocinero">🍳 Cocinero</option>
+                            <option value="Pizzero">🍕 Pizzero</option>
+                            <option value="Pastelero">🎂 Pastelero</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================== -->
+        <!-- FORMULARIO: ADMIN                        -->
+        <!-- ======================================== -->
+        <div id="formAdmin" class="formulario-registro" style="display:none;">
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+                <p class="text-blue-400 font-bold text-sm mb-3">👑 DATOS DEL ADMINISTRADOR</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Nombre completo *</label>
+                        <input type="text" id="regAdmNombre" placeholder="Ej: Admin Principal" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Email *</label>
+                        <input type="email" id="regAdmEmail" placeholder="admin@email.com" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Contraseña *</label>
+                        <input type="password" id="regAdmPassword" placeholder="Mínimo 6 caracteres" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">Teléfono</label>
+                        <input type="tel" id="regAdmTelefono" placeholder="600000000" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <label class="block text-sm text-white/70 mb-1">Nivel de Permiso</label>
+                    <select id="regAdmNivel" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                        <option value="super_admin">👑 Super Admin</option>
+                        <option value="admin">🛡️ Admin</option>
+                        <option value="moderador">🔰 Moderador</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================== -->
+        <!-- BOTONES                                  -->
+        <!-- ======================================== -->
+        <div class="flex gap-3 mt-4">
+            <button onclick="guardarRegistroUnificado()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">
+                ✅ Crear Registro
+            </button>
+            <button onclick="cerrarModal('modalCrearUnificado')" class="flex-1 bg-slate-700 py-2 rounded-xl">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODAL: CREAR PRODUCTO CON OPCIONES ==================== -->
+<div id="modalProductoOpciones" class="modal">
+    <div class="max-h-[90vh] overflow-y-auto">
+        <h3 class="text-xl font-bold mb-4">📋 Crear Nuevo Plato</h3>
+        
+        <!-- DATOS BÁSICOS -->
+        <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+            <p class="text-amber-400 font-bold text-sm mb-3">📋 DATOS BÁSICOS</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">Restaurante *</label>
+                    <select id="prodRestaurante" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600"></select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">Categoría *</label>
+                    <select id="prodCategoria" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                        <option value="Entrantes">Entrantes</option>
+                        <option value="Platos principales">Platos principales</option>
+                        <option value="Pizzas">Pizzas</option>
+                        <option value="Hamburguesas">Hamburguesas</option>
+                        <option value="Postres">Postres</option>
+                        <option value="Bebidas">Bebidas</option>
+                        <option value="Ensaladas">Ensaladas</option>
+                        <option value="Acompañamientos">Acompañamientos</option>
+                        <option value="Promociones">Promociones</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                <label class="block text-sm text-white/70 mb-1">Nombre del Plato *</label>
+                <input type="text" id="prodNombre" placeholder="Ej: Pizza Personalizada" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+            </div>
+            
+            <div class="mt-3">
+                <label class="block text-sm text-white/70 mb-1">Descripción</label>
+                <textarea id="prodDescripcion" rows="2" placeholder="Deliciosa pizza con ingredientes a tu elección" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600"></textarea>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">Precio Base (€) *</label>
+                    <input type="number" id="prodPrecioBase" placeholder="8.00" step="0.01" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">URL de la Foto</label>
+                    <input type="url" id="prodFoto" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                <label class="block text-sm text-white/70 mb-1">Tipo de Plato *</label>
+                <select id="prodTipo" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600" onchange="toggleOpcionesProducto()">
+                    <option value="simple">🍽️ Simple (Precio fijo)</option>
+                    <option value="opciones">🎯 Con Opciones (Personalizable)</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- ======================================== -->
+        <!-- SECCIÓN: OPCIONES (solo para tipo opciones) -->
+        <!-- ======================================== -->
+        <div id="seccionOpcionesProducto" style="display:none;">
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-4">
+                <div class="flex justify-between items-center mb-3">
+                    <p class="text-cyan-400 font-bold text-sm">🎯 CONFIGURACIÓN DE OPCIONES</p>
+                    <button onclick="agregarSeleccionProducto()" class="bg-cyan-600 text-white px-3 py-1 rounded text-sm font-bold">➕ Agregar Selección</button>
+                </div>
+                <p class="text-white/50 text-xs mb-3">Define las opciones que el cliente podrá elegir (ej: Tamaño, Ingredientes, Bebida)</p>
+                <div id="listaSeleccionesProducto"></div>
+            </div>
+        </div>
+        
+        <!-- ======================================== -->
+        <!-- BOTONES                                  -->
+        <!-- ======================================== -->
+        <div class="flex gap-3 mt-4">
+            <button onclick="guardarProductoCompleto()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">
+                ✅ Guardar Plato
+            </button>
+            <button onclick="cerrarModal('modalProductoOpciones')" class="flex-1 bg-slate-700 py-2 rounded-xl">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODAL: BANNER ==================== -->
+<div id="modalBanner" class="modal">
+    <div>
+        <h3 class="text-xl font-bold mb-4">📢 Banner</h3>
+        <input type="text" id="bannerTitulo" placeholder="Título" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="url" id="bannerImagen" placeholder="URL Imagen" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="url" id="bannerLink" placeholder="Link (opcional)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <input type="number" id="bannerOrden" placeholder="Orden" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
+        <div class="flex gap-3">
+            <button onclick="guardarBanner()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button>
+            <button onclick="cerrarModal('modalBanner')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+// ============================================================
+// 🔥 CONFIGURACIÓN DE FIREBASE
+// ============================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyDw-EdjMC5S2nQTR3ownQBlHx2AcHZBy0A",
+    authDomain: "aguadulce-express-v2.firebaseapp.com",
+    databaseURL: "https://aguadulce-express-v2-default-rtdb.firebaseio.com",
+    projectId: "aguadulce-express-v2",
+    storageBucket: "aguadulce-express-v2.firebasestorage.app",
+};
+
+if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+const database = firebase.database();
+const auth = firebase.auth();
+const functions = firebase.functions();
+
+// ============================================================
+// 📌 FUNCIONES UTILITARIAS
+// ============================================================
+function escapeHTML(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
+function euros(n) { return parseFloat(n || 0).toFixed(2) + '€'; }
+function mostrarModal(id) { document.getElementById(id).classList.add('show'); }
+function cerrarModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ============================================================
+// 🔐 AUTENTICACIÓN
+// ============================================================
+function loginAdmin() {
+    const email = document.getElementById('adminEmail').value.trim();
+    const password = document.getElementById('adminPassword').value.trim();
+    if (!email || !password) { Swal.fire({ title: 'Error', text: 'Completa email y contraseña', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+    auth.signInWithEmailAndPassword(email, password).then(userCredential => {
+        const user = userCredential.user;
+        if (user.email !== 'admin@aguadulce.com') { Swal.fire({ title: '⚠️ Acceso denegado', text: 'No tienes permisos de administrador', icon: 'warning', background: '#0f172a', color: 'white' }); auth.signOut(); return; }
+        localStorage.setItem('admin_logged', 'true');
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('adminPanel').classList.remove('hidden');
+        document.getElementById('adminEmailDisplay').textContent = user.email;
+        cargarTodosLosDatos();
+        Swal.fire({ title: '✅ Bienvenido Admin', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+    }).catch(error => { Swal.fire({ title: '❌ Error de acceso', text: error.message, icon: 'error', background: '#0f172a', color: 'white' }); });
+}
+
+function logoutAdmin() { auth.signOut().then(() => { localStorage.removeItem('admin_logged'); location.reload(); }); }
+
+auth.onAuthStateChanged(user => {
+    if (user && user.email === 'admin@aguadulce.com' && localStorage.getItem('admin_logged') === 'true') {
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('adminPanel').classList.remove('hidden');
+        document.getElementById('adminEmailDisplay').textContent = user.email;
+        cargarTodosLosDatos();
+    } else if (localStorage.getItem('admin_logged') === 'true') { localStorage.removeItem('admin_logged'); }
+});
+
+// ============================================================
+// 📌 NAVEGACIÓN
+// ============================================================
+function cambiarSeccion(seccion, element) {
+    document.querySelectorAll('.seccion').forEach(s => s.classList.add('hidden'));
+    document.getElementById(`seccion-${seccion}`).classList.remove('hidden');
+    document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+    if (element) element.classList.add('active');
+    const acciones = {
+        'restaurantes': cargarRestaurantes,
+        'horarios': cargarHorarios,
+        'menus': cargarMenus,
+        'pedidos': cargarPedidosAdmin,
+        'historial': cargarHistorial,
+        'repartidores': cargarRepartidores,
+        'banners': cargarBanners,
+        'fondos': cargarFondosCabecera,
+        'usuarios': cargarUsuarios,
+        'reportes': cargarReportes,
+        'clientes': cargarListaNegra,
+        'contable': generarReporteContable,
+        'liquidaciones': calcularLiquidaciones
+    };
+    if (acciones[seccion]) acciones[seccion]();
+}
+
+// ============================================================
+// 🏪 RESTAURANTES
+// ============================================================
+async function cargarRestaurantes() {
+    const snapshot = await database.ref('restaurantes').once('value');
+    const restaurantes = snapshot.val() || {};
+    const container = document.getElementById('listaRestaurantes');
+    if (Object.keys(restaurantes).length === 0) { container.innerHTML = '<div class="text-center text-white/50 p-10">No hay restaurantes</div>'; return; }
+    let html = '';
+    for (const id in restaurantes) {
+        const data = restaurantes[id];
+        const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Sin nombre';
+        const foto = data.FOTO || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
+        const activo = data.activo !== false;
+        const comision = data.comision || 10;
+        const ordenActual = data.orden_manual !== undefined ? data.orden_manual : '';
+        const direccion = data.DIRECCION || data.direccion || 'No definida';
+        const email = data.email || 'Sin email';
+        const password = data.password || 'No disponible';
+        const pinOriginal = data.pin_original || id.substring(0, 8);
+
+        html += `<div class="card bg-slate-800 rounded-2xl overflow-hidden border ${activo ? 'border-green-500/30' : 'border-red-500/30'}">
+            <div class="relative"><img src="${foto}" class="w-full h-40 object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+            <div class="absolute top-2 right-2"><span class="${activo ? 'bg-green-500 text-white' : 'bg-red-500 text-white'} px-3 py-1 rounded-full text-xs font-bold shadow-lg">${activo ? '🟢 ACTIVO' : '🔴 INACTIVO'}</span></div></div>
+            <div class="p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-amber-400 font-bold text-xs bg-amber-400/10 px-2 py-0.5 rounded">📌 ${pinOriginal}</span>
+                        <h3 class="font-bold text-white text-lg mt-1">${escapeHTML(nombre)}</h3>
+                        <p class="text-white/50 text-xs mt-1">📍 ${escapeHTML(direccion)}</p>
+                        <p class="text-cyan-400 text-xs mt-1">📧 ${escapeHTML(email)}</p>
+                        <p class="text-yellow-400 text-xs mt-0.5">🔑 ${escapeHTML(password)}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-cyan-400 font-bold text-sm">${comision}% comisión</span>
+                        <p class="text-white/40 text-xs mt-1">🆔 ${id.substring(0, 12)}...</p>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center gap-2"><label class="text-white/60 text-xs">Orden:</label><input type="number" id="orden_${id}" value="${ordenActual}" class="w-16 p-1 rounded bg-slate-700 text-white text-xs" placeholder="999" onchange="actualizarOrdenRestaurante('${id}', this.value)"></div>
+                <div class="flex gap-2 mt-4">
+                    <button onclick="editarRestaurante('${id}')" class="flex-1 bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 py-2 rounded-xl text-sm font-bold transition">✏️ Editar</button>
+                    <button onclick="toggleRestaurante('${id}', ${!activo})" class="flex-1 ${activo ? 'bg-red-600/20 hover:bg-red-600/40 text-red-400' : 'bg-green-600/20 hover:bg-green-600/40 text-green-400'} py-2 rounded-xl text-sm font-bold transition">${activo ? '❌ Desactivar' : '✅ Activar'}</button>
+                    <button onclick="eliminarRestaurante('${id}')" class="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 py-2 rounded-xl text-sm font-bold transition">🗑️</button>
+                </div>
+            </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+    actualizarSelectsRestaurantes();
+}
+
+async function actualizarOrdenRestaurante(id, orden) {
+    const nuevoOrden = parseInt(orden);
+    if (isNaN(nuevoOrden)) await database.ref(`restaurantes/${id}/orden_manual`).remove();
+    else await database.ref(`restaurantes/${id}/orden_manual`).set(nuevoOrden);
+    await cargarRestaurantes();
+}
+
+async function editarRestaurante(pin) {
+    const snapshot = await database.ref(`restaurantes/${pin}`).once('value');
+    const data = snapshot.val();
+    if (!data) return;
+
+    let calle = data.DIRECCION || data.direccion || '';
+    let ciudad = 'Roquetas de Mar';
+    let cp = '04740';
+    
+    if (calle.includes(',')) {
+        const partes = calle.split(',');
+        calle = partes[0].trim();
+        if (partes[1]) ciudad = partes[1].trim();
+        if (partes[2]) cp = partes[2].trim().replace(/ /g, '');
+    }
+
+    const result = await Swal.fire({
+        title: `✏️ Editar ${data.NOMBRE_RESTAURANTE || pin}`,
+        html: `
+            <input id="editNombre" class="swal2-input" placeholder="Nombre" value="${data.NOMBRE_RESTAURANTE || ''}">
+            <div class="text-left text-xs text-cyan-400 font-bold mt-2 mb-1">📍 Dirección</div>
+            <input id="editCalle" class="swal2-input" placeholder="Calle y Número" value="${calle}">
+            <div class="flex gap-2">
+                <input id="editCiudad" class="swal2-input" placeholder="Ciudad" value="${ciudad}" style="width: 60%;">
+                <input id="editCp" class="swal2-input" placeholder="CP" value="${cp}" style="width: 40%;">
+            </div>
+            <input id="editFoto" class="swal2-input" placeholder="URL foto" value="${data.FOTO || ''}">
+            <input id="editComision" class="swal2-input" placeholder="Comisión (%)" value="${data.comision || '10'}">
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '✅ Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('editNombre').value,
+                calle: document.getElementById('editCalle').value,
+                ciudad: document.getElementById('editCiudad').value,
+                cp: document.getElementById('editCp').value,
+                foto: document.getElementById('editFoto').value,
+                comision: document.getElementById('editComision').value
+            };
+        }
+    });
+    
+    if (result.value) {
+        const updates = {};
+        if (result.value.nombre) updates.NOMBRE_RESTAURANTE = result.value.nombre;
+        if (result.value.foto) updates.FOTO = result.value.foto;
+        if (result.value.comision && !isNaN(parseFloat(result.value.comision))) updates.comision = parseFloat(result.value.comision);
+        
+        if (result.value.calle) {
+            const dirCompleta = `${result.value.calle}, ${result.value.ciudad || 'Roquetas de Mar'}, ${result.value.cp || '04740'}`;
+            updates.direccion = dirCompleta;
+            updates.DIRECCION = dirCompleta;
+        }
+
+        await database.ref(`restaurantes/${pin}`).update(updates);
+        await cargarRestaurantes();
+        Swal.fire({ title: '✅ Actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+    }
+}
+
+async function toggleRestaurante(id, activo) { await database.ref(`restaurantes/${id}/activo`).set(activo); await cargarRestaurantes(); }
+async function eliminarRestaurante(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`restaurantes/${id}`).remove(); await cargarRestaurantes(); } }
+
+async function actualizarSelectsRestaurantes() {
+    const snapshot = await database.ref('restaurantes').once('value');
+    const restaurantes = snapshot.val() || {};
+    let options = '<option value="">Seleccionar restaurante</option>';
+    for (const id in restaurantes) {
+        const data = restaurantes[id];
+        const nombre = data.NOMBRE_RESTAURANTE || data.nombre || id;
+        options += `<option value="${id}">${escapeHTML(nombre)}</option>`;
+    }
+    document.querySelectorAll('#horarioRestauranteSelect, #menuRestauranteSelect, #prodRestaurante, #filtroRestaurantePedido, #regCocRestaurante').forEach(select => { if (select) select.innerHTML = options; });
+}
+
+// ============================================================
+// 👥 SISTEMA DE CREACIÓN UNIFICADO
+// ============================================================
+
+// Abrir modal de creación con tipo predefinido
+function abrirModalCreacion(tipo) {
+    const select = document.getElementById('tipoRegistroSelect');
+    if (tipo) {
+        select.value = tipo;
+    }
+    cambiarFormularioRegistro();
+    mostrarModal('modalCrearUnificado');
+}
+
+// Cambiar formulario según tipo seleccionado
+function cambiarFormularioRegistro() {
+    const tipo = document.getElementById('tipoRegistroSelect').value;
+    
+    // Ocultar todos los formularios
+    document.querySelectorAll('.formulario-registro').forEach(el => {
+        el.style.display = 'none';
+        el.classList.remove('visible');
+    });
+    
+    // Mostrar el formulario correspondiente
+    const mapForms = {
+        'restaurante': 'formRestaurante',
+        'repartidor': 'formRepartidor',
+        'usuario': 'formUsuario',
+        'cocina': 'formCocina',
+        'admin': 'formAdmin'
+    };
+    
+    if (mapForms[tipo]) {
+        const form = document.getElementById(mapForms[tipo]);
+        form.style.display = 'block';
+        form.classList.add('visible');
+    }
+    
+    // Si es cocina, cargar restaurantes en el select
+    if (tipo === 'cocina') {
+        cargarSelectRestaurantes('regCocRestaurante');
+    }
+}
+
+// Cargar select de restaurantes
+async function cargarSelectRestaurantes(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    
+    try {
+        const snapshot = await database.ref('restaurantes').once('value');
+        const restaurantes = snapshot.val() || {};
+        
+        let options = '<option value="">Seleccionar restaurante</option>';
+        for (const id in restaurantes) {
+            const data = restaurantes[id];
+            const nombre = data.NOMBRE_RESTAURANTE || data.nombre || id;
+            options += `<option value="${id}">${escapeHTML(nombre)}</option>`;
+        }
+        select.innerHTML = options;
+    } catch (error) {
+        console.error('Error cargando restaurantes:', error);
+    }
+}
+
+// ============================================================
+// 👥 GUARDAR REGISTRO UNIFICADO
+// ============================================================
+async function guardarRegistroUnificado() {
+    const tipo = document.getElementById('tipoRegistroSelect').value;
+    
+    // Validar según tipo
+    if (tipo === 'restaurante') {
+        await guardarRestauranteUnificado();
+    } else if (tipo === 'repartidor') {
+        await guardarRepartidorUnificado();
+    } else if (tipo === 'usuario') {
+        await guardarUsuarioUnificado();
+    } else if (tipo === 'cocina') {
+        await guardarCocinaUnificado();
+    } else if (tipo === 'admin') {
+        await guardarAdminUnificado();
+    }
+}
+
+// ============================================================
+// 🏪 GUARDAR RESTAURANTE UNIFICADO
+// ============================================================
+async function guardarRestauranteUnificado() {
+    const nombre = document.getElementById('regRestNombre').value.trim();
+    const pin = document.getElementById('regRestPin').value.toUpperCase().trim();
+    const direccion = document.getElementById('regRestDireccion').value.trim();
+    const comision = parseFloat(document.getElementById('regRestComision').value) || 10;
+    const tiempo = parseInt(document.getElementById('regRestTiempo').value) || 30;
+    const foto = document.getElementById('regRestFoto').value.trim();
+    const apertura = document.getElementById('regRestApertura').value || '09:00';
+    const cierre = document.getElementById('regRestCierre').value || '23:00';
+    const email = document.getElementById('regRestEmail').value.trim();
+    const password = document.getElementById('regRestPassword').value.trim();
+    const telefono = document.getElementById('regRestTelefono').value.trim();
+
+    if (!nombre || !direccion || !email || !password || password.length < 6) {
+        Swal.fire({ title: 'Error', text: 'Nombre, Dirección, Email y Contraseña (mín. 6 caracteres) son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+
+    Swal.fire({ title: '⏳ Creando restaurante...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+
+        const pinFinal = pin || uid.substring(0, 8).toUpperCase();
+
+        const restauranteData = {
+            ID_RESTAURANTE: uid,
+            NOMBRE_RESTAURANTE: nombre,
+            DIRECCION: direccion,
+            FOTO: foto || '',
+            activo: true,
+            comision: comision,
+            tiempoEstimado: tiempo,
+            horarioApertura: apertura,
+            horarioCierre: cierre,
+            creado_en: Date.now(),
+            email: email,
+            telefono: telefono || '',
+            password: password,
+            uid: uid,
+            pin_original: pinFinal
+        };
+
+        await database.ref(`restaurantes/${uid}`).set(restauranteData);
+        await database.ref(`restaurantes_pin/${pinFinal}`).set({ uid: uid, nombre: nombre });
+
+        const usuarioData = {
+            email: email,
+            nombre: nombre,
+            telefono: telefono || '',
+            rol: 'restaurante',
+            uid: uid,
+            restauranteId: uid,
+            creadoEn: Date.now(),
+            activo: true,
+            password: password
+        };
+
+        await database.ref(`usuarios/${uid}`).set(usuarioData);
+        await database.ref(`usuarios_restaurante/${uid}`).set(usuarioData);
+
+        cerrarModal('modalCrearUnificado');
+        await cargarRestaurantes();
+        await cargarUsuarios();
+
+        Swal.fire({
+            title: '✅ Restaurante creado',
+            html: `
+                <p><strong>${nombre}</strong> creado exitosamente</p>
+                <p class="text-amber-400 text-sm">📌 PIN: ${pinFinal}</p>
+                <p class="text-cyan-400 text-sm">📧 Email: ${email}</p>
+                <p class="text-emerald-400 text-sm">🔑 Contraseña: ${password}</p>
+            `,
+            icon: 'success',
+            timer: 5000,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 🛵 GUARDAR REPARTIDOR UNIFICADO
+// ============================================================
+async function guardarRepartidorUnificado() {
+    const nombre = document.getElementById('regRepNombre').value.trim();
+    const email = document.getElementById('regRepEmail').value.trim();
+    const password = document.getElementById('regRepPassword').value.trim();
+    const telefono = document.getElementById('regRepTelefono').value.trim();
+    const vehiculo = document.getElementById('regRepVehiculo').value;
+    const matricula = document.getElementById('regRepMatricula').value.trim();
+    const modelo = document.getElementById('regRepModelo').value.trim();
+    const estado = document.getElementById('regRepEstado').value;
+    const zona = document.getElementById('regRepZona').value.trim();
+
+    if (!nombre || !email || !password || password.length < 6 || !telefono) {
+        Swal.fire({ title: 'Error', text: 'Nombre, Email, Contraseña (mín. 6 caracteres) y Teléfono son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+
+    Swal.fire({ title: '⏳ Creando repartidor...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+
+        const repartidorData = {
+            nombre: nombre,
+            email: email,
+            telefono: telefono,
+            vehiculo: vehiculo,
+            matricula: matricula || '',
+            modelo: modelo || '',
+            estado: estado,
+            zona: zona || '',
+            entregas: 0,
+            activo: true,
+            creadoEn: Date.now(),
+            password: password,
+            uid: uid
+        };
+
+        await database.ref(`repartidores/${uid}`).set(repartidorData);
+
+        const usuarioData = {
+            email: email,
+            nombre: nombre,
+            telefono: telefono,
+            rol: 'repartidor',
+            uid: uid,
+            creadoEn: Date.now(),
+            activo: true,
+            password: password
+        };
+
+        await database.ref(`usuarios/${uid}`).set(usuarioData);
+
+        cerrarModal('modalCrearUnificado');
+        await cargarRepartidores();
+        await cargarUsuarios();
+
+        Swal.fire({
+            title: '✅ Repartidor creado',
+            html: `
+                <p><strong>${nombre}</strong> creado exitosamente</p>
+                <p class="text-purple-400 text-sm">🛵 Vehículo: ${vehiculo}</p>
+                <p class="text-cyan-400 text-sm">📧 Email: ${email}</p>
+                <p class="text-emerald-400 text-sm">🔑 Contraseña: ${password}</p>
+            `,
+            icon: 'success',
+            timer: 5000,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 👤 GUARDAR USUARIO UNIFICADO
+// ============================================================
+async function guardarUsuarioUnificado() {
+    const nombre = document.getElementById('regUsrNombre').value.trim();
+    const email = document.getElementById('regUsrEmail').value.trim();
+    const password = document.getElementById('regUsrPassword').value.trim();
+    const telefono = document.getElementById('regUsrTelefono').value.trim();
+    const direccion = document.getElementById('regUsrDireccion').value.trim();
+    const nacimiento = document.getElementById('regUsrNacimiento').value;
+
+    if (!nombre || !email || !password || password.length < 6) {
+        Swal.fire({ title: 'Error', text: 'Nombre, Email y Contraseña (mín. 6 caracteres) son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+
+    Swal.fire({ title: '⏳ Creando usuario...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+
+        const usuarioData = {
+            email: email,
+            nombre: nombre,
+            telefono: telefono || '',
+            rol: 'cliente',
+            uid: uid,
+            creadoEn: Date.now(),
+            activo: true,
+            password: password
+        };
+
+        await database.ref(`usuarios/${uid}`).set(usuarioData);
+
+        const clienteData = {
+            ...usuarioData,
+            direccion: direccion || '',
+            fechaNacimiento: nacimiento || '',
+            pedidos: 0,
+            gastoTotal: 0
+        };
+
+        await database.ref(`clientes/${uid}`).set(clienteData);
+
+        cerrarModal('modalCrearUnificado');
+        await cargarUsuarios();
+
+        Swal.fire({
+            title: '✅ Usuario creado',
+            html: `
+                <p><strong>${nombre}</strong> creado exitosamente</p>
+                <p class="text-emerald-400 text-sm">👤 Rol: Cliente</p>
+                <p class="text-cyan-400 text-sm">📧 Email: ${email}</p>
+                <p class="text-emerald-400 text-sm">🔑 Contraseña: ${password}</p>
+            `,
+            icon: 'success',
+            timer: 5000,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 🍳 GUARDAR COCINA UNIFICADO
+// ============================================================
+async function guardarCocinaUnificado() {
+    const nombre = document.getElementById('regCocNombre').value.trim();
+    const email = document.getElementById('regCocEmail').value.trim();
+    const password = document.getElementById('regCocPassword').value.trim();
+    const telefono = document.getElementById('regCocTelefono').value.trim();
+    const restauranteId = document.getElementById('regCocRestaurante').value;
+    const puesto = document.getElementById('regCocPuesto').value;
+
+    if (!nombre || !email || !password || password.length < 6 || !restauranteId) {
+        Swal.fire({ title: 'Error', text: 'Nombre, Email, Contraseña (mín. 6 caracteres) y Restaurante son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+
+    Swal.fire({ title: '⏳ Creando personal de cocina...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+
+        const cocinaData = {
+            nombre: nombre,
+            email: email,
+            telefono: telefono || '',
+            restauranteId: restauranteId,
+            puesto: puesto || 'Cocinero',
+            creadoEn: Date.now(),
+            activo: true,
+            password: password,
+            uid: uid
+        };
+
+        await database.ref(`cocina/${uid}`).set(cocinaData);
+        await database.ref(`usuarios_cocina/${uid}`).set({ ...cocinaData, rol: 'cocina' });
+
+        const usuarioData = {
+            email: email,
+            nombre: nombre,
+            telefono: telefono || '',
+            rol: 'cocina',
+            uid: uid,
+            restauranteId: restauranteId,
+            creadoEn: Date.now(),
+            activo: true,
+            password: password
+        };
+
+        await database.ref(`usuarios/${uid}`).set(usuarioData);
+
+        // Guardar en staff del restaurante
+        await database.ref(`restaurantes/${restauranteId}/staff/${uid}`).set({
+            nombre: nombre,
+            email: email,
+            puesto: puesto || 'Cocinero',
+            creadoEn: Date.now()
+        });
+
+        cerrarModal('modalCrearUnificado');
+        await cargarUsuarios();
+
+        Swal.fire({
+            title: '✅ Personal de cocina creado',
+            html: `
+                <p><strong>${nombre}</strong> creado exitosamente</p>
+                <p class="text-cyan-400 text-sm">🍳 Puesto: ${puesto || 'Cocinero'}</p>
+                <p class="text-amber-400 text-sm">🏪 Restaurante: ${restauranteId}</p>
+                <p class="text-cyan-400 text-sm">📧 Email: ${email}</p>
+                <p class="text-emerald-400 text-sm">🔑 Contraseña: ${password}</p>
+            `,
+            icon: 'success',
+            timer: 5000,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 👑 GUARDAR ADMIN UNIFICADO
+// ============================================================
+async function guardarAdminUnificado() {
+    const nombre = document.getElementById('regAdmNombre').value.trim();
+    const email = document.getElementById('regAdmEmail').value.trim();
+    const password = document.getElementById('regAdmPassword').value.trim();
+    const telefono = document.getElementById('regAdmTelefono').value.trim();
+    const nivel = document.getElementById('regAdmNivel').value;
+
+    if (!nombre || !email || !password || password.length < 6) {
+        Swal.fire({ title: 'Error', text: 'Nombre, Email y Contraseña (mín. 6 caracteres) son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+
+    Swal.fire({ title: '⏳ Creando administrador...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+
+        const adminData = {
+            nombre: nombre,
+            email: email,
+            telefono: telefono || '',
+            nivel: nivel || 'admin',
+            creadoEn: Date.now(),
+            activo: true,
+            password: password,
+            uid: uid
+        };
+
+        await database.ref(`admins/${uid}`).set(adminData);
+        await database.ref(`usuarios_admin/${uid}`).set({ ...adminData, rol: 'admin' });
+
+        const usuarioData = {
+            email: email,
+            nombre: nombre,
+            telefono: telefono || '',
+            rol: 'admin',
+            uid: uid,
+            creadoEn: Date.now(),
+            activo: true,
+            password: password
+        };
+
+        await database.ref(`usuarios/${uid}`).set(usuarioData);
+
+        cerrarModal('modalCrearUnificado');
+        await cargarUsuarios();
+
+        Swal.fire({
+            title: '✅ Administrador creado',
+            html: `
+                <p><strong>${nombre}</strong> creado exitosamente</p>
+                <p class="text-blue-400 text-sm">👑 Nivel: ${nivel}</p>
+                <p class="text-cyan-400 text-sm">📧 Email: ${email}</p>
+                <p class="text-emerald-400 text-sm">🔑 Contraseña: ${password}</p>
+            `,
+            icon: 'success',
+            timer: 5000,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 👥 CARGAR USUARIOS
+// ============================================================
+async function cargarUsuarios() {
+    const container = document.getElementById('tablaUsuarios');
+    const filtroRol = document.getElementById('filtroRolUsuarios')?.value || 'todos';
+    
+    if (!container) return;
+    container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">Cargando usuarios...</td></tr>';
+
+    try {
+        const snapshot = await database.ref('usuarios').once('value');
+        const usuarios = snapshot.val() || {};
+        const keys = Object.keys(usuarios);
+        
+        if (keys.length === 0) {
+            container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">No hay usuarios registrados</td></tr>';
+            return;
+        }
+
+        let html = '';
+        let encontrados = 0;
+        
+        for (const uid of keys) {
+            const data = usuarios[uid];
+            const email = data.email || uid;
+            const rol = data.rol || 'sin rol';
+            const nombre = data.nombre || data.NOMBRE_RESTAURANTE || 'Sin nombre';
+            const telefono = data.telefono || '-';
+            const password = data.password || '❌ No disponible';
+
+            if (filtroRol !== 'todos' && rol !== filtroRol) continue;
+            encontrados++;
+
+            const badgeClass = {
+                'admin': 'bg-blue-600/20 text-blue-400',
+                'restaurante': 'bg-amber-600/20 text-amber-400',
+                'cocina': 'bg-cyan-600/20 text-cyan-400',
+                'repartidor': 'bg-purple-600/20 text-purple-400',
+                'cliente': 'bg-emerald-600/20 text-emerald-400'
+            }[rol] || 'bg-slate-600/20 text-slate-400';
+
+            html += `
+                <tr class="border-b border-white/10 hover:bg-white/5 transition">
+                    <td class="p-3 font-medium">${escapeHTML(nombre)}</td>
+                    <td class="p-3">${escapeHTML(email)}</td>
+                    <td class="p-3">${escapeHTML(telefono)}</td>
+                    <td class="p-3"><span class="px-2 py-1 rounded text-xs ${badgeClass}">${escapeHTML(rol)}</span></td>
+                    <td class="p-3 font-mono text-yellow-400 text-xs">${escapeHTML(password)}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="editarUsuario('${uid}')" class="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-3 py-1 rounded text-xs font-bold transition">✏️ Editar</button>
+                        <button onclick="eliminarUsuario('${uid}', '${escapeHTML(email)}')" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1 rounded text-xs font-bold transition ml-2">🗑️ Eliminar</button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        if (encontrados === 0) {
+            container.innerHTML = '<tr><td colspan="6" class="text-center text-white/50 p-6">No hay usuarios con el rol seleccionado</td></tr>';
+        } else {
+            container.innerHTML = html;
+        }
+
+    } catch (error) {
+        console.error('Error al cargar usuarios:', error);
+        container.innerHTML = '<tr><td colspan="6" class="text-center text-red-400 p-6">Error al cargar usuarios</td></tr>';
+    }
+}
+
+// ============================================================
+// ✏️ EDITAR USUARIO
+// ============================================================
+async function editarUsuario(uid) {
+    let datos = {};
+    try { datos = (await database.ref('usuarios/' + uid).once('value')).val() || {}; } catch(e) {}
+    if (!datos || Object.keys(datos).length === 0) { 
+        try { datos = (await database.ref('usuarios_restaurante/' + uid).once('value')).val() || {}; } catch(e) {}
+    }
+    if (!datos || Object.keys(datos).length === 0) { 
+        try { datos = (await database.ref('usuarios_admin/' + uid).once('value')).val() || {}; } catch(e) {}
+    }
+
+    const result = await Swal.fire({
+        title: '✏️ Editar usuario',
+        html: `
+            <input id="editNombre" class="swal2-input" placeholder="Nombre" value="${datos.nombre || ''}">
+            <input id="editEmail" class="swal2-input" placeholder="Email" value="${datos.email || ''}">
+            <input id="editPassword" class="swal2-input" placeholder="Nueva contraseña (dejar en blanco para no cambiar)">
+            <select id="editRol" class="swal2-select">
+                <option value="admin" ${datos.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+                <option value="restaurante" ${datos.rol === 'restaurante' ? 'selected' : ''}>Restaurante</option>
+                <option value="cocina" ${datos.rol === 'cocina' ? 'selected' : ''}>Cocina</option>
+                <option value="repartidor" ${datos.rol === 'repartidor' ? 'selected' : ''}>Repartidor</option>
+                <option value="cliente" ${datos.rol === 'cliente' ? 'selected' : ''}>Cliente</option>
+            </select>
+        `,
+        confirmButtonText: '✅ Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('editNombre').value,
+                email: document.getElementById('editEmail').value,
+                password: document.getElementById('editPassword').value,
+                rol: document.getElementById('editRol').value
+            };
+        }
+    });
+
+    if (result.value) {
+        const updates = {};
+        if (result.value.nombre) updates.nombre = result.value.nombre;
+        if (result.value.email) updates.email = result.value.email;
+        if (result.value.rol) updates.rol = result.value.rol;
+        
+        if (result.value.password && result.value.password.trim() !== '') {
+            updates.password = result.value.password.trim();
+            try {
+                await auth.currentUser.updatePassword(result.value.password.trim());
+            } catch (error) {
+                console.warn("No se pudo actualizar la contraseña en Auth:", error);
+            }
+        }
+
+        await database.ref('usuarios/' + uid).update(updates);
+        await database.ref('usuarios_admin/' + uid).update(updates).catch(()=>{});
+        await database.ref('usuarios_restaurante/' + uid).update(updates).catch(()=>{});
+        await database.ref('usuarios_cocina/' + uid).update(updates).catch(()=>{});
+        await database.ref('repartidores/' + uid).update(updates).catch(()=>{});
+        await database.ref('clientes/' + uid).update(updates).catch(()=>{});
+
+        await cargarUsuarios();
+        Swal.fire({ title: '✅ Usuario actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 🗑️ ELIMINAR USUARIO
+// ============================================================
+async function eliminarUsuario(uid, email) {
+    const confirm = await Swal.fire({ title: '⚠️ ¿Eliminar usuario?', html: `<p>¿Eliminar a <strong>${escapeHTML(email)}</strong>?</p>`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', background: '#0f172a', color: 'white' });
+    if (!confirm.isConfirmed) return;
+    try {
+        await database.ref('usuarios/' + uid).remove();
+        await database.ref('usuarios_admin/' + uid).remove();
+        await database.ref('usuarios_restaurante/' + uid).remove();
+        await database.ref('repartidores/' + uid).remove();
+        await database.ref('clientes/' + uid).remove();
+        await database.ref('cocina/' + uid).remove();
+        try { const eliminarFunc = functions.httpsCallable('eliminarUsuario'); await eliminarFunc({ uid: uid }); } catch (e) {}
+        await cargarUsuarios();
+        Swal.fire({ title: '✅ Usuario eliminado', icon: 'success', timer: 2000, background: '#0f172a', color: 'white' });
+    } catch (error) { Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' }); }
+}
+
+// ============================================================
+// 📋 SISTEMA DE PLATOS CON OPCIONES
+// ============================================================
+
+let seleccionesProducto = [];
+
+// Abrir modal de producto
+function abrirModalProducto() {
+    seleccionesProducto = [];
+    document.getElementById('listaSeleccionesProducto').innerHTML = '';
+    document.getElementById('seccionOpcionesProducto').style.display = 'none';
+    document.getElementById('prodTipo').value = 'simple';
+    document.getElementById('prodNombre').value = '';
+    document.getElementById('prodDescripcion').value = '';
+    document.getElementById('prodPrecioBase').value = '';
+    document.getElementById('prodFoto').value = '';
+    mostrarModal('modalProductoOpciones');
+    actualizarSelectsRestaurantes();
+}
+
+function toggleOpcionesProducto() {
+    const tipo = document.getElementById('prodTipo').value;
+    const seccion = document.getElementById('seccionOpcionesProducto');
+    
+    if (tipo === 'opciones') {
+        seccion.style.display = 'block';
+        if (seleccionesProducto.length === 0) {
+            agregarSeleccionProducto();
+        }
+    } else {
+        seccion.style.display = 'none';
+    }
+}
+
+// Agregar selección al producto
+// ============================================================
+// AGREGAR SELECCIÓN - CORREGIDO
+// ============================================================
+function agregarSeleccionProducto() {
+    const id = Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    seleccionesProducto.push({
+        id: id,
+        nombre: '',
+        tipo: 'unica',
+        obligatoria: false,
+        minimo: 0,
+        maximo: 5,
+        opciones: []
+    });
+    renderizarSeleccionesProducto();
+}
+// ============================================================
+// RENDERIZAR SELECCIONES - CORREGIDO
+// ============================================================
+function renderizarSeleccionesProducto() {
+    const container = document.getElementById('listaSeleccionesProducto');
+    if (!container) return;
+    
+    if (seleccionesProducto.length === 0) {
+        container.innerHTML = '<p class="text-white/50 text-center py-4">No hay selecciones configuradas. Haz clic en "Agregar Selección"</p>';
+        return;
+    }
+    
+    let html = '';
+    seleccionesProducto.forEach((sel, index) => {
+        // 🔥 GENERAR ID ÚNICO PARA CADA SELECCIÓN
+        const selId = sel.id || Date.now() + '_' + index;
+        if (!sel.id) sel.id = selId;
+        
+        html += `
+            <div class="seleccion-item" data-index="${index}">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <input type="text" placeholder="Nombre (ej: Tamaño)" value="${escapeHTML(sel.nombre)}" 
+                               class="w-full p-2 rounded bg-slate-700 border border-slate-600 text-sm"
+                               onchange="actualizarSeleccionProducto(${index}, 'nombre', this.value)">
+                        <select class="w-full p-2 rounded bg-slate-700 border border-slate-600 text-sm"
+                                onchange="actualizarSeleccionProducto(${index}, 'tipo', this.value)">
+                            <option value="unica" ${sel.tipo === 'unica' ? 'selected' : ''}>Única (elige 1)</option>
+                            <option value="multiple" ${sel.tipo === 'multiple' ? 'selected' : ''}>Múltiple (elige varios)</option>
+                            <option value="obligatoria" ${sel.tipo === 'obligatoria' ? 'selected' : ''}>Obligatoria</option>
+                        </select>
+                        <div class="flex gap-2">
+                            ${sel.tipo === 'multiple' ? `
+                                <input type="number" placeholder="Min" value="${sel.minimo}" class="w-1/2 p-2 rounded bg-slate-700 border border-slate-600 text-sm"
+                                       onchange="actualizarSeleccionProducto(${index}, 'minimo', parseInt(this.value) || 0)">
+                                <input type="number" placeholder="Max" value="${sel.maximo}" class="w-1/2 p-2 rounded bg-slate-700 border border-slate-600 text-sm"
+                                       onchange="actualizarSeleccionProducto(${index}, 'maximo', parseInt(this.value) || 0)">
+                            ` : `
+                                <label class="flex items-center gap-2 text-sm text-white/70">
+                                    <input type="checkbox" ${sel.obligatoria ? 'checked' : ''}
+                                           onchange="actualizarSeleccionProducto(${index}, 'obligatoria', this.checked)">
+                                    Obligatoria
+                                </label>
+                            `}
+                        </div>
+                    </div>
+                    <button onclick="eliminarSeleccionProducto(${index})" class="text-red-400 hover:text-red-300 ml-2">✕</button>
+                </div>
+                
+                <div class="mt-2">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" placeholder="Opción (ej: Mediana)" class="flex-1 p-2 rounded bg-slate-700 border border-slate-600 text-sm"
+                               id="opcionNombre_${selId}">
+                        <input type="number" placeholder="+€" step="0.01" class="w-24 p-2 rounded bg-slate-700 border border-slate-600 text-sm"
+                               id="opcionPrecio_${selId}">
+                        <button onclick="agregarOpcionSeleccion(${index}, '${selId}')" class="bg-cyan-600 text-white px-3 py-1 rounded text-sm">➕</button>
+                    </div>
+                    <div id="opcionesLista_${selId}">
+                        ${sel.opciones.map((op, oi) => `
+                            <div class="opcion-item">
+                                <span>${escapeHTML(op.nombre)} ${op.precio_extra > 0 ? `(+${op.precio_extra.toFixed(2)}€)` : ''}</span>
+                                <button onclick="eliminarOpcionSeleccion(${index}, ${oi})" class="text-red-400 text-xs">✕</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Actualizar selección
+function actualizarSeleccionProducto(index, campo, valor) {
+    if (seleccionesProducto[index]) {
+        seleccionesProducto[index][campo] = valor;
+    }
+}
+
+// Eliminar selección
+function eliminarSeleccionProducto(index) {
+    seleccionesProducto.splice(index, 1);
+    renderizarSeleccionesProducto();
+}
+
+// ============================================================
+// AGREGAR OPCIÓN - CORREGIDO
+// ============================================================
+function agregarOpcionSeleccion(index, selId) {
+    const nombreInput = document.getElementById(`opcionNombre_${selId}`);
+    const precioInput = document.getElementById(`opcionPrecio_${selId}`);
+    
+    if (!nombreInput || !precioInput) {
+        console.error('❌ Elementos no encontrados para:', selId);
+        return;
+    }
+    
+    const nombre = nombreInput.value.trim();
+    const precio = parseFloat(precioInput.value) || 0;
+    
+    if (!nombre) {
+        Swal.fire({ title: 'Error', text: 'Ingresa el nombre de la opción', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+    
+    if (seleccionesProducto[index]) {
+        seleccionesProducto[index].opciones.push({ nombre, precio_extra: precio });
+        nombreInput.value = '';
+        precioInput.value = '';
+        renderizarSeleccionesProducto();
+    }
+}
+
+// ============================================================
+// ELIMINAR OPCIÓN - CORREGIDO
+// ============================================================
+function eliminarOpcionSeleccion(index, opcionIndex) {
+    if (seleccionesProducto[index]) {
+        seleccionesProducto[index].opciones.splice(opcionIndex, 1);
+        renderizarSeleccionesProducto();
+    }
+}
+
+// ============================================================
+// 💾 GUARDAR PRODUCTO COMPLETO - ADAPTADO A VENTAS
+// ============================================================
+async function guardarProductoCompleto() {
+    const restId = document.getElementById('prodRestaurante').value;
+    const nombre = document.getElementById('prodNombre').value.trim();
+    const descripcion = document.getElementById('prodDescripcion').value.trim();
+    const precioBase = parseFloat(document.getElementById('prodPrecioBase').value);
+    const foto = document.getElementById('prodFoto').value.trim() || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
+    const categoria = document.getElementById('prodCategoria').value;
+    const tipo = document.getElementById('prodTipo').value;
+
+    if (!restId || !nombre || isNaN(precioBase) || precioBase <= 0) {
+        Swal.fire({ title: 'Error', text: 'Restaurante, Nombre y Precio Base son obligatorios', icon: 'error', background: '#0f172a', color: 'white' });
+        return;
+    }
+
+    if (tipo === 'opciones') {
+        for (const sel of seleccionesProducto) {
+            if (!sel.nombre) {
+                Swal.fire({ title: 'Error', text: 'Todas las selecciones deben tener un nombre', icon: 'error', background: '#0f172a', color: 'white' });
+                return;
+            }
+            if (sel.opciones.length === 0) {
+                Swal.fire({ title: 'Error', text: `La selección "${sel.nombre}" debe tener al menos una opción`, icon: 'error', background: '#0f172a', color: 'white' });
+                return;
+            }
+        }
+    }
+
+    Swal.fire({ title: '⏳ Guardando plato...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+    try {
+        // 🔥 CONSTRUIR OBJETO CON AMBOS FORMATOS
+        const productoData = {
+            // 🔥 FORMATO MINÚSCULA (para Ventas) - PRIORITARIO
+            nombre: nombre,
+            precio: precioBase,
+            foto: foto,
+            descripcion: descripcion || '',
+            categoria: categoria,
+            restauranteId: restId,
+            
+            // 🔥 FORMATO MAYÚSCULA (para Admin y Cocina)
+            PLATO: nombre,
+            PRECIO: precioBase,
+            FOTO: foto,
+            DESCRIPCION: descripcion || '',
+            CATEGORIA: categoria,
+            ID_RESTAURANTE: restId,
+            
+            // 🔥 CAMPOS COMUNES
+            ACTIVO: true,
+            activo: true,
+            tipo: tipo,
+            creado_en: Date.now()
+        };
+
+        if (tipo === 'opciones') {
+            productoData.configuracion = {
+                selecciones: seleccionesProducto.map(sel => ({
+                    id: sel.id,
+                    nombre: sel.nombre,
+                    tipo: sel.tipo || 'unica',
+                    obligatoria: sel.obligatoria || false,
+                    minimo: sel.minimo || 0,
+                    maximo: sel.maximo || 5,
+                    opciones: sel.opciones.map(op => ({
+                        nombre: op.nombre,
+                        precio_extra: op.precio_extra || 0
+                    }))
+                }))
+            };
+        }
+
+        await database.ref('menu_general').push(productoData);
+
+        cerrarModal('modalProductoOpciones');
+        await cargarProductos(restId);
+
+        Swal.fire({
+            title: '✅ Plato guardado',
+            html: `
+                <p><strong>${nombre}</strong> guardado exitosamente</p>
+                <p class="text-amber-400 text-sm">💰 Precio Base: ${precioBase.toFixed(2)}€</p>
+                <p class="text-cyan-400 text-sm">📋 Tipo: ${tipo === 'simple' ? 'Simple' : 'Con Opciones'}</p>
+                ${tipo === 'opciones' ? `<p class="text-purple-400 text-sm">🎯 ${seleccionesProducto.length} selecciones configuradas</p>` : ''}
+                <p class="text-green-400 text-xs mt-2">✅ Compatible con App de Ventas</p>
+            `,
+            icon: 'success',
+            timer: 4000,
+            background: '#0f172a',
+            color: 'white'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
+    }
+}
+// ============================================================
+// 📋 CARGAR MENÚS
+// ============================================================
+async function cargarMenus() { await actualizarSelectsRestaurantes(); const select = document.getElementById('menuRestauranteSelect'); if (select) { select.onchange = () => cargarProductos(select.value); if (select.value) cargarProductos(select.value); } }
+
+async function cargarProductos(restId) {
+    if (!restId) { document.getElementById('listaProductos').innerHTML = '<p class="text-white/50">Selecciona un restaurante</p>'; return; }
+    const snapshot = await database.ref('menu_general').once('value'); const productos = snapshot.val() || {};
+    const container = document.getElementById('listaProductos'); container.innerHTML = ''; let encontrados = 0;
+    for (const id in productos) {
+        const data = productos[id];
+        if (data.ID_RESTAURANTE === restId) {
+            encontrados++;
+            const foto = data.FOTO || 'https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen';
+            const tipoPlato = data.tipo === 'opciones' ? '🎯 Con Opciones' : '🍽️ Simple';
+            const precioBase = data.PRECIO_BASE || data.PRECIO || 0;
+            
+            container.innerHTML += `
+                <div class="card bg-slate-800 rounded-2xl overflow-hidden border border-white/10">
+                    <img src="${foto}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+                    <div class="p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-bold text-white text-lg">${escapeHTML(data.PLATO || data.nombre)}</p>
+                                <p class="text-white/50 text-xs">${escapeHTML(data.CATEGORIA || 'Sin categoría')}</p>
+                            </div>
+                            <span class="text-amber-400 font-bold">${precioBase.toFixed(2)}€</span>
+                        </div>
+                        <p class="text-white/50 text-xs mt-1">${escapeHTML(data.DESCRIPCION || '')}</p>
+                        <p class="text-cyan-400 text-xs mt-1">${tipoPlato}</p>
+                        ${data.tipo === 'opciones' ? `<p class="text-purple-400 text-xs">🎯 ${data.configuracion?.selecciones?.length || 0} selecciones</p>` : ''}
+                        <div class="flex gap-2 mt-4">
+                            <button onclick="editarProducto('${restId}', '${id}')" class="flex-1 bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 py-2 rounded-xl text-sm font-bold transition">✏️ Editar</button>
+                            <button onclick="eliminarProducto('${restId}', '${id}')" class="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 py-2 rounded-xl text-sm font-bold transition">🗑️ Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    if (encontrados === 0) container.innerHTML = '<p class="text-white/50 text-center p-10">No hay productos para este restaurante</p>';
+}
+
+// ============================================================
+// 📝 EDITAR PRODUCTO
+// ============================================================
+async function editarProducto(restId, productoId) {
+    const snapshot = await database.ref('menu_general/' + productoId).once('value');
+    const data = snapshot.val();
+    if (!data) return;
+    
+    // Mostrar el modal de edición con SweetAlert2
+    Swal.fire({
+        title: '✏️ Editar ' + (data.PLATO || 'Producto'),
+        html: `
+            <input id="editProdNombre" class="swal2-input" placeholder="Nombre" value="${data.PLATO || ''}">
+            <textarea id="editProdDesc" class="swal2-textarea" placeholder="Descripción">${data.DESCRIPCION || ''}</textarea>
+            <input id="editProdPrecio" class="swal2-input" placeholder="Precio Base" value="${data.PRECIO_BASE || data.PRECIO || 0}">
+            <input id="editProdFoto" class="swal2-input" placeholder="URL foto" value="${data.FOTO || ''}">
+            <select id="editProdCategoria" class="swal2-select">
+                <option value="Entrantes" ${data.CATEGORIA === 'Entrantes' ? 'selected' : ''}>Entrantes</option>
+                <option value="Platos principales" ${data.CATEGORIA === 'Platos principales' ? 'selected' : ''}>Platos principales</option>
+                <option value="Pizzas" ${data.CATEGORIA === 'Pizzas' ? 'selected' : ''}>Pizzas</option>
+                <option value="Hamburguesas" ${data.CATEGORIA === 'Hamburguesas' ? 'selected' : ''}>Hamburguesas</option>
+                <option value="Postres" ${data.CATEGORIA === 'Postres' ? 'selected' : ''}>Postres</option>
+                <option value="Bebidas" ${data.CATEGORIA === 'Bebidas' ? 'selected' : ''}>Bebidas</option>
+                <option value="Ensaladas" ${data.CATEGORIA === 'Ensaladas' ? 'selected' : ''}>Ensaladas</option>
+                <option value="Acompañamientos" ${data.CATEGORIA === 'Acompañamientos' ? 'selected' : ''}>Acompañamientos</option>
+                <option value="Promociones" ${data.CATEGORIA === 'Promociones' ? 'selected' : ''}>Promociones</option>
+            </select>
+        `,
+        confirmButtonText: '✅ Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        preConfirm: () => {
+            return {
+                nombre: document.getElementById('editProdNombre').value,
+                descripcion: document.getElementById('editProdDesc').value,
+                precio: document.getElementById('editProdPrecio').value,
+                foto: document.getElementById('editProdFoto').value,
+                categoria: document.getElementById('editProdCategoria').value
+            };
+        }
+    }).then(async (result) => {
+        if (result.value) {
+            const updates = {};
+            if (result.value.nombre) updates.PLATO = result.value.nombre;
+            if (result.value.descripcion) updates.DESCRIPCION = result.value.descripcion;
+            if (result.value.precio && !isNaN(parseFloat(result.value.precio))) updates.PRECIO_BASE = parseFloat(result.value.precio);
+            if (result.value.foto) updates.FOTO = result.value.foto;
+            if (result.value.categoria) updates.CATEGORIA = result.value.categoria;
+            
+            await database.ref('menu_general/' + productoId).update(updates);
+            cargarProductos(restId);
+            Swal.fire({ title: '✅ Producto actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+        }
+    });
+}
+
+// ============================================================
+// 🗑️ ELIMINAR PRODUCTO
+// ============================================================
+async function eliminarProducto(restId, productoId) {
+    const confirm = await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' });
+    if (confirm.isConfirmed) { await database.ref('menu_general/' + productoId).remove(); await cargarProductos(restId); }
+}
+
+// ============================================================
+// ⏰ HORARIOS
+// ============================================================
+    // ============================================================
+// 🕐 CONVERSIÓN DE HORAS (AM/PM ↔ 24h)
+// ============================================================
+
+function convertirAMPMa24h(horaAMPM) {
+    if (!horaAMPM) return '00:00';
+    
+    // Si ya está en formato 24h, devolverlo
+    if (/^\d{2}:\d{2}$/.test(horaAMPM)) return horaAMPM;
+    
+    // Limpiar y convertir
+    let hora = horaAMPM.trim().toUpperCase();
+    let esPM = hora.includes('PM');
+    let esAM = hora.includes('AM');
+    
+    // Extraer horas y minutos
+    let numeros = hora.replace(/[AP]M/gi, '').trim().split(':');
+    let h = parseInt(numeros[0]);
+    let m = parseInt(numeros[1]) || 0;
+    
+    if (isNaN(h)) return '00:00';
+    
+    // Convertir a 24h
+    if (esPM && h < 12) h += 12;
+    if (esAM && h === 12) h = 0;
+    
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function convertir24hAMPM(hora24) {
+    if (!hora24 || hora24 === 'CERRADO') return 'CERRADO';
+    if (hora24 === '00:00') return '12:00 AM';
+    if (hora24 === '12:00') return '12:00 PM';
+    
+    const partes = hora24.split(':');
+    let h = parseInt(partes[0]);
+    const m = partes[1] || '00';
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h === 0 ? 12 : h;
+    return `${h}:${m} ${ampm}`;
+}
+async function cargarHorarios() { await actualizarSelectsRestaurantes(); const select = document.getElementById('horarioRestauranteSelect'); if (select) { select.onchange = () => cargarHorariosRestaurante(select.value); if (select.value) cargarHorariosRestaurante(select.value); } }
+
+async function cargarHorariosRestaurante(id) {
+    if (!id) {
+        document.getElementById('horariosConfig').innerHTML = '<p class="text-white/50">Selecciona un restaurante</p>';
+        return;
+    }
+    
+    const snapshot = await database.ref(`restaurantes/${id}/horarios_dias`).once('value');
+    const horarios = snapshot.val() || {};
+    
+    const dias = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
+    const diasEsp = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    
+    let html = `<h3 class="font-bold mb-4 text-cyan-400">📅 Horarios semanales</h3>
+                <p class="text-xs text-white/40 mb-4">⏰ Los horarios se guardan en formato 24h (HH:MM) - Mostrados en AM/PM para facilidad</p>
+                <div class="space-y-4 max-h-[70vh] overflow-y-auto pr-2">`;
+    
+    for (let i = 0; i < dias.length; i++) {
+        const dia = dias[i], diaEsp = diasEsp[i];
+        const horarioDia = horarios[dia] || { 
+            activo: true, 
+            apertura1: '09:00', 
+            cierre1: '15:00', 
+            apertura2: '19:00', 
+            cierre2: '23:00', 
+            dia_libre: false 
+        };
+        
+        // 🔥 MOSTRAR EN FORMATO AM/PM
+        const a1_display = convertir24hAMPM(horarioDia.apertura1);
+        const c1_display = convertir24hAMPM(horarioDia.cierre1);
+        const a2_display = convertir24hAMPM(horarioDia.apertura2);
+        const c2_display = convertir24hAMPM(horarioDia.cierre2);
+        
+        html += `
+            <div class="bg-slate-700/30 rounded-xl p-4 border border-white/10">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="font-bold text-white">📌 ${diaEsp}</h4>
+                    <div class="flex gap-3">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" id="dia_libre_${dia}" class="w-4 h-4 accent-red-500" 
+                                   ${horarioDia.dia_libre ? 'checked' : ''} 
+                                   onchange="toggleDiaLibre('${dia}', this.checked)">
+                            <span class="text-xs text-white/70">🔴 Día libre</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="horarios_container_${dia}" class="${horarioDia.dia_libre ? 'opacity-50 pointer-events-none' : ''}">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-slate-800/50 rounded-xl p-3">
+                            <p class="text-amber-400 text-xs font-bold mb-2">🌞 MAÑANA</p>
+                            <div class="flex gap-2">
+                                <input type="time" id="apertura1_${dia}" 
+                                       value="${horarioDia.apertura1 || '09:00'}" 
+                                       class="w-full p-2 rounded bg-slate-700 text-white text-sm"
+                                       data-dia="${dia}" data-turno="apertura1">
+                                <span class="text-white/50">a</span>
+                                <input type="time" id="cierre1_${dia}" 
+                                       value="${horarioDia.cierre1 || '15:00'}" 
+                                       class="w-full p-2 rounded bg-slate-700 text-white text-sm"
+                                       data-dia="${dia}" data-turno="cierre1">
+                            </div>
+                            <div class="text-xs text-white/30 mt-1 text-center">
+                                ${a1_display} → ${c1_display}
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-xl p-3">
+                            <p class="text-cyan-400 text-xs font-bold mb-2">🌙 NOCHE</p>
+                            <div class="flex gap-2">
+                                <input type="time" id="apertura2_${dia}" 
+                                       value="${horarioDia.apertura2 || '19:00'}" 
+                                       class="w-full p-2 rounded bg-slate-700 text-white text-sm"
+                                       data-dia="${dia}" data-turno="apertura2">
+                                <span class="text-white/50">a</span>
+                                <input type="time" id="cierre2_${dia}" 
+                                       value="${horarioDia.cierre2 || '23:00'}" 
+                                       class="w-full p-2 rounded bg-slate-700 text-white text-sm"
+                                       data-dia="${dia}" data-turno="cierre2">
+                            </div>
+                            <div class="text-xs text-white/30 mt-1 text-center">
+                                ${a2_display} → ${c2_display}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-amber-400/50 text-center">
+                        💡 Formato 24h: ${horarioDia.apertura1}-${horarioDia.cierre1} / ${horarioDia.apertura2}-${horarioDia.cierre2}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    html += `
+        <div class="mt-6">
+            <button onclick="guardarHorariosCompletos('${id}')" 
+                    class="w-full bg-amber-500 text-black py-3 rounded-xl font-bold">
+                💾 GUARDAR TODOS LOS HORARIOS
+            </button>
+        </div>
+    `;
+    
+    document.getElementById('horariosConfig').innerHTML = html;
+}
+
+function toggleDiaLibre(dia, esLibre) {
+    const container = document.getElementById(`horarios_container_${dia}`);
+    if (container) { if (esLibre) { container.classList.add('opacity-50', 'pointer-events-none'); container.querySelectorAll('input').forEach(i => i.disabled = true); } else { container.classList.remove('opacity-50', 'pointer-events-none'); container.querySelectorAll('input').forEach(i => i.disabled = false); } }
+}
+
+async function guardarHorariosCompletos(id) {
+    const dias = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
+    const horarios = {};
+    
+    for (const dia of dias) {
+        const diaLibre = document.getElementById(`dia_libre_${dia}`)?.checked || false;
+        
+        if (diaLibre) {
+            horarios[dia] = {
+                activo: true,
+                dia_libre: true,
+                apertura1: 'CERRADO',
+                cierre1: 'CERRADO',
+                apertura2: 'CERRADO',
+                cierre2: 'CERRADO'
+            };
+        } else {
+            // 🔥 OBTENER VALORES DIRECTAMENTE DE LOS INPUTS (YA EN FORMATO 24H)
+            const a1 = document.getElementById(`apertura1_${dia}`)?.value || '09:00';
+            const c1 = document.getElementById(`cierre1_${dia}`)?.value || '15:00';
+            const a2 = document.getElementById(`apertura2_${dia}`)?.value || '19:00';
+            const c2 = document.getElementById(`cierre2_${dia}`)?.value || '23:00';
+            
+            horarios[dia] = {
+                activo: true,
+                dia_libre: false,
+                apertura1: a1,
+                cierre1: c1,
+                apertura2: a2,
+                cierre2: c2
+            };
+        }
+    }
+    
+    await database.ref(`restaurantes/${id}/horarios_dias`).set(horarios);
+    Swal.fire({
+        title: '✅ Horarios guardados',
+        html: 'Los horarios se han guardado correctamente en formato 24h',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    // Recargar la vista
+    cargarHorariosRestaurante(id);
+}
+
+// ============================================================
+// 🛒 PEDIDOS
+// ============================================================
+async function cargarPedidosAdmin() {
+    const snapshot = await database.ref('pedidos').once('value');
+    const pedidos = snapshot.val() || {};
+    const filtroEstado = document.getElementById('filtroEstadoPedido')?.value || 'todos';
+    const filtroRestaurante = document.getElementById('filtroRestaurantePedido')?.value || '';
+    const container = document.getElementById('listaPedidosAdmin'); container.innerHTML = '';
+    const pedidosArray = Object.entries(pedidos).map(([id, data]) => ({ id, ...data })).sort((a,b) => (b.fecha || 0) - (a.fecha || 0));
+    for (const pedido of pedidosArray) {
+        if (filtroEstado !== 'todos' && pedido.estado !== filtroEstado) continue;
+        if (filtroRestaurante && pedido.restaurante_id !== filtroRestaurante) continue;
+        const estadoColor = { 'RECIBIDO': 'bg-yellow-500/20 text-yellow-400', 'COCCIÓN': 'bg-cyan-500/20 text-cyan-400', 'LISTO': 'bg-emerald-500/20 text-emerald-400', 'EN_REPARTO': 'bg-purple-500/20 text-purple-400', 'ENTREGADO': 'bg-green-500/20 text-green-400' }[pedido.estado] || 'bg-slate-500/20';
+        const estadoTexto = { 'RECIBIDO': '⏰ Pendiente', 'COCCIÓN': '🍳 En Cocina', 'LISTO': '✅ Listo', 'EN_REPARTO': '🛵 En Camino', 'ENTREGADO': '🏁 Entregado' }[pedido.estado] || pedido.estado;
+        container.innerHTML += `<div class="bg-slate-800 rounded-2xl p-4"><div class="flex justify-between items-start flex-wrap gap-2"><div><span class="text-amber-400 font-bold">#${pedido.id_pedido || pedido.id.substring(0,8)}</span><span class="text-white/50 ml-2">${new Date(pedido.fecha).toLocaleString()}</span></div><div class="flex gap-2"><span class="px-3 py-1 rounded-full text-xs ${estadoColor}">${estadoTexto}</span><span class="px-3 py-1 rounded-full text-xs bg-amber-500/20 text-amber-400">${(pedido.total || 0).toFixed(2)}€</span></div></div><div class="mt-2 text-sm"><span class="text-white/70">👤 ${pedido.cliente_nombre || 'Anónimo'}</span><span class="text-white/50 ml-4">🏪 ${pedido.restaurante_nombre || pedido.restaurante_id}</span></div><div class="flex gap-2 mt-3 flex-wrap"><button onclick="verDetallePedidoAdmin('${pedido.id}')" class="bg-cyan-600/20 text-cyan-400 px-3 py-1 rounded text-sm">📋 Ver detalle</button><select onchange="actualizarEstadoPedido('${pedido.id}', this.value)" class="bg-slate-700 px-2 py-1 rounded text-sm"><option value="RECIBIDO" ${pedido.estado === 'RECIBIDO' ? 'selected' : ''}>Pendiente</option><option value="COCCIÓN" ${pedido.estado === 'COCCIÓN' ? 'selected' : ''}>En Cocina</option><option value="LISTO" ${pedido.estado === 'LISTO' ? 'selected' : ''}>Listo</option><option value="EN_REPARTO" ${pedido.estado === 'EN_REPARTO' ? 'selected' : ''}>En Reparto</option><option value="ENTREGADO" ${pedido.estado === 'ENTREGADO' ? 'selected' : ''}>Entregado</option></select><button onclick="eliminarPedido('${pedido.id}')" class="bg-red-600/20 text-red-400 px-3 py-1 rounded text-sm">🗑️ Eliminar</button></div></div>`;
+    }
+    if (pedidosArray.length === 0) container.innerHTML = '<p class="text-center text-white/50 p-10">No hay pedidos</p>';
+}
+
+async function eliminarPedido(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`pedidos/${id}`).remove(); cargarPedidosAdmin(); } }
+async function actualizarEstadoPedido(id, nuevoEstado) { await database.ref(`pedidos/${id}/estado`).set(nuevoEstado); if (nuevoEstado === 'LISTO') await database.ref(`pedidos/${id}/timestamp_listo`).set(Date.now()); cargarPedidosAdmin(); }
+function verDetallePedidoAdmin(id) { database.ref(`pedidos/${id}`).once('value', snapshot => { const p = snapshot.val(); Swal.fire({ title: `Pedido #${p.id_pedido || id.substring(0, 8)}`, html: `<div class="text-left"><p><strong>👤 Cliente:</strong> ${p.cliente_nombre || 'Sin nombre'}</p><p><strong>📍 Dirección:</strong> ${p.direccion || 'No especificada'}</p><p><strong>💳 Pago:</strong> ${p.metodo_pago || 'Efectivo'}</p><p><strong>💰 Total:</strong> ${(p.total || 0).toFixed(2)}€</p><hr class="my-2 border-white/10"><p><strong>📦 Detalle:</strong></p><p style="white-space: pre-wrap;">${p.detalle || ''}</p></div>`, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b' }); }); }
+
+// ============================================================
+// 📜 HISTORIAL
+// ============================================================
+async function cargarHistorial() {
+    const snapshot = await database.ref('pedidos').once('value');
+    const pedidos = snapshot.val() || {};
+    const container = document.getElementById('listaHistorialAdmin'); container.innerHTML = '';
+    const historialArray = Object.entries(pedidos).map(([id, data]) => ({ id, ...data }))
+        .filter(p => p.estado === 'ENTREGADO' || p.estado === 'CANCELADO_POR_AUSENCIA' || p.estado === 'RECHAZADO')
+        .sort((a,b) => (b.fecha || 0) - (a.fecha || 0));
+
+    if (historialArray.length === 0) { container.innerHTML = '<p class="text-center text-white/50 p-10">Aún no hay pedidos en el historial.</p>'; return; }
+
+    const limitados = historialArray.slice(0, 30);
+    for (const pedido of limitados) {
+        const estadoColor = { 'ENTREGADO': 'bg-green-500/20 text-green-400', 'RECHAZADO': 'bg-red-500/20 text-red-400', 'CANCELADO_POR_AUSENCIA': 'bg-red-500/20 text-red-400' }[pedido.estado] || 'bg-slate-500/20';
+        container.innerHTML += `<div class="bg-slate-800 rounded-2xl p-4 border border-white/10 opacity-80"><div class="flex justify-between items-start flex-wrap gap-2"><div><span class="text-amber-400 font-bold">#${pedido.id_pedido || pedido.id.substring(0,8)}</span><span class="text-white/50 ml-2">${new Date(pedido.fecha).toLocaleString()}</span></div><div><span class="px-3 py-1 rounded-full text-xs ${estadoColor}">${pedido.estado}</span></div></div><div class="mt-2 text-sm"><span class="text-white/70">👤 ${pedido.cliente_nombre || 'Anónimo'}</span><span class="text-white/50 ml-4">🏪 ${pedido.restaurante_nombre || pedido.restaurante_id}</span><span class="text-white/50 ml-4">💰 ${(pedido.total || 0).toFixed(2)}€</span></div></div>`;
+    }
+}
+
+// ============================================================
+// 🛵 REPARTIDORES
+// ============================================================
+async function cargarRepartidores() {
+    const container = document.getElementById('tablaRepartidores');
+    if (!container) return;
+    container.innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-6">Cargando repartidores...</td></tr>';
+
+    try {
+        const snapshot = await database.ref('repartidores').once('value');
+        const repartidores = snapshot.val() || {};
+        const keys = Object.keys(repartidores);
+
+        if (keys.length === 0) {
+            container.innerHTML = '<tr><td colspan="7" class="text-center text-white/50 p-6">No hay repartidores registrados</td></tr>';
+            return;
+        }
+
+        let html = '';
+        for (const uid of keys) {
+            const data = repartidores[uid];
+            const nombre = data.nombre || 'Sin nombre';
+            const email = data.email || '-';
+            const telefono = data.telefono || '-';
+            const vehiculo = data.vehiculo || '-';
+            const entregas = data.entregas || 0;
+            const activo = data.activo !== false;
+
+            html += `
+                <tr class="border-b border-white/10 hover:bg-white/5 transition">
+                    <td class="p-3 font-medium">${escapeHTML(nombre)}</td>
+                    <td class="p-3">${escapeHTML(email)}</td>
+                    <td class="p-3">${escapeHTML(telefono)}</td>
+                    <td class="p-3">${escapeHTML(vehiculo)}</td>
+                    <td class="p-3 text-center font-bold text-cyan-400">${entregas}</td>
+                    <td class="p-3 text-center"><span class="px-2 py-1 rounded text-xs ${activo ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'}">${activo ? '🟢 Activo' : '🔴 Inactivo'}</span></td>
+                    <td class="p-3 text-center">
+                        <button onclick="editarRepartidor('${uid}')" class="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-3 py-1 rounded text-xs font-bold transition">✏️</button>
+                        <button onclick="toggleRepartidor('${uid}', ${!activo})" class="${activo ? 'bg-red-600/20 hover:bg-red-600/40 text-red-400' : 'bg-green-600/20 hover:bg-green-600/40 text-green-400'} px-3 py-1 rounded text-xs font-bold transition ml-2">${activo ? '⛔' : '✅'}</button>
+                        <button onclick="eliminarRepartidor('${uid}')" class="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1 rounded text-xs font-bold transition ml-2">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error cargando repartidores:', error);
+        container.innerHTML = '<tr><td colspan="7" class="text-center text-red-400 p-6">Error al cargar repartidores</td></tr>';
+    }
+}
+
+async function editarRepartidor(id) {
+    const snapshot = await database.ref(`repartidores/${id}`).once('value'); const data = snapshot.val();
+    if (!data) return;
+    const { value: formData } = await Swal.fire({
+        title: '✏️ Editar Repartidor',
+        html: `<input id="editNombre" class="swal2-input" placeholder="Nombre" value="${data.nombre}"><input id="editTelefono" class="swal2-input" placeholder="Teléfono" value="${data.telefono || ''}"><input id="editVehiculo" class="swal2-input" placeholder="Vehículo" value="${data.vehiculo || ''}"><input id="editPassword" class="swal2-input" placeholder="Nueva contraseña (opcional)">`,
+        focusConfirm: false, showCancelButton: true, confirmButtonText: '✅ Guardar', cancelButtonText: 'Cancelar', background: '#0f172a', color: 'white',
+        preConfirm: () => { return { nombre: document.getElementById('editNombre').value, telefono: document.getElementById('editTelefono').value, vehiculo: document.getElementById('editVehiculo').value, password: document.getElementById('editPassword').value }; }
+    });
+    if (formData) {
+        const updates = { nombre: formData.nombre, telefono: formData.telefono, vehiculo: formData.vehiculo };
+        if (formData.password.trim()) updates.password = formData.password.trim();
+        await database.ref(`repartidores/${id}`).update(updates); cargarRepartidores();
+        Swal.fire({ title: '✅ Repartidor actualizado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+    }
+}
+
+async function toggleRepartidor(id, activo) { await database.ref(`repartidores/${id}/activo`).set(activo); cargarRepartidores(); }
+async function eliminarRepartidor(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`repartidores/${id}`).remove(); cargarRepartidores(); } }
+
+// ============================================================
+// 📢 BANNERS
+// ============================================================
+async function cargarBanners() {
+    const snapshot = await database.ref('banners').once('value'); const banners = snapshot.val() || {};
+    const container = document.getElementById('listaBanners'); container.innerHTML = '';
+    for (const [id, data] of Object.entries(banners)) {
+        container.innerHTML += `<div class="card bg-slate-800 rounded-2xl overflow-hidden"><img src="${data.imagen}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'"><div class="p-4"><p class="font-bold">${escapeHTML(data.titulo)}</p><p class="text-white/50 text-sm">Orden: ${data.orden || 0}</p><div class="flex gap-2 mt-3"><button onclick="eliminarBanner('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button></div></div></div>`;
+    }
+    if (Object.keys(banners).length === 0) container.innerHTML = '<p class="text-white/50">No hay banners publicitarios</p>';
+}
+
+async function guardarBanner() {
+    const titulo = document.getElementById('bannerTitulo').value.trim(); const imagen = document.getElementById('bannerImagen').value.trim();
+    const link = document.getElementById('bannerLink').value.trim(); const orden = parseInt(document.getElementById('bannerOrden').value) || 0;
+    if (!titulo || !imagen) { Swal.fire({ title: 'Error', text: 'Título e imagen son obligatorios', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+    const id = Date.now().toString();
+    await database.ref(`banners/${id}`).set({ titulo, imagen, link: link || '', orden, activo: true, creado_en: Date.now() });
+    cerrarModal('modalBanner'); document.getElementById('bannerTitulo').value = ''; document.getElementById('bannerImagen').value = ''; document.getElementById('bannerLink').value = ''; document.getElementById('bannerOrden').value = '';
+    cargarBanners(); Swal.fire({ title: '✅ Banner guardado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+}
+
+async function eliminarBanner(id) { const confirm = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`banners/${id}`).remove(); cargarBanners(); } }
+
+// ============================================================
+// 🎨 FONDOS CABECERA
+// ============================================================
+async function cargarFondosCabecera() {
+    const snapshot = await database.ref('fondos_cabecera').once('value'); const fondos = snapshot.val() || {};
+    const container = document.getElementById('listaFondos'); container.innerHTML = '';
+    for (const [id, data] of Object.entries(fondos)) {
+        const activo = data.activo === true;
+        container.innerHTML += `<div class="card bg-slate-800 rounded-2xl overflow-hidden ${activo ? 'fondo-seleccionado' : ''}"><img src="${data.url}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'"><div class="p-4"><p class="font-bold">${escapeHTML(data.nombre)}</p><p class="text-white/50 text-xs">${activo ? '✅ ACTIVO' : '❌ INACTIVO'}</p><div class="flex gap-2 mt-3"><button onclick="seleccionarFondoCabecera('${id}')" class="flex-1 bg-cyan-500/20 text-cyan-400 py-2 rounded-xl text-sm">✅ Activar</button><button onclick="eliminarFondoCabecera('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button></div></div></div>`;
+    }
+    if (Object.keys(fondos).length === 0) container.innerHTML = '<p class="text-white/50">No hay fondos de cabecera. Agrega uno nuevo.</p>';
+}
+
+async function agregarFondoCabecera() {
+    const { value: form } = await Swal.fire({
+        title: 'Agregar fondo de cabecera',
+        html: `<input id="fondoNombre" class="swal2-input" placeholder="Nombre (ej: Fondo Invierno)"><input id="fondoUrl" class="swal2-input" placeholder="URL de la imagen">`,
+        confirmButtonText: 'Guardar', showCancelButton: true, background: '#0f172a', color: 'white',
+        preConfirm: () => { return { nombre: document.getElementById('fondoNombre').value, url: document.getElementById('fondoUrl').value }; }
+    });
+    if (form && form.nombre && form.url) {
+        const id = Date.now().toString();
+        await database.ref(`fondos_cabecera/${id}`).set({ nombre: form.nombre, url: form.url, activo: false, creado_en: Date.now() });
+        cargarFondosCabecera();
+    }
+}
+
+async function seleccionarFondoCabecera(id) {
+    const snapshot = await database.ref('fondos_cabecera').once('value'); const fondos = snapshot.val() || {};
+    for (const fondoId of Object.keys(fondos)) await database.ref(`fondos_cabecera/${fondoId}/activo`).set(false);
+    await database.ref(`fondos_cabecera/${id}/activo`).set(true);
+    const fondo = await database.ref(`fondos_cabecera/${id}/url`).once('value');
+    await database.ref('config/FONDO_CABECERA').set(fondo.val());
+    cargarFondosCabecera(); Swal.fire({ title: '✅ Fondo seleccionado', text: 'Se actualizará en la app de clientes', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+}
+
+async function eliminarFondoCabecera(id) { const confirm = await Swal.fire({ title: '¿Eliminar fondo?', icon: 'warning', showCancelButton: true, background: '#0f172a', color: 'white' }); if (confirm.isConfirmed) { await database.ref(`fondos_cabecera/${id}`).remove(); cargarFondosCabecera(); } }
+
+// ============================================================
+// 📊 REPORTES
+// ============================================================
+async function cargarReportes() {
+    const pedidosSnap = await database.ref('pedidos').once('value'); const pedidos = pedidosSnap.val() || {};
+    const hoyInicio = new Date(); hoyInicio.setHours(0,0,0,0); let totalVentas = 0, totalPedidos = 0, totalProductos = 0;
+    for (const [id, data] of Object.entries(pedidos)) { if (data.fecha >= hoyInicio.getTime() && data.estado === 'ENTREGADO') { totalVentas += data.total || 0; totalPedidos++; if (data.items) totalProductos += data.items.reduce((acc, item) => acc + (item.cantidad || 1), 0); } }
+    const repartidoresSnap = await database.ref('repartidores').once('value'); const repartidores = repartidoresSnap.val() || {}; let repartidoresActivos = 0;
+    for (const [id, data] of Object.entries(repartidores)) if (data.activo !== false) repartidoresActivos++;
+    document.getElementById('totalVentasHoy').innerText = totalVentas.toFixed(2);
+    document.getElementById('totalPedidosHoy').innerText = totalPedidos; document.getElementById('totalRepartidoresHoy').innerText = repartidoresActivos;
+    document.getElementById('productosVendidosHoy').innerText = totalProductos;
+    document.getElementById('reporteDetalle').innerHTML = `<div class="space-y-2"><p><strong>📊 Resumen del día</strong></p><p>💰 Ventas: ${totalVentas.toFixed(2)}€</p><p>🛒 Pedidos completados: ${totalPedidos}</p><p>📦 Productos vendidos: ${totalProductos}</p><p>🛵 Repartidores activos: ${repartidoresActivos}</p></div>`;
+}
+
+// ============================================================
+// ⛔ LISTA NEGRA
+// ============================================================
+async function cargarListaNegra() {
+    const snapshot = await database.ref('clientes_morosos').once('value');
+    const morosos = snapshot.val() || {};
+    const tbody = document.getElementById('tablaListaNegra');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (Object.keys(morosos).length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-white/50 p-6">No hay clientes en lista negra</td></tr>'; return; }
+    for (const [id, data] of Object.entries(morosos)) {
+        const email = data.email_original || id;
+        const nombre = data.nombre || email.split('@')[0];
+        const motivo = data.motivo || 'No especificado';
+        const deuda = data.deuda || 0;
+        tbody.innerHTML += `<tr class="border-b border-white/10 hover:bg-white/5"><td class="p-2">${escapeHTML(email)}</td><td class="p-2">${escapeHTML(nombre)}</td><td class="p-2 text-sm text-white/70">${escapeHTML(motivo)}</td><td class="text-center p-2 font-bold text-yellow-400">${euros(deuda)}</td><td class="text-center p-2"><button onclick="desbloquearMoroso('${id}')" class="bg-green-600/20 hover:bg-green-600/40 text-green-400 px-3 py-1 rounded-lg text-xs font-bold transition">🔓 Desbloquear</button></td></tr>`;
+    }
+}
+
+async function desbloquearMoroso(id) {
+    const confirm = await Swal.fire({ title: '¿Desbloquear?', text: 'Este cliente volverá a poder hacer pedidos.', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, desbloquear', background: '#0f172a', color: 'white' });
+    if (confirm.isConfirmed) {
+        await database.ref(`clientes_morosos/${id}`).remove();
+        await cargarListaNegra();
+        Swal.fire({ title: '✅ Desbloqueado', text: 'El cliente ya puede hacer pedidos.', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+    }
+}
+
+// ============================================================
+// 💰 CONTABLE
+// ============================================================
+async function generarReporteContable() {
+    const periodo = document.getElementById('periodoReporte')?.value || 'diario'; const pedidosSnap = await database.ref('pedidos').once('value'); const pedidos = pedidosSnap.val() || {};
+    const ahora = new Date(); let fechaInicio;
+    if (periodo === 'diario') { fechaInicio = new Date(); fechaInicio.setHours(0,0,0,0); }
+    else if (periodo === 'semanal') { fechaInicio = new Date(); fechaInicio.setDate(ahora.getDate() - 7); }
+    else { fechaInicio = new Date(); fechaInicio.setMonth(ahora.getMonth() - 1); }
+    const stats = {};
+    for (const [id, data] of Object.entries(pedidos)) {
+        if (data.fecha >= fechaInicio.getTime() && data.estado === 'ENTREGADO') {
+            const restId = data.restaurante_id || data.restaurante_pin; if (!restId) continue;
+            const comisionRest = await database.ref(`restaurantes/${restId}/comision`).once('value'); const porcentajeComision = comisionRest.val() || 10;
+            if (!stats[restId]) stats[restId] = { nombre: data.restaurante_nombre || restId, ventas: 0, descuentos: 0, comision: porcentajeComision };
+            stats[restId].ventas += data.total || 0; if (data.descuento_aplicado) stats[restId].descuentos += data.descuento_monto || 0;
+        }
+    }
+    let totalVentas = 0, totalComisiones = 0, totalDescuentos = 0, totalLiquidar = 0; const tbody = document.getElementById('tablaReporteContable'); tbody.innerHTML = '';
+    for (const [id, data] of Object.entries(stats)) {
+        const comision = data.ventas * (data.comision / 100); const liquidar = data.ventas - comision - data.descuentos;
+        totalVentas += data.ventas; totalComisiones += comision; totalDescuentos += data.descuentos; totalLiquidar += liquidar;
+        tbody.innerHTML += `<tr><td class="p-2">${data.nombre} <span class="comision-badge">${data.comision}%</span></td><td class="text-right p-2">${data.ventas.toFixed(2)}€</td><td class="text-right p-2">${comision.toFixed(2)}€</td><td class="text-right p-2">${data.descuentos.toFixed(2)}€</td><td class="text-right p-2">${liquidar.toFixed(2)}€</td><td class="text-center p-2"><span class="text-yellow-400">Pendiente</span></td><td class="text-center p-2"><button onclick="liquidarRestaurante('${id}', ${liquidar}, '${data.nombre}', ${fechaInicio.getTime()}, ${Date.now()}, ${data.comision})" class="bg-emerald-600/20 text-emerald-400 px-2 py-1 rounded text-xs">💰 Liquidar</button></td></tr>`;
+    }
+    if (Object.keys(stats).length === 0) tbody.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-white/50">No hay datos en este período</td></tr>';
+    document.getElementById('totalVentasContable').innerHTML = totalVentas.toFixed(2) + '€'; document.getElementById('totalComisionesContable').innerHTML = totalComisiones.toFixed(2) + '€';
+    document.getElementById('totalDescuentosContable').innerHTML = totalDescuentos.toFixed(2) + '€'; document.getElementById('totalLiquidarContable').innerHTML = totalLiquidar.toFixed(2) + '€';
+    cargarHistorialLiquidaciones();
+}
+
+async function cargarHistorialLiquidaciones() {
+    const snapshot = await database.ref('liquidaciones').once('value'); const liquidaciones = snapshot.val() || {};
+    const container = document.getElementById('historialLiquidacionesList'); container.innerHTML = '';
+    const ordenadas = Object.entries(liquidaciones).sort((a,b) => b[1].fecha - a[1].fecha).slice(0, 20);
+    for (const [id, data] of ordenadas) { container.innerHTML += `<div class="bg-slate-700/50 rounded p-2 flex justify-between"><div><span class="font-bold">${data.restaurante_nombre}</span><span class="text-white/50 text-xs ml-2">${new Date(data.fecha).toLocaleDateString()}</span></div><div><span class="text-emerald-400">${data.monto.toFixed(2)}€</span><span class="text-white/50 text-xs ml-2">Liquidado</span></div></div>`; }
+    if (ordenadas.length === 0) container.innerHTML = '<p class="text-white/50 text-center">No hay liquidaciones previas</p>';
+}
+
+function liquidarRestaurante(restId, monto, nombre, inicio, fin, comision) {
+    Swal.fire({ title: `Liquidar ${nombre}`, html: `Monto a liquidar: <strong>${monto.toFixed(2)}€</strong><br>Comisión aplicada: <strong>${comision}%</strong><br><input type="text" id="notaLiquidacion" placeholder="Nota (opcional)" class="w-full mt-3 p-2 rounded bg-slate-700">`, background: '#0f172a', color: 'white', showCancelButton: true, confirmButtonText: '✅ Confirmar Liquidación', preConfirm: () => { return { nota: document.getElementById('notaLiquidacion')?.value || '' }; } }).then(async (result) => {
+        if (result.isConfirmed) { const id = Date.now().toString(); await database.ref(`liquidaciones/${id}`).set({ restaurante_id: restId, restaurante_nombre: nombre, monto, comision: comision, fecha: Date.now(), periodo_inicio: inicio, periodo_fin: fin, nota: result.value?.nota || '' }); Swal.fire({ title: '✅ Liquidación registrada', icon: 'success', background: '#0f172a', color: 'white' }); generarReporteContable(); }
+    });
+}
+
+function exportarReporteExcel() {
+    const tabla = document.getElementById('tablaReporteContable'); if (!tabla || tabla.rows.length === 0) { Swal.fire({ title: 'Error', text: 'No hay datos para exportar', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+    let csv = "Restaurante,Comisión,Ventas,Comisión (€),Descuentos,A Liquidar\n";
+    for (let i = 0; i < tabla.rows.length; i++) { const row = tabla.rows[i]; const cells = row.cells; if (cells.length >= 6) csv += `"${cells[0].innerText.replace(/"/g, '""')}",${cells[0].innerText.match(/\d+%/)?.[0] || '10%'},${cells[1].innerText.replace('€','')},${cells[2].innerText.replace('€','')},${cells[3].innerText.replace('€','')},${cells[4].innerText.replace('€','')}\n`; }
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }); const link = document.createElement("a"); const url = URL.createObjectURL(blob); link.href = url; link.setAttribute("download", `reporte_contable_${new Date().toISOString().slice(0,19)}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+    Swal.fire({ title: '✅ Reporte exportado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
+}
+
+// ============================================================
+// 💵 LIQUIDACIONES
+// ============================================================
+async function calcularLiquidaciones() {
+    const periodo = document.getElementById('periodoSeleccion').value; const ahora = new Date(); let fechaInicio, fechaFin;
+    if (periodo === 'semanal') { const lunes = new Date(ahora); lunes.setDate(ahora.getDate() - (ahora.getDay() === 0 ? 6 : ahora.getDay() - 1)); lunes.setHours(0,0,0,0); fechaInicio = lunes; fechaFin = new Date(lunes); fechaFin.setDate(lunes.getDate() + 6); fechaFin.setHours(23,59,59,999); }
+    else if (periodo === 'quincenal') { fechaInicio = new Date(ahora); fechaInicio.setDate(ahora.getDate() <= 15 ? 1 : 16); fechaInicio.setHours(0,0,0,0); fechaFin = new Date(fechaInicio); fechaFin.setDate(fechaInicio.getDate() + 14); fechaFin.setHours(23,59,59,999); }
+    else { fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1); fechaFin = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0); fechaFin.setHours(23,59,59,999); }
+    const pedidosSnap = await database.ref('pedidos').once('value'); const pedidos = pedidosSnap.val() || {}; const restSnap = await database.ref('restaurantes').once('value'); const restaurantes = restSnap.val() || {};
+    const stats = {}; for (const [id, data] of Object.entries(restaurantes)) stats[id] = { id, nombre: data.NOMBRE_RESTAURANTE || data.nombre || id, pedidos: 0, ventas: 0, comision: data.comision !== undefined ? data.comision : 10, liquidar: 0, ajuste: 0, nota: '' };
+    for (const [id, data] of Object.entries(pedidos)) {
+        const fechaPedido = new Date(data.fecha || 0);
+        if (fechaPedido >= fechaInicio && fechaPedido <= fechaFin) {
+            const restId = data.restaurante_id || data.restaurante_pin; if (stats[restId] && (data.estado === 'ENTREGADO' || data.estado === 'CANCELADO_POR_AUSENCIA')) { stats[restId].pedidos++; stats[restId].ventas += data.total || 0; }
+        }
+    }
+    let totalVentas = 0, totalComisiones = 0, totalLiquidar = 0;
+    for (const [id, data] of Object.entries(stats)) {
+        const comisionMonto = data.ventas * (data.comision / 100); data.comisionMonto = comisionMonto; data.liquidar = data.ventas - comisionMonto + data.ajuste;
+        totalVentas += data.ventas; totalComisiones += comisionMonto; totalLiquidar += data.liquidar;
+    }
+    document.getElementById('liquidTotalVentas').innerHTML = totalVentas.toFixed(2) + '€'; document.getElementById('liquidTotalComisiones').innerHTML = totalComisiones.toFixed(2) + '€'; document.getElementById('liquidTotalLiquidar').innerHTML = totalLiquidar.toFixed(2) + '€';
+    const tbody = document.getElementById('tablaLiquidaciones'); tbody.innerHTML = '';
+    for (const [id, data] of Object.entries(stats)) {
+        const estadoColor = data.liquidar > 0 ? 'text-yellow-400' : 'text-green-400'; const estadoTexto = data.liquidar > 0 ? 'Pendiente' : 'Liquidado';
+        tbody.innerHTML += `<tr class="border-b border-white/10 hover:bg-white/5"><td class="p-2 font-medium">${escapeHTML(data.nombre)}</td><td class="text-right p-2">${data.pedidos}</td><td class="text-right p-2">${data.ventas.toFixed(2)}€</td><td class="text-right p-2"><span class="comision-badge">${data.comision}%</span> (${data.comisionMonto.toFixed(2)}€)</td><td class="text-right p-2 font-bold ${data.liquidar > 0 ? 'text-emerald-400' : 'text-slate-400'}">${data.liquidar.toFixed(2)}€</td><td class="text-center p-2"><span class="px-2 py-1 rounded text-xs ${estadoColor}">${estadoTexto}</span></td><td class="text-center p-2"><button onclick="editarLiquidacionRest('${id}')" class="bg-cyan-600/20 text-cyan-400 px-2 py-1 rounded text-xs">✏️ Editar</button><button onclick="liquidarRestauranteDirecto('${id}', ${data.liquidar}, '${data.nombre}', ${fechaInicio.getTime()}, ${fechaFin.getTime()}, ${data.comision})" class="bg-emerald-600/20 text-emerald-400 px-2 py-1 rounded text-xs ml-1">💰 Liquidar</button><button onclick="verDetalleLiquidacionRest('${id}', ${data.ventas})" class="bg-purple-600/20 text-purple-400 px-2 py-1 rounded text-xs ml-1">📋 Detalle</button></td></tr>`;
+    }
+    await cargarHistorialLiquidacionesList2();
+}
+
+async function editarLiquidacionRest(restId) {
+    const snapshot = await database.ref(`liquidaciones_pendientes/${restId}`).once('value'); const data = snapshot.val() || { ajuste: 0, nota: '' };
+    const { value: form } = await Swal.fire({ title: '✏️ Editar Liquidación', html: `<input id="editAjuste" class="swal2-input" placeholder="Ajuste (€)" value="${data.ajuste || 0}"><textarea id="editNota" class="swal2-textarea" placeholder="Nota / Observaciones">${data.nota || ''}</textarea>`, confirmButtonText: 'Guardar', showCancelButton: true, background: '#0f172a', color: 'white', preConfirm: () => { return { ajuste: parseFloat(document.getElementById('editAjuste').value) || 0, nota: document.getElementById('editNota').value }; } });
+    if (form) { await database.ref(`liquidaciones_pendientes/${restId}`).set({ ajuste: form.ajuste, nota: form.nota, actualizado: Date.now() }); calcularLiquidaciones(); Swal.fire({ title: '✅ Liquidación actualizada', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' }); }
+}
+
+async function liquidarRestauranteDirecto(restId, monto, nombre, inicio, fin, comision) {
+    const snapshot = await database.ref(`liquidaciones_pendientes/${restId}`).once('value'); const pendiente = snapshot.val() || {};
+    const { value: form } = await Swal.fire({ title: `💰 Liquidar ${nombre}`, html: `<p class="mb-2">Monto a liquidar: <strong>${monto.toFixed(2)}€</strong></p><p class="mb-2 text-sm">Comisión aplicada: <strong>${comision}%</strong></p><input id="montoLiquidado" class="swal2-input" placeholder="Monto liquidado" value="${monto.toFixed(2)}"><input id="referencia" class="swal2-input" placeholder="Referencia / Nº transferencia"><textarea id="observaciones" class="swal2-textarea" placeholder="Observaciones">${pendiente.nota || ''}</textarea>`, confirmButtonText: '✅ Registrar Liquidación', showCancelButton: true, background: '#0f172a', color: 'white', preConfirm: () => { return { monto: parseFloat(document.getElementById('montoLiquidado').value) || monto, referencia: document.getElementById('referencia').value, observaciones: document.getElementById('observaciones').value }; } });
+    if (form) {
+        const id = Date.now().toString(); await database.ref(`liquidaciones/${id}`).set({ restaurante_id: restId, restaurante_nombre: nombre, monto: form.monto, comision: comision, referencia: form.referencia, observaciones: form.observaciones, periodo_inicio: inicio, periodo_fin: fin, fecha: Date.now(), estado: 'pagado' });
+        await database.ref(`liquidaciones_pendientes/${restId}`).remove(); calcularLiquidaciones(); Swal.fire({ title: '✅ Liquidación registrada', icon: 'success', timer: 2000, background: '#0f172a', color: 'white' });
+    }
+}
+
+async function verDetalleLiquidacionRest(restId, ventas) {
+    const pedidosSnap = await database.ref('pedidos').once('value'); const pedidos = pedidosSnap.val() || {};
+    const pedidosRestaurante = []; for (const [id, data] of Object.entries(pedidos)) {
+        const restIdPedido = data.restaurante_id || data.restaurante_pin; if (restIdPedido === restId && (data.estado === 'ENTREGADO' || data.estado === 'CANCELADO_POR_AUSENCIA')) { pedidosRestaurante.push({ id, total: data.total, fecha: new Date(data.fecha).toLocaleDateString(), cliente: data.cliente_nombre }); }
+    }
+    let html = `<div class="max-h-96 overflow-y-auto"><table class="w-full text-sm"><thead><tr><th class="text-left">Pedido</th><th class="text-left">Fecha</th><th class="text-left">Cliente</th><th class="text-right">Total</th></tr></thead><tbody>`; pedidosRestaurante.forEach(p => html += `<tr><td class="p-1">${p.id.substring(0, 12)}</td><td class="p-1">${p.fecha}</td><td class="p-1">${escapeHTML(p.cliente)}</td><td class="p-1 text-right">${p.total.toFixed(2)}€</td></tr>`);
+    html += `<tr class="border-t border-white/20"><td colspan="3" class="p-2 font-bold">Total</td><td class="p-2 text-right font-bold">${ventas.toFixed(2)}€</td></tr></tbody></table></div>`; Swal.fire({ title: 'Detalle de Ventas', html, background: '#0f172a', color: 'white', confirmButtonColor: '#f59e0b', width: '90%', maxWidth: '600px' });
+}
+
+async function cargarHistorialLiquidacionesList2() {
+    const snapshot = await database.ref('liquidaciones').once('value'); const liquidaciones = snapshot.val() || {};
+    const container = document.getElementById('historialLiquidacionesList2'); const ordenadas = Object.entries(liquidaciones).sort((a,b) => b[1].fecha - a[1].fecha).slice(0, 20); container.innerHTML = '';
+    for (const [id, data] of ordenadas) { container.innerHTML += `<div class="bg-slate-700/50 rounded-lg p-3 flex justify-between items-center"><div><p class="font-bold text-sm">${escapeHTML(data.restaurante_nombre)}</p><p class="text-white/50 text-xs">${new Date(data.fecha).toLocaleDateString()}</p>${data.referencia ? `<p class="text-cyan-400 text-xs">Ref: ${escapeHTML(data.referencia)}</p>` : ''}</div><div class="text-right"><p class="text-emerald-400 font-bold">${data.monto.toFixed(2)}€</p><p class="text-white/50 text-xs">Comisión: ${data.comision}%</p></div></div>`; }
+    if (ordenadas.length === 0) container.innerHTML = '<p class="text-center text-white/50 p-4">No hay liquidaciones registradas</p>';
+}
+
+function exportarLiquidacionesExcel() {
+    const tabla = document.getElementById('tablaLiquidaciones'); if (!tabla || tabla.rows.length === 0) { Swal.fire({ title: 'Error', text: 'No hay datos para exportar', icon: 'error', background: '#0f172a', color: 'white' }); return; }
+    let csv = "Restaurante,Pedidos,Ventas (€),Comisión (%),A Liquidar (€),Estado\n";
+    for (let i = 0; i < tabla.rows.length; i++) { const row = tabla.rows[i]; const cells = row.cells; csv += `"${cells[0].innerText.replace(/"/g, '""')}",${cells[1].innerText},${cells[2].innerText.replace('€','')},${cells[3].innerText.match(/\d+%/)?.[0] || '10%'},${cells[4].innerText.replace('€','')},${cells[5].innerText}\n`; }
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }); const link = document.createElement("a"); const url = URL.createObjectURL(blob); link.href = url; link.setAttribute("download", `liquidaciones_${new Date().toISOString().slice(0,19)}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+    Swal.fire({ title: '✅ Reporte exportado', icon: 'success', timer: 1500, background: '#0f172a', color: 'white' });
+}
+
+// ============================================================
+// 📌 CARGA INICIAL
+// ============================================================
+function cargarTodosLosDatos() {
+    cargarRestaurantes(); cargarHorarios(); cargarMenus(); cargarPedidosAdmin(); cargarHistorial();
+    cargarRepartidores(); cargarBanners(); cargarFondosCabecera(); cargarUsuarios(); cargarReportes();
+    cargarListaNegra(); generarReporteContable(); calcularLiquidaciones(); actualizarSelectsRestaurantes();
+}
+
+// Inicializar
+document.addEventListener('DOMContentLoaded', () => {
+    // Inicializar formulario unificado
+    cambiarFormularioRegistro();
+    // Inicializar selects de restaurantes
+    actualizarSelectsRestaurantes();
+});
+</script>
+</body>
+</html>

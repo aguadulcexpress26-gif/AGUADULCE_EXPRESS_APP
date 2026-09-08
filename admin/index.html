@@ -1052,179 +1052,327 @@ function abrirModalRestauranteFull(uid = null) {
 }
 
 // ============================================================
-// NUEVO: GUARDAR RESTAURANTE COMPLETO
+// 💾 GUARDAR RESTAURANTE COMPLETO (VERSIÓN CORREGIDA)
 // ============================================================
 async function guardarRestauranteFull() {
-    const editUid = document.getElementById('modalRestauranteFull').dataset.editUid || '';
+    const isEdit = window._restauranteEditUid !== null;
+    const uid = window._restauranteEditUid;
     
-    // Obtener datos del formulario
-    const nombre = document.getElementById('fullRestNombre').value.trim();
-    const email = document.getElementById('fullRestEmail').value.trim();
-    const telefono = document.getElementById('fullRestTelefono').value.trim();
-    const pin = document.getElementById('fullRestPin').value.toUpperCase().trim() || '';
-    const password = document.getElementById('fullRestPassword').value.trim();
-    const foto = document.getElementById('fullRestFoto').value.trim();
-    const comision = parseFloat(document.getElementById('fullRestComision').value) || 10;
-    const tiempo = parseInt(document.getElementById('fullRestTiempo').value) || 20;
-    const activo = document.getElementById('fullRestActivo').checked;
+    // ========================================
+    // 📋 RECOLECTAR DATOS DEL FORMULARIO
+    // ========================================
+    const nombre = document.getElementById('restNombre').value.trim();
+    const email = document.getElementById('restEmail').value.trim();
+    const telefono = document.getElementById('restTelefono').value.trim();
+    const foto = document.getElementById('restFoto').value.trim();
+    const direccion = document.getElementById('restDireccion').value.trim();
+    const pin = document.getElementById('restPin').value.toUpperCase().trim();
+    const password = document.getElementById('restPassword').value.trim();
     
-    const calle = document.getElementById('fullRestCalle').value.trim();
-    const ciudad = document.getElementById('fullRestCiudad').value.trim() || 'Roquetas de Mar';
-    const cp = document.getElementById('fullRestCp').value.trim() || '04740';
-    const direccion = `${calle}, ${ciudad}, ${cp}`;
+    const tarifaKm = parseFloat(document.getElementById('restTarifaKm').value) || 1.50;
+    const costoMinimo = parseFloat(document.getElementById('restCostoMinimo').value) || 3.00;
+    const costoMaximo = parseFloat(document.getElementById('restCostoMaximo').value) || 10.00;
+    const precioBase = parseFloat(document.getElementById('restPrecioBase').value) || 3.50;
+    const costoDemora = parseFloat(document.getElementById('restCostoDemora').value) || 0.50;
+    const tiempoElaboracion = parseInt(document.getElementById('restTiempoElaboracion').value) || 20;
     
-    const tarifaKm = parseFloat(document.getElementById('fullTarifaKm').value) || 1.50;
-    const costoMinimo = parseFloat(document.getElementById('fullCostoMinimo').value) || 3.00;
-    const costoMaximo = parseFloat(document.getElementById('fullCostoMaximo').value) || 10.00;
-    const precioBase = parseFloat(document.getElementById('fullPrecioBase').value) || 3.50;
-    const costoDemora = parseFloat(document.getElementById('fullCostoDemora').value) || 0.50;
+    const impresoraNombre = document.getElementById('restImpresoraNombre').value.trim();
+    const impresoraId = document.getElementById('restImpresoraId').value.trim();
+    const impresoraActiva = document.getElementById('restImpresoraActiva').checked;
     
-    const impresoraNombre = document.getElementById('fullImpresoraNombre').value.trim() || 'Impresora Bluetooth';
-    const impresoraId = document.getElementById('fullImpresoraId').value.trim() || '';
-    const impresoraActiva = document.getElementById('fullImpresoraActiva').checked;
-
-    // Validaciones
-    if (!nombre) { Swal.fire('Error', 'El nombre del restaurante es obligatorio', 'error', '#0f172a'); return; }
-    if (!calle) { Swal.fire('Error', 'La dirección es obligatoria', 'error', '#0f172a'); return; }
-    if (!email) { Swal.fire('Error', 'El email es obligatorio', 'error', '#0f172a'); return; }
-    if (!editUid && (!password || password.length < 6)) {
+    const activo = document.getElementById('restActivo').checked;
+    const pausado = document.getElementById('restPausado').checked;
+    
+    // ========================================
+    // 📅 RECOLECTAR HORARIOS
+    // ========================================
+    const dias = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
+    const horarios = {};
+    
+    for (const dia of dias) {
+        const container = document.querySelector(`.horario-dia-container[data-dia="${dia}"]`);
+        if (container) {
+            const inputs = container.querySelectorAll('input');
+            const diaLibreCheck = document.querySelector(`.dia-libre-check[data-dia="${dia}"]`);
+            const diaLibre = diaLibreCheck ? diaLibreCheck.checked : false;
+            
+            if (diaLibre) {
+                horarios[dia] = {
+                    activo: true,
+                    dia_libre: true,
+                    apertura1: 'CERRADO',
+                    cierre1: 'CERRADO',
+                    apertura2: 'CERRADO',
+                    cierre2: 'CERRADO'
+                };
+            } else {
+                const values = {};
+                inputs.forEach(inp => {
+                    if (inp.dataset.campo) {
+                        values[inp.dataset.campo] = inp.value || '00:00';
+                    }
+                });
+                horarios[dia] = {
+                    activo: true,
+                    dia_libre: false,
+                    apertura1: values.apertura1 || '09:00',
+                    cierre1: values.cierre1 || '15:00',
+                    apertura2: values.apertura2 || '19:00',
+                    cierre2: values.cierre2 || '23:00'
+                };
+            }
+        }
+    }
+    
+    // ========================================
+    // ✅ VALIDACIONES
+    // ========================================
+    if (!nombre) {
+        Swal.fire('Error', 'El nombre del restaurante es obligatorio', 'error', '#0f172a');
+        return;
+    }
+    if (!email) {
+        Swal.fire('Error', 'El email es obligatorio', 'error', '#0f172a');
+        return;
+    }
+    if (!isEdit && !password) {
+        Swal.fire('Error', 'La contraseña es obligatoria para nuevos restaurantes', 'error', '#0f172a');
+        return;
+    }
+    if (!isEdit && password.length < 6) {
         Swal.fire('Error', 'La contraseña debe tener al menos 6 caracteres', 'error', '#0f172a');
         return;
     }
-
-    // Recoger horarios
-    const dias = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
-    const horarios = {};
-    for (const dia of dias) {
-        const diaLibre = document.querySelector(`.dia-libre-check[data-dia="${dia}"]`)?.checked || false;
-        const activoDia = document.querySelector(`.dia-activo-check[data-dia="${dia}"]`)?.checked !== false;
-        
-        if (diaLibre) {
-            horarios[dia] = { activo: true, dia_libre: true, apertura1: 'CERRADO', cierre1: 'CERRADO', apertura2: 'CERRADO', cierre2: 'CERRADO' };
-        } else {
-            horarios[dia] = {
-                activo: activoDia,
-                dia_libre: false,
-                apertura1: document.getElementById(`apertura1_${dia}`)?.value || '09:00',
-                cierre1: document.getElementById(`cierre1_${dia}`)?.value || '15:00',
-                apertura2: document.getElementById(`apertura2_${dia}`)?.value || '19:00',
-                cierre2: document.getElementById(`cierre2_${dia}`)?.value || '23:00'
-            };
-        }
+    if (!direccion) {
+        Swal.fire('Error', 'La dirección es obligatoria', 'error', '#0f172a');
+        return;
     }
-
-    Swal.fire({ title: '⏳ Guardando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-
+    
+    // ========================================
+    // 💾 GUARDAR
+    // ========================================
+    Swal.fire({ 
+        title: '⏳ Guardando...', 
+        allowOutsideClick: false, 
+        didOpen: () => { Swal.showLoading(); } 
+    });
+    
     try {
-        let uid = editUid;
-        let user = null;
-        let pinFinal = pin || uid?.substring(0, 8).toUpperCase() || '';
-
-        // Si es nuevo, crear usuario
-        if (!editUid) {
+        let restauranteUid = uid;
+        
+        // Si es nuevo, crear usuario en Authentication
+        if (!isEdit) {
             const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-            user = userCredential.user;
-            uid = user.uid;
-            pinFinal = pin || uid.substring(0, 8).toUpperCase();
+            const user = userCredential.user;
+            restauranteUid = user.uid;
+            console.log('✅ Usuario creado:', restauranteUid);
         } else {
-            // Si es edición, intentar actualizar contraseña si se proporciona una nueva
-            if (password && password.length >= 6) {
+            // ✅ SOLO ACTUALIZAR EMAIL SI ES DIFERENTE
+            const currentUser = auth.currentUser;
+            if (currentUser && currentUser.email !== email) {
                 try {
-                    await auth.currentUser.updatePassword(password);
-                } catch(e) { console.warn('No se pudo actualizar contraseña:', e); }
+                    // Primero, re-autenticar al usuario
+                    // La contraseña actual se necesita para re-autenticar
+                    // Pedimos al admin que ingrese la contraseña actual
+                    const { value: currentPassword } = await Swal.fire({
+                        title: '🔐 Verificación de seguridad',
+                        text: `Para cambiar el email de ${currentUser.email} a ${email}, necesitas confirmar tu contraseña actual.`,
+                        input: 'password',
+                        inputLabel: 'Contraseña actual del administrador',
+                        inputPlaceholder: 'Introduce tu contraseña',
+                        showCancelButton: true,
+                        confirmButtonText: '✅ Verificar',
+                        cancelButtonText: 'Cancelar',
+                        background: '#0f172a',
+                        color: 'white',
+                        inputValidator: (value) => {
+                            if (!value) {
+                                return 'Necesitas introducir tu contraseña';
+                            }
+                            return null;
+                        }
+                    });
+                    
+                    if (!currentPassword) {
+                        Swal.fire('Cancelado', 'No se actualizó el email', 'info', '#0f172a');
+                        return;
+                    }
+                    
+                    // Re-autenticar
+                    const credential = firebase.auth.EmailAuthProvider.credential(
+                        currentUser.email,
+                        currentPassword
+                    );
+                    await currentUser.reauthenticateWithCredential(credential);
+                    
+                    // Ahora actualizar email
+                    await currentUser.updateEmail(email);
+                    console.log('✅ Email actualizado');
+                    
+                } catch (authError) {
+                    console.error('❌ Error de autenticación:', authError);
+                    
+                    if (authError.code === 'auth/wrong-password') {
+                        Swal.fire({
+                            title: '❌ Contraseña incorrecta',
+                            text: 'La contraseña que ingresaste no es correcta. Intenta de nuevo.',
+                            icon: 'error',
+                            background: '#0f172a',
+                            color: 'white'
+                        });
+                        return;
+                    } else if (authError.code === 'auth/requires-recent-login') {
+                        // Si el usuario no ha iniciado sesión recientemente, forzar logout y login
+                        Swal.fire({
+                            title: '🔄 Sesión expirada',
+                            text: 'Por seguridad, debes iniciar sesión nuevamente para cambiar el email.',
+                            icon: 'warning',
+                            confirmButtonText: '✅ Re-iniciar sesión',
+                            background: '#0f172a',
+                            color: 'white'
+                        }).then(async () => {
+                            // Cerrar sesión y redirigir al login
+                            await auth.signOut();
+                            localStorage.removeItem('admin_logged');
+                            location.reload();
+                        });
+                        return;
+                    } else {
+                        Swal.fire({
+                            title: '❌ Error',
+                            text: authError.message,
+                            icon: 'error',
+                            background: '#0f172a',
+                            color: 'white'
+                        });
+                        return;
+                    }
+                }
+            }
+            
+            // ✅ ACTUALIZAR CONTRASEÑA SI SE PROPORCIONÓ UNA NUEVA
+            if (password && password.trim() !== '') {
+                try {
+                    // Verificar si la contraseña nueva es diferente a la actual
+                    const currentUser = auth.currentUser;
+                    
+                    // Intentar cambiar la contraseña
+                    await currentUser.updatePassword(password);
+                    console.log('✅ Contraseña actualizada');
+                    
+                } catch (passError) {
+                    console.warn('⚠️ No se pudo actualizar contraseña:', passError);
+                    
+                    if (passError.code === 'auth/requires-recent-login') {
+                        // Si el usuario no ha iniciado sesión recientemente
+                        Swal.fire({
+                            title: '🔄 Sesión expirada',
+                            text: 'Por seguridad, debes iniciar sesión nuevamente para cambiar la contraseña.',
+                            icon: 'warning',
+                            confirmButtonText: '✅ Re-iniciar sesión',
+                            background: '#0f172a',
+                            color: 'white'
+                        }).then(async () => {
+                            await auth.signOut();
+                            localStorage.removeItem('admin_logged');
+                            location.reload();
+                        });
+                        return;
+                    } else {
+                        // Otro error, continuamos con el guardado
+                        console.warn('Continuando con el guardado sin actualizar contraseña:', passError.message);
+                    }
+                }
             }
         }
-
-        // Construir datos del restaurante
+        
+        // ========================================
+        // 📦 CONSTRUIR DATOS DEL RESTAURANTE
+        // ========================================
         const restauranteData = {
             NOMBRE_RESTAURANTE: nombre,
-            DIRECCION: direccion,
             email: email,
             telefono: telefono || '',
             FOTO: foto || '',
-            comision: comision,
-            tiempo_elaboracion: tiempo,
+            direccion: direccion,
+            pin_original: pin || restauranteUid.substring(0, 8).toUpperCase(),
             activo: activo,
-            pausado: false,
-            uid: uid,
-            pin_original: pinFinal,
-            ...(editUid ? {} : { creado_en: Date.now(), password: password })
+            pausado: pausado,
+            tiempo_elaboracion: tiempoElaboracion,
+            
+            configuracion_envios: {
+                tarifa_por_km: tarifaKm,
+                costo_minimo: costoMinimo,
+                costo_maximo: costoMaximo,
+                precio_base_envio: precioBase
+            },
+            
+            configuracion_demoras: {
+                costo_por_minuto: costoDemora
+            },
+            
+            impresora: {
+                activo: impresoraActiva,
+                nombre: impresoraNombre || '',
+                deviceId: impresoraId || '',
+                timestamp: Date.now()
+            },
+            
+            horarios_dias: horarios,
+            
+            actualizado_en: Date.now()
         };
-
-        // Si es edición, solo actualizar contraseña si se proporcionó una nueva
-        if (editUid && password && password.length >= 6) {
+        
+        if (!isEdit) {
+            restauranteData.creado_en = Date.now();
             restauranteData.password = password;
+            restauranteData.uid = restauranteUid;
         }
-
-        // Guardar en Firebase
-        await database.ref(`restaurantes/${uid}`).update(restauranteData);
-        await database.ref(`restaurantes_pin/${pinFinal}`).set({ uid: uid, nombre: nombre });
         
-        // Guardar configuraciones
-        await database.ref(`restaurantes/${uid}/configuracion_envios`).set({
-            tarifa_por_km: tarifaKm,
-            costo_minimo: costoMinimo,
-            costo_maximo: costoMaximo,
-            precio_base_envio: precioBase
+        // ========================================
+        // 💾 GUARDAR EN FIREBASE
+        // ========================================
+        await database.ref(`restaurantes/${restauranteUid}`).update(restauranteData);
+        
+        // Guardar en usuarios
+        await database.ref(`usuarios/${restauranteUid}`).update({
+            email: email,
+            nombre: nombre,
+            telefono: telefono || '',
+            rol: 'restaurante',
+            restauranteId: restauranteUid,
+            activo: activo
         });
         
-        await database.ref(`restaurantes/${uid}/configuracion_demoras`).set({
-            costo_por_minuto: costoDemora
-        });
+        console.log('✅ Restaurante guardado correctamente');
         
-        await database.ref(`restaurantes/${uid}/impresora`).set({
-            activo: impresoraActiva,
-            nombre: impresoraNombre,
-            deviceId: impresoraId,
-            timestamp: Date.now()
-        });
-        
-        await database.ref(`restaurantes/${uid}/horarios_dias`).set(horarios);
-
-        // Crear/actualizar usuario en nodo usuarios
-        if (!editUid) {
-            await database.ref(`usuarios/${uid}`).set({
-                email: email,
-                nombre: nombre,
-                telefono: telefono || '',
-                rol: 'restaurante',
-                uid: uid,
-                restauranteId: uid,
-                creadoEn: Date.now(),
-                activo: true,
-                password: password
-            });
-        } else {
-            await database.ref(`usuarios/${uid}`).update({
-                email: email,
-                nombre: nombre,
-                telefono: telefono || '',
-                activo: activo
-            });
-            if (password && password.length >= 6) {
-                await database.ref(`usuarios/${uid}/password`).set(password);
-            }
-        }
-
         cerrarModal('modalRestauranteFull');
         await cargarRestaurantes();
-        await cargarUsuarios();
-
+        
         Swal.fire({
-            title: editUid ? '✅ Restaurante actualizado' : '✅ Restaurante creado',
-            html: `<p><strong>${nombre}</strong> ${editUid ? 'actualizado' : 'creado'}</p>
-                   <p class="text-amber-400 text-sm">📌 PIN: ${pinFinal}</p>
-                   <p class="text-cyan-400 text-sm">📧 ${email}</p>
-                   ${!editUid ? `<p class="text-emerald-400 text-sm">🔑 ${password}</p>` : ''}`,
+            title: isEdit ? '✅ Restaurante actualizado' : '✅ Restaurante creado',
+            html: `
+                <p><strong>${nombre}</strong> ${isEdit ? 'actualizado' : 'creado'} exitosamente</p>
+                <p class="text-amber-400 text-sm">📌 PIN: ${restauranteData.pin_original}</p>
+                <p class="text-cyan-400 text-sm">📧 ${email}</p>
+                ${!isEdit ? `<p class="text-emerald-400 text-sm">🔑 Contraseña: ${password}</p>` : ''}
+                <p class="text-xs text-white/40 mt-2">🆔 ID: ${restauranteUid.substring(0, 12)}...</p>
+            `,
             icon: 'success',
             timer: 4000,
             background: '#0f172a',
             color: 'white'
         });
-
+        
     } catch (error) {
-        console.error('Error guardando restaurante:', error);
-        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+        console.error('❌ Error guardando restaurante:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: error.message,
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white'
+        });
     }
 }
 

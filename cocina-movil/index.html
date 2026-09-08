@@ -968,6 +968,12 @@
         // ============================================
         // 3. INICIALIZACIÓN PRINCIPAL
         // ============================================
+        // ✅ VARIABLES GLOBALES (DECLARADAS ANTES DE USARSE)
+        let comisionGlobal = 10;
+        let comisionTipoGlobal = 'porcentaje';
+        let claveGananciasGlobal = 'admin123';
+        let costoDemoraPorMinuto = 0.50;
+
         async function iniciarApp() {
             console.log('🚀 Iniciando app móvil...');
             
@@ -985,12 +991,21 @@
             // Cargar tamaño de fuente
             cargarTamañoFuente();
             
-            // ✅ CARGAR CONFIGURACIONES GLOBALES (DESDE ADMIN)
-            await cargarConfiguracionGlobal();
-            await cargarConfiguracionDemoras();
+            // ✅ CARGAR CONFIGURACIONES CON MANEJO DE ERRORES
+            try {
+                await cargarConfiguracionGlobal();
+            } catch (e) {
+                console.warn('⚠️ Error cargando configuración global:', e.message);
+            }
+            
+            try {
+                await cargarConfiguracionDemoras();
+            } catch (e) {
+                console.warn('⚠️ Error cargando configuración de demoras:', e.message);
+            }
             
             // ============================================
-            // 4. VARIABLES GLOBALES
+            // 4. VARIABLES GLOBALES DE LA APP
             // ============================================
             let currentUser = null;
             let currentView = 'activos';
@@ -1134,38 +1149,50 @@
             // ============================================
             // 4b. CONFIGURACIÓN GLOBAL (DESDE ADMIN)
             // ============================================
-            let comisionGlobal = 10;
-            let comisionTipoGlobal = 'porcentaje';
-            let claveGananciasGlobal = 'admin123';
-            let costoDemoraPorMinuto = 0.50;
-
             async function cargarConfiguracionGlobal() {
                 try {
-                    // Cargar comisión
-                    const comisionSnap = await db.ref('configuracion_global/comision_plataforma').once('value');
-                    if (comisionSnap.val() !== null) comisionGlobal = comisionSnap.val();
+                    // ✅ INTENTAR CARGAR COMISIÓN
+                    try {
+                        const comisionSnap = await db.ref('configuracion_global/comision_plataforma').once('value');
+                        if (comisionSnap.val() !== null) comisionGlobal = comisionSnap.val();
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo cargar comisión global, usando valor por defecto:', e.message);
+                    }
                     
-                    const tipoSnap = await db.ref('configuracion_global/comision_tipo').once('value');
-                    if (tipoSnap.val() !== null) comisionTipoGlobal = tipoSnap.val();
+                    // ✅ INTENTAR CARGAR TIPO DE COMISIÓN
+                    try {
+                        const tipoSnap = await db.ref('configuracion_global/comision_tipo').once('value');
+                        if (tipoSnap.val() !== null) comisionTipoGlobal = tipoSnap.val();
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo cargar tipo de comisión, usando valor por defecto');
+                    }
                     
-                    // Cargar clave para ganancias
-                    const claveSnap = await db.ref('configuracion_global/clave_ganancias').once('value');
-                    if (claveSnap.val() !== null) claveGananciasGlobal = claveSnap.val();
+                    // ✅ INTENTAR CARGAR CLAVE PARA GANANCIAS
+                    try {
+                        const claveSnap = await db.ref('configuracion_global/clave_ganancias').once('value');
+                        if (claveSnap.val() !== null) claveGananciasGlobal = claveSnap.val();
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo cargar clave de ganancias, usando valor por defecto');
+                    }
                     
                     console.log(`💰 Comisión: ${comisionGlobal}% (${comisionTipoGlobal})`);
                     console.log(`🔑 Clave ganancias: ${claveGananciasGlobal}`);
                     
-                    // ✅ Escuchar cambios en tiempo real
-                    db.ref('configuracion_global').on('value', (snapshot) => {
-                        const config = snapshot.val() || {};
-                        comisionGlobal = config.comision_plataforma || 10;
-                        comisionTipoGlobal = config.comision_tipo || 'porcentaje';
-                        claveGananciasGlobal = config.clave_ganancias || 'admin123';
-                        console.log('🔄 Configuración global actualizada');
-                    });
+                    // ✅ Escuchar cambios en tiempo real (con manejo de errores)
+                    try {
+                        db.ref('configuracion_global').on('value', (snapshot) => {
+                            const config = snapshot.val() || {};
+                            if (config.comision_plataforma !== undefined) comisionGlobal = config.comision_plataforma;
+                            if (config.comision_tipo !== undefined) comisionTipoGlobal = config.comision_tipo;
+                            if (config.clave_ganancias !== undefined) claveGananciasGlobal = config.clave_ganancias;
+                            console.log('🔄 Configuración global actualizada');
+                        });
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo establecer listener de configuración global');
+                    }
                     
                 } catch (error) {
-                    console.warn('⚠️ Usando valores por defecto:', error);
+                    console.warn('⚠️ Usando valores por defecto para configuración global:', error.message);
                     comisionGlobal = 10;
                     comisionTipoGlobal = 'porcentaje';
                     claveGananciasGlobal = 'admin123';
@@ -1174,20 +1201,32 @@
 
             async function cargarConfiguracionDemoras() {
                 try {
-                    const snap = await db.ref(`restaurantes/${restauranteId}/configuracion_demoras/costo_por_minuto`).once('value');
-                    if (snap.val() !== null) {
-                        costoDemoraPorMinuto = snap.val();
-                        console.log(`⏱️ Costo demora: ${costoDemoraPorMinuto}€/min`);
+                    // ✅ INTENTAR CARGAR COSTO DE DEMORA
+                    try {
+                        const snap = await db.ref(`restaurantes/${restauranteId}/configuracion_demoras/costo_por_minuto`).once('value');
+                        if (snap.val() !== null) {
+                            costoDemoraPorMinuto = snap.val();
+                            console.log(`⏱️ Costo demora: ${costoDemoraPorMinuto}€/min`);
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo cargar costo de demora, usando valor por defecto');
                     }
                     
-                    // Escuchar cambios
-                    db.ref(`restaurantes/${restauranteId}/configuracion_demoras`).on('value', (snapshot) => {
-                        const config = snapshot.val() || {};
-                        costoDemoraPorMinuto = config.costo_por_minuto || 0.50;
-                        console.log(`🔄 Costo demora actualizado: ${costoDemoraPorMinuto}€/min`);
-                    });
+                    // ✅ Escuchar cambios (con manejo de errores)
+                    try {
+                        db.ref(`restaurantes/${restauranteId}/configuracion_demoras`).on('value', (snapshot) => {
+                            const config = snapshot.val() || {};
+                            if (config.costo_por_minuto !== undefined) {
+                                costoDemoraPorMinuto = config.costo_por_minuto;
+                                console.log(`🔄 Costo demora actualizado: ${costoDemoraPorMinuto}€/min`);
+                            }
+                        });
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo establecer listener de demoras');
+                    }
                     
                 } catch (error) {
+                    console.warn('⚠️ Usando valor por defecto para demoras:', error.message);
                     costoDemoraPorMinuto = 0.50;
                 }
             }
@@ -2779,7 +2818,6 @@ function mostrarMensajeVacio(columnaId, icono, mensaje) {
                                         const tarifaKm = configEnvios.tarifa_por_km || 1.50;
                                         const costoMinimo = configEnvios.costo_minimo || 3.00;
                                         const costoMaximo = configEnvios.costo_maximo || 10.00;
-                                        const precioBaseEnvio = configEnvios.precio_base_envio || 3.50;
                                         
                                         let costo = distanciaKm * tarifaKm;
                                         costo = Math.max(costo, costoMinimo);

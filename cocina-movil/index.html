@@ -1320,6 +1320,8 @@
 // 10. CONFIGURACIÓN IMPRESORA
 // ============================================
 
+let impresoraConectada = null; // Guardar la conexión activa
+
 // ✅ FUNCIÓN: Cargar configuración de impresora desde Firebase
 async function cargarConfiguracionImpresora() {
     try {
@@ -1328,7 +1330,6 @@ async function cargarConfiguracionImpresora() {
         if (config && config.activo) {
             impresoraConfigurada = true;
             nombreImpresora = config.nombre || 'Impresora Bluetooth';
-            // ✅ GUARDAR ID DEL DISPOSITIVO PARA RECONEXIÓN RÁPIDA
             window._impresoraDeviceId = config.deviceId || null;
             
             const estadoEl = document.getElementById('estado-impresora');
@@ -1337,11 +1338,10 @@ async function cargarConfiguracionImpresora() {
                 estadoEl.title = `Impresora: ${nombreImpresora}`;
             }
             
-            // ✅ GUARDAR EN LOCAL STORAGE
             localStorage.setItem('impresora_nombre', nombreImpresora);
             localStorage.setItem('impresora_id', config.deviceId || '');
             
-            console.log(`🖨️ Impresora configurada: ${nombreImpresora} (ID: ${config.deviceId || 'N/A'})`);
+            console.log(`🖨️ Impresora configurada: ${nombreImpresora}`);
         } else {
             impresoraConfigurada = false;
             nombreImpresora = '';
@@ -1364,7 +1364,7 @@ async function cargarConfiguracionImpresora() {
     }
 }
 
-// ✅ FUNCIÓN: Configurar impresora (guardar en Firebase)
+// ✅ FUNCIÓN: Configurar impresora (CONEXIÓN Y GUARDADO)
 window.configurarImpresora = function() {
     console.log('🖨️ Configurando impresora...');
     
@@ -1420,9 +1420,7 @@ window.configurarImpresora = function() {
                         { namePrefix: 'Blue' },
                         { namePrefix: 'BT' },
                         { namePrefix: 'XPrinter' },
-                        { namePrefix: 'MP' },
-                        { namePrefix: '58mm' },
-                        { namePrefix: '80mm' }
+                        { namePrefix: 'MP' }
                     ],
                     optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
                 });
@@ -1456,6 +1454,10 @@ window.configurarImpresora = function() {
                     nombreImpresora = device.name || 'Impresora Bluetooth';
                     window._impresoraDeviceId = device.id;
                     
+                    // ✅ GUARDAR EN LOCAL STORAGE
+                    localStorage.setItem('impresora_nombre', nombreImpresora);
+                    localStorage.setItem('impresora_id', device.id);
+                    
                     // ✅ ACTUALIZAR UI
                     const estadoEl = document.getElementById('estado-impresora');
                     if (estadoEl) {
@@ -1463,9 +1465,14 @@ window.configurarImpresora = function() {
                         estadoEl.title = `Impresora: ${nombreImpresora}`;
                     }
                     
-                    // ✅ GUARDAR EN LOCAL STORAGE PARA RECUPERACIÓN RÁPIDA
-                    localStorage.setItem('impresora_nombre', nombreImpresora);
-                    localStorage.setItem('impresora_id', device.id);
+                    // ✅ INTENTAR CONECTAR PARA VERIFICAR
+                    try {
+                        const server = await device.gatt.connect();
+                        console.log('✅ Conectado a la impresora:', device.name);
+                        await server.disconnect();
+                    } catch (connError) {
+                        console.warn('⚠️ No se pudo conectar ahora, se conectará al imprimir:', connError);
+                    }
                     
                     showToast(`✅ Impresora "${nombreImpresora}" configurada correctamente`, 'success');
                 }
@@ -1531,8 +1538,8 @@ window.desvincularImpresora = function() {
     });
 };
 
-// ✅ FUNCIÓN: Generar texto del ticket (formato mejorado)
-function generarTextoComanda(data, nombreRestaurante) {
+// ✅ FUNCIÓN: Generar texto del ticket (SIN SÍMBOLO €)
+function generarTextoComanda(data, nombreRestaurante, pedidoId) {
     let texto = '';
     
     // ============================================
@@ -1543,7 +1550,7 @@ function generarTextoComanda(data, nombreRestaurante) {
     texto += '\x1B\x45\x01'; // Negrita ON
     
     // 🔥 TAMAÑO DE TEXTO DOBLE (ALTURA Y ANCHO x2)
-    texto += '\x1B\x21\x10'; // Doble tamaño (modo caracteres)
+    texto += '\x1B\x21\x10'; // Doble tamaño
     texto += '  AGUADULCE\n';
     texto += '   EXPRESS\n';
     texto += '\x1B\x21\x00'; // Tamaño normal
@@ -1581,10 +1588,11 @@ function generarTextoComanda(data, nombreRestaurante) {
     texto += '-------------------------------\n';
     
     // ============================================
-    // 💰 TOTAL
+    // 💰 TOTAL - SIN SÍMBOLO € (USAR "EUR")
     // ============================================
     texto += '\x1B\x45\x01'; // Negrita ON
-    texto += `   TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
+    const totalStr = (data.total || 0).toFixed(2);
+    texto += `   TOTAL: ${totalStr} EUR\n`;
     texto += '\x1B\x45\x00'; // Negrita OFF
     texto += '===============================\n';
     
@@ -1606,7 +1614,7 @@ function generarTextoComanda(data, nombreRestaurante) {
     return texto;
 }
 
-// ✅ FUNCIÓN: Conectar a impresora guardada (reconexión rápida)
+// ✅ FUNCIÓN: Conectar a impresora guardada
 async function conectarImpresoraGuardada() {
     if (!impresoraConfigurada) {
         console.warn('⚠️ No hay impresora configurada');
@@ -1614,9 +1622,9 @@ async function conectarImpresoraGuardada() {
     }
     
     try {
-        console.log('🔄 Reconectando a impresora guardada:', nombreImpresora);
+        console.log('🔄 Conectando a impresora guardada:', nombreImpresora);
         
-        // ✅ USAR EL NOMBRE GUARDADO Y EL ID EN LOCAL STORAGE
+        // ✅ USAR EL NOMBRE GUARDADO
         const device = await navigator.bluetooth.requestDevice({
             filters: [
                 { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
@@ -1630,20 +1638,24 @@ async function conectarImpresoraGuardada() {
             const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
             const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
             
-            console.log('✅ Reconectado a:', device.name);
-            return { device, server, service, characteristic };
+            console.log('✅ Conectado a:', device.name);
+            
+            // ✅ GUARDAR LA CONEXIÓN ACTIVA
+            impresoraConectada = { device, server, service, characteristic };
+            
+            return impresoraConectada;
         }
         return null;
         
     } catch (error) {
-        console.warn('⚠️ Error reconectando:', error);
+        console.warn('⚠️ Error conectando:', error);
         return null;
     }
 }
 
 // ✅ FUNCIÓN: Imprimir comanda con impresora configurada
 window.imprimirComandaConImpresora = function(pedidoId) {
-    console.log('🖨️ Preparando comanda para impresión...');
+    console.log('🖨️ Preparando ticket para impresión...');
     
     if (!impresoraConfigurada) {
         Swal.fire({
@@ -1690,35 +1702,23 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         
         const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
         
-        // ✅ GENERAR TEXTO CON EL NUEVO FORMATO
-        const texto = generarTextoComanda(data, nombreRestaurante);
+        // ✅ GENERAR TEXTO CON EL NUEVO FORMATO (SIN €)
+        const texto = generarTextoComanda(data, nombreRestaurante, pedidoId);
         
         console.log('📄 Ticket generado:');
         console.log(texto);
         
         // ✅ INTENTAR IMPRIMIR CON LA IMPRESORA GUARDADA
         try {
-            // Intentar reconectar con la impresora guardada
-            let connection = await conectarImpresoraGuardada();
+            // ✅ CONECTAR (usar conexión guardada o crear nueva)
+            let connection = impresoraConectada;
             
-            // Si no se pudo reconectar, buscar manualmente
             if (!connection) {
-                console.log('🔄 Buscando impresora manualmente...');
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [
-                        { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
-                        { name: nombreImpresora }
-                    ],
-                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
-                });
-                
-                if (!device) throw new Error('No se encontró la impresora');
-                
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
-                const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
-                
-                connection = { device, server, service, characteristic };
+                connection = await conectarImpresoraGuardada();
+            }
+            
+            if (!connection) {
+                throw new Error('No se pudo conectar a la impresora');
             }
             
             // ✅ ENVIAR DATOS
@@ -1732,15 +1732,20 @@ window.imprimirComandaConImpresora = function(pedidoId) {
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
             
-            await connection.server.disconnect();
             console.log('✅ Ticket enviado a:', connection.device.name);
             showToast(`🖨️ Ticket enviado a ${connection.device.name}`, 'success');
+            
+            // ✅ MANTENER CONEXIÓN PARA FUTURAS IMPRESIONES
+            // NO desconectar para mantener la conexión activa
             
         } catch (bluetoothError) {
             console.warn('⚠️ Error en Bluetooth:', bluetoothError);
             
             // ✅ FALLBACK: Mostrar vista previa
-            const textoPreview = texto.replace(/\x1B/g, '').replace(/\x40/g, '').replace(/\x61/g, '').replace(/\x45/g, '').replace(/\x69/g, '').replace(/\x21/g, '');
+            const textoPreview = texto
+                .replace(/\x1B/g, '').replace(/\x40/g, '')
+                .replace(/\x61/g, '').replace(/\x45/g, '')
+                .replace(/\x69/g, '').replace(/\x21/g, '');
             
             Swal.fire({
                 title: '🧾 Ticket de Cocina',

@@ -985,6 +985,10 @@
             // Cargar tamaño de fuente
             cargarTamañoFuente();
             
+            // ✅ CARGAR CONFIGURACIONES GLOBALES (DESDE ADMIN)
+            await cargarConfiguracionGlobal();
+            await cargarConfiguracionDemoras();
+            
             // ============================================
             // 4. VARIABLES GLOBALES
             // ============================================
@@ -1127,32 +1131,104 @@
                 }
             });
 
-           // ============================================
-// 9. FUNCIONES DE CARGA
-// ============================================
-async function cargarDatosRestaurante() {
-    try {
-        const snapshot = await db.ref(`restaurantes/${restauranteId}`).once('value');
-        const data = snapshot.val();
-        if (data) {
-            const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Restaurante';
-            
-            // ✅ SOLO ACTUALIZAR LA BARRA SUPERIOR (existe)
-            const brandElement = document.querySelector('.top-bar .brand');
-            if (brandElement) {
-                brandElement.innerHTML = `🍳 ${nombre}`;
-                console.log(`✅ Nombre actualizado: ${nombre}`);
+            // ============================================
+            // 4b. CONFIGURACIÓN GLOBAL (DESDE ADMIN)
+            // ============================================
+            let comisionGlobal = 10;
+            let comisionTipoGlobal = 'porcentaje';
+            let claveGananciasGlobal = 'admin123';
+            let costoDemoraPorMinuto = 0.50;
+
+            async function cargarConfiguracionGlobal() {
+                try {
+                    // Cargar comisión
+                    const comisionSnap = await db.ref('configuracion_global/comision_plataforma').once('value');
+                    if (comisionSnap.val() !== null) comisionGlobal = comisionSnap.val();
+                    
+                    const tipoSnap = await db.ref('configuracion_global/comision_tipo').once('value');
+                    if (tipoSnap.val() !== null) comisionTipoGlobal = tipoSnap.val();
+                    
+                    // Cargar clave para ganancias
+                    const claveSnap = await db.ref('configuracion_global/clave_ganancias').once('value');
+                    if (claveSnap.val() !== null) claveGananciasGlobal = claveSnap.val();
+                    
+                    console.log(`💰 Comisión: ${comisionGlobal}% (${comisionTipoGlobal})`);
+                    console.log(`🔑 Clave ganancias: ${claveGananciasGlobal}`);
+                    
+                    // ✅ Escuchar cambios en tiempo real
+                    db.ref('configuracion_global').on('value', (snapshot) => {
+                        const config = snapshot.val() || {};
+                        comisionGlobal = config.comision_plataforma || 10;
+                        comisionTipoGlobal = config.comision_tipo || 'porcentaje';
+                        claveGananciasGlobal = config.clave_ganancias || 'admin123';
+                        console.log('🔄 Configuración global actualizada');
+                    });
+                    
+                } catch (error) {
+                    console.warn('⚠️ Usando valores por defecto:', error);
+                    comisionGlobal = 10;
+                    comisionTipoGlobal = 'porcentaje';
+                    claveGananciasGlobal = 'admin123';
+                }
             }
-        }
-    } catch (error) { 
-        console.error('Error al cargar restaurante:', error); 
-    }
-}
+
+            async function cargarConfiguracionDemoras() {
+                try {
+                    const snap = await db.ref(`restaurantes/${restauranteId}/configuracion_demoras/costo_por_minuto`).once('value');
+                    if (snap.val() !== null) {
+                        costoDemoraPorMinuto = snap.val();
+                        console.log(`⏱️ Costo demora: ${costoDemoraPorMinuto}€/min`);
+                    }
+                    
+                    // Escuchar cambios
+                    db.ref(`restaurantes/${restauranteId}/configuracion_demoras`).on('value', (snapshot) => {
+                        const config = snapshot.val() || {};
+                        costoDemoraPorMinuto = config.costo_por_minuto || 0.50;
+                        console.log(`🔄 Costo demora actualizado: ${costoDemoraPorMinuto}€/min`);
+                    });
+                    
+                } catch (error) {
+                    costoDemoraPorMinuto = 0.50;
+                }
+            }
+
+            // ============================================
+            // 9. FUNCIONES DE CARGA
+            // ============================================
+            async function cargarDatosRestaurante() {
+                try {
+                    const snapshot = await db.ref(`restaurantes/${restauranteId}`).once('value');
+                    const data = snapshot.val();
+                    if (data) {
+                        const nombre = data.NOMBRE_RESTAURANTE || data.nombre || 'Restaurante';
+                        
+                        // ✅ SOLO ACTUALIZAR LA BARRA SUPERIOR (existe)
+                        const brandElement = document.querySelector('.top-bar .brand');
+                        if (brandElement) {
+                            brandElement.innerHTML = `🍳 ${nombre}`;
+                            console.log(`✅ Nombre actualizado: ${nombre}`);
+                        }
+                    }
+                } catch (error) { 
+                    console.error('Error al cargar restaurante:', error); 
+                }
+            }
+
             async function cargarTiempoElaboracion() {
                 try {
                     const snapshot = await db.ref(`restaurantes/${restauranteId}/tiempo_elaboracion`).once('value');
                     tiempoElaboracionRestaurante = snapshot.val() || TIEMPO_ELABORACION_DEFAULT;
                     console.log(`⏱️ Tiempo de elaboración: ${tiempoElaboracionRestaurante} minutos`);
+                    
+                    // ✅ NUEVO: Escuchar cambios en tiempo real
+                    db.ref(`restaurantes/${restauranteId}/tiempo_elaboracion`).on('value', (snap) => {
+                        const nuevo = snap.val();
+                        if (nuevo) {
+                            tiempoElaboracionRestaurante = nuevo;
+                            console.log(`⏱️ Tiempo actualizado: ${tiempoElaboracionRestaurante} min`);
+                        }
+                    });
+                    
                 } catch (error) {
                     tiempoElaboracionRestaurante = TIEMPO_ELABORACION_DEFAULT;
                 }
@@ -2698,9 +2774,12 @@ function mostrarMensajeVacio(columnaId, icono, mensaje) {
                                         const distanciaKm = result.data.distanciaKm;
                                         const tiempo = result.data.duracion || '';
                                         
-                                        const tarifaKm = restaurante.tarifa_envio_km || 1.50;
-                                        const costoMinimo = restaurante.costo_envio_minimo || 3.00;
-                                        const costoMaximo = restaurante.costo_envio_maximo || 10.00;
+                                        // ✅ LEER CONFIGURACIÓN DE ENVÍOS DESDE ADMIN
+                                        const configEnvios = restaurante.configuracion_envios || {};
+                                        const tarifaKm = configEnvios.tarifa_por_km || 1.50;
+                                        const costoMinimo = configEnvios.costo_minimo || 3.00;
+                                        const costoMaximo = configEnvios.costo_maximo || 10.00;
+                                        const precioBaseEnvio = configEnvios.precio_base_envio || 3.50;
                                         
                                         let costo = distanciaKm * tarifaKm;
                                         costo = Math.max(costo, costoMinimo);
@@ -3217,9 +3296,16 @@ function mostrarVistaDemoras() {
         
         if (contador) contador.textContent = demoras.length;
         
+        // ✅ CALCULAR COSTO TOTAL DE DEMORAS
+        let totalCostoDemora = 0;
+        for (const d of demoras) {
+            totalCostoDemora += d.demora * costoDemoraPorMinuto;
+        }
+        
         let html = `<div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.2rem 0.5rem;border:1px solid var(--border-color);margin-bottom:0.3rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:0.65rem;">
             <div><span style="color:var(--text-muted);">📊 Total:</span> <strong style="color:var(--accent-red);">${countDemora}</strong></div>
             <div><span style="color:var(--text-muted);">⏱️ Promedio:</span> <strong style="color:var(--accent-gold);">${(totalDemora/countDemora).toFixed(0)} min</strong></div>
+            <div><span style="color:var(--text-muted);">💰 Costo demora:</span> <strong style="color:var(--accent-red);">${totalCostoDemora.toFixed(2)}€</strong></div>
         </div>`;
         
         for (const d of demoras) {
@@ -3240,6 +3326,7 @@ function mostrarVistaDemoras() {
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.15rem;">
                         <span style="font-size:0.55rem;color:var(--text-muted);">⏱️ Demora</span>
                         <span style="background:${color};color:#0f172a;padding:0.05rem 0.3rem;border-radius:50px;font-size:0.55rem;font-weight:700;">${d.demora} min</span>
+                        <span style="font-size:0.55rem;color:var(--accent-red);">${(d.demora * costoDemoraPorMinuto).toFixed(2)}€</span>
                     </div>
                     <div class="productos">${prodHtml}</div>
                     <div style="display:flex;justify-content:space-between;margin-top:0.15rem;padding-top:0.15rem;border-top:1px solid var(--border-color);">
@@ -3266,7 +3353,9 @@ let totalGanancias = 0;
 window.mostrarVistaGanancias = function() {
     console.log('💰 Solicitando acceso a ganancias...');
     
-    // ✅ PEDIR CONTRASEÑA ANTES DE MOSTRAR
+    // ✅ USAR CLAVE DESDE FIREBASE
+    const claveCorrecta = claveGananciasGlobal || 'admin123';
+    
     Swal.fire({
         title: '🔒 Acceso Restringido',
         html: `
@@ -3275,9 +3364,6 @@ window.mostrarVistaGanancias = function() {
                 <p style="margin-bottom:16px;font-size:12px;color:#94a3b8;">Ingresa la contraseña para continuar</p>
                 <input id="password-ganancias" type="password" class="swal2-input" placeholder="Contraseña" 
                        style="width:100%;padding:12px;background:#0f172a;border:2px solid #334155;border-radius:12px;color:white;font-size:14px;outline:none;">
-                <div style="margin-top:8px;font-size:11px;color:#64748b;text-align:center;">
-                    💡 Contraseña por defecto: <strong>admin123</strong>
-                </div>
             </div>
         `,
         background: '#0f172a',
@@ -3288,8 +3374,8 @@ window.mostrarVistaGanancias = function() {
         cancelButtonText: 'Cancelar',
         preConfirm: () => {
             const password = document.getElementById('password-ganancias').value;
-            // ✅ CONTRASEÑA - PUEDES CAMBIARLA AQUÍ
-            if (password === 'admin123') {
+            // ✅ COMPARAR CON CLAVE DESDE FIREBASE
+            if (password === claveCorrecta) {
                 return true;
             } else {
                 Swal.showValidationMessage('❌ Contraseña incorrecta');
@@ -3352,6 +3438,10 @@ window.cargarGanancias = function() {
     const periodo = filtro ? filtro.value : 'semana';
     content.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--text-muted);">🔄 Cargando datos...</div>';
     
+    // ✅ USAR COMISIÓN DESDE FIREBASE
+    const comisionPorcentaje = comisionGlobal || 10;
+    const comisionTipo = comisionTipoGlobal || 'porcentaje';
+    
     db.ref('pedidos').once('value').then(snap => {
         const pedidos = snap.val();
         if (!pedidos) {
@@ -3409,13 +3499,28 @@ window.cargarGanancias = function() {
                 let montoBase = data.base || data.subtotal || 0;
                 if (montoBase === 0 && data.total > 0) {
                     const envio = data.envio || 0;
-                    const comision = data.comision_aplicada || (data.total * 0.1);
-                    montoBase = data.total - envio - comision;
+                    let comisionCalculada = data.comision_aplicada || 0;
+                    if (comisionCalculada === 0) {
+                        if (comisionTipo === 'porcentaje') {
+                            comisionCalculada = (data.total - envio) * (comisionPorcentaje / 100);
+                        } else {
+                            comisionCalculada = comisionPorcentaje;
+                        }
+                    }
+                    montoBase = data.total - envio - comisionCalculada;
+                }
+                
+                // ✅ CALCULAR COMISIÓN CON VALOR DESDE FIREBASE
+                let comision = data.comision_aplicada || 0;
+                if (comision === 0) {
+                    if (comisionTipo === 'porcentaje') {
+                        comision = montoBase * (comisionPorcentaje / 100);
+                    } else {
+                        comision = comisionPorcentaje;
+                    }
                 }
                 
                 totalVentas += montoBase;
-                
-                const comision = data.comision_aplicada || (montoBase * 0.1);
                 totalComisiones += comision;
                 totalLiquidar += (montoBase - comision);
                 
@@ -3451,13 +3556,16 @@ window.cargarGanancias = function() {
                     <div class="value green">${totalVentas.toFixed(2)}€</div>
                 </div>
                 <div class="resumen-card">
-                    <div class="label">🏪 Comisiones</div>
+                    <div class="label">🏪 Comisión (${comisionPorcentaje}%)</div>
                     <div class="value blue">${totalComisiones.toFixed(2)}€</div>
                 </div>
                 <div class="resumen-card">
                     <div class="label">💵 A Liquidar</div>
                     <div class="value purple">${totalLiquidar.toFixed(2)}€</div>
                 </div>
+            </div>
+            <div style="text-align:center;font-size:0.5rem;color:var(--text-muted);margin-bottom:0.3rem;">
+                ⚙️ Comisión: ${comisionTipo === 'porcentaje' ? comisionPorcentaje + '%' : comisionPorcentaje + '€ fijo'}
             </div>
         `;
         
@@ -3492,7 +3600,9 @@ window.cargarGanancias = function() {
             totalVentas: totalVentas,
             totalComisiones: totalComisiones,
             totalLiquidar: totalLiquidar,
-            detalle: pedidosDetalle
+            detalle: pedidosDetalle,
+            comisionPorcentaje: comisionPorcentaje,
+            comisionTipo: comisionTipo
         };
         
         console.log(`💰 Ganancias cargadas: ${totalPedidos} pedidos, ${totalVentas.toFixed(2)}€ base`);
@@ -3570,8 +3680,72 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item => {
         renderizarVista();
     });
 });
+
+// ============================================
+// 29. LIMPIAR HISTORIAL (FUNCIÓN ADMIN)
+// ============================================
+window.limpiarHistorial = async function() {
+    // ✅ Verificar que el usuario es admin
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        showToast('❌ Debes iniciar sesión', 'error');
+        return;
+    }
+    
+    const adminSnap = await db.ref(`usuarios/${user.uid}/rol`).once('value');
+    if (adminSnap.val() !== 'admin') {
+        showToast('❌ Solo el administrador puede limpiar el historial', 'error');
+        return;
+    }
+    
+    const confirm = await Swal.fire({
+        title: '⚠️ ¿Limpiar historial?',
+        text: 'Esta acción eliminará todos los pedidos finalizados (ENTREGADOS, LISTOS, CANCELADOS). ¿Estás seguro?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, limpiar',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    try {
+        const pedidos = await db.ref('pedidos').once('value');
+        const updates = {};
+        let count = 0;
+        
+        for (const [id, data] of Object.entries(pedidos.val() || {})) {
+            const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+            if (restId === restauranteId) {
+                const estado = data.estado ? data.estado.toUpperCase() : '';
+                if (estado === 'ENTREGADO' || estado === 'LISTO' || estado === 'CANCELADO' || estado === 'RECHAZADO') {
+                    updates[id] = null;
+                    count++;
+                }
+            }
+        }
+        
+        if (count === 0) {
+            showToast('📭 No hay pedidos para limpiar', 'info');
+            return;
+        }
+        
+        await db.ref('pedidos').update(updates);
+        showToast(`✅ ${count} pedidos eliminados del historial`, 'success');
+        renderizarVista();
+        
+    } catch (error) {
+        console.error('Error limpiando historial:', error);
+        showToast('❌ Error al limpiar historial', 'error');
+    }
+};
+
             // ============================================
-            // 29. INICIO
+            // 30. INICIO
             // ============================================
             console.log('✅ App móvil lista');
             console.log('📱 Versión para tableta con todas las funcionalidades');

@@ -1336,6 +1336,11 @@ async function cargarConfiguracionImpresora() {
                 estadoEl.textContent = '🟢';
                 estadoEl.title = `Impresora: ${nombreImpresora}`;
             }
+            
+            // ✅ GUARDAR EN LOCAL STORAGE
+            localStorage.setItem('impresora_nombre', nombreImpresora);
+            localStorage.setItem('impresora_id', config.deviceId || '');
+            
             console.log(`🖨️ Impresora configurada: ${nombreImpresora} (ID: ${config.deviceId || 'N/A'})`);
         } else {
             impresoraConfigurada = false;
@@ -1347,6 +1352,9 @@ async function cargarConfiguracionImpresora() {
                 estadoEl.textContent = '⭕';
                 estadoEl.title = 'No hay impresora configurada';
             }
+            
+            localStorage.removeItem('impresora_nombre');
+            localStorage.removeItem('impresora_id');
         }
     } catch (error) { 
         console.error('Error cargando impresora:', error);
@@ -1412,7 +1420,9 @@ window.configurarImpresora = function() {
                         { namePrefix: 'Blue' },
                         { namePrefix: 'BT' },
                         { namePrefix: 'XPrinter' },
-                        { namePrefix: 'MP' }
+                        { namePrefix: 'MP' },
+                        { namePrefix: '58mm' },
+                        { namePrefix: '80mm' }
                     ],
                     optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
                 });
@@ -1521,6 +1531,81 @@ window.desvincularImpresora = function() {
     });
 };
 
+// ✅ FUNCIÓN: Generar texto del ticket (formato mejorado)
+function generarTextoComanda(data, nombreRestaurante) {
+    let texto = '';
+    
+    // ============================================
+    // 🔥 ENCABEZADO - AGUADULCE EXPRESS EN GRANDE
+    // ============================================
+    texto += '\x1B\x40'; // Inicializar impresora
+    texto += '\x1B\x61\x01'; // Centrar
+    texto += '\x1B\x45\x01'; // Negrita ON
+    
+    // 🔥 TAMAÑO DE TEXTO DOBLE (ALTURA Y ANCHO x2)
+    texto += '\x1B\x21\x10'; // Doble tamaño (modo caracteres)
+    texto += '  AGUADULCE\n';
+    texto += '   EXPRESS\n';
+    texto += '\x1B\x21\x00'; // Tamaño normal
+    texto += '\x1B\x45\x00'; // Negrita OFF
+    texto += '\x1B\x61\x00'; // Alinear izquierda
+    
+    // ============================================
+    // 📋 TICKET
+    // ============================================
+    texto += '\x1B\x45\x01'; // Negrita ON
+    texto += '===============================\n';
+    texto += '\x1B\x45\x00'; // Negrita OFF
+    texto += `   Ticket #${data.id_pedido || pedidoId.substring(0,8)}\n`;
+    texto += `   Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
+    texto += '-------------------------------\n';
+    texto += `   Cliente: ${data.cliente_nombre || 'Sin nombre'}\n`;
+    texto += `   Telefono: ${data.cliente_telefono || 'Sin telefono'}\n`;
+    texto += `   Direccion: ${data.direccion || 'Sin direccion'}\n`;
+    texto += '-------------------------------\n';
+    texto += '   PRODUCTOS:\n';
+    
+    // ============================================
+    // 📦 PRODUCTOS
+    // ============================================
+    if (data.items && data.items.length > 0) {
+        for (const item of data.items) {
+            const cantidad = item.cantidad || 1;
+            const nombre = item.nombre || 'Producto';
+            texto += `     ${cantidad}x ${nombre}\n`;
+        }
+    } else {
+        texto += '   Sin productos\n';
+    }
+    
+    texto += '-------------------------------\n';
+    
+    // ============================================
+    // 💰 TOTAL
+    // ============================================
+    texto += '\x1B\x45\x01'; // Negrita ON
+    texto += `   TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
+    texto += '\x1B\x45\x00'; // Negrita OFF
+    texto += '===============================\n';
+    
+    // ============================================
+    // 🏪 NOMBRE DEL RESTAURANTE EN NEGRITAS
+    // ============================================
+    texto += '\x1B\x45\x01'; // Negrita ON
+    texto += `   ${nombreRestaurante}\n`;
+    texto += '\x1B\x45\x00'; // Negrita OFF
+    texto += '   Gracias por su pedido!\n';
+    texto += '===============================\n';
+    
+    // ============================================
+    // ✂️ CORTE DE PAPEL
+    // ============================================
+    texto += '\x1B\x69'; // Cortar papel
+    texto += '\n\n\n\n\n\n\n\n';
+    
+    return texto;
+}
+
 // ✅ FUNCIÓN: Conectar a impresora guardada (reconexión rápida)
 async function conectarImpresoraGuardada() {
     if (!impresoraConfigurada) {
@@ -1531,6 +1616,7 @@ async function conectarImpresoraGuardada() {
     try {
         console.log('🔄 Reconectando a impresora guardada:', nombreImpresora);
         
+        // ✅ USAR EL NOMBRE GUARDADO Y EL ID EN LOCAL STORAGE
         const device = await navigator.bluetooth.requestDevice({
             filters: [
                 { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
@@ -1604,49 +1690,10 @@ window.imprimirComandaConImpresora = function(pedidoId) {
         
         const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
         
-        // ✅ GENERAR TEXTO SIN EMOJIS PARA IMPRESORA TERMICA
-        let texto = '';
-        texto += '\x1B\x40'; // Inicializar
-        texto += '\x1B\x61\x01'; // Centrar
-        texto += '\x1B\x45\x01'; // Negrita ON
-        texto += '===============================\n';
-        texto += '   AGUADULCE EXPRESS\n';
-        texto += '   COMANDA DE COCINA\n';
-        texto += '===============================\n';
-        texto += '\x1B\x45\x00'; // Negrita OFF
-        texto += '\x1B\x61\x00'; // Alinear izquierda
+        // ✅ GENERAR TEXTO CON EL NUEVO FORMATO
+        const texto = generarTextoComanda(data, nombreRestaurante);
         
-        texto += `Pedido: #${data.id_pedido || pedidoId.substring(0,8)}\n`;
-        texto += `Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
-        texto += '-------------------------------\n';
-        texto += `Cliente: ${data.cliente_nombre || 'Sin nombre'}\n`;
-        texto += `Telefono: ${data.cliente_telefono || 'Sin telefono'}\n`;
-        texto += `Direccion: ${data.direccion || 'Sin direccion'}\n`;
-        texto += '-------------------------------\n';
-        texto += 'PRODUCTOS:\n';
-        
-        if (data.items && data.items.length > 0) {
-            for (const item of data.items) {
-                const cantidad = item.cantidad || 1;
-                const nombre = item.nombre || 'Producto';
-                texto += `  ${cantidad}x ${nombre}\n`;
-            }
-        } else {
-            texto += '  Sin productos\n';
-        }
-        
-        texto += '-------------------------------\n';
-        texto += '\x1B\x45\x01'; // Negrita ON
-        texto += `TOTAL: ${(data.total || 0).toFixed(2)}€\n`;
-        texto += '\x1B\x45\x00'; // Negrita OFF
-        texto += '===============================\n';
-        texto += `Preparado por: ${nombreRestaurante}\n`;
-        texto += 'Gracias por su pedido!\n';
-        texto += '===============================\n';
-        texto += '\x1B\x69'; // Cortar papel
-        texto += '\n\n\n\n\n\n\n\n';
-        
-        console.log('📄 Comanda generada:');
+        console.log('📄 Ticket generado:');
         console.log(texto);
         
         // ✅ INTENTAR IMPRIMIR CON LA IMPRESORA GUARDADA
@@ -1686,17 +1733,17 @@ window.imprimirComandaConImpresora = function(pedidoId) {
             }
             
             await connection.server.disconnect();
-            console.log('✅ Comanda enviada a:', connection.device.name);
-            showToast(`🖨️ Comanda enviada a ${connection.device.name}`, 'success');
+            console.log('✅ Ticket enviado a:', connection.device.name);
+            showToast(`🖨️ Ticket enviado a ${connection.device.name}`, 'success');
             
         } catch (bluetoothError) {
             console.warn('⚠️ Error en Bluetooth:', bluetoothError);
             
             // ✅ FALLBACK: Mostrar vista previa
-            const textoPreview = texto.replace(/\x1B/g, '').replace(/\x40/g, '').replace(/\x61/g, '').replace(/\x45/g, '').replace(/\x69/g, '');
+            const textoPreview = texto.replace(/\x1B/g, '').replace(/\x40/g, '').replace(/\x61/g, '').replace(/\x45/g, '').replace(/\x69/g, '').replace(/\x21/g, '');
             
             Swal.fire({
-                title: '🖨️ Comanda de Cocina',
+                title: '🧾 Ticket de Cocina',
                 html: `
                     <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
 ${textoPreview}
@@ -1726,7 +1773,6 @@ ${textoPreview}
         showToast('❌ Error al imprimir', 'error'); 
     });
 };
-
 // ============================================
 // IMPRIMIR COMADA (VERSIÓN NORMAL)
 // ============================================

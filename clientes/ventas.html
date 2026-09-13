@@ -16,6 +16,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -392,62 +393,34 @@ const ZONAS_ROQUETAS = {
     descuentoPorcentaje: 0.10
 };
 
-// ✅ VERSIÓN MEJORADA: 4 proxies en cascada
+// ✅ Cloud Function de Firebase (igual que cocina-movil)
 async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
     if (!direccionCliente || !direccionRestaurante) return null;
-
-    const apiKey = 'AIzaSyBLFfDZK3Po9ZCurjfhpIIrkvTFekJBqlc';
-    const origen = encodeURIComponent(direccionRestaurante);
-    const destino = encodeURIComponent(direccionCliente);
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
     
-    // 🔄 Lista de proxies de respaldo (se prueban en orden hasta que uno funcione)
-    const proxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?',
-        'https://api.codetabs.com/v1/proxy?quest=',
-        'https://thingproxy.freeboard.io/fetch/'
-    ];
-    
-    for (let i = 0; i < proxies.length; i++) {
-        const proxyUrl = proxies[i];
-        try {
-            const targetUrl = proxyUrl.includes('?') 
-                ? proxyUrl + encodeURIComponent(url)
-                : proxyUrl + url;
-            
-            console.log(`🛰️ Probando proxy ${i + 1}/${proxies.length}: ${proxyUrl.split('/')[2]}`);
-            
-            const response = await fetch(targetUrl, { 
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
-            
-            if (!response.ok) {
-                console.warn(`⚠️ Proxy ${i + 1} respondió con ${response.status}`);
-                continue;
-            }
-
-            const data = await response.json();
-            
-            if (data.status === 'OK' && data.rows?.[0]?.elements?.[0]?.status === 'OK') {
-                const distanciaMetros = data.rows[0].elements[0].distance.value;
-                const distanciaKm = distanciaMetros / 1000;
-                const tiempoTexto = data.rows[0].elements[0].duration.text;
-                console.log(`✅ Distancia calculada: ${distanciaKm.toFixed(2)} km (${tiempoTexto}) vía proxy ${i + 1}`);
-                return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
-            } else {
-                console.warn(`⚠️ Proxy ${i + 1} devolvió status: ${data.status}`);
-            }
-        } catch (error) {
-            console.warn(`❌ Error con proxy ${i + 1}:`, error.message);
+    try {
+        console.log('🛰️ Llamando Cloud Function calcularDistancia...');
+        const calcularFn = firebase.functions().httpsCallable('calcularDistancia');
+        const result = await calcularFn({
+            origen: direccionRestaurante,
+            destino: direccionCliente
+        });
+        
+        if (result.data && result.data.success) {
+            console.log(`✅ Distancia calculada: ${result.data.distanciaKm.toFixed(2)} km (${result.data.tiempo})`);
+            return {
+                km: result.data.distanciaKm,
+                tiempo: result.data.tiempo,
+                metros: result.data.metros
+            };
+        } else {
+            console.warn('⚠️ Cloud Function devolvió error:', result.data?.error);
+            return null;
         }
+    } catch (error) {
+        console.error('❌ Error llamando Cloud Function:', error.message || error);
+        return null;
     }
-    
-    console.warn('⚠️ Todos los proxies fallaron. Usando tarifa fija.');
-    return null;
 }
-
 function calcularCostoEnvio(distanciaKm, subtotalPedido) {
     if (distanciaKm === null || distanciaKm === undefined) {
         return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };

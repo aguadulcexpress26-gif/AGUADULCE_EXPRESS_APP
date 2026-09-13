@@ -73,7 +73,29 @@
         
         .contador-seleccion { background: #f59e0b; color: #0f172a; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
         
-        .chart-container { background: #1e293b; border-radius: 16px; padding: 16px; border: 1px solid #334155; }
+               .chart-container { 
+            background: #1e293b; 
+            border-radius: 16px; 
+            padding: 16px; 
+            border: 1px solid #334155; 
+            position: relative;
+            height: 320px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-container h4 {
+            flex-shrink: 0;
+            margin-bottom: 12px;
+        }
+        .chart-container canvas {
+            flex: 1;
+            min-height: 0;
+            max-height: 260px !important;
+            width: 100% !important;
+            height: 260px !important;
+            display: block;
+        }
         
         .stats-card { background: #1e293b; border-radius: 16px; padding: 16px; border: 1px solid #334155; text-align: center; transition: all 0.3s; }
         .stats-card:hover { border-color: #f59e0b; transform: translateY(-2px); }
@@ -943,41 +965,37 @@ function cargarDashboard() {
     }).catch(error => console.error('Error cargando dashboard:', error));
 } 
 // ============================================================
-// 📈 ACTUALIZAR GRÁFICAS - VERSIÓN CORREGIDA
+// 📈 ACTUALIZAR GRÁFICAS - VERSIÓN DEFINITIVA
 // ============================================================
 function actualizarGraficas(ventasPorDia, estados) {
-    // Verificar que Chart.js está cargado
     if (typeof Chart === 'undefined') {
         console.warn('⚠️ Chart.js no está cargado');
         return;
     }
     
-    // Destruir gráficas anteriores si existen
-    if (chartVentas) {
-        try { chartVentas.destroy(); } catch(e) {}
-        chartVentas = null;
-    }
-    if (chartEstados) {
-        try { chartEstados.destroy(); } catch(e) {}
-        chartEstados = null;
-    }
+    // Destruir gráficas anteriores
+    if (chartVentas) { try { chartVentas.destroy(); } catch(e) {} chartVentas = null; }
+    if (chartEstados) { try { chartEstados.destroy(); } catch(e) {} chartEstados = null; }
     
     // ✅ GRÁFICA DE VENTAS
     const ctx1 = document.getElementById('chartVentas');
     if (ctx1) {
-        // Asegurar que el canvas tenga altura
-        ctx1.style.height = '250px';
-        ctx1.style.width = '100%';
+        // Reset completo del canvas para evitar el bug de altura infinita
+        const parent1 = ctx1.parentElement;
+        parent1.innerHTML = '<h4 class="text-sm font-bold mb-3">📈 Ventas Diarias</h4><canvas id="chartVentas"></canvas>';
+        
+        const newCtx1 = document.getElementById('chartVentas');
+        newCtx1.style.height = '260px';
+        newCtx1.style.width = '100%';
+        newCtx1.style.maxHeight = '260px';
         
         const labels = Object.keys(ventasPorDia).sort();
         const data = labels.map(k => ventasPorDia[k]);
-        
-        // Si no hay datos, mostrar gráfica vacía
         const labelsFinales = labels.length > 0 ? labels.slice(-14) : ['Sin datos'];
         const dataFinal = data.length > 0 ? data.slice(-14) : [0];
         
         try {
-            chartVentas = new Chart(ctx1, {
+            chartVentas = new Chart(newCtx1, {
                 type: 'bar',
                 data: {
                     labels: labelsFinales,
@@ -993,18 +1011,17 @@ function actualizarGraficas(ventasPorDia, estados) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: { duration: 400 },
                     plugins: {
-                        legend: { 
-                            labels: { color: '#94a3b8', font: { size: 11 } } 
-                        }
+                        legend: { labels: { color: '#94a3b8', font: { size: 11 } } }
                     },
                     scales: {
-                        y: { 
+                        y: {
                             beginAtZero: true,
                             ticks: { color: '#94a3b8', font: { size: 10 } },
                             grid: { color: 'rgba(148,163,184,0.1)' }
                         },
-                        x: { 
+                        x: {
                             ticks: { color: '#94a3b8', font: { size: 9 } },
                             grid: { display: false }
                         }
@@ -1020,8 +1037,13 @@ function actualizarGraficas(ventasPorDia, estados) {
     // ✅ GRÁFICA DE ESTADOS
     const ctx2 = document.getElementById('chartEstados');
     if (ctx2) {
-        ctx2.style.height = '250px';
-        ctx2.style.width = '100%';
+        const parent2 = ctx2.parentElement;
+        parent2.innerHTML = '<h4 class="text-sm font-bold mb-3">📊 Pedidos por Estado</h4><canvas id="chartEstados"></canvas>';
+        
+        const newCtx2 = document.getElementById('chartEstados');
+        newCtx2.style.height = '260px';
+        newCtx2.style.width = '100%';
+        newCtx2.style.maxHeight = '260px';
         
         const labels = ['Pendientes', 'Cocina', 'Listos', 'Reparto', 'Entregados'];
         const data = [
@@ -1033,13 +1055,12 @@ function actualizarGraficas(ventasPorDia, estados) {
         ];
         const colors = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#06b6d4'];
         
-        // Si todo es 0, mostrar mensaje
         const totalEstados = data.reduce((a, b) => a + b, 0);
         const dataFinal = totalEstados === 0 ? [1, 1, 1, 1, 1] : data;
         const colorsFinal = totalEstados === 0 ? ['#334155', '#334155', '#334155', '#334155', '#334155'] : colors;
         
         try {
-            chartEstados = new Chart(ctx2, {
+            chartEstados = new Chart(newCtx2, {
                 type: 'doughnut',
                 data: {
                     labels: labels,
@@ -1053,13 +1074,14 @@ function actualizarGraficas(ventasPorDia, estados) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: { duration: 400 },
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            labels: { 
-                                color: '#94a3b8', 
+                            labels: {
+                                color: '#94a3b8',
                                 font: { size: 11 },
-                                padding: 10,
+                                padding: 8,
                                 boxWidth: 12
                             }
                         }

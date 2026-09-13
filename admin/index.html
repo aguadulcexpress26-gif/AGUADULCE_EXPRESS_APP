@@ -866,10 +866,12 @@ function cambiarSeccion(seccion, element) {
 }
 
 // ============================================================
-// 📊 DASHBOARD
+// 📊 DASHBOARD - VERSIÓN CORREGIDA
 // ============================================================
 function cargarDashboard() {
-    const periodo = document.getElementById('dashboardPeriodo').value;
+    console.log('📊 Cargando dashboard...');
+    
+    const periodo = document.getElementById('dashboardPeriodo')?.value || 'mes';
     const ahora = new Date();
     let fechaInicio;
     
@@ -913,46 +915,161 @@ function cargarDashboard() {
             }
         }
         
-        document.getElementById('dashVentas').textContent = totalVentas.toFixed(2) + '€';
-        document.getElementById('dashPedidos').textContent = totalPedidos;
-        document.getElementById('dashClientes').textContent = clientesUnicos.size;
-        document.getElementById('dashProductos').textContent = totalProductos;
+        // Actualizar stats cards
+        const dashVentas = document.getElementById('dashVentas');
+        const dashPedidos = document.getElementById('dashPedidos');
+        const dashClientes = document.getElementById('dashClientes');
+        const dashProductos = document.getElementById('dashProductos');
         
+        if (dashVentas) dashVentas.textContent = totalVentas.toFixed(2) + '€';
+        if (dashPedidos) dashPedidos.textContent = totalPedidos;
+        if (dashClientes) dashClientes.textContent = clientesUnicos.size;
+        if (dashProductos) dashProductos.textContent = totalProductos;
+        
+        // Top restaurantes
         const topRest = Object.values(restaurantes).sort((a,b) => b.ventas - a.ventas).slice(0, 5);
         const container = document.getElementById('topRestaurantes');
-        container.innerHTML = topRest.length > 0 ? 
-            topRest.map((r, i) => `<div class="flex justify-between items-center p-2 bg-slate-800/50 rounded"><span>${i+1}. ${escapeHTML(r.nombre)}</span><span class="text-amber-400">${r.ventas.toFixed(2)}€ (${r.pedidos} pedidos)</span></div>`).join('') :
-            '<div class="text-white/50 text-center p-4">No hay datos de restaurantes</div>';
+        if (container) {
+            container.innerHTML = topRest.length > 0 ? 
+                topRest.map((r, i) => `<div class="flex justify-between items-center p-2 bg-slate-800/50 rounded"><span>${i+1}. ${escapeHTML(r.nombre)}</span><span class="text-amber-400">${r.ventas.toFixed(2)}€ (${r.pedidos} pedidos)</span></div>`).join('') :
+                '<div class="text-white/50 text-center p-4">No hay datos de restaurantes</div>';
+        }
         
-        actualizarGraficas(ventasPorDia, estados);
+        // ✅ Esperar un momento para que el DOM esté listo y luego dibujar gráficas
+        setTimeout(() => {
+            actualizarGraficas(ventasPorDia, estados);
+        }, 100);
         
     }).catch(error => console.error('Error cargando dashboard:', error));
-}
-
+} 
+// ============================================================
+// 📈 ACTUALIZAR GRÁFICAS - VERSIÓN CORREGIDA
+// ============================================================
 function actualizarGraficas(ventasPorDia, estados) {
-    const ctx1 = document.getElementById('chartVentas');
-    if (ctx1) {
-        const labels = Object.keys(ventasPorDia).sort();
-        const data = labels.map(k => ventasPorDia[k]);
-        if (chartVentas) chartVentas.destroy();
-        chartVentas = new Chart(ctx1, {
-            type: 'bar',
-            data: { labels: labels.slice(-14), datasets: [{ label: 'Ventas (€)', data: data.slice(-14), backgroundColor: 'rgba(245, 158, 11, 0.5)', borderColor: '#f59e0b', borderWidth: 2 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { ticks: { color: '#94a3b8' } }, x: { ticks: { color: '#94a3b8' } } } }
-        });
+    // Verificar que Chart.js está cargado
+    if (typeof Chart === 'undefined') {
+        console.warn('⚠️ Chart.js no está cargado');
+        return;
     }
     
+    // Destruir gráficas anteriores si existen
+    if (chartVentas) {
+        try { chartVentas.destroy(); } catch(e) {}
+        chartVentas = null;
+    }
+    if (chartEstados) {
+        try { chartEstados.destroy(); } catch(e) {}
+        chartEstados = null;
+    }
+    
+    // ✅ GRÁFICA DE VENTAS
+    const ctx1 = document.getElementById('chartVentas');
+    if (ctx1) {
+        // Asegurar que el canvas tenga altura
+        ctx1.style.height = '250px';
+        ctx1.style.width = '100%';
+        
+        const labels = Object.keys(ventasPorDia).sort();
+        const data = labels.map(k => ventasPorDia[k]);
+        
+        // Si no hay datos, mostrar gráfica vacía
+        const labelsFinales = labels.length > 0 ? labels.slice(-14) : ['Sin datos'];
+        const dataFinal = data.length > 0 ? data.slice(-14) : [0];
+        
+        try {
+            chartVentas = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: labelsFinales,
+                    datasets: [{
+                        label: 'Ventas (€)',
+                        data: dataFinal,
+                        backgroundColor: 'rgba(245, 158, 11, 0.6)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            labels: { color: '#94a3b8', font: { size: 11 } } 
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            ticks: { color: '#94a3b8', font: { size: 10 } },
+                            grid: { color: 'rgba(148,163,184,0.1)' }
+                        },
+                        x: { 
+                            ticks: { color: '#94a3b8', font: { size: 9 } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+            console.log('✅ Gráfica de ventas creada');
+        } catch (error) {
+            console.error('❌ Error creando gráfica de ventas:', error);
+        }
+    }
+    
+    // ✅ GRÁFICA DE ESTADOS
     const ctx2 = document.getElementById('chartEstados');
     if (ctx2) {
+        ctx2.style.height = '250px';
+        ctx2.style.width = '100%';
+        
         const labels = ['Pendientes', 'Cocina', 'Listos', 'Reparto', 'Entregados'];
-        const data = [estados.RECIBIDO || 0, estados.COCCIÓN || 0, estados.LISTO || 0, estados.EN_REPARTO || 0, estados.ENTREGADO || 0];
+        const data = [
+            estados.RECIBIDO || 0,
+            estados.COCCIÓN || 0,
+            estados.LISTO || 0,
+            estados.EN_REPARTO || 0,
+            estados.ENTREGADO || 0
+        ];
         const colors = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#06b6d4'];
-        if (chartEstados) chartEstados.destroy();
-        chartEstados = new Chart(ctx2, {
-            type: 'doughnut',
-            data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#1e293b', borderWidth: 2 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } } }
-        });
+        
+        // Si todo es 0, mostrar mensaje
+        const totalEstados = data.reduce((a, b) => a + b, 0);
+        const dataFinal = totalEstados === 0 ? [1, 1, 1, 1, 1] : data;
+        const colorsFinal = totalEstados === 0 ? ['#334155', '#334155', '#334155', '#334155', '#334155'] : colors;
+        
+        try {
+            chartEstados = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataFinal,
+                        backgroundColor: colorsFinal,
+                        borderColor: '#1e293b',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { 
+                                color: '#94a3b8', 
+                                font: { size: 11 },
+                                padding: 10,
+                                boxWidth: 12
+                            }
+                        }
+                    }
+                }
+            });
+            console.log('✅ Gráfica de estados creada');
+        } catch (error) {
+            console.error('❌ Error creando gráfica de estados:', error);
+        }
     }
 }
     // ============================================================

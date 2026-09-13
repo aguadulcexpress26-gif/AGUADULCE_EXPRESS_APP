@@ -3670,13 +3670,15 @@ ${textoPreview}
                             {
                                 nombre: '📦 Reparto Personal',
                                 cantidad: 1,
-                                precio_unitario: 0,
-                                total: 0
+                                precio_unitario: costoEnvio,
+                                total: costoEnvio
                             }
                         ],
-                        total: 0,
-                        subtotal: 0,
+                        total: costoEnvio,
+                        subtotal: costoEnvio,
                         envio: costoEnvio,
+                        es_reparto_personal: true,
+                        monto_reparto: costoEnvio,
                         estado: 'LISTO',
                         tipo: 'reparto_personal',
                         metodo_pago: data.pago === 'pagado' ? 'Pagado' : 'Contra entrega',
@@ -4007,8 +4009,8 @@ ${textoPreview}
                 });
             }
 
-            // ============================================
-            // 27. VISTA GANANCIAS - CON DEMORAS
+                      // ============================================
+            // 27. VISTA GANANCIAS - CON DEMORAS Y REPARTOS
             // ============================================
             let totalGanancias = 0;
 
@@ -4127,11 +4129,13 @@ ${textoPreview}
                     }
                     
                     let totalPedidos = 0;
+                    let totalRepartos = 0;
                     let totalVentas = 0;
                     let totalComisiones = 0;
                     let totalDemoras = 0;
                     let totalDescuentoDemora = 0;
                     let totalLiquidar = 0;
+                    let totalLiquidarRepartos = 0;
                     let pedidosDetalle = [];
                     
                     for (const [id, data] of Object.entries(pedidos)) {
@@ -4142,6 +4146,38 @@ ${textoPreview}
                         if (fecha < fechaInicio) continue;
                         
                         if (data.estado === 'ENTREGADO' || data.estado === 'LISTO') {
+                            
+                            // ✅ NUEVO: detectar si es un reparto personal
+                            const esReparto = data.tipo === 'reparto_personal' || data.es_reparto_personal === true;
+                            
+                            if (esReparto) {
+                                // En repartos personales, el monto es el costo del envío
+                                const montoReparto = parseFloat(data.envio || data.monto_reparto || data.total || 0);
+                                
+                                // Los repartos personales NO llevan comisión ni demoras
+                                totalRepartos++;
+                                totalVentas += montoReparto;
+                                totalLiquidar += montoReparto;
+                                totalLiquidarRepartos += montoReparto;
+                                
+                                pedidosDetalle.push({
+                                    id: data.id_pedido || id.substring(0, 8),
+                                    cliente: data.cliente_nombre || 'Reparto Personal',
+                                    total: montoReparto,
+                                    base: montoReparto,
+                                    envio: montoReparto,
+                                    comision: 0,
+                                    demoraMinutos: 0,
+                                    descuentoDemora: 0,
+                                    liquidar: montoReparto,
+                                    fecha: fecha,
+                                    esReparto: true
+                                });
+                                
+                                continue;
+                            }
+                            
+                            // ----- Pedido normal -----
                             totalPedidos++;
                             
                             let montoBase = data.base || data.subtotal || 0;
@@ -4188,7 +4224,8 @@ ${textoPreview}
                                 demoraMinutos: demoraMinutos,
                                 descuentoDemora: descuentoDemora,
                                 liquidar: liquidar,
-                                fecha: fecha
+                                fecha: fecha,
+                                esReparto: false
                             });
                         }
                     }
@@ -4199,6 +4236,8 @@ ${textoPreview}
                     if (gananciasElement) gananciasElement.textContent = totalGanancias.toFixed(0);
                     
                     pedidosDetalle.sort((a, b) => b.fecha - a.fecha);
+                    
+                    const totalOperaciones = totalPedidos + totalRepartos;
                     
                     let html = `
                         <div class="ganancias-resumen-5">
@@ -4223,11 +4262,18 @@ ${textoPreview}
                                 <div class="value purple">${totalLiquidar.toFixed(2)}€</div>
                                 <div class="sub-label">Base - Comisión - Demoras</div>
                             </div>
+                            ${totalRepartos > 0 ? `
+                            <div class="resumen-card" style="grid-column: span 2; border-color:var(--accent-purple); background:rgba(139,92,246,0.08);">
+                                <div class="label">📦 Repartos Personales</div>
+                                <div class="value" style="color:var(--accent-purple);">${totalLiquidarRepartos.toFixed(2)}€ <span style="font-size:0.6rem;">(${totalRepartos})</span></div>
+                            </div>
+                            ` : ''}
                         </div>
                         
                         <div style="text-align:center;font-size:0.5rem;color:var(--text-muted);margin-bottom:0.3rem;">
                             ⚙️ Comisión: ${comisionTipo === 'porcentaje' ? comisionPorcentaje + '%' : comisionPorcentaje + '€ fijo'}
                             · 💰 Costo demora: ${costoDemora.toFixed(2)}€/min
+                            · 📦 ${totalRepartos} reparto${totalRepartos !== 1 ? 's' : ''} personal${totalRepartos !== 1 ? 'es' : ''}
                         </div>
                     `;
                     
@@ -4248,20 +4294,37 @@ ${textoPreview}
                             const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
                             const tieneDemora = p.demoraMinutos > 0;
                             
-                            html += `
-                                <div class="ganancias-detalle-item ${tieneDemora ? 'con-demora' : ''}">
-                                    <div class="col-pedido">
-                                        <div class="pedido-id">#${p.id} · ${escapeHTML(p.cliente)}</div>
-                                        <div class="pedido-fecha">${fechaStr}</div>
+                            if (p.esReparto) {
+                                // Fila de reparto personal
+                                html += `
+                                    <div class="ganancias-detalle-item" style="background:rgba(139,92,246,0.08);border-left:3px solid var(--accent-purple);">
+                                        <div class="col-pedido">
+                                            <div class="pedido-id" style="color:var(--accent-purple);">📦 #${p.id} · ${escapeHTML(p.cliente)}</div>
+                                            <div class="pedido-fecha">${fechaStr} · Reparto Personal</div>
+                                        </div>
+                                        <div class="col-base" style="color:var(--accent-purple);">${p.base.toFixed(2)}€</div>
+                                        <div class="col-comision" style="color:var(--text-muted);">—</div>
+                                        <div class="col-demora" style="color:var(--text-muted);">—</div>
+                                        <div class="col-liquidar" style="color:var(--accent-purple);">${p.liquidar.toFixed(2)}€</div>
                                     </div>
-                                    <div class="col-base">${p.base.toFixed(2)}€</div>
-                                    <div class="col-comision">-${p.comision.toFixed(2)}€</div>
-                                    <div class="col-demora ${tieneDemora ? 'tiene-demora' : ''}">
-                                        ${tieneDemora ? `-${p.descuentoDemora.toFixed(2)}€<span class="minutos">(${p.demoraMinutos} min)</span>` : '—'}
+                                `;
+                            } else {
+                                // Fila de pedido normal
+                                html += `
+                                    <div class="ganancias-detalle-item ${tieneDemora ? 'con-demora' : ''}">
+                                        <div class="col-pedido">
+                                            <div class="pedido-id">#${p.id} · ${escapeHTML(p.cliente)}</div>
+                                            <div class="pedido-fecha">${fechaStr}</div>
+                                        </div>
+                                        <div class="col-base">${p.base.toFixed(2)}€</div>
+                                        <div class="col-comision">-${p.comision.toFixed(2)}€</div>
+                                        <div class="col-demora ${tieneDemora ? 'tiene-demora' : ''}">
+                                            ${tieneDemora ? `-${p.descuentoDemora.toFixed(2)}€<span class="minutos">(${p.demoraMinutos} min)</span>` : '—'}
+                                        </div>
+                                        <div class="col-liquidar">${p.liquidar.toFixed(2)}€</div>
                                     </div>
-                                    <div class="col-liquidar">${p.liquidar.toFixed(2)}€</div>
-                                </div>
-                            `;
+                                `;
+                            }
                         }
                         html += `</div>`;
                         
@@ -4291,7 +4354,7 @@ ${textoPreview}
                         }
                     }
                     
-                                       // ✅ Añadir sección de liquidaciones recibidas
+                    // ✅ Sección de liquidaciones recibidas
                     html += `
                         <div class="liquidaciones-section">
                             <div class="section-title">
@@ -4310,11 +4373,13 @@ ${textoPreview}
                     window._gananciasData = {
                         periodo: periodo,
                         totalPedidos: totalPedidos,
+                        totalRepartos: totalRepartos,
                         totalVentas: totalVentas,
                         totalComisiones: totalComisiones,
                         totalDemoras: totalDemoras,
                         totalDescuentoDemora: totalDescuentoDemora,
                         totalLiquidar: totalLiquidar,
+                        totalLiquidarRepartos: totalLiquidarRepartos,
                         detalle: pedidosDetalle,
                         comisionPorcentaje: comisionPorcentaje,
                         comisionTipo: comisionTipo,
@@ -4328,7 +4393,7 @@ ${textoPreview}
             };
 
             // ============================================
-            // EXPORTAR GANANCIAS EXCEL - CON DEMORAS
+            // EXPORTAR GANANCIAS EXCEL - CON DEMORAS Y REPARTOS
             // ============================================
             window.exportarGananciasExcel = function() {
                 const data = window._gananciasData;
@@ -4343,19 +4408,24 @@ ${textoPreview}
                     return;
                 }
                 
-                let csv = "Pedido,Cliente,Base (Neto),Comisión,Demora (min),Descuento Demora,A Liquidar,Fecha\n";
+                let csv = "Pedido,Cliente,Tipo,Base (Neto),Comisión,Demora (min),Descuento Demora,A Liquidar,Fecha\n";
                 for (const p of data.detalle) {
                     const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
-                    csv += `"${p.id}","${p.cliente}",${p.total.toFixed(2)},${p.comision.toFixed(2)},${p.demoraMinutos},${p.descuentoDemora.toFixed(2)},${p.liquidar.toFixed(2)},"${fechaStr}"\n`;
+                    const tipo = p.esReparto ? 'Reparto Personal' : 'Pedido';
+                    csv += `"${p.id}","${p.cliente}","${tipo}",${p.total.toFixed(2)},${p.comision.toFixed(2)},${p.demoraMinutos},${p.descuentoDemora.toFixed(2)},${p.liquidar.toFixed(2)},"${fechaStr}"\n`;
                 }
                 
-                csv += `\n"RESUMEN","","","","","","",""\n`;
-                csv += `"Total Pedidos",${data.totalPedidos},"","","","","",""\n`;
-                csv += `"Total Base",${data.totalVentas.toFixed(2)}€,"","","","","",""\n`;
-                csv += `"Total Comisiones",${data.totalComisiones.toFixed(2)}€,"","","","","",""\n`;
-                csv += `"Total Demoras (min)",${data.totalDemoras},"","","","","",""\n`;
-                csv += `"Total Descuento Demoras",${data.totalDescuentoDemora.toFixed(2)}€,"","","","","",""\n`;
-                csv += `"TOTAL A LIQUIDAR",${data.totalLiquidar.toFixed(2)}€,"","","","","",""\n`;
+                csv += `\n"RESUMEN","","","","","","","",""\n`;
+                csv += `"Total Pedidos",${data.totalPedidos},"","","","","","",""\n`;
+                csv += `"Total Repartos",${data.totalRepartos || 0},"","","","","","",""\n`;
+                csv += `"Total Base",${data.totalVentas.toFixed(2)}€,"","","","","","",""\n`;
+                csv += `"Total Comisiones",${data.totalComisiones.toFixed(2)}€,"","","","","","",""\n`;
+                csv += `"Total Demoras (min)",${data.totalDemoras},"","","","","","",""\n`;
+                csv += `"Total Descuento Demoras",${data.totalDescuentoDemora.toFixed(2)}€,"","","","","","",""\n`;
+                csv += `"TOTAL A LIQUIDAR",${data.totalLiquidar.toFixed(2)}€,"","","","","","",""\n`;
+                if (data.totalRepartos > 0) {
+                    csv += `"  · Incluye Repartos Personales",${(data.totalLiquidarRepartos || 0).toFixed(2)}€,"","","","","","",""\n`;
+                }
                 
                 const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
                 const link = document.createElement("a");
@@ -4369,15 +4439,14 @@ ${textoPreview}
                 
                 Swal.fire({
                     title: '✅ Reporte exportado',
-                    text: `Se exportaron ${data.detalle.length} pedidos con demoras`,
+                    text: `Se exportaron ${data.detalle.length} operaciones (${data.totalPedidos} pedidos + ${data.totalRepartos || 0} repartos)`,
                     icon: 'success',
-                    timer: 2000,
+                    timer: 2500,
                     showConfirmButton: false,
                     background: '#0f172a',
                     color: 'white'
                 });
             };
-
             // ============================================
             // 28. MENÚ NAVEGACIÓN
             // ============================================

@@ -365,7 +365,7 @@
             </div>
         </div>
 
-        <!-- ==================== CONTABLE ==================== -->
+               <!-- ==================== CONTABLE ==================== -->
         <div id="seccion-contable" class="seccion hidden">
             <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
                 <h2 class="text-2xl font-bold">💰 Contabilidad y Facturación</h2>
@@ -382,10 +382,12 @@
                     </select>
                     <button onclick="cargarContableRestaurante()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold">🔄 Refrescar</button>
                     <button onclick="exportarContableExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">📎 Exportar Excel</button>
+                    <button onclick="archivarLiquidacionesAntiguas()" class="bg-purple-600 text-white px-4 py-2 rounded-xl font-bold">📦 Archivar antiguas</button>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            <!-- 6 Tarjetas de resumen -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
                 <div class="stats-card">
                     <div class="icon">📦</div>
                     <div class="value text-cyan-400" id="contableTotalPedidos">0</div>
@@ -406,10 +408,16 @@
                     <div class="value" style="color:#ef4444;" id="contableTotalDemoras">-0.00€</div>
                     <div class="label">Demoras <span id="contableTotalDemorasMin" style="font-size:10px;color:#94a3b8;"></span></div>
                 </div>
-                <div class="stats-card" style="border-color:#8b5cf6;background:linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1));">
+                <div class="stats-card" style="border-color:#8b5cf6;">
+                    <div class="icon">📦</div>
+                    <div class="value" style="color:#8b5cf6;" id="contableTotalRepartos">-0.00€</div>
+                    <div class="label">Repartos <span id="contableTotalRepartosCant" style="font-size:10px;color:#94a3b8;"></span></div>
+                </div>
+                <div class="stats-card" style="border-color:#10b981;background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.1));">
                     <div class="icon">💵</div>
-                    <div class="value" style="color:#8b5cf6;font-size:28px;" id="contableTotalLiquidar">0.00€</div>
-                    <div class="label">TOTAL A LIQUIDAR</div>
+                    <div class="value" style="color:#10b981;font-size:22px;" id="contableTotalLiquidar">0.00€</div>
+                    <div class="label">PENDIENTE LIQUIDAR</div>
+                    <div style="font-size:11px;color:#06b6d4;margin-top:4px;">Liquidado: <span id="contableTotalLiquidado">0.00€</span></div>
                 </div>
             </div>
 
@@ -425,7 +433,9 @@
                             <th class="text-right p-2">Base</th>
                             <th class="text-right p-2">Comisión</th>
                             <th class="text-right p-2">Demoras</th>
+                            <th class="text-right p-2">Repartos</th>
                             <th class="text-right p-2">A Liquidar</th>
+                            <th class="text-right p-2">Liquidado</th>
                             <th class="text-center p-2">Estado</th>
                             <th class="text-center p-2">Acciones</th>
                         </tr>
@@ -442,7 +452,6 @@
                 <div id="historialLiquidacionesList" class="space-y-2 max-h-96 overflow-y-auto"></div>
             </div>
         </div>
-
         <!-- ==================== LIQUIDACIONES ==================== -->
         <div id="seccion-liquidaciones" class="seccion hidden">
             <div class="flex justify-between items-center mb-6"><h2 class="text-2xl font-bold">💰 Liquidaciones</h2><div class="flex gap-3"><select id="periodoSeleccion" class="p-3 rounded-xl bg-slate-700 border border-slate-600"><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option></select><button onclick="calcularLiquidaciones()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold">📊 Calcular</button><button onclick="exportarLiquidacionesExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">📎 Exportar</button></div></div>
@@ -1829,11 +1838,10 @@ async function guardarAdminUnificado() {
         Swal.fire('❌ Error', error.message, 'error', '#0f172a');
     }
 }
-    // ============================================================
-// 💰 CONTABILIDAD Y FACTURACIÓN - VERSIÓN PROFESIONAL
+  // ============================================================
+// 💰 CONTABILIDAD Y FACTURACIÓN - VERSIÓN CON LIQUIDACIONES Y ARCHIVADO
 // ============================================================
 
-// Cargar restaurantes en el selector
 async function cargarRestaurantesContable() {
     const select = document.getElementById('contableRestauranteSelect');
     if (!select) return;
@@ -1853,68 +1861,110 @@ async function cargarRestaurantesContable() {
     }
 }
 
-// Obtener rango de fechas según período
 function obtenerRangoFechas(periodo) {
     const ahora = new Date();
     let fechaInicio, fechaFin, etiqueta;
     
     switch(periodo) {
         case 'hoy':
-            fechaInicio = new Date(ahora);
-            fechaInicio.setHours(0, 0, 0, 0);
-            fechaFin = new Date(ahora);
-            fechaFin.setHours(23, 59, 59, 999);
+            fechaInicio = new Date(ahora); fechaInicio.setHours(0, 0, 0, 0);
+            fechaFin = new Date(ahora); fechaFin.setHours(23, 59, 59, 999);
             etiqueta = fechaInicio.toLocaleDateString();
             break;
         case 'semana':
             fechaInicio = new Date(ahora);
             const dia = ahora.getDay();
             const diff = (dia === 0 ? 6 : dia - 1);
-            fechaInicio.setDate(ahora.getDate() - diff);
-            fechaInicio.setHours(0, 0, 0, 0);
-            fechaFin = new Date(fechaInicio);
-            fechaFin.setDate(fechaInicio.getDate() + 6);
-            fechaFin.setHours(23, 59, 59, 999);
+            fechaInicio.setDate(ahora.getDate() - diff); fechaInicio.setHours(0, 0, 0, 0);
+            fechaFin = new Date(fechaInicio); fechaFin.setDate(fechaInicio.getDate() + 6); fechaFin.setHours(23, 59, 59, 999);
             etiqueta = `${fechaInicio.toLocaleDateString()} - ${fechaFin.toLocaleDateString()}`;
             break;
         case 'quincena':
             fechaInicio = new Date(ahora);
-            fechaInicio.setDate(ahora.getDate() <= 15 ? 1 : 16);
-            fechaInicio.setHours(0, 0, 0, 0);
+            fechaInicio.setDate(ahora.getDate() <= 15 ? 1 : 16); fechaInicio.setHours(0, 0, 0, 0);
             fechaFin = new Date(fechaInicio);
-            if (ahora.getDate() <= 15) {
-                fechaFin.setDate(15);
-            } else {
-                fechaFin.setMonth(fechaFin.getMonth() + 1, 0);
-            }
+            if (ahora.getDate() <= 15) { fechaFin.setDate(15); } else { fechaFin.setMonth(fechaFin.getMonth() + 1, 0); }
             fechaFin.setHours(23, 59, 59, 999);
             etiqueta = `${fechaInicio.toLocaleDateString()} - ${fechaFin.toLocaleDateString()}`;
             break;
         case 'mes':
-            fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-            fechaInicio.setHours(0, 0, 0, 0);
-            fechaFin = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0);
-            fechaFin.setHours(23, 59, 59, 999);
+            fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1); fechaInicio.setHours(0, 0, 0, 0);
+            fechaFin = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0); fechaFin.setHours(23, 59, 59, 999);
             etiqueta = fechaInicio.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
             break;
         case 'anterior':
-            fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
-            fechaInicio.setHours(0, 0, 0, 0);
-            fechaFin = new Date(ahora.getFullYear(), ahora.getMonth(), 0);
-            fechaFin.setHours(23, 59, 59, 999);
+            fechaInicio = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1); fechaInicio.setHours(0, 0, 0, 0);
+            fechaFin = new Date(ahora.getFullYear(), ahora.getMonth(), 0); fechaFin.setHours(23, 59, 59, 999);
             etiqueta = fechaInicio.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
             break;
         default:
-            fechaInicio = new Date(ahora);
-            fechaInicio.setMonth(ahora.getMonth() - 1);
-            fechaFin = new Date(ahora);
-            etiqueta = 'Último mes';
+            fechaInicio = new Date(ahora); fechaInicio.setMonth(ahora.getMonth() - 1);
+            fechaFin = new Date(ahora); etiqueta = 'Último mes';
     }
     
     return { inicio: fechaInicio, fin: fechaFin, etiqueta };
 }
 
-// Función principal: cargar contabilidad
+// ✅ NUEVA: calcular cuánto ya se ha liquidado de un restaurante en un período
+async function calcularLiquidadoPeriodo(restId, rango) {
+    try {
+        const snap = await database.ref('liquidaciones').once('value');
+        const liquidaciones = snap.val() || {};
+        let totalLiquidado = 0;
+        let cantidad = 0;
+        
+        for (const liq of Object.values(liquidaciones)) {
+            if (liq.restaurante_id !== restId) continue;
+            if (liq.anulada === true) continue;
+            
+            const periodInicio = liq.periodo?.inicio || 0;
+            // Verificar que la liquidación es del mismo período
+            if (periodInicio >= rango.inicio.getTime() && periodInicio <= rango.fin.getTime()) {
+                totalLiquidado += liq.montos?.total_liquidar || 0;
+                cantidad++;
+            }
+        }
+        
+        return { total: totalLiquidado, cantidad };
+    } catch (e) {
+        console.warn('Error calculando liquidado:', e);
+        return { total: 0, cantidad: 0 };
+    }
+}
+
+// ✅ NUEVA: calcular repartos personales del período
+async function calcularRepartosPeriodo(restId, rango) {
+    try {
+        const snap = await database.ref('pedidos').once('value');
+        const pedidos = snap.val() || {};
+        let totalRepartos = 0;
+        let cantidad = 0;
+        
+        for (const data of Object.values(pedidos)) {
+            const restIdPedido = data.restaurante_id || data.restauranteId || data.uid_restaurante;
+            if (restIdPedido !== restId) continue;
+            
+            const fecha = new Date(data.fecha || data.timestamp || 0);
+            if (fecha < rango.inicio || fecha > rango.fin) continue;
+            
+            const esReparto = data.tipo === 'reparto_personal' || data.es_reparto_personal === true;
+            if (!esReparto) continue;
+            
+            const estado = data.estado ? data.estado.toUpperCase() : '';
+            if (estado !== 'ENTREGADO' && estado !== 'LISTO') continue;
+            
+            const montoReparto = parseFloat(data.envio || data.monto_reparto || data.total || 0);
+            totalRepartos += montoReparto;
+            cantidad++;
+        }
+        
+        return { total: totalRepartos, cantidad };
+    } catch (e) {
+        console.warn('Error calculando repartos:', e);
+        return { total: 0, cantidad: 0 };
+    }
+}
+
 async function cargarContableRestaurante() {
     const restSeleccionado = document.getElementById('contableRestauranteSelect')?.value || '';
     const periodo = document.getElementById('periodoReporte')?.value || 'semana';
@@ -1922,7 +1972,7 @@ async function cargarContableRestaurante() {
     if (!restaurantesCache) await cargarRestaurantesContable();
     
     const tbody = document.getElementById('tablaReporteContable');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-white/50">🔄 Cargando datos...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center p-4 text-white/50">🔄 Cargando datos...</td></tr>';
     
     const rango = obtenerRangoFechas(periodo);
     
@@ -1963,13 +2013,41 @@ async function cargarContableRestaurante() {
                     comisionMonto: 0,
                     demoraMinutos: 0,
                     descuentoDemora: 0,
-                    liquidar: 0
+                    repartosCantidad: 0,
+                    repartosMonto: 0,
+                    liquidar: 0,
+                    liquidado: 0,
+                    liquidadoCantidad: 0,
+                    pendienteLiquidar: 0
                 };
             }
             
             const rest = porRestaurante[restId];
             const costoDemora = pedido.costo_demora_minuto || 0.50;
             
+            // ✅ Detectar repartos personales
+            const esReparto = pedido.tipo === 'reparto_personal' || pedido.es_reparto_personal === true;
+            
+            if (esReparto) {
+                const montoReparto = parseFloat(pedido.envio || pedido.monto_reparto || pedido.total || 0);
+                rest.repartosCantidad++;
+                rest.repartosMonto += montoReparto;
+                rest.pedidos.push({
+                    id: pedido.id_pedido || pedido.id.substring(0, 8),
+                    cliente: pedido.cliente_nombre || 'Reparto Personal',
+                    base: 0,
+                    comision: 0,
+                    demoraMinutos: 0,
+                    descuentoDemora: 0,
+                    liquidar: -montoReparto,
+                    fecha: new Date(pedido.fecha || pedido.timestamp || 0),
+                    esReparto: true,
+                    montoReparto: montoReparto
+                });
+                continue;
+            }
+            
+            // ----- Pedido normal -----
             let montoBase = pedido.base || pedido.subtotal || 0;
             if (montoBase === 0 && pedido.total > 0) {
                 const envio = pedido.envio || 0;
@@ -1993,7 +2071,9 @@ async function cargarContableRestaurante() {
                 demoraMinutos: demoraMin,
                 descuentoDemora: descDemora,
                 liquidar: liquidar,
-                fecha: new Date(pedido.fecha || pedido.timestamp || 0)
+                fecha: new Date(pedido.fecha || pedido.timestamp || 0),
+                esReparto: false,
+                montoReparto: 0
             });
             
             rest.totalPedidos++;
@@ -2004,28 +2084,59 @@ async function cargarContableRestaurante() {
             rest.liquidar += liquidar;
         }
         
-        let totalPedidos = 0, totalBase = 0, totalComision = 0, totalDemoras = 0, totalDescDemora = 0, totalLiquidar = 0;
+        // ✅ Calcular liquidado y repartos de cada restaurante
+        for (const rest of Object.values(porRestaurante)) {
+            const liqData = await calcularLiquidadoPeriodo(rest.id, rango);
+            rest.liquidado = liqData.total;
+            rest.liquidadoCantidad = liqData.cantidad;
+            
+            // Fórmula final: Base - Comisión - Demoras - Repartos
+            rest.liquidar = rest.base - rest.comisionMonto - rest.descuentoDemora - rest.repartosMonto;
+            rest.pendienteLiquidar = Math.max(0, rest.liquidar - rest.liquidado);
+        }
+        
+        // Sumar totales
+        let totalPedidos = 0, totalBase = 0, totalComision = 0, totalDemoras = 0, totalDescDemora = 0;
+        let totalRepartosCant = 0, totalRepartosMonto = 0, totalLiquidar = 0, totalLiquidado = 0, totalPendiente = 0;
+        
         for (const rest of Object.values(porRestaurante)) {
             totalPedidos += rest.totalPedidos;
             totalBase += rest.base;
             totalComision += rest.comisionMonto;
             totalDemoras += rest.demoraMinutos;
             totalDescDemora += rest.descuentoDemora;
+            totalRepartosCant += rest.repartosCantidad;
+            totalRepartosMonto += rest.repartosMonto;
             totalLiquidar += rest.liquidar;
+            totalLiquidado += rest.liquidado;
+            totalPendiente += rest.pendienteLiquidar;
         }
         
+        // Actualizar tarjetas
         document.getElementById('contableTotalPedidos').textContent = totalPedidos;
         document.getElementById('contableTotalBase').textContent = totalBase.toFixed(2) + '€';
         document.getElementById('contableTotalComision').textContent = totalComision.toFixed(2) + '€';
         document.getElementById('contableTotalDemoras').textContent = '-' + totalDescDemora.toFixed(2) + '€';
         document.getElementById('contableTotalDemorasMin').textContent = `(${totalDemoras} min)`;
-        document.getElementById('contableTotalLiquidar').textContent = totalLiquidar.toFixed(2) + '€';
+        
+        // Tarjeta Repartos (nueva)
+        const elRepartos = document.getElementById('contableTotalRepartos');
+        if (elRepartos) elRepartos.textContent = '-' + totalRepartosMonto.toFixed(2) + '€';
+        const elRepartosCant = document.getElementById('contableTotalRepartosCant');
+        if (elRepartosCant) elRepartosCant.textContent = `(${totalRepartosCant})`;
+        
+        // Tarjeta Liquidar (pendiente)
+        document.getElementById('contableTotalLiquidar').textContent = totalPendiente.toFixed(2) + '€';
+        
+        // Tarjeta Liquidado (nueva)
+        const elLiquidado = document.getElementById('contableTotalLiquidado');
+        if (elLiquidado) elLiquidado.textContent = totalLiquidado.toFixed(2) + '€';
         
         contableDataCache = {
             porRestaurante,
             rango,
             periodo,
-            totales: { totalPedidos, totalBase, totalComision, totalDemoras, totalDescDemora, totalLiquidar }
+            totales: { totalPedidos, totalBase, totalComision, totalDemoras, totalDescDemora, totalRepartosCant, totalRepartosMonto, totalLiquidar, totalLiquidado, totalPendiente }
         };
         
         renderizarTablaContable();
@@ -2040,11 +2151,10 @@ async function cargarContableRestaurante() {
         
     } catch (error) {
         console.error('Error cargando contabilidad:', error);
-        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center p-4 text-red-400">❌ Error: ${error.message}</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="text-center p-4 text-red-400">❌ Error: ${error.message}</td></tr>`;
     }
 }
 
-// Renderizar tabla principal
 function renderizarTablaContable() {
     const tbody = document.getElementById('tablaReporteContable');
     if (!tbody || !contableDataCache) return;
@@ -2053,15 +2163,27 @@ function renderizarTablaContable() {
     const restaurantes = Object.values(porRestaurante);
     
     if (restaurantes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-white/50">No hay datos en este período</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center p-4 text-white/50">No hay datos en este período</td></tr>';
         return;
     }
     
-    restaurantes.sort((a, b) => b.liquidar - a.liquidar);
+    restaurantes.sort((a, b) => b.pendienteLiquidar - a.pendienteLiquidar);
     
     let html = '';
     for (const rest of restaurantes) {
         const tieneDemora = rest.demoraMinutos > 0;
+        const tieneRepartos = rest.repartosCantidad > 0;
+        const tieneLiquidado = rest.liquidado > 0;
+        
+        let estadoBadge = '';
+        if (rest.pendienteLiquidar <= 0 && rest.liquidado > 0) {
+            estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-emerald-600/20 text-emerald-400">✅ Liquidado</span>';
+        } else if (rest.liquidado > 0) {
+            estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-cyan-600/20 text-cyan-400">💰 Parcial</span>';
+        } else {
+            estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-yellow-600/20 text-yellow-400">⏳ Pendiente</span>';
+        }
+        
         html += `
             <tr class="border-b border-white/10 hover:bg-white/5">
                 <td class="p-2 font-medium">${escapeHTML(rest.nombre)}</td>
@@ -2071,11 +2193,17 @@ function renderizarTablaContable() {
                 <td class="text-right p-2 ${tieneDemora ? 'text-red-400 font-bold' : 'text-white/40'}">
                     ${tieneDemora ? `-${rest.descuentoDemora.toFixed(2)}€ <span class="text-xs">(${rest.demoraMinutos}min)</span>` : '—'}
                 </td>
-                <td class="text-right p-2 font-bold text-emerald-400">${rest.liquidar.toFixed(2)}€</td>
-                <td class="text-center p-2"><span class="px-2 py-1 rounded text-xs bg-yellow-600/20 text-yellow-400">Pendiente</span></td>
+                <td class="text-right p-2 ${tieneRepartos ? 'text-purple-400 font-bold' : 'text-white/40'}">
+                    ${tieneRepartos ? `-${rest.repartosMonto.toFixed(2)}€ <span class="text-xs">(${rest.repartosCantidad})</span>` : '—'}
+                </td>
+                <td class="text-right p-2 font-bold text-emerald-400">${rest.pendienteLiquidar.toFixed(2)}€</td>
+                <td class="text-right p-2 text-cyan-400 ${tieneLiquidado ? 'font-bold' : 'text-white/40'}">
+                    ${tieneLiquidado ? `${rest.liquidado.toFixed(2)}€ <span class="text-xs">(${rest.liquidadoCantidad})</span>` : '—'}
+                </td>
+                <td class="text-center p-2">${estadoBadge}</td>
                 <td class="text-center p-2">
                     <button onclick="verDetalleContableRest('${rest.id}')" class="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-2 py-1 rounded text-xs">👁️</button>
-                    <button onclick="abrirLiquidacionModal('${rest.id}')" class="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-2 py-1 rounded text-xs ml-1">💰 Liquidar</button>
+                    <button onclick="abrirLiquidacionModal('${rest.id}')" class="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-2 py-1 rounded text-xs ml-1" ${rest.pendienteLiquidar <= 0 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>💰 Liquidar</button>
                 </td>
             </tr>
         `;
@@ -2083,7 +2211,6 @@ function renderizarTablaContable() {
     tbody.innerHTML = html;
 }
 
-// Ver detalle de un restaurante
 function verDetalleContableRest(restId) {
     const select = document.getElementById('contableRestauranteSelect');
     if (select) {
@@ -2092,7 +2219,6 @@ function verDetalleContableRest(restId) {
     }
 }
 
-// Renderizar detalle del restaurante
 function renderizarDetalleRestaurante(rest, rango) {
     const container = document.getElementById('contableDetalleRestaurante');
     if (!container) return;
@@ -2100,6 +2226,8 @@ function renderizarDetalleRestaurante(rest, rango) {
     const pedidosOrdenados = [...rest.pedidos].sort((a, b) => b.fecha - a.fecha);
     const pedidosConDemora = pedidosOrdenados.filter(p => p.demoraMinutos > 0);
     const promedioDemora = pedidosConDemora.length > 0 ? (rest.demoraMinutos / pedidosConDemora.length) : 0;
+    const pedidosNormales = pedidosOrdenados.filter(p => !p.esReparto);
+    const repartos = pedidosOrdenados.filter(p => p.esReparto);
     
     let html = `
         <div class="bg-slate-800 rounded-2xl p-4 border-2 border-amber-500/30">
@@ -2108,12 +2236,21 @@ function renderizarDetalleRestaurante(rest, rango) {
                     <h3 class="text-xl font-bold text-amber-400">📊 ${escapeHTML(rest.nombre)}</h3>
                     <p class="text-xs text-white/50">📅 ${rango.etiqueta}</p>
                 </div>
-                <button onclick="abrirLiquidacionModal('${rest.id}')" class="bg-emerald-500 text-black px-4 py-2 rounded-xl font-bold hover:bg-emerald-400 transition">
-                    💰 EJECUTAR LIQUIDACIÓN
-                </button>
+                <div class="flex gap-2">
+                    ${rest.liquidado > 0 ? `
+                    <div class="bg-cyan-600/20 border border-cyan-500/40 rounded-xl px-4 py-2 text-center">
+                        <p class="text-white/50 text-[10px] uppercase">Ya liquidado</p>
+                        <p class="text-cyan-400 font-bold text-lg">${rest.liquidado.toFixed(2)}€</p>
+                        <p class="text-white/40 text-[9px]">${rest.liquidadoCantidad} liquidación${rest.liquidadoCantidad !== 1 ? 'es' : ''}</p>
+                    </div>
+                    ` : ''}
+                    <button onclick="abrirLiquidacionModal('${rest.id}')" class="bg-emerald-500 text-black px-4 py-2 rounded-xl font-bold hover:bg-emerald-400 transition" ${rest.pendienteLiquidar <= 0 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+                        💰 EJECUTAR LIQUIDACIÓN
+                    </button>
+                </div>
             </div>
             
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
                 <div class="bg-slate-900/50 rounded-xl p-3 text-center">
                     <p class="text-white/50 text-xs">📦 Pedidos</p>
                     <p class="text-xl font-bold text-cyan-400">${rest.totalPedidos}</p>
@@ -2130,10 +2267,35 @@ function renderizarDetalleRestaurante(rest, rango) {
                     <p class="text-white/50 text-xs">⏱️ Demoras (${rest.demoraMinutos}min)</p>
                     <p class="text-xl font-bold text-red-400">-${rest.descuentoDemora.toFixed(2)}€</p>
                 </div>
-                <div class="bg-purple-900/20 rounded-xl p-3 text-center border border-purple-500/30">
-                    <p class="text-white/50 text-xs">💵 A LIQUIDAR</p>
-                    <p class="text-xl font-bold text-purple-400">${rest.liquidar.toFixed(2)}€</p>
+                <div class="bg-purple-900/20 rounded-xl p-3 text-center border border-purple-500/30 ${rest.repartosCantidad === 0 ? 'opacity-40' : ''}">
+                    <p class="text-white/50 text-xs">📦 Repartos (${rest.repartosCantidad})</p>
+                    <p class="text-xl font-bold text-purple-400">-${rest.repartosMonto.toFixed(2)}€</p>
                 </div>
+                <div class="bg-emerald-900/30 rounded-xl p-3 text-center border-2 border-emerald-500">
+                    <p class="text-white/50 text-xs">💵 PENDIENTE</p>
+                    <p class="text-xl font-bold text-emerald-400">${rest.pendienteLiquidar.toFixed(2)}€</p>
+                </div>
+            </div>
+            
+            <div class="bg-slate-900/50 rounded-xl p-3 mb-4 text-center text-xs">
+                <span class="text-white/60">Fórmula:</span>
+                <span class="text-emerald-400 font-bold">${rest.base.toFixed(2)}€</span>
+                <span class="text-white/40"> − </span>
+                <span class="text-yellow-400 font-bold">${rest.comisionMonto.toFixed(2)}€</span>
+                <span class="text-white/40"> − </span>
+                <span class="text-red-400 font-bold">${rest.descuentoDemora.toFixed(2)}€</span>
+                ${rest.repartosCantidad > 0 ? `
+                    <span class="text-white/40"> − </span>
+                    <span class="text-purple-400 font-bold">${rest.repartosMonto.toFixed(2)}€</span>
+                ` : ''}
+                <span class="text-white/40"> = </span>
+                <span class="text-emerald-400 font-bold">${rest.liquidar.toFixed(2)}€</span>
+                ${rest.liquidado > 0 ? `
+                    <span class="text-white/40"> − </span>
+                    <span class="text-cyan-400 font-bold">${rest.liquidado.toFixed(2)}€</span>
+                    <span class="text-white/40"> = </span>
+                    <span class="text-amber-400 font-black">${rest.pendienteLiquidar.toFixed(2)}€</span>
+                ` : ''}
             </div>
             
             ${pedidosConDemora.length > 0 ? `
@@ -2147,7 +2309,7 @@ function renderizarDetalleRestaurante(rest, rango) {
                 </div>
             ` : ''}
             
-            <h4 class="font-bold text-sm mb-2 mt-4 text-white/70">📋 Detalle de pedidos (últimos 30):</h4>
+            <h4 class="font-bold text-sm mb-2 mt-4 text-white/70">📋 Detalle de operaciones (últimas 30):</h4>
             <div class="bg-slate-900/50 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
                 <table class="w-full text-xs">
                     <thead class="bg-slate-800 border-b border-white/10 text-white/60 text-xs uppercase sticky top-0">
@@ -2165,28 +2327,44 @@ function renderizarDetalleRestaurante(rest, rango) {
     
     for (const p of pedidosOrdenados.slice(0, 30)) {
         const tieneDemora = p.demoraMinutos > 0;
-        html += `
-            <tr class="border-b border-white/5 ${tieneDemora ? 'bg-red-900/10' : ''}">
-                <td class="p-2">
-                    <div class="font-bold text-amber-400">#${p.id}</div>
-                    <div class="text-white/60 text-xs">${escapeHTML(p.cliente)}</div>
-                </td>
-                <td class="p-2 text-white/60">${p.fecha.toLocaleDateString()}</td>
-                <td class="p-2 text-right">${p.base.toFixed(2)}€</td>
-                <td class="p-2 text-right text-yellow-400">-${p.comision.toFixed(2)}€</td>
-                <td class="p-2 text-right ${tieneDemora ? 'text-red-400 font-bold' : 'text-white/30'}">
-                    ${tieneDemora ? `-${p.descuentoDemora.toFixed(2)}€<br><span class="text-white/40 text-xs">${p.demoraMinutos}min</span>` : '—'}
-                </td>
-                <td class="p-2 text-right font-bold text-emerald-400">${p.liquidar.toFixed(2)}€</td>
-            </tr>
-        `;
+        
+        if (p.esReparto) {
+            html += `
+                <tr class="border-b border-white/5" style="background:rgba(139,92,246,0.08);">
+                    <td class="p-2">
+                        <div class="font-bold text-purple-400">📦 #${p.id}</div>
+                        <div class="text-white/60 text-xs">${escapeHTML(p.cliente)}</div>
+                    </td>
+                    <td class="p-2 text-white/60">${p.fecha.toLocaleDateString()}</td>
+                    <td class="p-2 text-right text-white/40">—</td>
+                    <td class="p-2 text-right text-white/40">—</td>
+                    <td class="p-2 text-right text-white/40">—</td>
+                    <td class="p-2 text-right font-bold text-purple-400">-${p.montoReparto.toFixed(2)}€</td>
+                </tr>
+            `;
+        } else {
+            html += `
+                <tr class="border-b border-white/5 ${tieneDemora ? 'bg-red-900/10' : ''}">
+                    <td class="p-2">
+                        <div class="font-bold text-amber-400">#${p.id}</div>
+                        <div class="text-white/60 text-xs">${escapeHTML(p.cliente)}</div>
+                    </td>
+                    <td class="p-2 text-white/60">${p.fecha.toLocaleDateString()}</td>
+                    <td class="p-2 text-right">${p.base.toFixed(2)}€</td>
+                    <td class="p-2 text-right text-yellow-400">-${p.comision.toFixed(2)}€</td>
+                    <td class="p-2 text-right ${tieneDemora ? 'text-red-400 font-bold' : 'text-white/30'}">
+                        ${tieneDemora ? `-${p.descuentoDemora.toFixed(2)}€<br><span class="text-white/40 text-xs">${p.demoraMinutos}min</span>` : '—'}
+                    </td>
+                    <td class="p-2 text-right font-bold text-emerald-400">${p.liquidar.toFixed(2)}€</td>
+                </tr>
+            `;
+        }
     }
     
     html += `</tbody></table></div></div>`;
     container.innerHTML = html;
 }
 
-// Generar número de operación: LIQ-DDMMAAAA-XXX
 async function generarNumeroOperacion() {
     const ahora = new Date();
     const dia = String(ahora.getDate()).padStart(2, '0');
@@ -2201,7 +2379,6 @@ async function generarNumeroOperacion() {
     return `${prefijo}-${secuencia}`;
 }
 
-// Abrir modal de liquidación
 async function abrirLiquidacionModal(restId) {
     const rest = contableDataCache?.porRestaurante[restId];
     if (!rest) {
@@ -2209,8 +2386,8 @@ async function abrirLiquidacionModal(restId) {
         return;
     }
     
-    if (rest.liquidar <= 0) {
-        Swal.fire('⚠️ Sin monto', 'El monto a liquidar debe ser mayor a 0', 'warning', '#0f172a');
+    if (rest.pendienteLiquidar <= 0) {
+        Swal.fire('⚠️ Sin monto', 'El monto pendiente de liquidar debe ser mayor a 0', 'warning', '#0f172a');
         return;
     }
     
@@ -2240,8 +2417,21 @@ async function abrirLiquidacionModal(restId) {
                     <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b;">
                         <span>⏱️ Demoras (${rest.demoraMinutos}min)</span><span style="font-weight:700;color:#ef4444;">-${rest.descuentoDemora.toFixed(2)}€</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:12px 0;margin-top:8px;border-top:2px solid #334155;font-size:18px;">
-                        <span style="font-weight:700;">💵 TOTAL</span><span style="font-weight:900;color:#8b5cf6;">${rest.liquidar.toFixed(2)}€</span>
+                    ${rest.repartosCantidad > 0 ? `
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b;">
+                        <span>📦 Repartos (${rest.repartosCantidad})</span><span style="font-weight:700;color:#8b5cf6;">-${rest.repartosMonto.toFixed(2)}€</span>
+                    </div>
+                    ` : ''}
+                    <div style="display:flex;justify-content:space-between;padding:12px 0;margin-top:8px;border-top:2px solid #334155;font-size:16px;">
+                        <span style="font-weight:700;">💵 Subtotal</span><span style="font-weight:900;color:#10b981;">${rest.liquidar.toFixed(2)}€</span>
+                    </div>
+                    ${rest.liquidado > 0 ? `
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #334155;font-size:12px;">
+                        <span style="color:#94a3b8;">Ya liquidado (${rest.liquidadoCantidad})</span><span style="color:#06b6d4;font-weight:700;">-${rest.liquidado.toFixed(2)}€</span>
+                    </div>
+                    ` : ''}
+                    <div style="display:flex;justify-content:space-between;padding:12px 0;margin-top:8px;border-top:2px solid #8b5cf6;font-size:18px;">
+                        <span style="font-weight:700;">✅ A LIQUIDAR</span><span style="font-weight:900;color:#8b5cf6;">${rest.pendienteLiquidar.toFixed(2)}€</span>
                     </div>
                 </div>
                 <div style="margin-top:16px;">
@@ -2276,7 +2466,6 @@ async function abrirLiquidacionModal(restId) {
     });
 }
 
-// Ejecutar liquidación
 async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opciones) {
     Swal.fire({
         title: '⏳ Procesando liquidación...',
@@ -2288,6 +2477,7 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
         const user = auth.currentUser;
         const fechaEjecucion = Date.now();
         const prefijoFecha = numeroOperacion.split('-').slice(0, 2).join('-');
+        const montoFinal = rest.pendienteLiquidar;
         
         const liquidacion = {
             numero_operacion: numeroOperacion,
@@ -2306,7 +2496,10 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
                 comision_porcentaje: rest.comision,
                 demoras_minutos: rest.demoraMinutos,
                 demoras_monto: rest.descuentoDemora,
-                total_liquidar: rest.liquidar
+                repartos_cantidad: rest.repartosCantidad,
+                repartos_monto: rest.repartosMonto,
+                total_liquidar: montoFinal,
+                liquidado_previo: rest.liquidado
             },
             cantidad_pedidos: rest.totalPedidos,
             fecha_ejecucion: fechaEjecucion,
@@ -2319,6 +2512,7 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
             notificado_cocina: false,
             notificacion_leida: false,
             confirmado_cocina: false,
+            anulada: false,
             nota: opciones.nota || '',
             referencia: opciones.referencia || ''
         };
@@ -2329,13 +2523,15 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
             numero_operacion: numeroOperacion,
             restaurante_nombre: rest.nombre,
             fecha: fechaEjecucion,
-            monto: rest.liquidar,
+            monto: montoFinal,
             base: rest.base,
             comision: rest.comisionMonto,
             comision_porcentaje: rest.comision,
             demoras_minutos: rest.demoraMinutos,
             demoras_monto: rest.descuentoDemora,
-            total_liquidar: rest.liquidar,
+            repartos_cantidad: rest.repartosCantidad,
+            repartos_monto: rest.repartosMonto,
+            total_liquidar: montoFinal,
             cantidad_pedidos: rest.totalPedidos,
             periodo_etiqueta: rango.etiqueta,
             periodo_inicio: rango.inicio.getTime(),
@@ -2352,7 +2548,7 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
         await logAdmin('ejecutar_liquidacion', {
             numero_operacion: numeroOperacion,
             restaurante: rest.nombre,
-            monto: rest.liquidar
+            monto: montoFinal
         });
         
         Swal.close();
@@ -2364,7 +2560,7 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
                     <div style="background:#0f172a;border-radius:12px;padding:16px;margin-top:12px;border:1px solid #334155;">
                         <p><strong>Nº Operación:</strong> <span style="color:#f59e0b;font-family:monospace;">${numeroOperacion}</span></p>
                         <p><strong>Restaurante:</strong> ${escapeHTML(rest.nombre)}</p>
-                        <p><strong>Monto:</strong> <span style="color:#8b5cf6;font-weight:900;">${rest.liquidar.toFixed(2)}€</span></p>
+                        <p><strong>Monto:</strong> <span style="color:#8b5cf6;font-weight:900;">${montoFinal.toFixed(2)}€</span></p>
                     </div>
                     <p style="margin-top:12px;font-size:12px;color:#94a3b8;">✅ La cocina ha sido notificada automáticamente</p>
                 </div>
@@ -2383,7 +2579,6 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
     }
 }
 
-// Cargar historial de liquidaciones
 async function cargarHistorialLiquidacionesAdmin() {
     const container = document.getElementById('historialLiquidacionesList');
     if (!container) return;
@@ -2395,6 +2590,7 @@ async function cargarHistorialLiquidacionesAdmin() {
         const liquidaciones = snap.val() || {};
         
         const ordenadas = Object.values(liquidaciones)
+            .filter(liq => liq && liq.numero_operacion && !liq.numero_operacion.includes('undefined'))
             .sort((a, b) => (b.fecha_ejecucion || 0) - (a.fecha_ejecucion || 0))
             .slice(0, 30);
         
@@ -2408,15 +2604,18 @@ async function cargarHistorialLiquidacionesAdmin() {
             const fecha = new Date(liq.fecha_ejecucion).toLocaleString();
             const confirmada = liq.confirmado_cocina ? '✅' : '⏳';
             const confirmadaColor = liq.confirmado_cocina ? 'text-emerald-400' : 'text-yellow-400';
+            const anulada = liq.anulada === true;
+            const anuladaBadge = anulada ? '<span class="px-2 py-0.5 rounded text-xs bg-red-600/20 text-red-400 ml-2">🚫 Anulada</span>' : '';
             
             html += `
-                <div class="bg-slate-900/50 rounded-xl p-3 border border-white/10 hover:border-amber-500/30 transition">
+                <div class="bg-slate-900/50 rounded-xl p-3 border border-white/10 hover:border-amber-500/30 transition ${anulada ? 'opacity-60' : ''}">
                     <div class="flex justify-between items-start flex-wrap gap-2">
                         <div class="flex-1">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="font-mono text-sm font-bold text-amber-400">${liq.numero_operacion}</span>
                                 <span class="text-xs text-white/50">${fecha}</span>
-                                <span class="text-xs ${confirmadaColor}">${confirmada} ${liq.confirmado_cocina ? 'Confirmada por cocina' : 'Sin confirmar'}</span>
+                                <span class="text-xs ${confirmadaColor}">${confirmada} ${liq.confirmado_cocina ? 'Confirmada' : 'Sin confirmar'}</span>
+                                ${anuladaBadge}
                             </div>
                             <div class="text-sm text-white/70 mt-1">🏪 ${escapeHTML(liq.restaurante_nombre)}</div>
                             <div class="text-xs text-white/50 mt-0.5">📅 ${liq.periodo?.etiqueta || 'N/A'}</div>
@@ -2424,10 +2623,14 @@ async function cargarHistorialLiquidacionesAdmin() {
                             ${liq.referencia ? `<div class="text-xs text-cyan-400 mt-0.5">🔖 ${escapeHTML(liq.referencia)}</div>` : ''}
                         </div>
                         <div class="text-right">
-                            <div class="text-lg font-bold text-purple-400">${(liq.montos?.total_liquidar || 0).toFixed(2)}€</div>
+                            <div class="text-lg font-bold ${anulada ? 'text-white/40 line-through' : 'text-purple-400'}">${(liq.montos?.total_liquidar || 0).toFixed(2)}€</div>
                             <div class="text-xs text-white/40">Base: ${(liq.montos?.base || 0).toFixed(2)}€</div>
                             <div class="text-xs text-yellow-400">Com: -${(liq.montos?.comision || 0).toFixed(2)}€</div>
                             <div class="text-xs text-red-400">Dem: -${(liq.montos?.demoras_monto || 0).toFixed(2)}€</div>
+                            ${(liq.montos?.repartos_monto || 0) > 0 ? `<div class="text-xs text-purple-400">Rep: -${(liq.montos.repartos_monto).toFixed(2)}€</div>` : ''}
+                            ${!anulada && liq.confirmado_cocina !== true ? `
+                                <button onclick="anularLiquidacion('${liq.numero_operacion}')" class="mt-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-2 py-1 rounded text-xs">🚫 Anular</button>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -2441,7 +2644,176 @@ async function cargarHistorialLiquidacionesAdmin() {
     }
 }
 
-// Exportar a Excel
+// ✅ NUEVA: anular liquidación
+async function anularLiquidacion(numeroOperacion) {
+    const result = await Swal.fire({
+        title: '⚠️ Anular Liquidación',
+        html: `
+            <div style="text-align:left;color:white;font-size:13px;">
+                <p>¿Seguro que quieres anular la liquidación?</p>
+                <p style="color:#f59e0b;font-family:monospace;font-weight:bold;margin-top:8px;font-size:15px;">${numeroOperacion}</p>
+                <p style="color:#ef4444;margin-top:12px;font-size:12px;">⚠️ El monto volverá a aparecer como pendiente de liquidar.</p>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, anular',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155'
+    });
+    
+    if (!result.isConfirmed) return;
+    
+    Swal.fire({ title: '⏳ Anulando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+    try {
+        const user = auth.currentUser;
+        const ahora = Date.now();
+        
+        const liqSnap = await database.ref(`liquidaciones/${numeroOperacion}`).once('value');
+        const liq = liqSnap.val();
+        if (!liq) throw new Error('Liquidación no encontrada');
+        
+        // Marcar como anulada
+        await database.ref(`liquidaciones/${numeroOperacion}`).update({
+            anulada: true,
+            fecha_anulacion: ahora,
+            anulado_por: {
+                uid: user.uid,
+                email: user.email
+            }
+        });
+        
+        // Eliminar del nodo de cocina
+        await database.ref(`restaurantes/${liq.restaurante_id}/liquidaciones_recibidas/${numeroOperacion}`).remove();
+        
+        // Log
+        await database.ref(`liquidaciones/${numeroOperacion}/historial_anulaciones`).push({
+            uid: user.uid,
+            email: user.email,
+            timestamp: ahora,
+            accion: 'anulada_por_admin'
+        });
+        
+        await logAdmin('anular_liquidacion', { numero_operacion: numeroOperacion });
+        
+        Swal.close();
+        Swal.fire({
+            title: '✅ Liquidación anulada',
+            text: 'El monto vuelve a estar pendiente',
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+        
+        await cargarContableRestaurante();
+        
+    } catch (error) {
+        console.error('Error anulando:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ✅ NUEVA: archivar liquidaciones antiguas
+async function archivarLiquidacionesAntiguas() {
+    const result = await Swal.fire({
+        title: '📦 Archivar liquidaciones antiguas',
+        html: `
+            <div style="text-align:left;color:white;font-size:13px;">
+                <p>Mueve las liquidaciones antiguas a un archivo de respaldo.</p>
+                <p style="color:#94a3b8;font-size:12px;margin-top:8px;">Las liquidaciones archivadas <strong>no se borran</strong>, solo se mueven a un almacén separado para aligerar la app.</p>
+                <div style="margin-top:16px;">
+                    <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:6px;">Archivar las anteriores a:</label>
+                    <select id="diasArchivar" style="width:100%;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:13px;">
+                        <option value="30">30 días</option>
+                        <option value="60">60 días</option>
+                        <option value="90" selected>90 días (recomendado)</option>
+                        <option value="180">180 días (6 meses)</option>
+                        <option value="365">365 días (1 año)</option>
+                    </select>
+                </div>
+            </div>
+        `,
+        background: '#0f172a',
+        color: 'white',
+        showCancelButton: true,
+        confirmButtonText: '📦 Archivar ahora',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#8b5cf6',
+        cancelButtonColor: '#334155',
+        preConfirm: () => {
+            return document.getElementById('diasArchivar')?.value || '90';
+        }
+    });
+    
+    if (!result.isConfirmed) return;
+    
+    const dias = parseInt(result.value);
+    const fechaLimite = Date.now() - (dias * 24 * 60 * 60 * 1000);
+    
+    Swal.fire({ title: '⏳ Archivando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+    try {
+        const snap = await database.ref('liquidaciones').once('value');
+        const liquidaciones = snap.val() || {};
+        
+        let archivadas = 0;
+        const updates = {};
+        const archivadasObj = {};
+        
+        for (const [key, liq] of Object.entries(liquidaciones)) {
+            if (!liq || !liq.fecha_ejecucion) continue;
+            if (liq.fecha_ejecucion < fechaLimite) {
+                archivadasObj[key] = { ...liq, archivada_en: Date.now() };
+                updates[key] = null;
+                archivadas++;
+            }
+        }
+        
+        if (archivadas === 0) {
+            Swal.fire({
+                title: '📭 Nada que archivar',
+                text: `No hay liquidaciones anteriores a ${dias} días`,
+                icon: 'info',
+                background: '#0f172a',
+                color: 'white'
+            });
+            return;
+        }
+        
+        // Mover a archivo
+        await database.ref('liquidaciones_archivadas').update(archivadasObj);
+        await database.ref('liquidaciones').update(updates);
+        
+        await logAdmin('archivar_liquidaciones', { cantidad: archivadas, dias });
+        
+        Swal.close();
+        Swal.fire({
+            title: '✅ Archivado completo',
+            html: `
+                <div style="color:white;font-size:13px;">
+                    <p>Se archivaron <strong style="color:#8b5cf6;font-size:18px;">${archivadas}</strong> liquidaciones</p>
+                    <p style="color:#94a3b8;font-size:12px;margin-top:8px;">Puedes consultarlas en <code>liquidaciones_archivadas/</code></p>
+                </div>
+            `,
+            icon: 'success',
+            background: '#0f172a',
+            color: 'white'
+        });
+        
+        await cargarHistorialLiquidacionesAdmin();
+        
+    } catch (error) {
+        console.error('Error archivando:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
 function exportarContableExcel() {
     if (!contableDataCache) {
         Swal.fire('⚠️ Sin datos', 'Primero carga los datos', 'warning', '#0f172a');
@@ -2456,16 +2828,19 @@ function exportarContableExcel() {
     csv += `"RESUMEN GENERAL"\n`;
     csv += `"Total Pedidos",${totales.totalPedidos}\n`;
     csv += `"Base Total",${totales.totalBase.toFixed(2)}€\n`;
-    csv += `"Comisiones",${totales.totalComision.toFixed(2)}€\n`;
+    csv += `"Comisiones",-${totales.totalComision.toFixed(2)}€\n`;
     csv += `"Demoras (min)",${totales.totalDemoras}\n`;
-    csv += `"Descuento Demoras",${totales.totalDescDemora.toFixed(2)}€\n`;
-    csv += `"TOTAL A LIQUIDAR",${totales.totalLiquidar.toFixed(2)}€\n\n`;
+    csv += `"Descuento Demoras",-${totales.totalDescDemora.toFixed(2)}€\n`;
+    csv += `"Repartos Personales",-${totales.totalRepartosMonto.toFixed(2)}€ (${totales.totalRepartosCant})\n`;
+    csv += `"TOTAL A LIQUIDAR",${totales.totalLiquidar.toFixed(2)}€\n`;
+    csv += `"Ya Liquidado",${totales.totalLiquidado.toFixed(2)}€\n`;
+    csv += `"PENDIENTE",${totales.totalPendiente.toFixed(2)}€\n\n`;
     
     csv += `"DETALLE POR RESTAURANTE"\n`;
-    csv += `"Restaurante","Pedidos","Base","Comisión %","Comisión €","Demora min","Desc. Demora €","A Liquidar €"\n`;
+    csv += `"Restaurante","Pedidos","Base","Comisión %","Comisión €","Demora min","Desc. Demora €","Repartos (cant)","Repartos €","A Liquidar €","Liquidado €","Pendiente €"\n`;
     
     for (const rest of Object.values(porRestaurante)) {
-        csv += `"${rest.nombre}",${rest.totalPedidos},${rest.base.toFixed(2)},${rest.comision},${rest.comisionMonto.toFixed(2)},${rest.demoraMinutos},${rest.descuentoDemora.toFixed(2)},${rest.liquidar.toFixed(2)}\n`;
+        csv += `"${rest.nombre}",${rest.totalPedidos},${rest.base.toFixed(2)},${rest.comision},${rest.comisionMonto.toFixed(2)},${rest.demoraMinutos},${rest.descuentoDemora.toFixed(2)},${rest.repartosCantidad},${rest.repartosMonto.toFixed(2)},${rest.liquidar.toFixed(2)},${rest.liquidado.toFixed(2)},${rest.pendienteLiquidar.toFixed(2)}\n`;
     }
     
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
@@ -2479,7 +2854,6 @@ function exportarContableExcel() {
     Swal.fire({ title: '✅ Exportado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
 }
 
-// Alias para compatibilidad
 async function generarReporteContable() {
     return cargarContableRestaurante();
 }

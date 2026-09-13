@@ -2461,6 +2461,7 @@ async function abrirLiquidacionModal(restId) {
         }
     }).then(async (result) => {
         if (result.isConfirmed) {
+            
             await ejecutarLiquidacion(restId, rest, numeroOperacion, rango, result.value);
         }
     });
@@ -2545,10 +2546,51 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
         
         await database.ref(`liquidaciones/${numeroOperacion}/notificado_cocina`).set(true);
         
+        // ✅ NUEVO: Marcar todos los pedidos del período como liquidados
+        let pedidosMarcados = 0;
+        try {
+            const pedidosSnap = await database.ref('pedidos').once('value');
+            const todosPedidos = pedidosSnap.val() || {};
+            const updatesPedidos = {};
+            
+            for (const [pid, p] of Object.entries(todosPedidos)) {
+                // Filtrar por restaurante
+                const pRestId = p.restaurante_id || p.restauranteId || p.uid_restaurante;
+                if (pRestId !== restId) continue;
+                
+                // Filtrar por período
+                const fecha = new Date(p.fecha || p.timestamp || 0);
+                if (fecha < rango.inicio || fecha > rango.fin) continue;
+                
+                // Solo pedidos válidos (entregados o listos)
+                const estado = p.estado ? p.estado.toUpperCase() : '';
+                if (estado !== 'ENTREGADO' && estado !== 'LISTO') continue;
+                
+                // No volver a marcar los que ya estaban liquidados
+                if (p.liquidado === true) continue;
+                
+                updatesPedidos[`${pid}/liquidado`] = true;
+                updatesPedidos[`${pid}/liquidacion_id`] = numeroOperacion;
+                updatesPedidos[`${pid}/fecha_liquidacion`] = fechaEjecucion;
+                pedidosMarcados++;
+            }
+            
+            if (pedidosMarcados > 0) {
+                await database.ref('pedidos').update(updatesPedidos);
+                console.log(`✅ ${pedidosMarcados} pedidos marcados como liquidados`);
+            } else {
+                console.log(`ℹ️ No había pedidos pendientes de marcar`);
+            }
+        } catch (errMarcar) {
+            console.warn('⚠️ No se pudieron marcar los pedidos como liquidados:', errMarcar);
+            // No lanzamos el error para no romper la liquidación
+        }
+        
         await logAdmin('ejecutar_liquidacion', {
             numero_operacion: numeroOperacion,
             restaurante: rest.nombre,
-            monto: montoFinal
+            monto: montoFinal,
+            pedidos_marcados: pedidosMarcados
         });
         
         Swal.close();
@@ -2561,6 +2603,7 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
                         <p><strong>Nº Operación:</strong> <span style="color:#f59e0b;font-family:monospace;">${numeroOperacion}</span></p>
                         <p><strong>Restaurante:</strong> ${escapeHTML(rest.nombre)}</p>
                         <p><strong>Monto:</strong> <span style="color:#8b5cf6;font-weight:900;">${montoFinal.toFixed(2)}€</span></p>
+                        <p style="margin-top:8px;font-size:12px;color:#10b981;">✅ ${pedidosMarcados} pedido${pedidosMarcados !== 1 ? 's' : ''} marcado${pedidosMarcados !== 1 ? 's' : ''} como liquidado${pedidosMarcados !== 1 ? 's' : ''}</p>
                     </div>
                     <p style="margin-top:12px;font-size:12px;color:#94a3b8;">✅ La cocina ha sido notificada automáticamente</p>
                 </div>

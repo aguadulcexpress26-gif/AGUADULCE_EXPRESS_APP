@@ -340,6 +340,11 @@ const ZONAS_PERMITIDAS = ['04740'];
 const HORARIO_ALCOHOL = { activo: true, horaFin: 22, mensaje: "🍺 La venta de bebidas alcohólicas solo está permitida hasta las 22:00." };
 const CATEGORIAS_ALCOHOL = ['Cervezas', 'Licores', 'Vinos', 'Bebidas alcohólicas', 'Alcohol', 'Cerveza', 'Vino', 'Licor'];
 
+// ✅ Helper: obtener imagen de plato con fallback multi-campo
+function obtenerFotoPlato(plato) {
+    return plato.FOTO_PLATO || plato.FOTO || plato.foto || plato.imagen || plato.IMAGEN || 'https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F';
+}
+
 // ============================================================
 // 📍 FUNCIONES DE SEGURIDAD Y VALIDACIÓN
 // ============================================================
@@ -387,6 +392,7 @@ const ZONAS_ROQUETAS = {
     descuentoPorcentaje: 0.10
 };
 
+// ✅ VERSIÓN MEJORADA: 4 proxies en cascada
 async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
     if (!direccionCliente || !direccionRestaurante) return null;
 
@@ -395,30 +401,53 @@ async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurant
     const destino = encodeURIComponent(direccionCliente);
     const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origen}&destinations=${destino}&key=${apiKey}&units=metric&language=es`;
     
-    try {
-        const proxyUrl = 'https://corsproxy.io/?'; 
-        const response = await fetch(proxyUrl + encodeURIComponent(url));
-        
-        if (!response.ok) {
-            console.warn(`⚠️ Proxy respondió con estado ${response.status}. Usando tarifa fija.`);
-            return null;
-        }
+    // 🔄 Lista de proxies de respaldo (se prueban en orden hasta que uno funcione)
+    const proxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest=',
+        'https://thingproxy.freeboard.io/fetch/'
+    ];
+    
+    for (let i = 0; i < proxies.length; i++) {
+        const proxyUrl = proxies[i];
+        try {
+            const targetUrl = proxyUrl.includes('?') 
+                ? proxyUrl + encodeURIComponent(url)
+                : proxyUrl + url;
+            
+            console.log(`🛰️ Probando proxy ${i + 1}/${proxies.length}: ${proxyUrl.split('/')[2]}`);
+            
+            const response = await fetch(targetUrl, { 
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                console.warn(`⚠️ Proxy ${i + 1} respondió con ${response.status}`);
+                continue;
+            }
 
-        const data = await response.json();
-        
-        if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
-            const distanciaMetros = data.rows[0].elements[0].distance.value;
-            const distanciaKm = distanciaMetros / 1000;
-            const tiempoTexto = data.rows[0].elements[0].duration.text;
-            return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
-        } else {
-            return null;
+            const data = await response.json();
+            
+            if (data.status === 'OK' && data.rows?.[0]?.elements?.[0]?.status === 'OK') {
+                const distanciaMetros = data.rows[0].elements[0].distance.value;
+                const distanciaKm = distanciaMetros / 1000;
+                const tiempoTexto = data.rows[0].elements[0].duration.text;
+                console.log(`✅ Distancia calculada: ${distanciaKm.toFixed(2)} km (${tiempoTexto}) vía proxy ${i + 1}`);
+                return { km: distanciaKm, tiempo: tiempoTexto, metros: distanciaMetros };
+            } else {
+                console.warn(`⚠️ Proxy ${i + 1} devolvió status: ${data.status}`);
+            }
+        } catch (error) {
+            console.warn(`❌ Error con proxy ${i + 1}:`, error.message);
         }
-    } catch (error) {
-        console.error('❌ Error de red en Maps (Proxy):', error);
-        return null;
     }
+    
+    console.warn('⚠️ Todos los proxies fallaron. Usando tarifa fija.');
+    return null;
 }
+
 function calcularCostoEnvio(distanciaKm, subtotalPedido) {
     if (distanciaKm === null || distanciaKm === undefined) {
         return { envio: 2.50, usoPlataforma: 0.99, total: 3.49, descuentoAplicado: false, mensaje: '', distanciaKm: null };
@@ -644,10 +673,6 @@ function obtenerCliente() {
 }
 function guardarCliente(cliente) { guardarLocal("ae_cliente", cliente); }
 
-// ============================================================
-// 🔧 FUNCIONES AÑADIDAS PARA CORREGIR EL CAJÓN DE PAGO
-// ============================================================
-
 function actualizarClienteUI() {
     const box = document.getElementById('info-cliente-logueado');
     if (box) {
@@ -669,10 +694,6 @@ function cerrarSesion() {
         Swal.fire({ title: '👋 Sesión cerrada', text: 'Vuelve pronto', icon: 'info', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
     }).catch(error => alertaError("Error", error.message));
 }
-
-// ============================================================
-// 🔧 FUNCIONES DE MODALES (PARA QUE APAREZCA EL LOGIN)
-// ============================================================
 
 function mostrarModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
 function cerrarModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
@@ -734,12 +755,6 @@ async function registrarCliente() {
     } catch (error) { console.error('❌ Error en registro:', error); alertaError("Error", error.message); }
 }
 
-function cerrarSesion() {
-    auth.signOut().then(() => {
-        localStorage.removeItem('ae_cliente'); localStorage.removeItem('ae_cesta'); cesta = []; restauranteActivo = { id: null, nombre: "", foto: "" }; clienteActual = null; actualizarCestaVisual(); cerrarCheckout(); renderHome();
-        Swal.fire({ title: '👋 Sesión cerrada', text: 'Vuelve pronto', icon: 'info', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
-    }).catch(error => alertaError("Error", error.message));
-}
 function mostrarRegistro() { cerrarModal('modal-login'); document.getElementById('modal-registro').style.display = 'flex'; }
 function cerrarRegistro() { document.getElementById('modal-registro').style.display = 'none'; document.getElementById('modal-login').style.display = 'flex'; }
 function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; document.getElementById('panel-revision').style.display = 'block'; }
@@ -770,7 +785,8 @@ function renderHome() {
     let html = `<div id="banner-container" class="mb-4"></div><div class="flex items-center justify-between mb-4 mt-2"><div class="flex items-center gap-2"><span class="text-cyan-400 text-sm font-black uppercase tracking-wider">🍽️ SELECCIONA UN RESTAURANTE</span><div class="h-px flex-1 bg-gradient-to-r from-cyan-500/50 to-transparent ml-4 w-20"></div></div></div>`;
     db.restaurantes.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
-        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${rest.FOTO}','${rest.ESTADO}')"` : ''}><img src="${rest.FOTO}" class="absolute inset-0 w-full h-full object-cover opacity-100"><div class="absolute inset-0 bg-gradient-to-t from-black"></div><div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}</div>`;
+        const fotoRest = rest.FOTO || 'https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante';
+        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${fotoRest}','${rest.ESTADO}')"` : ''}><img src="${fotoRest}" class="absolute inset-0 w-full h-full object-cover opacity-100" onerror="this.src='https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante'"><div class="absolute inset-0 bg-gradient-to-t from-black"></div><div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}</div>`;
     });
     app.innerHTML = html; agregarFooterLegal(); cargarBanners();
 }
@@ -790,6 +806,7 @@ function abrirRestaurante(id, nombre, foto, estado) {
     restauranteActivo = { id, nombre, foto }; guardarCesta(); renderMenu(); pushPantalla('restaurante');
 }
 
+// ✅ CORREGIDO: usa helper obtenerFotoPlato con fallback
 function renderMenu() {
     const app = document.getElementById("app-container");
     const platos = db.menu.filter(p => String(p.ID_RESTAURANTE) === String(restauranteActivo.id));
@@ -802,7 +819,8 @@ function renderMenu() {
     html += `</div><div id="lista-platos" class="space-y-3">`;
     platos.forEach(plato => {
         const deshabilitado = CATEGORIAS_ALCOHOL.includes(plato.CATEGORIA || "General") && !alcoholActivo;
-        html += `<div class="plato-card ${deshabilitado ? 'disabled' : ''}" data-cat="${plato.CATEGORIA || "General"}" ${!deshabilitado ? `onclick='abrirDetalle(${JSON.stringify(plato).replace(/'/g, "&apos;")})'` : ''}><div class="flex-1 text-left"><h4 class="font-black text-sm uppercase leading-none mb-1">${escapeHTML(plato.PLATO)}${deshabilitado ? ' 🔒' : ''}</h4><p class="text-cyan-400 font-black text-xs">${euros(plato.PRECIO)}</p></div><img src="${plato.FOTO_PLATO}" class="w-16 h-16 rounded-xl object-cover"></div>`;
+        const fotoPlato = obtenerFotoPlato(plato);
+        html += `<div class="plato-card ${deshabilitado ? 'disabled' : ''}" data-cat="${plato.CATEGORIA || "General"}" ${!deshabilitado ? `onclick='abrirDetalle(${JSON.stringify(plato).replace(/'/g, "&apos;")})'` : ''}><div class="flex-1 text-left"><h4 class="font-black text-sm uppercase leading-none mb-1">${escapeHTML(plato.PLATO)}${deshabilitado ? ' 🔒' : ''}</h4><p class="text-cyan-400 font-black text-xs">${euros(plato.PRECIO)}</p></div><img src="${fotoPlato}" class="w-16 h-16 rounded-xl object-cover" onerror="this.src='https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'"></div>`;
     });
     html += `</div>`; app.innerHTML = html; agregarFooterLegal();
 }
@@ -810,14 +828,18 @@ function renderMenu() {
 function volverHome() { while (pantallaStack.length > 1) pantallaStack.pop(); renderHome(); }
 function filtrarCategoria(cat, el) { document.querySelectorAll(".cat-chip").forEach(c => c.classList.remove("active")); el.classList.add("active"); document.querySelectorAll(".plato-card").forEach(card => { card.style.display = (cat === "TODOS" || card.dataset.cat === cat) ? "flex" : "none"; }); }
 
+// ✅ CORREGIDO: usa helper obtenerFotoPlato
 function abrirDetalle(p) {
     pushPantalla('plato');
     itemActual = { id: p.ID_PLATO || Date.now(), data: p, cantidad: 1, precioBase: parseFloat(p.PRECIO) || 0, precioOpciones: 0, opcionesSeleccionadas: {}, obligatorioOk: !(p.EXTRAS_PARSEADOS?.some(g => g.required === true)) };
     document.getElementById('modal-titulo').innerText = p.PLATO;
     document.getElementById('modal-desc').innerText = p.DESCRIPCION || "";
     document.getElementById('modal-precio-base').innerText = euros(itemActual.precioBase);
-    const modalImg = document.getElementById('modal-img'); modalImg.src = p.FOTO_PLATO;
-    modalImg.onclick = function() { let lb = document.getElementById('lightbox'); if (!lb) { lb = document.createElement('div'); lb.id = 'lightbox'; lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:20000;display:flex;align-items:center;justify-content:center;'; document.body.appendChild(lb); } lb.innerHTML = '<div class="w-[90%] max-w-md relative"><img src="' + p.FOTO_PLATO + '" class="w-full rounded-2xl"><button onclick="document.body.removeChild(document.getElementById(\'lightbox\'))" class="absolute -top-12 right-2 bg-white/10 text-white w-8 h-8 rounded-full">✕</button></div>'; };
+    const fotoPlato = obtenerFotoPlato(p);
+    const modalImg = document.getElementById('modal-img'); 
+    modalImg.src = fotoPlato;
+    modalImg.onerror = function() { this.src = 'https://placehold.co/400x400/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'; };
+    modalImg.onclick = function() { let lb = document.getElementById('lightbox'); if (!lb) { lb = document.createElement('div'); lb.id = 'lightbox'; lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:20000;display:flex;align-items:center;justify-content:center;'; document.body.appendChild(lb); } lb.innerHTML = '<div class="w-[90%] max-w-md relative"><img src="' + fotoPlato + '" class="w-full rounded-2xl" onerror="this.src=\'https://placehold.co/400x400/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F\'"><button onclick="document.body.removeChild(document.getElementById(\'lightbox\'))" class="absolute -top-12 right-2 bg-white/10 text-white w-8 h-8 rounded-full">✕</button></div>'; };
     renderizarOpciones(p); document.getElementById('cant-plato-modal').innerText = "1"; actualizarTotalModal(); document.getElementById('modal-plato').style.display = 'block';
 }
 
@@ -872,7 +894,7 @@ function añadirAlCarritoConOpciones() {
     if (!validarObligatorios()) { mostrarToast("⚠️ Completa las opciones obligatorias", "⚠️"); return; }
     const totalUnitario = itemActual.precioBase + itemActual.precioOpciones; const totalProducto = totalUnitario * itemActual.cantidad;
     let opcionesTexto = ''; for (const selec of Object.values(itemActual.opcionesSeleccionadas)) { if (selec.length) opcionesTexto += `${selec.join(', ')} | `; } opcionesTexto = opcionesTexto.slice(0, -3);
-    cesta.push({ id: Date.now(), nombre: itemActual.data.PLATO, foto: itemActual.data.FOTO_PLATO, cantidad: itemActual.cantidad, precio_unitario: itemActual.precioBase, opciones: opcionesTexto, extras_precio: itemActual.precioOpciones, total: totalProducto, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, categoria: itemActual.data.CATEGORIA });
+    cesta.push({ id: Date.now(), nombre: itemActual.data.PLATO, foto: obtenerFotoPlato(itemActual.data), cantidad: itemActual.cantidad, precio_unitario: itemActual.precioBase, opciones: opcionesTexto, extras_precio: itemActual.precioOpciones, total: totalProducto, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, categoria: itemActual.data.CATEGORIA });
     cerrarModalPlato(); actualizarCestaVisual(); mostrarToast(`${itemActual.data.PLATO} x${itemActual.cantidad} añadido`, "🍽️");
 }
 function cerrarModalPlato() { document.getElementById('modal-plato').style.display = 'none'; }
@@ -882,21 +904,19 @@ function abrirRevision() {
     if (cesta.length === 0) { mostrarToast("Carrito vacío", "🛒"); return; }
     pushPantalla('revision');
     const container = document.getElementById('items-revision');
-    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${escapeHTML(item.opciones)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
+    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover" onerror="this.src='https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${escapeHTML(item.opciones)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
     document.getElementById('panel-revision').style.display = 'block'; agregarFooterLegal();
 }
 
 // ============================================================
-// 💳 CAJÓN DE PAGO - VERSIÓN LIGERA Y A PRUEBA DE FALLOS
+// 💳 CAJÓN DE PAGO
 // ============================================================
 async function abrirCheckout() {
     try {
-        // ✅ 1. FORZAMOS LA APERTURA DEL CAJÓN Y MOSTRAMOS CARGA
         const panel = document.getElementById('panel-checkout');
         const contenedorProductos = document.getElementById('lista-cesta-checkout');
         const contenedorDesglose = document.getElementById('desglose-pago');
 
-        // Configuración visual forzada
         panel.className = '';
         panel.setAttribute('style', '');
         panel.style.cssText = `
@@ -910,7 +930,6 @@ async function abrirCheckout() {
         if (contenedorProductos) contenedorProductos.innerHTML = '<div class="text-center text-white/50 py-10">🔄 Cargando tu pedido...</div>';
         if (contenedorDesglose) contenedorDesglose.innerHTML = '';
 
-        // ✅ 2. VALIDACIONES INICIALES
         const cliente = obtenerCliente();
         if (!cliente || !cliente.uid) {
             alertaError("⚠️ Necesitas registrarte", "Para finalizar tu pedido debes crear una cuenta o iniciar sesión.");
@@ -923,11 +942,9 @@ async function abrirCheckout() {
             mostrarToast("🛒 Tu carrito está vacío", "⚠️"); return;
         }
 
-        // ✅ 3. CÁLCULO DE PRECIOS (Plan B + Google Maps en segundo plano)
         let subtotal = 0;
         cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
 
-        // Precio base (Plan B: 2.50€)
         let envio = 2.50;
         let descuentoAplicado = false;
         let mensajeDescuento = '';
@@ -938,12 +955,10 @@ async function abrirCheckout() {
         const usoPlataforma = 0.99;
         const total = subtotal + envio + usoPlataforma;
 
-        // Guardamos para el envío final
         window._costoEnvioActual = envio;
         window._usoPlataformaActual = usoPlataforma;
         window._subtotalActual = subtotal;
 
-        // ✅ 4. RENDERIZADO DEL CAJÓN (CON PLAN B)
         if (contenedorProductos) {
             contenedorProductos.innerHTML = cesta.map(item => `
                 <div class="flex justify-between text-sm py-2 border-b border-white/10">
@@ -955,7 +970,6 @@ async function abrirCheckout() {
 
         if (contenedorDesglose) {
             contenedorDesglose.innerHTML = `
-                <!-- Datos del Cliente -->
                 <div class="bg-slate-800/50 rounded-2xl p-4 border border-white/10 mb-4 flex justify-between items-start">
                     <div>
                         <p class="text-cyan-400 text-xs font-black uppercase mb-1">Entregar a:</p>
@@ -968,27 +982,24 @@ async function abrirCheckout() {
                     </button>
                 </div>
 
-                <!-- Resumen de Precios -->
                 <div class="mt-2 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
                     <div class="flex justify-between text-sm"><span class="text-white/70">Subtotal</span><span>${euros(subtotal)}</span></div>
                     ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span>- ${euros(envioCalculado.envio - envio)}</span></div>` : ''}
                     <div class="flex justify-between text-sm"><span class="text-white/70">📱 Uso de plataforma</span><span>${euros(usoPlataforma)}</span></div>
-                    <div class="flex justify-between text-sm"><span class="text-white/70">🚚 Envío</span><span>${euros(envio)}</span></div>
+                    <div class="flex justify-between text-sm" id="linea-envio"><span class="text-white/70">🚚 Envío</span><span id="valor-envio">${euros(envio)}</span></div>
                     <div class="border-t border-white/20 my-2 pt-2"></div>
                     <div class="flex justify-between text-xl font-black">
                         <span>TOTAL</span>
-                        <span class="text-cyan-400 text-2xl">${euros(total)}</span>
+                        <span class="text-cyan-400 text-2xl" id="valor-total">${euros(total)}</span>
                     </div>
                 </div>
 
-                <!-- 💵 EFECTIVO -->
                 <div class="mt-4 p-4 bg-slate-800/50 rounded-2xl border border-slate-700">
                     <p class="text-cyan-400 text-xs font-bold uppercase mb-1">💵 Efectivo - ¿Con cuánto pagas?</p>
                     <p class="text-white/40 text-[10px] mb-2">Indica el importe para saber tu cambio.</p>
                     <input type="number" id="monto-paga" step="0.01" min="0" placeholder="Ej. 50.00" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-lg">
                 </div>
 
-                <!-- 💳 FORMA DE PAGO -->
                 <div class="mt-4">
                     <p class="text-cyan-400 text-xs font-bold uppercase mb-2">💳 Forma de Pago</p>
                     <select id="metodo-pago" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 text-white">
@@ -997,7 +1008,6 @@ async function abrirCheckout() {
                     </select>
                 </div>
 
-                <!-- 🔘 ÚNICO BOTÓN DE ACCIÓN + LEGALES -->
                 <div class="mt-8">
                     <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all">
                         💳 PROCESAR ORDEN
@@ -1014,8 +1024,7 @@ async function abrirCheckout() {
         }
         agregarFooterLegal();
 
-               // ✅ 5. ACTUALIZACIÓN EN SEGUNDO PLANO CON GOOGLE MAPS
-        // Se ejecuta sin esperar, para no bloquear la visualización
+        // ✅ Actualización en segundo plano con Google Maps (multi-proxy)
         setTimeout(async () => {
             try {
                 const envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
@@ -1023,14 +1032,11 @@ async function abrirCheckout() {
                     const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
                     window._costoEnvioActual = nuevoCalculo.envio || 2.50;
                     
-                    // 🔥 LAS 3 LÍNEAS QUE ACTUALIZAN LA PANTALLA:
-                    const totalActual = subtotal + window._costoEnvioActual + 0.99;
-                    // Actualizar el texto del envío
-                    const envioText = document.querySelector('#desglose-pago .flex.justify-between.text-sm:nth-child(3) span:last-child');
-                    if (envioText) envioText.innerText = euros(window._costoEnvioActual);
-                    // Actualizar el texto del total
-                    const totalText = document.querySelector('#desglose-pago .flex.justify-between.text-xl.font-black span:last-child');
-                    if (totalText) totalText.innerText = euros(totalActual);
+                    const totalActual = subtotal + window._costoEnvioActual + usoPlataforma;
+                    const elEnvio = document.getElementById('valor-envio');
+                    const elTotal = document.getElementById('valor-total');
+                    if (elEnvio) elEnvio.innerText = euros(window._costoEnvioActual);
+                    if (elTotal) elTotal.innerText = euros(totalActual);
                     
                     console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
                 }
@@ -1053,7 +1059,7 @@ async function nuevoProcesarPedido() {
     procesandoPedidoActivo = true;
 
     const btnProcesar = document.getElementById('btn-procesar-orden');
-    if (btnProcesar) { btnProcesar.disabled = true; btnProcesar.innerHTML = '<span class="spinner-border"></span> PROCESANDO...'; btnProcesar.style.opacity = '0.7'; }
+    if (btnProcesar) { btnProcesar.disabled = true; btnProcesar.innerHTML = 'PROCESANDO...'; btnProcesar.style.opacity = '0.7'; }
 
     try {
         const cliente = obtenerCliente();
@@ -1062,65 +1068,58 @@ async function nuevoProcesarPedido() {
 
         const uid = user.uid; const email = cliente.email; const telefono = cliente.telefono;
 
-       // 🔎 1. ESCÁNER DE SEGURIDAD CRUZADO (Antifraude - Con 2 Advertencias)
-const pedidosSnap = await database.ref('pedidos').once('value');
-const todosLosPedidos = pedidosSnap.val() || {};
+        // 🔎 ESCÁNER DE SEGURIDAD CRUZADO
+        const pedidosSnap = await database.ref('pedidos').once('value');
+        const todosLosPedidos = pedidosSnap.val() || {};
 
-let tienePedidoActivo = false;
-let pedidoActivoId = null;
+        let tienePedidoActivo = false;
+        let pedidoActivoId = null;
 
-for (const [id, p] of Object.entries(todosLosPedidos)) {
-    if (p.uid_cliente === uid) {
-        const estado = p.estado || '';
-        const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
-        if (estaActivo) {
-            tienePedidoActivo = true;
-            pedidoActivoId = id;
-            break;
+        for (const [id, p] of Object.entries(todosLosPedidos)) {
+            if (p.uid_cliente === uid) {
+                const estado = p.estado || '';
+                const estaActivo = (estado !== 'ENTREGADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO_POR_AUSENCIA');
+                if (estaActivo) {
+                    tienePedidoActivo = true;
+                    pedidoActivoId = id;
+                    break;
+                }
+            }
         }
-    }
-}
 
-if (tienePedidoActivo) {
-    // Gestionar intentos de pedido duplicado
-    const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
-    const intentosSnap = await intentosRef.once('value');
-    let intentos = intentosSnap.val() || 0;
-    intentos++;
-    await intentosRef.set(intentos);
-    
-    if (intentos >= 3) {
-        // 🔴 Bloquear cliente (3er intento)
-        const emailSanitizado = sanitizarEmail(email);
-        await database.ref(`clientes_morosos/${emailSanitizado}`).set({
-            email_original: email,
-            nombre: cliente.nombre,
-            motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
-            deuda: 0,
-            fecha: Date.now(),
-            activo: true
-        });
-        throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
-    } else {
-        // ⚠️ Advertencia (1er o 2do intento)
-        const mensaje = `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`;
-        
-        // Mostrar SweetAlert con el mensaje
-        await Swal.fire({
-            title: '⚠️ Pedido en curso',
-            text: mensaje,
-            icon: 'warning',
-            confirmButtonText: 'Entendido',
-            background: '#020617',
-            color: 'white'
-        });
-        
-        // Detener el proceso de pedido
-        return;
-    }
-}
+        if (tienePedidoActivo) {
+            const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
+            const intentosSnap = await intentosRef.once('value');
+            let intentos = intentosSnap.val() || 0;
+            intentos++;
+            await intentosRef.set(intentos);
+            
+            if (intentos >= 3) {
+                const emailSanitizado = sanitizarEmail(email);
+                await database.ref(`clientes_morosos/${emailSanitizado}`).set({
+                    email_original: email,
+                    nombre: cliente.nombre,
+                    motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
+                    deuda: 0,
+                    fecha: Date.now(),
+                    activo: true
+                });
+                throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
+            } else {
+                const mensaje = `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`;
+                await Swal.fire({
+                    title: '⚠️ Pedido en curso',
+                    text: mensaje,
+                    icon: 'warning',
+                    confirmButtonText: 'Entendido',
+                    background: '#020617',
+                    color: 'white'
+                });
+                return;
+            }
+        }
 
-        // ✅ 2. VERIFICACIÓN DE DEUDA (Lista Negra Tradicional)
+        // ✅ VERIFICACIÓN DE DEUDA
         const emailSanitizado = sanitizarEmail(email);
         const morosoSnap = await database.ref(`clientes_morosos/${emailSanitizado}`).once('value');
         const moroso = morosoSnap.val();
@@ -1129,7 +1128,7 @@ if (tienePedidoActivo) {
         }
         if (cesta.length === 0) throw new Error("El carrito está vacío.");
 
-        // 📊 3. CÁLCULOS FINALES
+        // 📊 CÁLCULOS FINALES
         let subtotal = 0; cesta.forEach(item => subtotal += item.total || 0);
         const envio = window._costoEnvioActual || 2.50;
         const usoYServicios = window._usoPlataformaActual || 0.99;
@@ -1142,42 +1141,42 @@ if (tienePedidoActivo) {
             if (montoInput && montoInput.value) { montoPaga = parseFloat(montoInput.value); if (isNaN(montoPaga) || montoPaga <= 0) montoPaga = null; }
         }
 
-        // 📦 4. CONSTRUIR Y ENVIAR PEDIDO
-const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
-const pedido = {
-    id: idPedido, 
-    id_pedido: idPedido, 
-    uid_cliente: uid,
-    uid_restaurante: restauranteActivo.id,  // ← 🔥 SOLO AGREGAR ESTA LÍNEA
-    cliente_nombre: cliente.nombre, 
-    cliente_telefono: cliente.telefono, 
-    cliente_email: cliente.email,
-    direccion: cliente.direccion_completa, 
-    cp: cliente.cp,
-    items: cesta.map(item => ({ 
-        nombre: item.nombre, 
-        cantidad: item.cantidad, 
-        precio_unitario: item.precio_unitario, 
-        opciones: item.opciones || "", 
-        extras_precio: item.extras_precio || 0, 
-        total: item.total 
-    })),
-    subtotal, 
-    envio, 
-    usoYServicios, 
-    total, 
-    metodo_pago: metodo,
-    restaurante_id: restauranteActivo.id, 
-    restaurante_nombre: restauranteActivo.nombre,
-    estado: "RECIBIDO", 
-    fecha: Date.now(), 
-    timestamp: Date.now()
-};
+        // 📦 CONSTRUIR Y ENVIAR PEDIDO
+        const idPedido = "AE-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+        const pedido = {
+            id: idPedido, 
+            id_pedido: idPedido, 
+            uid_cliente: uid,
+            uid_restaurante: restauranteActivo.id,
+            cliente_nombre: cliente.nombre, 
+            cliente_telefono: cliente.telefono, 
+            cliente_email: cliente.email,
+            direccion: cliente.direccion_completa, 
+            cp: cliente.cp,
+            items: cesta.map(item => ({ 
+                nombre: item.nombre, 
+                cantidad: item.cantidad, 
+                precio_unitario: item.precio_unitario, 
+                opciones: item.opciones || "", 
+                extras_precio: item.extras_precio || 0, 
+                total: item.total 
+            })),
+            subtotal, 
+            envio, 
+            usoYServicios, 
+            total, 
+            metodo_pago: metodo,
+            restaurante_id: restauranteActivo.id, 
+            restaurante_nombre: restauranteActivo.nombre,
+            estado: "RECIBIDO", 
+            fecha: Date.now(), 
+            timestamp: Date.now()
+        };
         if (montoPaga) pedido.monto_paga = montoPaga;
 
         await database.ref('pedidos/' + idPedido).set(pedido);
 
-        // ✅ 5. LIMPIEZA Y REDIRECCIÓN AL SEGUIMIENTO
+        // ✅ LIMPIEZA Y REDIRECCIÓN
         cesta = []; actualizarCestaVisual(); cerrarCheckout();
         iniciarSeguimientoPedido(idPedido); abrirModalTracking();
         Swal.fire({ title: '🎉 ¡Pedido Enviado!', text: `Total: ${euros(total)}`, icon: 'success', timer: 2000, showConfirmButton: false, background: '#020617', color: 'white' });
@@ -1190,6 +1189,7 @@ const pedido = {
         if (btnProcesar) { btnProcesar.disabled = false; btnProcesar.innerHTML = "💳 PROCESAR ORDEN"; btnProcesar.style.opacity = "1"; }
     }
 }
+
 // 📝 CAMBIAR DIRECCIÓN DEL CLIENTE
 async function cambiarDireccionCliente() {
     const { value: nuevaDireccion } = await Swal.fire({
@@ -1219,7 +1219,6 @@ async function cambiarDireccionCliente() {
         await abrirCheckout();
     }
 }
-
 
 // ============================================================
 // 🎯 SEGUIMIENTO Y NOTIFICACIONES
@@ -1269,15 +1268,16 @@ function actualizarInterfazSeguimiento(data) {
     if (estado === 'ENTREGADO') {
         if (alarmaInterval) clearInterval(alarmaInterval);
         Swal.fire({ title: '🎉 ¡Pedido Entregado!', html: `<div class="text-center"><div class="text-6xl mb-3">🍕</div><p class="text-lg font-bold">¡Gracias por confiar en nosotros!</p><p class="text-sm mt-2">Esperamos que disfrutes tu pedido.</p><p class="text-xs text-cyan-400 mt-3">✨ Aguadulce Express - Siempre contigo ✨</p></div>`, icon: 'success', background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'Volver al inicio', timer: 5000, timerProgressBar: true, allowOutsideClick: false }).then(() => {
-            // ✅ CORRECCIÓN: Limpiar todo y volver al home
+            cerrarTodosLosPaneles();
             if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
             if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
             if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
             localStorage.removeItem('ae_pedido_activo');
             localStorage.removeItem('ae_tracking_id');
-            document.getElementById('tracking-modal').style.display = 'none';
             document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-            while (pantallaStack.length > 1) pantallaStack.pop();
+            pantallaStack = ['home'];
+            cesta = [];
+            actualizarCestaVisual();
             renderHome();
         });
         return;
@@ -1296,73 +1296,43 @@ function mostrarMensajeRepartidor(mensaje) {
     if (mensaje.emisor === 'repartidor') { const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); audio.play().catch(e => console.log); if (navigator.vibrate) navigator.vibrate(200); mostrarToast("📱 El repartidor te ha enviado un mensaje", "🔔"); }
 }
 
-// ✅ FUNCIÓN CORREGIDA: Cierra el modal de seguimiento y vuelve al home
 // ✅ FUNCIÓN CORREGIDA: Cierra el modal de seguimiento, todos los paneles y vuelve al home
 function cerrarModalTracking() {
-    // 1. Apagar listeners
-    if (trackingListenerRef) {
-        try { trackingListenerRef.off(); } catch(e) {}
-        trackingListenerRef = null;
-    }
-    if (window.mensajesListenerRef) {
-        try { window.mensajesListenerRef.off(); } catch(e) {}
-        window.mensajesListenerRef = null;
-    }
-    if (mensajesGlobalListener) {
-        try { mensajesGlobalListener.off(); } catch(e) {}
-        mensajesGlobalListener = null;
-    }
-    if (alarmaInterval) {
-        clearInterval(alarmaInterval);
-        alarmaInterval = null;
-    }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
     
-    // 2. CERRAR TODOS LOS PANELES (aquí estaba el bug)
     cerrarTodosLosPaneles();
-    
-    // 3. Ocultar botón flotante de reabrir seguimiento
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     
-    // 4. Limpiar storage
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
     
-    // 5. Resetear stack
     pantallaStack = ['home'];
-    
-    // 6. Limpiar cesta
     cesta = [];
     actualizarCestaVisual();
     
-    // 7. Volver al home
     renderHome();
 }
+
 // ✅ FUNCIÓN CORREGIDA: Cierra el modal de éxito y vuelve al home
 function cerrarModalExito() {
     document.getElementById('modal-exito').style.display = 'none';
     
-    if (trackingListenerRef) {
-        try { trackingListenerRef.off(); } catch(e) {}
-        trackingListenerRef = null;
-    }
-    if (window.mensajesListenerRef) {
-        try { window.mensajesListenerRef.off(); } catch(e) {}
-        window.mensajesListenerRef = null;
-    }
-    if (mensajesGlobalListener) {
-        try { mensajesGlobalListener.off(); } catch(e) {}
-        mensajesGlobalListener = null;
-    }
-    if (alarmaInterval) {
-        clearInterval(alarmaInterval);
-        alarmaInterval = null;
-    }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
     
+    cerrarTodosLosPaneles();
+    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
-    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     
-    while (pantallaStack.length > 1) pantallaStack.pop();
+    pantallaStack = ['home'];
+    cesta = [];
+    actualizarCestaVisual();
     renderHome();
 }
 
@@ -1371,30 +1341,17 @@ function cerrarTrackingPorRechazo() {
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
     
-    if (window.mensajesListenerRef) {
-        try { window.mensajesListenerRef.off(); } catch(e) {}
-        window.mensajesListenerRef = null;
-    }
-    if (trackingListenerRef) {
-        try { trackingListenerRef.off(); } catch(e) {}
-        trackingListenerRef = null;
-    }
-    if (mensajesGlobalListener) {
-        try { mensajesGlobalListener.off(); } catch(e) {}
-        mensajesGlobalListener = null;
-    }
-    if (alarmaInterval) {
-        clearInterval(alarmaInterval);
-        alarmaInterval = null;
-    }
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+    if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
     
-    document.getElementById('tracking-modal').style.display = 'none';
+    cerrarTodosLosPaneles();
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     
     cesta = [];
     actualizarCestaVisual();
-    
-    while (pantallaStack.length > 1) pantallaStack.pop();
+    pantallaStack = ['home'];
     renderHome();
 }
 
@@ -1419,18 +1376,9 @@ async function mostrarCancelacionConContacto(pedidoId, deuda) {
     document.getElementById('tracking-modal').style.display = 'none';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     
-    if (trackingListenerRef) { 
-        try { trackingListenerRef.off(); } catch(e) {} 
-        trackingListenerRef = null; 
-    }
-    if (window.mensajesListenerRef) { 
-        try { window.mensajesListenerRef.off(); } catch(e) {} 
-        window.mensajesListenerRef = null; 
-    }
-    if (mensajesGlobalListener) { 
-        try { mensajesGlobalListener.off(); } catch(e) {} 
-        mensajesGlobalListener = null; 
-    }
+    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
     
     localStorage.removeItem('ae_pedido_activo');
     localStorage.removeItem('ae_tracking_id');
@@ -1460,7 +1408,10 @@ async function mostrarCancelacionConContacto(pedidoId, deuda) {
         if (result.dismiss === Swal.DismissReason.cancel) {
             window.location.href = 'mailto:soporteaguadulcexpress26@gmail.com';
         }
-        while (pantallaStack.length > 1) pantallaStack.pop();
+        cerrarTodosLosPaneles();
+        pantallaStack = ['home'];
+        cesta = [];
+        actualizarCestaVisual();
         renderHome();
     });
 }
@@ -1517,8 +1468,6 @@ function limpiarSeguimientoCompleto() {
     if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none'; document.getElementById('tracking-modal').style.display = 'none';
 }
-
-document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>

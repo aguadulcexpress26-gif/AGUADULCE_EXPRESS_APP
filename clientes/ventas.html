@@ -746,7 +746,19 @@ db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({
     horarios_dias: data.horarios_dias || null, 
     orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 
 }));        db.restaurantes.sort((a, b) => { const ordenA = a.orden_manual; const ordenB = b.orden_manual; if (ordenA !== ordenB) return ordenA - ordenB; const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); return nombreA.localeCompare(nombreB); });
-        const menuSnap = await database.ref('menu_general').once('value'); db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
+        // Carga inicial del menú
+const menuSnap = await database.ref('menu_general').once('value'); 
+db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
+
+// ✅ Suscribirse a cambios en tiempo real
+database.ref('menu_general').on('value', (snap) => {
+    db.menu = snap.val() ? Object.values(snap.val()) : [];
+    console.log('🔄 Menú actualizado en tiempo real:', db.menu.length, 'platos');
+    // Si el cliente está viendo un restaurante, refrescar el menú visualmente
+    if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
+        renderMenu();
+    }
+});
         const horariosSnap = await database.ref('horarios_restaurantes').once('value'); const horariosRaw = horariosSnap.val(); db.horariosPorDia = {}; if (horariosRaw && typeof horariosRaw === 'object') { for (const [idRest, horariosDias] of Object.entries(horariosRaw)) { db.horariosPorDia[idRest] = horariosDias; } }
         const fondosSnap = await database.ref('fondos_cabecera').once('value'); const fondos = fondosSnap.val() || {}; let fondoActivo = null; for (const [id, data] of Object.entries(fondos)) { if (data.activo === true) { fondoActivo = data; break; } }
         const headerBg = document.getElementById('header-bg'); if (headerBg && fondoActivo) { headerBg.style.backgroundImage = `url(${fondoActivo.url})`; headerBg.style.backgroundSize = 'cover'; headerBg.style.backgroundPosition = 'center'; }

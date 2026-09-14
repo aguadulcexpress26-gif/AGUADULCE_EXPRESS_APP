@@ -475,6 +475,17 @@ function sanitizarEmail(email) { if (!email) return ''; return email.replace(/\.
 function alcoholDisponible() { return !HORARIO_ALCOHOL.activo || new Date().getHours() < HORARIO_ALCOHOL.horaFin; }
 
 function estaRestauranteAbiertoConDiaLibre(restaurant) {
+    // ✅ 1. Verificar si está DESACTIVADO (desaparece de Ventas)
+    if (restaurant.activo === false) {
+        return { abierto: false, horario: "🚫 Desactivado", desactivado: true };
+    }
+    
+    // ✅ 2. Verificar si está PAUSADO (visible pero cerrado)
+    if (restaurant.pausado === true) {
+        return { abierto: false, horario: "⏸️ En pausa" };
+    }
+    
+    // 3. Verificar horarios
     const horariosRest = restaurant.horarios_dias;
     if (!horariosRest) return { abierto: false, horario: "Horario no disponible" };
     const ahora = new Date();
@@ -739,46 +750,169 @@ async function cargarBaseDatos() {
     try {
         const restaurantesSnap = await database.ref('restaurantes').once('value');
         const restaurantesRaw = restaurantesSnap.val() || {};
-db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({ 
-    ...data, 
-    pin, 
-    ID_RESTAURANTE: data.ID_RESTAURANTE || data.uid || pin, 
-    horarios_dias: data.horarios_dias || null, 
-    orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 
-}));        db.restaurantes.sort((a, b) => { const ordenA = a.orden_manual; const ordenB = b.orden_manual; if (ordenA !== ordenB) return ordenA - ordenB; const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); return nombreA.localeCompare(nombreB); });
+        db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({ 
+            ...data, 
+            pin, 
+            ID_RESTAURANTE: data.ID_RESTAURANTE || data.uid || pin, 
+            horarios_dias: data.horarios_dias || null, 
+            orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 
+        }));
+        db.restaurantes.sort((a, b) => { 
+            const ordenA = a.orden_manual; 
+            const ordenB = b.orden_manual; 
+            if (ordenA !== ordenB) return ordenA - ordenB; 
+            const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); 
+            const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); 
+            return nombreA.localeCompare(nombreB); 
+        });
+
         // Carga inicial del menú
-const menuSnap = await database.ref('menu_general').once('value'); 
-db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
+        const menuSnap = await database.ref('menu_general').once('value'); 
+        db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
 
-// ✅ Suscribirse a cambios en tiempo real
-database.ref('menu_general').on('value', (snap) => {
-    db.menu = snap.val() ? Object.values(snap.val()) : [];
-    console.log('🔄 Menú actualizado en tiempo real:', db.menu.length, 'platos');
-    // Si el cliente está viendo un restaurante, refrescar el menú visualmente
-    if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
-        renderMenu();
+        // ✅ Suscribirse a cambios en tiempo real del menú
+        database.ref('menu_general').on('value', (snap) => {
+            db.menu = snap.val() ? Object.values(snap.val()) : [];
+            console.log('🔄 Menú actualizado en tiempo real:', db.menu.length, 'platos');
+            if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
+                renderMenu();
+            }
+        });
+
+        // ✅ Suscribirse a cambios en restaurantes (para pausa/activo en tiempo real)
+        database.ref('restaurantes').on('value', (snap) => {
+            const restaurantesRawRT = snap.val() || {};
+            db.restaurantes = Object.entries(restaurantesRawRT).map(([pin, data]) => ({ 
+                ...data, 
+                pin, 
+                ID_RESTAURANTE: data.ID_RESTAURANTE || data.uid || pin, 
+                horarios_dias: data.horarios_dias || null, 
+                orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 
+            }));
+            db.restaurantes.sort((a, b) => { 
+                const ordenA = a.orden_manual; 
+                const ordenB = b.orden_manual; 
+                if (ordenA !== ordenB) return ordenA - ordenB; 
+                const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); 
+                const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); 
+                return nombreA.localeCompare(nombreB); 
+            });
+            
+            console.log('🔄 Restaurantes actualizados:', db.restaurantes.length);
+            
+            if (pantallaStack[pantallaStack.length - 1] === 'home') {
+                renderHome();
+            }
+        });
+
+        const horariosSnap = await database.ref('horarios_restaurantes').once('value'); 
+        const horariosRaw = horariosSnap.val(); 
+        db.horariosPorDia = {}; 
+        if (horariosRaw && typeof horariosRaw === 'object') { 
+            for (const [idRest, horariosDias] of Object.entries(horariosRaw)) { 
+                db.horariosPorDia[idRest] = horariosDias; 
+            } 
+        }
+        
+        const fondosSnap = await database.ref('fondos_cabecera').once('value'); 
+        const fondos = fondosSnap.val() || {}; 
+        let fondoActivo = null; 
+        for (const [id, data] of Object.entries(fondos)) { 
+            if (data.activo === true) { fondoActivo = data; break; } 
+        }
+        
+        const headerBg = document.getElementById('header-bg'); 
+        if (headerBg && fondoActivo) { 
+            headerBg.style.backgroundImage = `url(${fondoActivo.url})`; 
+            headerBg.style.backgroundSize = 'cover'; 
+            headerBg.style.backgroundPosition = 'center'; 
+        }
+        
+        const appLogo = document.getElementById('app-logo'); 
+        const configSnapTemp = await database.ref('config').once('value'); 
+        const configDataTemp = configSnapTemp.val(); 
+        if (configDataTemp && configDataTemp.LOGO_URL) { 
+            appLogo.src = configDataTemp.LOGO_URL; 
+        } else { 
+            appLogo.src = "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg"; 
+        }
+        
+        const anunciosSnap = await database.ref('anuncios').once('value'); 
+        const anunciosData = anunciosSnap.val(); 
+        if (anunciosData && Array.isArray(anunciosData)) { 
+            db.anuncios = anunciosData; 
+            const textoAnuncio = document.getElementById('texto-anuncio'); 
+            const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI'); 
+            if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { 
+                textoAnuncio.innerText = anuncioActivo.TEXTO; 
+            } 
+        }
+        
+    } catch (error) { 
+        console.error("❌ Error:", error); 
+        throw error; 
     }
-});
-        const horariosSnap = await database.ref('horarios_restaurantes').once('value'); const horariosRaw = horariosSnap.val(); db.horariosPorDia = {}; if (horariosRaw && typeof horariosRaw === 'object') { for (const [idRest, horariosDias] of Object.entries(horariosRaw)) { db.horariosPorDia[idRest] = horariosDias; } }
-        const fondosSnap = await database.ref('fondos_cabecera').once('value'); const fondos = fondosSnap.val() || {}; let fondoActivo = null; for (const [id, data] of Object.entries(fondos)) { if (data.activo === true) { fondoActivo = data; break; } }
-        const headerBg = document.getElementById('header-bg'); if (headerBg && fondoActivo) { headerBg.style.backgroundImage = `url(${fondoActivo.url})`; headerBg.style.backgroundSize = 'cover'; headerBg.style.backgroundPosition = 'center'; }
-        const appLogo = document.getElementById('app-logo'); const configSnapTemp = await database.ref('config').once('value'); const configDataTemp = configSnapTemp.val(); if (configDataTemp && configDataTemp.LOGO_URL) { appLogo.src = configDataTemp.LOGO_URL; } else { appLogo.src = "https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg"; }
-        const anunciosSnap = await database.ref('anuncios').once('value'); const anunciosData = anunciosSnap.val(); if (anunciosData && Array.isArray(anunciosData)) { db.anuncios = anunciosData; const textoAnuncio = document.getElementById('texto-anuncio'); const anuncioActivo = anunciosData.find(a => a.ACTIVO === 'SI'); if (textoAnuncio && anuncioActivo && anuncioActivo.TEXTO) { textoAnuncio.innerText = anuncioActivo.TEXTO; } }
-    } catch (error) { console.error("❌ Error:", error); throw error; }
 }
-
 // ============================================================
 // 🏠 RENDERIZAR HOME
 // ============================================================
 function renderHome() {
-    const app = document.getElementById("app-container"); if (!app) return;
+    const app = document.getElementById("app-container"); 
+    if (!app) return;
+    
+    // ✅ Filtrar restaurantes DESACTIVADOS (no aparecen en Ventas)
+    const restaurantesVisibles = db.restaurantes.filter(rest => rest.activo !== false);
+    
     let html = `<div id="banner-container" class="mb-4"></div><div class="flex items-center justify-between mb-4 mt-2"><div class="flex items-center gap-2"><span class="text-cyan-400 text-sm font-black uppercase tracking-wider">🍽️ SELECCIONA UN RESTAURANTE</span><div class="h-px flex-1 bg-gradient-to-r from-cyan-500/50 to-transparent ml-4 w-20"></div></div></div>`;
-    db.restaurantes.forEach(rest => {
+    
+    if (restaurantesVisibles.length === 0) {
+        html += `<div class="text-center text-white/50 py-10">📭 No hay restaurantes disponibles ahora mismo</div>`;
+        app.innerHTML = html; agregarFooterLegal(); cargarBanners();
+        return;
+    }
+    
+    restaurantesVisibles.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
         const fotoRest = rest.FOTO || 'https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante';
-        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE || rest.uid || rest.pin}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${fotoRest}','${rest.ESTADO}')"` : ''}><img src="${fotoRest}" class="absolute inset-0 w-full h-full object-cover opacity-100" onerror="this.src='https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante'"><div class="absolute inset-0 bg-gradient-to-t from-black"></div><div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}</div>`;
+        
+        // Determinar estilo según estado
+        let claseContenedor = '';
+        let etiquetaEstado = '';
+        let esClickable = false;
+        
+        if (rest.pausado === true) {
+            // EN PAUSA
+            claseContenedor = 'grayscale opacity-60 cursor-not-allowed';
+            etiquetaEstado = `<div class="absolute top-2 left-2 bg-black/80 backdrop-blur-sm px-3 py-1 rounded-full border border-red-500/60 shadow-lg z-10">
+                <p class="text-[11px] font-black text-red-400">⏸️ EN PAUSA</p>
+            </div>`;
+            esClickable = false;
+        } else if (!abierto) {
+            // CERRADO por horario
+            claseContenedor = 'grayscale opacity-50 cursor-not-allowed';
+            esClickable = false;
+        } else {
+            // ABIERTO
+            claseContenedor = 'cursor-pointer active:scale-95';
+            esClickable = true;
+        }
+        
+        const onclickAttr = esClickable ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE || rest.uid || rest.pin}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${fotoRest}','${rest.ESTADO}')"` : '';
+        
+        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${claseContenedor}" ${onclickAttr}>
+            <img src="${fotoRest}" class="absolute inset-0 w-full h-full object-cover opacity-100" onerror="this.src='https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante'">
+            <div class="absolute inset-0 bg-gradient-to-t from-black"></div>
+            ${etiquetaEstado}
+            <div class="absolute bottom-6 left-6">
+                <h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2>
+            </div>
+            ${abierto && horario && !horario.includes('Día libre') && rest.pausado !== true ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}
+        </div>`;
     });
-    app.innerHTML = html; agregarFooterLegal(); cargarBanners();
+    
+    app.innerHTML = html; 
+    agregarFooterLegal(); 
+    cargarBanners();
 }
 
 async function cargarBanners() {

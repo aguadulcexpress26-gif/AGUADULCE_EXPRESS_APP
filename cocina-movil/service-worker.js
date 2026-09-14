@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aguadulce-cocina-v1';
+const CACHE_NAME = 'aguadulce-cocina-v2';
 const urlsToCache = [
     '/AGUADULCE_EXPRESS_APP/cocina-movil/index.html',
     'https://cdn.tailwindcss.com',

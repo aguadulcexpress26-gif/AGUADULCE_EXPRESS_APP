@@ -739,8 +739,13 @@ async function cargarBaseDatos() {
     try {
         const restaurantesSnap = await database.ref('restaurantes').once('value');
         const restaurantesRaw = restaurantesSnap.val() || {};
-        db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({ pin, ...data, horarios_dias: data.horarios_dias || null, orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 }));
-        db.restaurantes.sort((a, b) => { const ordenA = a.orden_manual; const ordenB = b.orden_manual; if (ordenA !== ordenB) return ordenA - ordenB; const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); return nombreA.localeCompare(nombreB); });
+db.restaurantes = Object.entries(restaurantesRaw).map(([pin, data]) => ({ 
+    ...data, 
+    pin, 
+    ID_RESTAURANTE: data.ID_RESTAURANTE || data.uid || pin, 
+    horarios_dias: data.horarios_dias || null, 
+    orden_manual: data.orden_manual !== undefined && data.orden_manual !== null ? data.orden_manual : 9999 
+}));        db.restaurantes.sort((a, b) => { const ordenA = a.orden_manual; const ordenB = b.orden_manual; if (ordenA !== ordenB) return ordenA - ordenB; const nombreA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase(); const nombreB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase(); return nombreA.localeCompare(nombreB); });
         const menuSnap = await database.ref('menu_general').once('value'); db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
         const horariosSnap = await database.ref('horarios_restaurantes').once('value'); const horariosRaw = horariosSnap.val(); db.horariosPorDia = {}; if (horariosRaw && typeof horariosRaw === 'object') { for (const [idRest, horariosDias] of Object.entries(horariosRaw)) { db.horariosPorDia[idRest] = horariosDias; } }
         const fondosSnap = await database.ref('fondos_cabecera').once('value'); const fondos = fondosSnap.val() || {}; let fondoActivo = null; for (const [id, data] of Object.entries(fondos)) { if (data.activo === true) { fondoActivo = data; break; } }
@@ -759,7 +764,7 @@ function renderHome() {
     db.restaurantes.forEach(rest => {
         const { abierto, horario } = estaRestauranteAbiertoConDiaLibre(rest);
         const fotoRest = rest.FOTO || 'https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante';
-        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${fotoRest}','${rest.ESTADO}')"` : ''}><img src="${fotoRest}" class="absolute inset-0 w-full h-full object-cover opacity-100" onerror="this.src='https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante'"><div class="absolute inset-0 bg-gradient-to-t from-black"></div><div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}</div>`;
+        html += `<div class="relative rounded-[2.5rem] overflow-hidden h-[160px] mb-5 border border-white/5 shadow-xl ${!abierto ? 'grayscale opacity-50' : 'cursor-pointer active:scale-95'}" ${abierto ? `onclick="abrirRestaurante('${rest.ID_RESTAURANTE || rest.uid || rest.pin}','${escapeHTML(rest.NOMBRE_RESTAURANTE)}','${fotoRest}','${rest.ESTADO}')"` : ''}><img src="${fotoRest}" class="absolute inset-0 w-full h-full object-cover opacity-100" onerror="this.src='https://placehold.co/600x400/1e293b/06b6d4?text=Restaurante'"><div class="absolute inset-0 bg-gradient-to-t from-black"></div><div class="absolute bottom-6 left-6"><h2 class="text-2xl font-black italic uppercase text-white">${escapeHTML(rest.NOMBRE_RESTAURANTE)}</h2></div>${abierto && horario && !horario.includes('Día libre') ? `<div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-cyan-400/40 shadow-lg"><p class="text-[9px] font-bold text-cyan-300">🕒 ${horario}</p></div>` : ''}</div>`;
     });
     app.innerHTML = html; agregarFooterLegal(); cargarBanners();
 }
@@ -1406,6 +1411,12 @@ async function initApp() {
         const observer = new MutationObserver(() => { if (!document.getElementById('legal-footer-container')) agregarFooterLegal(); });
         const appContainer = document.getElementById('app-container');
         if (appContainer) observer.observe(appContainer, { childList: true, subtree: true });
+        // 🔧 Limpiar restauranteActivo corrupto (id: "undefined")
+if (restauranteActivo && (restauranteActivo.id === 'undefined' || restauranteActivo.id === null || restauranteActivo.id === undefined)) {
+    restauranteActivo = { id: null, nombre: "", foto: "" };
+    guardarCesta();
+    console.log('🔧 Limpiado restauranteActivo corrupto del localStorage');
+}
         console.log("✅ App iniciada correctamente");
     } catch (e) { console.error("❌ Fallo en la carga inicial:", e); alertaError("ERROR", "No se pudo conectar con el servidor. Reintentando..."); }
    finally { 

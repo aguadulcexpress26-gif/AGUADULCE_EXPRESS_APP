@@ -17,6 +17,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -720,25 +721,78 @@ async function registrarCliente() {
     if (!ZONAS_PERMITIDAS.includes(cp)) { alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)"); return; }
     if (!legal) { alertaError("Acepta términos", "Debes aceptar los términos"); return; }
     if (!edad) { alertaError("Mayor de edad", "Debes ser mayor de 18 años para registrarte"); return; }
+    
     if (huellaDigitalTerminal) {
         const huellaUnica = await verificarHuellaUnica(huellaDigitalTerminal, email);
         if (!huellaUnica) { alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono."); return; }
+    }
+    
+    // 🔔 PEDIR PERMISO DE NOTIFICACIONES OBLIGATORIO
+    const permisoOk = await pedirPermisoNotificacionesObligatorio();
+    if (!permisoOk) {
+        console.log('🚫 Registro cancelado: el cliente no aceptó las notificaciones');
+        return;
     }
     
     try {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
         await userCredential.user.sendEmailVerification();
+        
         const direccionCompleta = `${calle}${edificio ? ', ' + edificio : ''}${puerta ? ', ' + puerta : ''}, ${cp}`;
-        const perfilCliente = { uid, nombre, email, telefono, calle, edificio: edificio || '', puerta: puerta || '', instrucciones: instrucciones || '', cp, direccion_completa: direccionCompleta, mayorEdad: edad, creado_en: Date.now(), moroso: false, deuda_total: 0, huella: huellaDigitalTerminal || '' };
+        const perfilCliente = { 
+            uid, 
+            nombre, 
+            email, 
+            telefono, 
+            calle, 
+            edificio: edificio || '', 
+            puerta: puerta || '', 
+            instrucciones: instrucciones || '', 
+            cp, 
+            direccion_completa: direccionCompleta, 
+            mayorEdad: edad, 
+            creado_en: Date.now(), 
+            moroso: false, 
+            deuda_total: 0, 
+            huella: huellaDigitalTerminal || '' 
+        };
+        
         await database.ref(`clientes/${uid}`).set(perfilCliente);
         localStorage.setItem('ae_cliente', JSON.stringify(perfilCliente));
+        
+        // 🆕 GUARDAR TOKEN DE NOTIFICACIONES
+        await generarYGuardarTokenCliente(uid);
+        
         cerrarRegistro();
-        await Swal.fire({ title: '📧 Verifica tu email', text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam. Puedes seguir usando la app mientras tanto.`, icon: 'info', timer: 5000, showConfirmButton: true, background: '#020617', color: 'white' });
+        
+        await Swal.fire({ 
+            title: '📧 Verifica tu email', 
+            text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam. Puedes seguir usando la app mientras tanto.`, 
+            icon: 'info', 
+            timer: 5000, 
+            showConfirmButton: true, 
+            background: '#020617', 
+            color: 'white' 
+        });
+        
         renderHome();
-    } catch (error) { console.error('❌ Error en registro:', error); alertaError("Error", error.message); }
+        
+    } catch (error) { 
+        console.error('❌ Error en registro:', error); 
+        
+        let mensajeAmigable = error.message;
+        if (error.code === 'auth/email-already-in-use') {
+            mensajeAmigable = 'Este email ya está registrado. Prueba a iniciar sesión o usa otro email.';
+        } else if (error.code === 'auth/invalid-email') {
+            mensajeAmigable = 'El email no es válido.';
+        } else if (error.code === 'auth/weak-password') {
+            mensajeAmigable = 'La contraseña es muy débil (mínimo 6 caracteres).';
+        }
+        
+        alertaError("Error al registrarte", mensajeAmigable); 
+    }
 }
-
 function mostrarRegistro() { cerrarModal('modal-login'); document.getElementById('modal-registro').style.display = 'flex'; }
 function cerrarRegistro() { document.getElementById('modal-registro').style.display = 'none'; document.getElementById('modal-login').style.display = 'flex'; }
 function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; document.getElementById('panel-revision').style.display = 'block'; }
@@ -1598,6 +1652,167 @@ function limpiarSeguimientoCompleto() {
     if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none'; document.getElementById('tracking-modal').style.display = 'none';
 }
-</script>
+// ============================================================
+// 🔔 PERMISO DE NOTIFICACIONES OBLIGATORIO
+// ============================================================
+async function pedirPermisoNotificacionesObligatorio() {
+    try {
+        // 1. Verificar soporte del navegador
+        if (!('Notification' in window)) {
+            await Swal.fire({
+                title: '⚠️ Navegador no compatible',
+                html: `
+                    <p style="color:#f1f5f9;">Tu navegador no soporta notificaciones.</p>
+                    <p style="color:#94a3b8;font-size:13px;margin-top:12px;">Prueba con Chrome, Firefox o Safari actualizado.</p>
+                `,
+                icon: 'warning',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#f59e0b'
+            });
+            return false;
+        }
+        
+        // 2. Si ya aceptó antes → continuar
+        if (Notification.permission === 'granted') {
+            console.log('✅ Ya tenía permiso de notificaciones');
+            return true;
+        }
+        
+        // 3. Si ya rechazó antes → mostrar instrucciones
+        if (Notification.permission === 'denied') {
+            await Swal.fire({
+                title: '🔕 Notificaciones bloqueadas',
+                html: `
+                    <div style="text-align:left;color:#f1f5f9;font-size:13px;">
+                        <p style="margin-bottom:12px;">Para usar la app necesitas <strong>activar las notificaciones</strong>.</p>
+                        <p style="color:#f59e0b;font-weight:bold;margin-bottom:8px;">Cómo desbloquearlas:</p>
+                        <ol style="margin-left:20px;line-height:1.8;color:#cbd5e1;">
+                            <li>Pulsa el <strong>candado 🔒</strong> junto a la barra de direcciones</li>
+                            <li>Busca <strong>"Notificaciones"</strong></li>
+                            <li>Cámbialo a <strong>"Permitir"</strong></li>
+                            <li>Recarga la página y vuelve a intentarlo</li>
+                        </ol>
+                    </div>
+                `,
+                icon: 'warning',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#f59e0b',
+                confirmButtonText: '✅ Entendido',
+                allowOutsideClick: false
+            });
+            return false;
+        }
+        
+        // 4. Pedir permiso por primera vez
+        const permiso = await Notification.requestPermission();
+        
+        if (permiso === 'granted') {
+            console.log('✅ Permiso concedido');
+            
+            await Swal.fire({
+                title: '🔔 ¡Perfecto!',
+                html: `
+                    <div style="text-align:center;">
+                        <div style="font-size:60px;margin-bottom:15px;">🔔</div>
+                        <p style="color:#f1f5f9;font-size:15px;">Notificaciones activadas</p>
+                        <p style="color:#94a3b8;font-size:13px;margin-top:8px;">Te avisaremos cuando el repartidor esté en tu puerta</p>
+                    </div>
+                `,
+                icon: 'success',
+                timer: 2500,
+                showConfirmButton: false,
+                background: '#020617',
+                color: 'white'
+            });
+            
+            return true;
+        } else {
+            console.log('❌ Permiso denegado');
+            
+            await Swal.fire({
+                title: '⚠️ Notificaciones necesarias',
+                html: `
+                    <div style="text-align:left;color:#f1f5f9;font-size:13px;">
+                        <p style="margin-bottom:12px;font-size:15px;">Para registrarte en Aguadulce Express <strong>necesitas aceptar las notificaciones</strong>.</p>
+                        <p style="color:#94a3b8;">Las usamos exclusivamente para:</p>
+                        <ul style="margin-left:20px;margin-top:8px;line-height:1.8;color:#cbd5e1;">
+                            <li>🔔 Avisarte cuando el repartidor esté en tu puerta</li>
+                            <li>📦 Informarte del estado de tu pedido</li>
+                            <li>📱 Mensajes importantes sobre la entrega</li>
+                        </ul>
+                        <p style="color:#f59e0b;font-size:13px;margin-top:12px;">Sin ellas no podemos garantizar que recibas tu pedido correctamente.</p>
+                    </div>
+                `,
+                icon: 'warning',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#f59e0b',
+                confirmButtonText: '🔄 Volver a intentar',
+                allowOutsideClick: false,
+                allowEscapeKey: false
+            });
+            
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error pidiendo permiso:', error);
+        
+        await Swal.fire({
+            title: '❌ Error',
+            text: 'No se pudo solicitar el permiso. Inténtalo de nuevo.',
+            icon: 'error',
+            background: '#020617',
+            color: 'white'
+        });
+        
+        return false;
+    }
+}
+
+// ============================================================
+// 🎫 GENERAR Y GUARDAR TOKEN FCM DEL CLIENTE
+// ============================================================
+async function generarYGuardarTokenCliente(uid) {
+    try {
+        if (typeof firebase.messaging === 'undefined') {
+            console.warn('⚠️ Firebase Messaging no cargado en ventas.html');
+            return null;
+        }
+        
+        const messaging = firebase.messaging();
+        
+        const token = await messaging.getToken({
+            vapidKey: 'BH4IAMeS7LHkDjOt84N-7mG985aTyHpYXx845HqKCnT8oGyxbaJ9pT98IgfslMsrFTJW3jHpvik0mrY263nlFRY'
+        });
+        
+        if (!token) {
+            console.warn('⚠️ No se pudo generar token');
+            return null;
+        }
+        
+        await database.ref(`clientes/${uid}/token`).set(token);
+        await database.ref(`clientes/${uid}/token_actualizado`).set(Date.now());
+        
+                console.log('✅ Token guardado para cliente:', uid.substring(0, 8));
+        return token;
+        
+    } catch (error) {
+        console.error('❌ Error generando token:', error);
+        return null;
+    }
+}
+</script>                    
+
+<script>                 
+    // ✅ FCM Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+            .then(reg => console.log('✅ FCM SW registrado:', reg.scope))
+            .catch(err => console.error('❌ Error FCM SW:', err));
+    }
+</script>                   
 </body>
 </html>

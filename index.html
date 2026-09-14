@@ -7,6 +7,12 @@
     <meta name="description" content="Los mejores restaurantes de Roquetas de Mar, directos a tu puerta. Rápido, fácil y seguro.">
     <meta name="theme-color" content="#06b6d4">
     
+    <!-- Open Graph -->
+    <meta property="og:title" content="Aguadulce Express — Comida a domicilio">
+    <meta property="og:description" content="Los mejores restaurantes de Roquetas de Mar, directos a tu puerta.">
+    <meta property="og:image" content="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
+    <meta property="og:type" content="website">
+    
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/cCv7qsHf/IMAGEN-PNG-512.jpg">
@@ -21,6 +27,10 @@
     
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     
     <!-- QR Code Library -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -229,6 +239,29 @@
             line-height: 1.7;
         }
         
+        /* ============ CINTILLO ============ */
+        .cintillo {
+            background: linear-gradient(90deg, var(--dark), var(--cyan-dark), var(--dark));
+            color: white;
+            padding: 10px 0;
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+        }
+        .cintillo p {
+            display: inline-block;
+            padding-left: 100%;
+            animation: marquee 30s linear infinite;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        @keyframes marquee {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(-100%, 0); }
+        }
+        
         /* ============ SERVICIOS ============ */
         .service-card {
             padding: 2rem;
@@ -303,6 +336,56 @@
             font-style: italic;
             text-transform: uppercase;
             line-height: 1;
+        }
+        .restaurant-card .horario-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(10px);
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid rgba(6, 182, 212, 0.5);
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: var(--cyan);
+        }
+        .restaurant-card.pausado {
+            filter: grayscale(0.9) opacity(0.6);
+            cursor: not-allowed;
+        }
+        .restaurant-card.pausado::after {
+            content: '⏸️ EN PAUSA';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            font-weight: 900;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            z-index: 10;
+        }
+        .restaurant-card.cerrado {
+            filter: grayscale(0.9) opacity(0.5);
+        }
+        .restaurant-card.cerrado::after {
+            content: 'CERRADO';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(100, 116, 139, 0.9);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            font-weight: 900;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            z-index: 10;
         }
         
         /* ============ PASOS ============ */
@@ -517,6 +600,23 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* ============ SPINNER EN BOTONES ============ */
+        .btn-loading {
+            opacity: 0.7 !important;
+            cursor: not-allowed !important;
+        }
+        .btn-loading::after {
+            content: '';
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            margin-left: 8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
     </style>
 </head>
 <body>
@@ -552,6 +652,11 @@
     </div>
 </header>
 
+<!-- ============ CINTILLO ============ -->
+<div class="cintillo" style="margin-top: 76px;">
+    <p id="cintillo-texto">¡Bienvenidos a Aguadulce Express! Los mejores restaurantes en tu puerta...</p>
+</div>
+
 <!-- ============ HERO ============ -->
 <section class="hero">
     <div class="hero-grid"></div>
@@ -559,16 +664,16 @@
         
         <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-400/10 border border-cyan-400/30 mb-8 reveal">
             <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
-            <span class="text-cyan-400 text-xs font-black uppercase tracking-wider">🍔 Comida a domicilio en Roquetas de Mar</span>
+            <span class="text-cyan-400 text-xs font-black uppercase tracking-wider" id="hero-tag">🍔 Comida a domicilio en Roquetas de Mar</span>
         </div>
         
         <h1 class="text-5xl md:text-7xl font-black text-white leading-none tracking-tighter mb-6 reveal">
-            TU COMIDA FAVORITA
+            <span id="hero-titulo-1">TU COMIDA FAVORITA</span>
             <br>
-            <span class="gradient-text">DIRECTO A TU PUERTA</span>
+            <span class="gradient-text" id="hero-titulo-2">DIRECTO A TU PUERTA</span>
         </h1>
         
-        <p class="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed reveal">
+        <p class="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed reveal" id="hero-subtitulo">
             Los mejores restaurantes de la ciudad, un solo lugar para pedir. Rápido, fácil y seguro.
         </p>
         
@@ -584,7 +689,7 @@
         
         <div class="mt-16 grid grid-cols-3 gap-6 max-w-2xl mx-auto reveal">
             <div class="text-center">
-                <div class="text-3xl md:text-4xl font-black text-cyan-400">+30</div>
+                <div class="text-3xl md:text-4xl font-black text-cyan-400" id="stat-restaurantes">+30</div>
                 <div class="text-xs md:text-sm text-white/50 font-bold uppercase tracking-wider mt-1">Restaurantes</div>
             </div>
             <div class="text-center">
@@ -658,26 +763,11 @@
             <p class="section-subtitle">Descubre los restaurantes que ya confían en Aguadulce Express.</p>
         </div>
         
-        <!-- Placeholder - los restaurantes se cargarán desde Firebase en el BLOQUE B -->
         <div id="restaurantes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Ejemplos de prueba (serán reemplazados) -->
-            <div class="restaurant-card reveal" onclick="window.location.href='https://aguadulcexpress26-gif.github.io/AGUADULCE_EXPRESS_APP/clientes/ventas.html'">
-                <img src="https://i.postimg.cc/8C0TfWX2/kebab-durum.jpg" alt="KEBAB XPRESS">
-                <div class="overlay">
-                    <div class="nombre">KEBAB XPRESS</div>
-                </div>
-            </div>
-            <div class="restaurant-card reveal" onclick="window.location.href='https://aguadulcexpress26-gif.github.io/AGUADULCE_EXPRESS_APP/clientes/ventas.html'">
-                <img src="https://placehold.co/600x400/1e293b/06b6d4?text=SUPER+KEBAB" alt="SUPER KEBAB">
-                <div class="overlay">
-                    <div class="nombre">SUPER KEBAB</div>
-                </div>
-            </div>
-            <div class="restaurant-card reveal" onclick="window.location.href='https://aguadulcexpress26-gif.github.io/AGUADULCE_EXPRESS_APP/clientes/ventas.html'">
-                <img src="https://placehold.co/600x400/1e293b/06b6d4?text=PIZZAS+LA+SUPREMA" alt="PIZZAS LA SUPREMA">
-                <div class="overlay">
-                    <div class="nombre">PIZZAS LA SUPREMA</div>
-                </div>
+            <!-- Cargados dinámicamente desde Firebase -->
+            <div class="col-span-full text-center text-gray-400 py-10">
+                <div class="inline-block w-8 h-8 border-4 border-gray-200 border-t-cyan-500 rounded-full animate-spin"></div>
+                <p class="mt-3 text-sm">Cargando restaurantes...</p>
             </div>
         </div>
         
@@ -774,7 +864,6 @@
         </div>
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <!-- Restaurantes -->
             <div class="team-card restaurante reveal" onclick="abrirModalFormulario('restaurante')">
                 <div class="text-6xl mb-4">🏪</div>
                 <h3 class="text-2xl font-black mb-3">Soy Restaurante</h3>
@@ -786,7 +875,6 @@
                 </button>
             </div>
             
-            <!-- Repartidores -->
             <div class="team-card repartidor reveal" onclick="abrirModalFormulario('repartidor')">
                 <div class="text-6xl mb-4">🛵</div>
                 <h3 class="text-2xl font-black mb-3">Soy Repartidor</h3>
@@ -811,7 +899,6 @@
         </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <!-- Info -->
             <div class="reveal">
                 <h3 class="text-2xl font-black mb-6">INFORMACIÓN DE CONTACTO</h3>
                 
@@ -821,7 +908,7 @@
                         <div class="w-12 h-12 rounded-xl bg-cyan-100 flex items-center justify-center text-2xl">📧</div>
                         <div>
                             <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">Email</div>
-                            <div class="font-bold text-gray-900 group-hover:text-cyan-500 transition">soporteaguadulcexpress26@gmail.com</div>
+                            <div class="font-bold text-gray-900 group-hover:text-cyan-500 transition" id="contacto-email">soporteaguadulcexpress26@gmail.com</div>
                         </div>
                     </a>
                     
@@ -830,7 +917,7 @@
                         <div class="w-12 h-12 rounded-xl bg-cyan-100 flex items-center justify-center text-2xl">📞</div>
                         <div>
                             <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">Teléfono</div>
-                            <div class="font-bold text-gray-900 group-hover:text-cyan-500 transition">643 261 881</div>
+                            <div class="font-bold text-gray-900 group-hover:text-cyan-500 transition" id="contacto-telefono">643 261 881</div>
                         </div>
                     </a>
                     
@@ -838,29 +925,26 @@
                         <div class="w-12 h-12 rounded-xl bg-cyan-100 flex items-center justify-center text-2xl">📍</div>
                         <div>
                             <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">Zona de servicio</div>
-                            <div class="font-bold text-gray-900">Roquetas de Mar (04740)</div>
+                            <div class="font-bold text-gray-900" id="contacto-zona">Roquetas de Mar (04740)</div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Redes sociales (placeholders editables) -->
                 <div id="redes-sociales" class="pt-6 border-t border-gray-200">
                     <div class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-3">Síguenos</div>
                     <div class="flex gap-3 flex-wrap" id="redes-container">
-                        <!-- Se cargarán dinámicamente desde Admin -->
                         <span class="text-gray-400 text-sm italic">Próximamente disponibles...</span>
                     </div>
                 </div>
             </div>
             
-            <!-- Formulario rápido -->
             <div class="reveal">
                 <div class="bg-white rounded-3xl p-8 shadow-lg">
                     <h3 class="text-2xl font-black mb-6">ENVÍANOS UN MENSAJE</h3>
-                    <form onsubmit="enviarMensajeContacto(event)" class="space-y-4">
-                        <input type="text" class="form-input" placeholder="Tu nombre" required>
-                        <input type="email" class="form-input" placeholder="Tu email" required>
-                        <textarea class="form-input" rows="4" placeholder="Cuéntanos qué necesitas..." required></textarea>
+                    <form onsubmit="enviarMensajeContacto(event)" class="space-y-4" id="form-contacto">
+                        <input type="text" name="nombre" class="form-input" placeholder="Tu nombre" required>
+                        <input type="email" name="email" class="form-input" placeholder="Tu email" required>
+                        <textarea name="mensaje" class="form-input" rows="4" placeholder="Cuéntanos qué necesitas..." required></textarea>
                         <button type="submit" class="btn-primary w-full">
                             📩 Enviar Mensaje
                         </button>
@@ -930,13 +1014,13 @@
         
         <div class="mt-6 space-y-2">
             <div class="flex items-center gap-2 text-sm text-gray-600 justify-center">
-                <span class="text-cyan-500">1.</span> Escanea el QR con la cámara
+                <span class="text-cyan-500 font-black">1.</span> Escanea el QR con la cámara
             </div>
             <div class="flex items-center gap-2 text-sm text-gray-600 justify-center">
-                <span class="text-cyan-500">2.</span> Toca "Añadir a pantalla de inicio"
+                <span class="text-cyan-500 font-black">2.</span> Toca "Añadir a pantalla de inicio"
             </div>
             <div class="flex items-center gap-2 text-sm text-gray-600 justify-center">
-                <span class="text-cyan-500">3.</span> ¡Listo! Ya tienes la app
+                <span class="text-cyan-500 font-black">3.</span> ¡Listo! Ya tienes la app
             </div>
         </div>
         
@@ -956,10 +1040,48 @@
 
 <script>
 // ============================================================
-// 🎯 CONFIGURACIÓN BÁSICA
+// 🔥 CONFIGURACIÓN DE FIREBASE
 // ============================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyDw-EdjMC5S2nQTR3ownQBlHx2AcHZBy0A",
+    authDomain: "aguadulce-express-v2.firebaseapp.com",
+    databaseURL: "https://aguadulce-express-v2-default-rtdb.firebaseio.com",
+    projectId: "aguadulce-express-v2",
+    storageBucket: "aguadulce-express-v2.firebasestorage.app",
+    messagingSenderId: "897110914130",
+    appId: "1:897110914130:web:9289bbc7a1a1b34205b8b"
+};
 
+// Inicializar Firebase
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// ============================================================
+// 📌 CONSTANTES
+// ============================================================
 const VENTAS_URL = 'https://aguadulcexpress26-gif.github.io/AGUADULCE_EXPRESS_APP/clientes/ventas.html';
+const FORMSPREE_URL = 'https://formspree.io/f/xgaejqlr';
+
+// ============================================================
+// 🎯 CONFIGURACIÓN GLOBAL (por defecto)
+// ============================================================
+const WEB_CONFIG_DEFAULTS = {
+    cintillo: {
+        mensaje: "¡Bienvenidos a Aguadulce Express! Los mejores restaurantes en tu puerta..."
+    },
+    hero: {
+        tag: "🍔 Comida a domicilio en Roquetas de Mar",
+        titulo_1: "TU COMIDA FAVORITA",
+        titulo_2: "DIRECTO A TU PUERTA",
+        subtitulo: "Los mejores restaurantes de la ciudad, un solo lugar para pedir. Rápido, fácil y seguro."
+    },
+    contacto: {
+        email: "soporteaguadulcexpress26@gmail.com",
+        telefono: "643 261 881",
+        zona: "Roquetas de Mar (04740)"
+    },
+    redes: []
+};
 
 // ============================================================
 // 🖱️ HEADER SCROLL
@@ -986,7 +1108,162 @@ const revealObserver = new IntersectionObserver((entries) => {
     });
 }, { threshold: 0.15 });
 
-document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+function observarReveals() {
+    document.querySelectorAll('.reveal:not(.active)').forEach(el => revealObserver.observe(el));
+}
+
+// ============================================================
+// 🔥 CARGAR CONFIGURACIÓN WEB
+// ============================================================
+async function cargarConfigWeb() {
+    try {
+        const snap = await database.ref('web_config').once('value');
+        const config = snap.val() || {};
+        
+        // Cintillo
+        const cintilloTexto = config.cintillo?.mensaje || WEB_CONFIG_DEFAULTS.cintillo.mensaje;
+        document.getElementById('cintillo-texto').textContent = cintilloTexto;
+        
+        // Hero
+        const hero = { ...WEB_CONFIG_DEFAULTS.hero, ...(config.hero || {}) };
+        document.getElementById('hero-tag').textContent = hero.tag;
+        document.getElementById('hero-titulo-1').textContent = hero.titulo_1;
+        document.getElementById('hero-titulo-2').textContent = hero.titulo_2;
+        document.getElementById('hero-subtitulo').textContent = hero.subtitulo;
+        
+        // Contacto
+        const contacto = { ...WEB_CONFIG_DEFAULTS.contacto, ...(config.contacto || {}) };
+        document.getElementById('contacto-email').textContent = contacto.email;
+        document.getElementById('contacto-telefono').textContent = contacto.telefono;
+        document.getElementById('contacto-zona').textContent = contacto.zona;
+        document.querySelector('a[href^="mailto:"]').href = `mailto:${contacto.email}`;
+        document.querySelector('a[href^="tel:"]').href = `tel:${contacto.telefono.replace(/\s/g, '')}`;
+        
+        // Redes sociales
+        const redes = config.redes || WEB_CONFIG_DEFAULTS.redes;
+        const redesContainer = document.getElementById('redes-container');
+        if (Array.isArray(redes) && redes.length > 0) {
+            redesContainer.innerHTML = redes.map(red => `
+                <a href="${red.url}" target="_blank" rel="noopener" 
+                   class="w-11 h-11 rounded-xl bg-white flex items-center justify-center text-xl hover:bg-cyan-100 hover:scale-110 transition"
+                   title="${red.nombre || 'Red social'}">
+                    ${red.icono || '🔗'}
+                </a>
+            `).join('');
+        } else {
+            redesContainer.innerHTML = '<span class="text-gray-400 text-sm italic">Próximamente disponibles...</span>';
+        }
+        
+        // SEO
+        if (config.seo?.titulo) document.title = config.seo.titulo;
+        if (config.seo?.descripcion) {
+            const metaDesc = document.querySelector('meta[name="description"]');
+            if (metaDesc) metaDesc.setAttribute('content', config.seo.descripcion);
+        }
+        
+        console.log('✅ Configuración web cargada');
+    } catch (error) {
+        console.warn('⚠️ No se pudo cargar web_config (usando defaults):', error.message);
+    }
+}
+
+// ============================================================
+// 🏪 CARGAR RESTAURANTES ACTIVOS
+// ============================================================
+async function cargarRestaurantesWeb() {
+    const grid = document.getElementById('restaurantes-grid');
+    if (!grid) return;
+    
+    try {
+        const snap = await database.ref('restaurantes').once('value');
+        const restaurantesRaw = snap.val() || {};
+        
+        // Convertir a array y filtrar
+        const restaurantes = Object.entries(restaurantesRaw)
+            .map(([pin, data]) => ({ pin, ...data }))
+            .filter(r => r.activo !== false); // Solo activos
+        
+        if (restaurantes.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full text-center text-gray-400 py-10">
+                    <div class="text-5xl mb-3">🏪</div>
+                    <p class="font-bold">Pronto tendremos restaurantes disponibles</p>
+                    <p class="text-sm mt-2">Vuelve pronto 👋</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Ordenar por orden_manual y luego alfabético
+        restaurantes.sort((a, b) => {
+            const ordenA = a.orden_manual ?? 9999;
+            const ordenB = b.orden_manual ?? 9999;
+            if (ordenA !== ordenB) return ordenA - ordenB;
+            const nomA = (a.NOMBRE_RESTAURANTE || a.nombre || '').toLowerCase();
+            const nomB = (b.NOMBRE_RESTAURANTE || b.nombre || '').toLowerCase();
+            return nomA.localeCompare(nomB);
+        });
+        
+        // Generar HTML
+        grid.innerHTML = restaurantes.map(rest => {
+            const nombre = rest.NOMBRE_RESTAURANTE || rest.nombre || 'Restaurante';
+            const foto = rest.FOTO || 'https://placehold.co/600x400/1e293b/06b6d4?text=' + encodeURIComponent(nombre);
+            const pausado = rest.pausado === true;
+            
+            let clases = 'restaurant-card';
+            let onclick = `onclick="irAVentas('${rest.pin}')"`;
+            
+            if (pausado) {
+                clases += ' pausado';
+                onclick = ''; // No clickeable
+            }
+            
+            return `
+                <div class="${clases} reveal" ${onclick}>
+                    <img src="${foto}" alt="${nombre}" 
+                         onerror="this.src='https://placehold.co/600x400/1e293b/06b6d4?text=${encodeURIComponent(nombre)}'">
+                    <div class="overlay">
+                        <div class="nombre">${escapeHTML(nombre)}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Actualizar el contador de restaurantes en el hero
+        const statRest = document.getElementById('stat-restaurantes');
+        if (statRest) statRest.textContent = '+' + restaurantes.length;
+        
+        // Activar animaciones
+        observarReveals();
+        
+        console.log(`✅ ${restaurantes.length} restaurantes cargados`);
+    } catch (error) {
+        console.error('❌ Error cargando restaurantes:', error);
+        grid.innerHTML = `
+            <div class="col-span-full text-center text-red-400 py-10">
+                <p class="font-bold">No se pudieron cargar los restaurantes</p>
+                <p class="text-sm mt-2">Recarga la página en unos segundos</p>
+            </div>
+        `;
+    }
+}
+
+// Ir a la app de Ventas (con el restaurante pre-seleccionado si es posible)
+function irAVentas(pin) {
+    // Por ahora va a la app de Ventas en general
+    // En un futuro se puede añadir ?restaurante=PIN para abrir directo
+    window.location.href = VENTAS_URL;
+}
+
+// ============================================================
+// 🛡️ ESCAPAR HTML
+// ============================================================
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+}
 
 // ============================================================
 // 📲 MODAL QR
@@ -998,17 +1275,14 @@ function abrirModalQR() {
 
 function generarQR() {
     if (typeof QRCode === 'undefined') {
-        console.warn('QRCode library no cargada');
+        console.warn('⚠️ QRCode library no cargada');
         return;
     }
     const canvas = document.getElementById('qr-canvas');
     QRCode.toCanvas(canvas, VENTAS_URL, {
         width: 220,
         margin: 2,
-        color: {
-            dark: '#020617',
-            light: '#ffffff'
-        }
+        color: { dark: '#020617', light: '#ffffff' }
     }, (error) => {
         if (error) console.error('Error generando QR:', error);
     });
@@ -1041,6 +1315,8 @@ function abrirModalFormulario(tipo) {
             </div>
             
             <form onsubmit="enviarSolicitud(event, 'restaurante')" class="space-y-4">
+                <input type="hidden" name="_subject" value="🏪 Nueva solicitud de Restaurante — Aguadulce Express">
+                <input type="hidden" name="tipo" value="restaurante">
                 <input type="text" name="nombre_restaurante" class="form-input" placeholder="Nombre del restaurante *" required>
                 <input type="text" name="responsable" class="form-input" placeholder="Nombre del responsable *" required>
                 <input type="email" name="email" class="form-input" placeholder="Email de contacto *" required>
@@ -1062,6 +1338,8 @@ function abrirModalFormulario(tipo) {
             </div>
             
             <form onsubmit="enviarSolicitud(event, 'repartidor')" class="space-y-4">
+                <input type="hidden" name="_subject" value="🛵 Nueva solicitud de Repartidor — Aguadulce Express">
+                <input type="hidden" name="tipo" value="repartidor">
                 <input type="text" name="nombre" class="form-input" placeholder="Nombre completo *" required>
                 <input type="email" name="email" class="form-input" placeholder="Email *" required>
                 <input type="tel" name="telefono" class="form-input" placeholder="Teléfono *" required>
@@ -1093,53 +1371,149 @@ function abrirModalFormulario(tipo) {
 }
 
 // ============================================================
-// 📩 ENVÍO DE SOLICITUDES (por ahora solo visual)
+// 📩 ENVÍO DE SOLICITUDES (Firebase + Formspree)
 // ============================================================
 async function enviarSolicitud(event, tipo) {
     event.preventDefault();
     const form = event.target;
+    const btn = form.querySelector('button[type="submit"]');
     const formData = new FormData(form);
     const datos = Object.fromEntries(formData);
     
-    // Aquí irá la integración con Firebase en el BLOQUE B
-    console.log('📩 Solicitud recibida:', { tipo, ...datos });
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
     
-    Swal.fire({
-        title: '✅ ¡Solicitud enviada!',
-        html: `
-            <p style="color:#64748b;margin-bottom:12px;">Gracias por tu interés en formar parte de Aguadulce Express.</p>
-            <p style="color:#06b6d4;font-weight:bold;">Te contactaremos en menos de 24h al email o teléfono que nos dejaste.</p>
-        `,
-        icon: 'success',
-        background: '#ffffff',
-        color: '#0f172a',
-        confirmButtonColor: '#06b6d4',
-        confirmButtonText: 'Entendido'
-    });
-    
-    form.reset();
-    cerrarModal('modalFormulario');
+    try {
+        // 1. Guardar en Firebase
+        const solicitud = {
+            tipo: tipo,
+            ...datos,
+            fecha: Date.now(),
+            estado: 'pendiente',
+            notas_admin: '',
+            user_agent: navigator.userAgent,
+            referrer: document.referrer || 'directo'
+        };
+        
+        const ref = database.ref('solicitudes_equipo').push();
+        await ref.set(solicitud);
+        console.log('✅ Solicitud guardada en Firebase:', ref.key);
+        
+        // 2. Enviar por Formspree (email)
+        const response = await fetch(FORMSPREE_URL, {
+            method: 'POST',
+            body: formData,
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        if (!response.ok) {
+            console.warn('⚠️ Formspree no aceptó el envío:', response.status);
+            // No lanzamos error, porque Firebase ya lo guardó
+        } else {
+            console.log('✅ Email enviado por Formspree');
+        }
+        
+        // 3. Mostrar éxito
+        Swal.fire({
+            title: '✅ ¡Solicitud enviada!',
+            html: `
+                <p style="color:#64748b;margin-bottom:12px;">Gracias por tu interés en formar parte de Aguadulce Express.</p>
+                <p style="color:#06b6d4;font-weight:bold;">Te contactaremos en menos de 24h al email o teléfono que nos dejaste.</p>
+            `,
+            icon: 'success',
+            background: '#ffffff',
+            color: '#0f172a',
+            confirmButtonColor: '#06b6d4',
+            confirmButtonText: 'Entendido'
+        });
+        
+        form.reset();
+        cerrarModal('modalFormulario');
+        
+    } catch (error) {
+        console.error('❌ Error enviando solicitud:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: 'No se pudo enviar la solicitud. Inténtalo de nuevo o escríbenos directamente a soporteaguadulcexpress26@gmail.com',
+            icon: 'error',
+            background: '#ffffff',
+            color: '#0f172a',
+            confirmButtonColor: '#06b6d4'
+        });
+    } finally {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
 }
 
 // ============================================================
-// 📩 MENSAJE DE CONTACTO (por ahora solo visual)
+// 📩 MENSAJE DE CONTACTO (Firebase + Formspree)
 // ============================================================
 async function enviarMensajeContacto(event) {
     event.preventDefault();
+    const form = event.target;
+    const btn = form.querySelector('button[type="submit"]');
+    const formData = new FormData(form);
+    const datos = Object.fromEntries(formData);
     
-    // Aquí irá la integración con Firebase en el BLOQUE B
-    console.log('📩 Mensaje de contacto recibido');
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
     
-    Swal.fire({
-        title: '✅ ¡Mensaje enviado!',
-        text: 'Te responderemos lo antes posible.',
-        icon: 'success',
-        background: '#ffffff',
-        color: '#0f172a',
-        confirmButtonColor: '#06b6d4'
-    });
-    
-    event.target.reset();
+    try {
+        // 1. Guardar en Firebase
+        const mensaje = {
+            ...datos,
+            fecha: Date.now(),
+            estado: 'nuevo',
+            user_agent: navigator.userAgent
+        };
+        
+        const ref = database.ref('mensajes_contacto').push();
+        await ref.set(mensaje);
+        console.log('✅ Mensaje guardado en Firebase:', ref.key);
+        
+        // 2. Enviar por Formspree
+        formData.append('_subject', '📩 Nuevo mensaje de contacto — Aguadulce Express');
+        formData.append('tipo', 'contacto');
+        
+        const response = await fetch(FORMSPREE_URL, {
+            method: 'POST',
+            body: formData,
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        if (!response.ok) {
+            console.warn('⚠️ Formspree no aceptó el envío:', response.status);
+        } else {
+            console.log('✅ Email enviado por Formspree');
+        }
+        
+        // 3. Mostrar éxito
+        Swal.fire({
+            title: '✅ ¡Mensaje enviado!',
+            text: 'Te responderemos lo antes posible.',
+            icon: 'success',
+            background: '#ffffff',
+            color: '#0f172a',
+            confirmButtonColor: '#06b6d4'
+        });
+        
+        form.reset();
+        
+    } catch (error) {
+        console.error('❌ Error enviando mensaje:', error);
+        Swal.fire({
+            title: '❌ Error',
+            text: 'No se pudo enviar el mensaje. Inténtalo de nuevo o escríbenos a soporteaguadulcexpress26@gmail.com',
+            icon: 'error',
+            background: '#ffffff',
+            color: '#0f172a',
+            confirmButtonColor: '#06b6d4'
+        });
+    } finally {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
 }
 
 // ============================================================
@@ -1149,7 +1523,6 @@ function cerrarModal(id) {
     document.getElementById(id).classList.remove('active');
 }
 
-// Cerrar con click fuera o ESC
 document.querySelectorAll('.modal').forEach(modal => {
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -1167,11 +1540,25 @@ document.addEventListener('keydown', (e) => {
 // ============================================================
 // 🚀 INICIO
 // ============================================================
-window.addEventListener('load', () => {
-    setTimeout(() => {
+window.addEventListener('load', async () => {
+    try {
+        // Cargar todo en paralelo
+        await Promise.all([
+            cargarConfigWeb(),
+            cargarRestaurantesWeb()
+        ]);
+        
+        observarReveals();
+        
+        setTimeout(() => {
+            document.getElementById('loader').classList.add('hidden');
+        }, 500);
+        
+        console.log('✅ Web Aguadulce Express cargada');
+    } catch (error) {
+        console.error('❌ Error en la carga inicial:', error);
         document.getElementById('loader').classList.add('hidden');
-    }, 500);
-    console.log('✅ Web Aguadulce Express cargada');
+    }
 });
 
 // ============================================================
@@ -1185,11 +1572,22 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         const target = document.querySelector(href);
         if (target) {
             e.preventDefault();
-            const offset = 80; // altura del header
+            const offset = 80;
             const targetPosition = target.offsetTop - offset;
             window.scrollTo({ top: targetPosition, behavior: 'smooth' });
         }
     });
+});
+
+// ============================================================
+// 🔄 ESCUCHAR CAMBIOS EN TIEMPO REAL (opcional pero útil)
+// ============================================================
+database.ref('restaurantes').on('value', () => {
+    // Si el usuario está en la sección de restaurantes, recargarla
+    const seccionRestaurantes = document.getElementById('restaurantes');
+    if (seccionRestaurantes) {
+        cargarRestaurantesWeb();
+    }
 });
 </script>
 

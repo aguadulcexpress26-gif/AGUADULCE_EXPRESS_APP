@@ -162,6 +162,7 @@
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('historial', this)">📜 Historial</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('clientes', this)">👤 Nuevos Clientes</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('repartidores', this)">🛵 Repartidores</div>
+            <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('billeteras', this)">💰 Billeteras</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('banners', this)">📢 Banners</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('fondos', this)">🎨 Fondos</div>
             <div class="sidebar-item p-3 rounded-xl mb-2" onclick="cambiarSeccion('usuarios', this)">👥 Usuarios</div>
@@ -316,6 +317,56 @@
                 <table class="w-full text-sm text-left">
                     <thead class="border-b border-white/10 text-white/70 text-xs uppercase"><tr><th class="p-3">Nombre</th><th class="p-3">Email</th><th class="p-3">Teléfono</th><th class="p-3">Vehículo</th><th class="p-3 text-center">Entregas</th><th class="p-3 text-center">Estado</th><th class="p-3 text-center">Acciones</th></tr></thead>
                     <tbody id="tablaRepartidores"><tr><td colspan="7" class="text-center text-white/50 p-6">Cargando repartidores...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+                <!-- ==================== BILLETERAS ==================== -->
+        <div id="seccion-billeteras" class="seccion hidden">
+            <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
+                <h2 class="text-2xl font-bold">💰 Billeteras de Repartidores</h2>
+                <div class="flex gap-2">
+                    <button onclick="cargarBilleteras()" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-bold text-sm">🔄 Refrescar</button>
+                </div>
+            </div>
+            
+            <!-- Tarjetas de resumen -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="stats-card" style="border-color:#10b981;">
+                    <div class="icon">💵</div>
+                    <div class="value" style="color:#10b981;" id="billeteraTotalPendiente">0.00€</div>
+                    <div class="label">Total pendiente de todos</div>
+                </div>
+                <div class="stats-card" style="border-color:#f59e0b;">
+                    <div class="icon">⚠️</div>
+                    <div class="value" style="color:#f59e0b;" id="billeteraTotalAvisos">0</div>
+                    <div class="label">Con aviso (≥200€)</div>
+                </div>
+                <div class="stats-card" style="border-color:#ef4444;">
+                    <div class="icon">🚨</div>
+                    <div class="value" style="color:#ef4444;" id="billeteraTotalAlertas">0</div>
+                    <div class="label">Con alerta (≥300€)</div>
+                </div>
+            </div>
+            
+            <!-- Tabla de repartidores -->
+            <div class="bg-slate-800 rounded-2xl p-4 overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="border-b border-white/10 text-white/70 text-xs uppercase">
+                        <tr>
+                            <th class="p-3">Repartidor</th>
+                            <th class="p-3 text-right">Saldo Pendiente</th>
+                            <th class="p-3 text-right">Efectivo</th>
+                            <th class="p-3 text-right">Tarjeta</th>
+                            <th class="p-3 text-center">Entregas</th>
+                            <th class="p-3 text-center">Estado</th>
+                            <th class="p-3 text-center">Última Entrega</th>
+                            <th class="p-3 text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaBilleteras">
+                        <tr><td colspan="8" class="text-center text-white/50 p-6">Cargando billeteras...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -1008,6 +1059,7 @@ function cambiarSeccion(seccion, element) {
         'historial': cargarHistorialAdmin,
         'clientes': cargarNuevosClientes,
         'repartidores': cargarRepartidores,
+        'billeteras': cargarBilleteras,
         'banners': cargarBanners,
         'fondos': cargarFondosCabecera,
         'usuarios': cargarUsuarios,
@@ -4829,6 +4881,256 @@ async function guardarRedes() {
     }
 }
 
+    // ============================================================
+// 💰 BILLETERAS DE REPARTIDORES
+// ============================================================
+
+async function cargarBilleteras() {
+    const tbody = document.getElementById('tablaBilleteras');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-white/50 p-6">🔄 Cargando billeteras...</td></tr>';
+    
+    try {
+        const repSnap = await database.ref('repartidores').once('value');
+        const repartidores = repSnap.val() || {};
+        
+        let totalPendiente = 0;
+        let totalAvisos = 0;
+        let totalAlertas = 0;
+        let html = '';
+        let hayDatos = false;
+        
+        for (const [uid, rep] of Object.entries(repartidores)) {
+            const bilSnap = await database.ref(`repartidores/${uid}/billetera/datos`).once('value');
+            const bil = bilSnap.val() || {};
+            
+            const saldo = bil.saldo_pendiente || 0;
+            const efectivo = bil.total_efectivo || 0;
+            const digital = bil.total_digital || 0;
+            const entregas = bil.entregas_totales || 0;
+            const limiteAlerta = bil.limite_alerta || 300;
+            const limiteAviso = bil.limite_aviso || 200;
+            const bloqueado = bil.bloqueado === true;
+            const ultima = bil.ultima_entrega || 0;
+            
+            // Solo mostrar si tiene billetera o saldo
+            if (!bilSnap.exists() && saldo === 0) {
+                // Aun así, la mostramos con 0€ para que se vea
+            }
+            
+            hayDatos = true;
+            totalPendiente += saldo;
+            
+            // Determinar estado
+            let estadoBadge = '';
+            let filaStyle = '';
+            
+            if (bloqueado) {
+                estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-red-600/20 text-red-400 font-bold">🔒 BLOQUEADO</span>';
+                filaStyle = 'background:rgba(239,68,68,0.08);';
+            } else if (saldo >= limiteAlerta) {
+                estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-red-600/20 text-red-400 font-bold">🚨 ALERTA</span>';
+                filaStyle = 'background:rgba(239,68,68,0.06);';
+                totalAlertas++;
+            } else if (saldo >= limiteAviso) {
+                estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-yellow-600/20 text-yellow-400 font-bold">⚠️ AVISO</span>';
+                totalAvisos++;
+            } else {
+                estadoBadge = '<span class="px-2 py-1 rounded text-xs bg-emerald-600/20 text-emerald-400">✅ OK</span>';
+            }
+            
+            // Formatear última entrega
+            let ultimaStr = '—';
+            if (ultima > 0) {
+                const d = new Date(ultima);
+                const hoy = new Date();
+                const esHoy = d.toDateString() === hoy.toDateString();
+                ultimaStr = esHoy 
+                    ? `Hoy ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
+                    : d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+            }
+            
+            const nombreRep = rep.nombre || 'Sin nombre';
+            
+            html += `
+                <tr class="border-b border-white/10 hover:bg-white/5" style="${filaStyle}">
+                    <td class="p-3">
+                        <div class="font-bold">${escapeHTML(nombreRep)}</div>
+                        <div class="text-xs text-white/40">${escapeHTML(rep.telefono || '')}</div>
+                    </td>
+                    <td class="p-3 text-right">
+                        <span class="font-bold text-lg ${saldo >= limiteAlerta ? 'text-red-400' : (saldo >= limiteAviso ? 'text-yellow-400' : 'text-emerald-400')}">
+                            ${saldo.toFixed(2)}€
+                        </span>
+                    </td>
+                    <td class="p-3 text-right text-emerald-400">${efectivo.toFixed(2)}€</td>
+                    <td class="p-3 text-right text-cyan-400">${digital.toFixed(2)}€</td>
+                    <td class="p-3 text-center">${entregas}</td>
+                    <td class="p-3 text-center">${estadoBadge}</td>
+                    <td class="p-3 text-center text-xs text-white/60">${ultimaStr}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="verDetalleBilletera('${uid}')" class="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-2 py-1 rounded text-xs" title="Ver detalle">👁️</button>
+                    </td>
+                </tr>
+            `;
+        }
+        
+        if (!hayDatos) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-white/50 p-6">No hay repartidores registrados</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = html;
+        
+        // Actualizar tarjetas resumen
+        document.getElementById('billeteraTotalPendiente').textContent = totalPendiente.toFixed(2) + '€';
+        document.getElementById('billeteraTotalAvisos').textContent = totalAvisos;
+        document.getElementById('billeteraTotalAlertas').textContent = totalAlertas;
+        
+    } catch (error) {
+        console.error('Error cargando billeteras:', error);
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-red-400 p-6">❌ Error: ${error.message}</td></tr>`;
+    }
+}
+
+async function verDetalleBilletera(uid) {
+    Swal.fire({
+        title: '⏳ Cargando...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+    
+    try {
+        const repSnap = await database.ref(`repartidores/${uid}`).once('value');
+        const rep = repSnap.val() || {};
+        
+        const bilSnap = await database.ref(`repartidores/${uid}/billetera/datos`).once('value');
+        const bil = bilSnap.val() || {};
+        
+        const movSnap = await database.ref(`repartidores/${uid}/billetera/movimientos`).once('value');
+        const movimientos = movSnap.val() || {};
+        
+        const saldo = bil.saldo_pendiente || 0;
+        const efectivo = bil.total_efectivo || 0;
+        const digital = bil.total_digital || 0;
+        const totalHist = bil.total_historico || 0;
+        const entregas = bil.entregas_totales || 0;
+        const limiteAlerta = bil.limite_alerta || 300;
+        const limiteAviso = bil.limite_aviso || 200;
+        const bloqueado = bil.bloqueado === true;
+        
+        // Ordenar movimientos por fecha descendente
+        const movArray = Object.entries(movimientos)
+            .map(([id, m]) => ({ id, ...m }))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+            .slice(0, 30); // últimos 30
+        
+        let movHTML = '';
+        if (movArray.length === 0) {
+            movHTML = '<p style="text-align:center;color:#94a3b8;padding:20px;">Sin movimientos registrados</p>';
+        } else {
+            for (const m of movArray) {
+                const fecha = new Date(m.timestamp || 0);
+                const fechaStr = fecha.toLocaleString('es-ES', { 
+                    day: '2-digit', month: '2-digit', 
+                    hour: '2-digit', minute: '2-digit' 
+                });
+                
+                const esCobro = m.tipo === 'cobro';
+                const icono = esCobro ? '✅' : (m.tipo === 'entrega_caja' ? '💵' : '📝');
+                const color = esCobro ? '#10b981' : (m.tipo === 'entrega_caja' ? '#06b6d4' : '#f59e0b');
+                const signo = esCobro ? '+' : '-';
+                const metodoIcono = m.metodo_pago === 'Tarjeta' ? '💳' : '💵';
+                
+                movHTML += `
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #334155;font-size:12px;">
+                        <div style="flex:1;">
+                            <div style="color:#fff;font-weight:600;">
+                                ${icono} #${escapeHTML(m.pedido_id || m.id.substring(0,10))}
+                                ${esCobro ? `<span style="color:#94a3b8;font-weight:normal;margin-left:6px;">${metodoIcono} ${escapeHTML(m.metodo_pago || '')}</span>` : ''}
+                            </div>
+                            <div style="color:#94a3b8;font-size:11px;margin-top:2px;">
+                                ${escapeHTML(m.cliente_nombre || m.registrado_por || '')} 
+                                ${m.restaurante_nombre ? '· ' + escapeHTML(m.restaurante_nombre) : ''}
+                            </div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="color:${color};font-weight:bold;font-size:14px;">${signo}${(m.monto||0).toFixed(2)}€</div>
+                            <div style="color:#64748b;font-size:10px;">${fechaStr}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        const bloqueadoHTML = bloqueado 
+            ? `<div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:10px;padding:10px;margin-bottom:12px;text-align:center;color:#ef4444;font-weight:bold;">
+                🔒 REPARTIDOR BLOQUEADO
+               </div>` 
+            : '';
+        
+        Swal.close();
+        await Swal.fire({
+            title: `💰 ${escapeHTML(rep.nombre || 'Repartidor')}`,
+            html: `
+                <div style="text-align:left;color:white;font-size:13px;">
+                    ${bloqueadoHTML}
+                    
+                    <!-- Saldo principal -->
+                    <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #334155;text-align:center;">
+                        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;">Saldo pendiente</div>
+                        <div style="font-size:32px;font-weight:900;color:${saldo >= limiteAlerta ? '#ef4444' : (saldo >= limiteAviso ? '#f59e0b' : '#10b981')};margin:4px 0;">
+                            ${saldo.toFixed(2)}€
+                        </div>
+                        <div style="font-size:11px;color:#94a3b8;">Límite: ${limiteAlerta}€</div>
+                    </div>
+                    
+                    <!-- Stats -->
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
+                        <div style="background:#0f172a;border-radius:10px;padding:10px;text-align:center;border:1px solid #334155;">
+                            <div style="font-size:9px;color:#94a3b8;">💵 EFECTIVO</div>
+                            <div style="font-weight:bold;color:#10b981;font-size:14px;margin-top:4px;">${efectivo.toFixed(2)}€</div>
+                        </div>
+                        <div style="background:#0f172a;border-radius:10px;padding:10px;text-align:center;border:1px solid #334155;">
+                            <div style="font-size:9px;color:#94a3b8;">💳 TARJETA</div>
+                            <div style="font-weight:bold;color:#06b6d4;font-size:14px;margin-top:4px;">${digital.toFixed(2)}€</div>
+                        </div>
+                        <div style="background:#0f172a;border-radius:10px;padding:10px;text-align:center;border:1px solid #334155;">
+                            <div style="font-size:9px;color:#94a3b8;">📦 ENTREGAS</div>
+                            <div style="font-weight:bold;color:#a855f7;font-size:14px;margin-top:4px;">${entregas}</div>
+                        </div>
+                        <div style="background:#0f172a;border-radius:10px;padding:10px;text-align:center;border:1px solid #334155;">
+                            <div style="font-size:9px;color:#94a3b8;">📊 HISTÓRICO</div>
+                            <div style="font-weight:bold;color:#f59e0b;font-size:14px;margin-top:4px;">${totalHist.toFixed(2)}€</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Movimientos -->
+                    <div style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid #334155;">
+                        <div style="font-weight:bold;color:#f59e0b;font-size:12px;margin-bottom:8px;">📋 ÚLTIMOS MOVIMIENTOS</div>
+                        <div style="max-height:300px;overflow-y:auto;">
+                            ${movHTML}
+                        </div>
+                    </div>
+                </div>
+            `,
+            background: '#0f172a',
+            color: 'white',
+            width: '92%',
+            maxWidth: '600px',
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#f59e0b'
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+    
 console.log('✅ Admin Pro iniciado correctamente');
 </script>
 </body>

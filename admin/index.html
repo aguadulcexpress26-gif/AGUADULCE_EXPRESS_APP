@@ -5106,12 +5106,30 @@ async function verDetalleBilletera(uid) {
                         </div>
                     </div>
                     
-                    <!-- Movimientos -->
+                                      <!-- Movimientos -->
                     <div style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid #334155;">
                         <div style="font-weight:bold;color:#f59e0b;font-size:12px;margin-bottom:8px;">📋 ÚLTIMOS MOVIMIENTOS</div>
                         <div style="max-height:300px;overflow-y:auto;">
                             ${movHTML}
                         </div>
+                    </div>
+                    
+                    <!-- Botones de acción -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;">
+                        <button onclick="abrirModalRegistrarEntrega('${uid}')" 
+                                style="background:#10b981;color:white;padding:12px;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer;border:none;">
+                            💵 Registrar entrega
+                        </button>
+                        ${bloqueado 
+                            ? `<button onclick="toggleBloqueoRepartidor('${uid}', false)" 
+                                       style="background:#10b981;color:white;padding:12px;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer;border:none;">
+                                   🔓 Desbloquear
+                               </button>`
+                            : `<button onclick="toggleBloqueoRepartidor('${uid}', true)" 
+                                       style="background:#ef4444;color:white;padding:12px;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer;border:none;">
+                                   🔒 Bloquear
+                               </button>`
+                        }
                     </div>
                 </div>
             `,
@@ -5126,6 +5144,213 @@ async function verDetalleBilletera(uid) {
     } catch (error) {
         console.error('Error:', error);
         Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+
+    // ============================================================
+// 💵 REGISTRAR ENTREGA DE CAJA
+// ============================================================
+async function abrirModalRegistrarEntrega(uid) {
+    // Cerrar el popup actual
+    Swal.close();
+    
+    // Leer saldo actual
+    const bilSnap = await database.ref(`repartidores/${uid}/billetera/datos`).once('value');
+    const bil = bilSnap.val() || {};
+    const saldoActual = bil.saldo_pendiente || 0;
+    
+    const repSnap = await database.ref(`repartidores/${uid}/nombre`).once('value');
+    const nombre = repSnap.val() || 'Repartidor';
+    
+    const { value: formValues } = await Swal.fire({
+        title: '💵 Registrar entrega de caja',
+        html: `
+            <div style="text-align:left;color:white;font-size:13px;">
+                <p style="margin-bottom:12px;">Repartidor: <strong>${escapeHTML(nombre)}</strong></p>
+                <p style="background:#0f172a;padding:10px;border-radius:8px;border:1px solid #334155;margin-bottom:16px;">
+                    💰 Saldo pendiente actual: <strong style="color:#10b981;font-size:16px;">${saldoActual.toFixed(2)}€</strong>
+                </p>
+                <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:6px;">💵 Monto que entrega (€)</label>
+                <input id="caja-monto" type="number" step="0.01" min="0.01" max="${saldoActual.toFixed(2)}" 
+                       style="width:100%;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:16px;text-align:center;font-weight:bold;" 
+                       placeholder="0.00" value="${saldoActual.toFixed(2)}">
+                <p style="font-size:11px;color:#94a3b8;margin-top:6px;">
+                    💡 Máximo permitido: ${saldoActual.toFixed(2)}€
+                </p>
+                <label style="display:block;font-size:12px;color:#94a3b8;margin-top:14px;margin-bottom:6px;">📝 Nota (opcional)</label>
+                <input id="caja-nota" type="text" 
+                       style="width:100%;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:13px;" 
+                       placeholder="Ej: Entregado en efectivo en oficina">
+            </div>
+        `,
+        background: '#0f172a',
+        color: 'white',
+        width: '92%',
+        maxWidth: '450px',
+        showCancelButton: true,
+        confirmButtonText: '✅ Confirmar entrega',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#334155',
+        preConfirm: () => {
+            const monto = parseFloat(document.getElementById('caja-monto').value);
+            const nota = document.getElementById('caja-nota').value || '';
+            
+            if (!monto || monto <= 0) {
+                Swal.showValidationMessage('❌ El monto debe ser mayor a 0');
+                return false;
+            }
+            if (monto > saldoActual) {
+                Swal.showValidationMessage(`❌ El monto no puede superar ${saldoActual.toFixed(2)}€`);
+                return false;
+            }
+            return { monto, nota };
+        }
+    });
+    
+    if (!formValues) return;
+    
+    // Enviar a la Cloud Function
+    Swal.fire({
+        title: '⏳ Registrando entrega...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    try {
+        const registrarFn = firebase.functions().httpsCallable('registrarEntregaCaja');
+        const result = await registrarFn({
+            repartidorUid: uid,
+            monto: formValues.monto,
+            nota: formValues.nota
+        });
+        
+        await logAdmin('registrar_entrega_caja', {
+            repartidorUid: uid,
+            monto: formValues.monto,
+            nuevoSaldo: result.data.nuevoSaldo
+        });
+        
+        Swal.fire({
+            title: '✅ Entrega registrada',
+            html: `
+                <div style="text-align:center;color:white;font-size:13px;">
+                    <p style="font-size:32px;font-weight:900;color:#10b981;margin:10px 0;">
+                        ${formValues.monto.toFixed(2)}€
+                    </p>
+                    <p style="color:#94a3b8;">Nuevo saldo pendiente:</p>
+                    <p style="font-size:22px;font-weight:bold;color:#f59e0b;">
+                        ${result.data.nuevoSaldo.toFixed(2)}€
+                    </p>
+                </div>
+            `,
+            icon: 'success',
+            background: '#0f172a',
+            color: 'white',
+            timer: 2500,
+            showConfirmButton: false
+        });
+        
+        // Refrescar la lista
+        cargarBilleteras();
+        
+    } catch (error) {
+        console.error('Error registrando entrega:', error);
+        Swal.fire('❌ Error', error.message || 'No se pudo registrar la entrega', 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+// 🔒 BLOQUEAR / DESBLOQUEAR REPARTIDOR
+// ============================================================
+async function toggleBloqueoRepartidor(uid, bloquear) {
+    Swal.close();
+    
+    const repSnap = await database.ref(`repartidores/${uid}/nombre`).once('value');
+    const nombre = repSnap.val() || 'Repartidor';
+    
+    const emoji = bloquear ? '🔒' : '🔓';
+    const colorBoton = bloquear ? '#ef4444' : '#10b981';
+    
+    const { value: formValues } = await Swal.fire({
+        title: `${emoji} ¿${bloquear ? 'Bloquear' : 'Desbloquear'} a ${escapeHTML(nombre)}?`,
+        html: bloquear 
+            ? `
+                <div style="text-align:left;color:white;font-size:13px;">
+                    <p style="margin-bottom:12px;">El repartidor <strong>${escapeHTML(nombre)}</strong> no podrá recibir más pedidos hasta que lo desbloquees.</p>
+                    <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:6px;">📝 Motivo (opcional)</label>
+                    <input id="motivo-bloqueo" type="text" 
+                           style="width:100%;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:13px;" 
+                           placeholder="Ej: Saldo pendiente excesivo">
+                </div>
+            `
+            : `
+                <div style="text-align:left;color:white;font-size:13px;">
+                    <p>El repartidor <strong>${escapeHTML(nombre)}</strong> podrá volver a recibir pedidos.</p>
+                </div>
+            `,
+        background: '#0f172a',
+        color: 'white',
+        width: '92%',
+        maxWidth: '450px',
+        showCancelButton: true,
+        confirmButtonText: bloquear ? '🔒 Sí, bloquear' : '🔓 Sí, desbloquear',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: colorBoton,
+        cancelButtonColor: '#334155',
+        preConfirm: () => {
+            const motivo = bloquear 
+                ? (document.getElementById('motivo-bloqueo')?.value || '')
+                : '';
+            return { motivo };
+        }
+    });
+    
+    if (!formValues) return;
+    
+    Swal.fire({
+        title: `⏳ ${bloquear ? 'Bloqueando' : 'Desbloqueando'}...`,
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    try {
+        const bloquearFn = firebase.functions().httpsCallable('bloquearRepartidor');
+        const result = await bloquearFn({
+            repartidorUid: uid,
+            bloquear: bloquear,
+            motivo: formValues.motivo
+        });
+        
+        await logAdmin(bloquear ? 'bloquear_repartidor' : 'desbloquear_repartidor', {
+            repartidorUid: uid,
+            motivo: formValues.motivo
+        });
+        
+        Swal.fire({
+            title: bloquear ? '🔒 Repartidor bloqueado' : '🔓 Repartidor desbloqueado',
+            text: bloquear 
+                ? 'No podrá recibir pedidos hasta que lo desbloquees.'
+                : 'Ya puede volver a recibir pedidos.',
+            icon: 'success',
+            background: '#0f172a',
+            color: 'white',
+            timer: 2500,
+            showConfirmButton: false
+        });
+        
+        // Refrescar la lista
+        cargarBilleteras();
+        
+    } catch (error) {
+        console.error('Error en bloqueo:', error);
+        Swal.fire('❌ Error', error.message || 'No se pudo cambiar el estado', 'error', '#0f172a');
     }
 }
 

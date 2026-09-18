@@ -1,12 +1,14 @@
 // sw.js - Service Worker para PWA
 // ⚠️ IMPORTANTE: Cambiar el número de versión cuando actualices ventas.html
 
-const CACHE_NAME = 'aguadulce-clientes-v2';   // ← Subimos a v2
+const CACHE_VERSION = 'v2';
+const CACHE_NAME = `aguadulce-clientes-${CACHE_VERSION}`;
 
+// Rutas relativas (funcionan en cualquier subcarpeta)
 const urlsToCache = [
-  '/AGUADULCE_EXPRESS_APP/ventas.html',
-  '/AGUADULCE_EXPRESS_APP/manifest.json',
-  'https://cdn.tailwindcss.com',
+  './ventas.html',
+  './manifest.json',
+  'https://cdn.tailwindcss.com/3.4.16',
   'https://cdn.jsdelivr.net/npm/sweetalert2@11',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js',
@@ -14,16 +16,17 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  console.log('🔄 Service Worker instalando v2...');
+  console.log('🔄 Service Worker instalando', CACHE_VERSION, '...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
+      .catch(err => console.warn('⚠️ Error cacheando:', err))
   );
-  self.skipWaiting(); // ← Fuerza al nuevo SW a activarse inmediatamente
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  console.log('✅ Service Worker activando v2...');
+  console.log('✅ Service Worker activando', CACHE_VERSION, '...');
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys.map(key => {
@@ -34,26 +37,27 @@ self.addEventListener('activate', event => {
       })
     ))
   );
-  self.clients.claim(); // ← Toma el control inmediatamente
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
-  // Estrategia: network-first para HTML, cache-first para assets
   const url = new URL(event.request.url);
   
-  // Si es el HTML principal → network-first (siempre busca la versión nueva)
-  if (url.pathname.endsWith('.html') || url.pathname === '/' || url.pathname.endsWith('/ventas.html')) {
+  // Si es HTML o el manifiesto → network-first (siempre fresco)
+  if (url.pathname.endsWith('.html') || 
+      url.pathname.endsWith('.json') || 
+      url.pathname === '/' || 
+      url.pathname.endsWith('/')) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
-          // Guardar en caché la versión nueva
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then(cache => {
             cache.put(event.request, responseClone);
           });
           return response;
         })
-        .catch(() => caches.match(event.request)) // Si falla → usar caché
+        .catch(() => caches.match(event.request))
     );
     return;
   }

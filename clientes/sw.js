@@ -1,10 +1,9 @@
 // sw.js - Service Worker para PWA
-// ⚠️ IMPORTANTE: Cambiar el número de versión cuando actualices ventas.html
+// ⚠️ IMPORTANTE: Cambiar CACHE_VERSION cuando actualices ventas.html
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';  // ← SUBIMOS DE V1 A V3 PARA FORZAR ACTUALIZACIÓN
 const CACHE_NAME = `aguadulce-clientes-${CACHE_VERSION}`;
 
-// Rutas relativas (funcionan en cualquier subcarpeta)
 const urlsToCache = [
   './ventas.html',
   './manifest.json',
@@ -16,7 +15,7 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  console.log('🔄 Service Worker instalando', CACHE_VERSION, '...');
+  console.log('🔄 SW instalando', CACHE_VERSION);
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
@@ -26,7 +25,7 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  console.log('✅ Service Worker activando', CACHE_VERSION, '...');
+  console.log('✅ SW activando', CACHE_VERSION);
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys.map(key => {
@@ -43,11 +42,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // Si es HTML o el manifiesto → network-first (siempre fresco)
-  if (url.pathname.endsWith('.html') || 
-      url.pathname.endsWith('.json') || 
-      url.pathname === '/' || 
-      url.pathname.endsWith('/')) {
+  // HTML y JSON → network-first (siempre fresco)
+  if (url.pathname.endsWith('.html') || url.pathname.endsWith('.json') || url.pathname.endsWith('/')) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
@@ -62,7 +58,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // Para el resto → cache-first (más rápido)
+  // Resto → cache-first
   event.respondWith(
     caches.match(event.request)
       .then(response => response || fetch(event.request))

@@ -1,7 +1,5 @@
-// sw.js - Service Worker para PWA
-// ⚠️ IMPORTANTE: Cambiar CACHE_VERSION cuando actualices ventas.html
-
-const CACHE_VERSION = 'v3';  // ← SUBIMOS DE V1 A V3 PARA FORZAR ACTUALIZACIÓN
+// sw.js - Service Worker para PWA Aguadulce Express (Clientes)
+const CACHE_VERSION = 'v5';  // ← Subimos a v5
 const CACHE_NAME = `aguadulce-clientes-${CACHE_VERSION}`;
 
 const urlsToCache = [
@@ -17,9 +15,7 @@ const urlsToCache = [
 self.addEventListener('install', event => {
   console.log('🔄 SW instalando', CACHE_VERSION);
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-      .catch(err => console.warn('⚠️ Error cacheando:', err))
+    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
   self.skipWaiting();
 });
@@ -28,12 +24,7 @@ self.addEventListener('activate', event => {
   console.log('✅ SW activando', CACHE_VERSION);
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
-      keys.map(key => {
-        if (key !== CACHE_NAME) {
-          console.log('🗑️ Borrando caché antigua:', key);
-          return caches.delete(key);
-        }
-      })
+      keys.map(key => key !== CACHE_NAME && caches.delete(key))
     ))
   );
   self.clients.claim();
@@ -42,15 +33,13 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // HTML y JSON → network-first (siempre fresco)
+  // HTML y JSON → network-first
   if (url.pathname.endsWith('.html') || url.pathname.endsWith('.json') || url.pathname.endsWith('/')) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone);
-          });
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
           return response;
         })
         .catch(() => caches.match(event.request))
@@ -60,7 +49,6 @@ self.addEventListener('fetch', event => {
   
   // Resto → cache-first
   event.respondWith(
-    caches.match(event.request)
-      .then(response => response || fetch(event.request))
+    caches.match(event.request).then(response => response || fetch(event.request))
   );
 });

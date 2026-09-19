@@ -698,6 +698,15 @@ async function loginCliente() {
         const perfil = perfilSnap.val();
         if (perfil) { perfil.uid = uid; localStorage.setItem('ae_cliente', JSON.stringify(perfil)); }
         cerrarModal('modal-login');
+                // 🆕 Regenerar token al iniciar sesión
+        setTimeout(async () => {
+            try {
+                console.log('🔄 Regenerando token FCM tras login...');
+                await generarYGuardarTokenCliente(uid);
+            } catch (e) {
+                console.warn('⚠️ No se pudo regenerar token:', e.message);
+            }
+        }, 2000);
         Swal.fire({ title: '✅ Bienvenido', text: `Hola ${perfil?.nombre || email}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
         renderHome();
     } catch (error) { alertaError("Error", error.message); }
@@ -762,8 +771,16 @@ async function registrarCliente() {
         await database.ref(`clientes/${uid}`).set(perfilCliente);
         localStorage.setItem('ae_cliente', JSON.stringify(perfilCliente));
         
-        // 🆕 GUARDAR TOKEN DE NOTIFICACIONES
-        await generarYGuardarTokenCliente(uid);
+                // 🆕 GUARDAR TOKEN DE NOTIFICACIONES (con espera para que FCM autentique)
+        console.log('⏳ Esperando 2 segundos antes de generar token FCM...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        try {
+            await generarYGuardarTokenCliente(uid);
+        } catch (tokenError) {
+            console.warn('⚠️ No se pudo generar token en el registro:', tokenError);
+            // No bloqueamos el registro si falla el token
+        }
         
         cerrarRegistro();
         
@@ -1779,29 +1796,75 @@ async function pedirPermisoNotificacionesObligatorio() {
 async function generarYGuardarTokenCliente(uid) {
     try {
         if (typeof firebase.messaging === 'undefined') {
-            console.warn('⚠️ Firebase Messaging no cargado en ventas.html');
+            console.warn('⚠️ Firebase Messaging no cargado');
             return null;
         }
         
+        // ✅ 1. Verificar que hay usuario autenticado
+        let user = firebase.auth().currentUser;
+        
+        // Si no hay usuario, esperar hasta 5 segundos
+        if (!user) {
+            console.log('⏳ Esperando autenticación...');
+            for (let i = 0; i < 10; i++) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                user = firebase.auth().currentUser;
+                if (user) break;
+            }
+        }
+        
+        if (!user) {
+            console.warn('⚠️ No hay usuario autenticado después de esperar');
+            return null;
+        }
+        
+        console.log('✅ Usuario autenticado:', user.uid);
+        
+        // ✅ 2. Forzar refresh del token de autenticación
+        try {
+            await user.getIdToken(true);
+            console.log('✅ Token de auth refrescado');
+        } catch (e) {
+            console.warn('⚠️ No se pudo refrescar token:', e.message);
+        }
+        
+        // ✅ 3. Esperar un momento más para que Firebase se estabilice
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // ✅ 4. Ahora sí, obtener el token FCM
         const messaging = firebase.messaging();
         
+        console.log('🔄 Obteniendo token FCM...');
         const token = await messaging.getToken({
             vapidKey: 'BH4IAMeS7LHkDjOt84N-7mG985aTyHpYXx845HqKCnT8oGyxbaJ9pT98IgfslMsrFTJW3jHpvik0mrY263nlFRY'
         });
         
         if (!token) {
-            console.warn('⚠️ No se pudo generar token');
+            console.warn('⚠️ FCM devolvió token vacío');
             return null;
         }
         
+        console.log('✅ Token FCM obtenido:', token.substring(0, 30) + '...');
+        
+        // ✅ 5. Guardar en Firebase
         await database.ref(`clientes/${uid}/token`).set(token);
         await database.ref(`clientes/${uid}/token_actualizado`).set(Date.now());
         
-                console.log('✅ Token guardado para cliente:', uid.substring(0, 8));
+        console.log('🎯 Token FCM guardado correctamente para:', uid.substring(0, 8));
         return token;
         
     } catch (error) {
-        console.error('❌ Error generando token:', error);
+        console.error('❌ Error generando token FCM:', error);
+        
+        // Diagnóstico específico
+        if (error.code === 'messaging/token-subscribe-failed') {
+            console.warn('💡 FCM: fallo de autenticación. Se reintentará en próximo login.');
+        } else if (error.code === 'messaging/permission-blocked') {
+            console.warn('💡 El usuario bloqueó las notificaciones');
+        } else if (error.code === 'messaging/unsupported-browser') {
+            console.warn('💡 Navegador no soporta FCM');
+        }
+        
         return null;
     }
 }

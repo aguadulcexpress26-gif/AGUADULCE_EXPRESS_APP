@@ -1808,12 +1808,112 @@ async function generarYGuardarTokenCliente(uid) {
 </script>                    
 
 <script>
-    // ✅ FCM Service Worker (ruta relativa, funciona en cualquier subcarpeta)
+    // ============================================================
+    // 🔔 CONFIGURACIÓN DE MENSAJES FCM
+    // ============================================================
+
+    // ✅ 1. Registrar el Service Worker de FCM
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./firebase-messaging-sw.js')
             .then(reg => console.log('✅ FCM SW registrado:', reg.scope))
             .catch(err => console.warn('⚠️ FCM SW no encontrado:', err.message));
     }
-</script>                 
+
+    // ✅ 2. Manejar notificaciones cuando la app está en PRIMER PLANO
+    function configurarMensajesEnPrimerPlano() {
+        try {
+            if (typeof firebase.messaging === 'undefined') {
+                console.warn('⚠️ Firebase Messaging no disponible');
+                return;
+            }
+            
+            const messaging = firebase.messaging();
+            
+            messaging.onMessage((payload) => {
+                console.log('📩 Notificación en PRIMER PLANO:', payload);
+                
+                const data = payload.data || {};
+                const estado = data.estado || '';
+                const titulo = payload.notification?.title || '🔔 Aguadulce Express';
+                const cuerpo = payload.notification?.body || 'Tienes una notificación';
+                
+                // 🔊 Reproducir sonido
+                try {
+                    // Sonido especial para "en tu puerta"
+                    const audioUrl = estado === 'EN_PUERTA'
+                        ? 'https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3'  // Timbre
+                        : 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';  // Normal
+                    
+                    const audio = new Audio(audioUrl);
+                    audio.volume = 1.0;
+                    audio.play().catch(e => console.warn('🔇 Audio bloqueado:', e.message));
+                } catch (e) {
+                    console.warn('❌ Error audio:', e);
+                }
+                
+                // 📳 Vibrar
+                if (navigator.vibrate) {
+                    if (estado === 'EN_PUERTA') {
+                        navigator.vibrate([300, 100, 300, 100, 300, 100, 300]);
+                    } else {
+                        navigator.vibrate([200, 100, 200]);
+                    }
+                }
+                
+                // 🎨 Colores según estado
+                const colores = {
+                    'EN_REPARTO': '#8b5cf6',
+                    'EN_PUERTA': '#f97316'
+                };
+                const color = colores[estado] || '#06b6d4';
+                const icono = estado === 'EN_PUERTA' ? '🔔' : '🛵';
+                
+                // 💬 Mostrar el aviso visual
+                Swal.fire({
+                    title: `${icono} ${titulo}`,
+                    html: `
+                        <div style="text-align:center;color:white;font-size:14px;">
+                            <p style="margin-bottom:10px;">${cuerpo}</p>
+                            ${estado === 'EN_PUERTA' 
+                                ? '<p style="color:#f97316;font-weight:bold;margin-top:15px;">⚠️ Por favor, sal a recibir tu pedido</p>' 
+                                : ''}
+                        </div>
+                    `,
+                    background: '#020617',
+                    color: 'white',
+                    confirmButtonColor: color,
+                    confirmButtonText: estado === 'EN_PUERTA' ? '👁️ Ver pedido' : '✅ Entendido',
+                    allowOutsideClick: estado === 'EN_PUERTA' ? false : true,
+                    timer: estado === 'EN_PUERTA' ? undefined : 10000,
+                    timerProgressBar: estado === 'EN_PUERTA' ? false : true,
+                    showConfirmButton: true,
+                    allowEscapeKey: estado === 'EN_PUERTA' ? false : true
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Si el cliente pulsa, abrir el tracking
+                        if (estado === 'EN_PUERTA' || estado === 'EN_REPARTO') {
+                            abrirModalTracking();
+                        }
+                    }
+                });
+            });
+            
+            console.log('✅ Listener onMessage configurado');
+            
+        } catch (error) {
+            console.error('❌ Error configurando onMessage:', error);
+        }
+    }
+
+    // ✅ 3. Configurar al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(configurarMensajesEnPrimerPlano, 2000);
+    });
+
+    // ✅ 4. También por si la página ya está cargada
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(configurarMensajesEnPrimerPlano, 2000);
+    }
+</script>                
 </body>
 </html>

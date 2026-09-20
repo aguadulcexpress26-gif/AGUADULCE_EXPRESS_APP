@@ -1522,7 +1522,7 @@ function actualizarInterfazSeguimiento(data) {
         return;
     }
     
-    // ✅ ENTREGADO
+       // ✅ ENTREGADO
     if (estado === 'ENTREGADO') {
         window._entregadoYaProcesado = true;
         if (alarmaInterval) clearInterval(alarmaInterval);
@@ -1535,6 +1535,18 @@ function actualizarInterfazSeguimiento(data) {
         const btnReabrir = document.getElementById('btn-reabrir-seguimiento');
         if (btnReabrir) btnReabrir.style.display = 'none';
         
+        // ✅ Función para cerrar y limpiar todo
+        const cerrarYCerrarTodo = () => {
+            cerrarTodosLosPaneles();
+            if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
+            if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
+            if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
+            pantallaStack = ['home'];
+            cesta = [];
+            actualizarCestaVisual();
+            renderHome();
+        };
+        
         Swal.fire({ 
             title: '🎉 ¡Pedido Entregado!', 
             html: `<div class="text-center"><div class="text-6xl mb-3">🍕</div><p class="text-lg font-bold">¡Gracias por confiar en nosotros!</p><p class="text-sm mt-2">Esperamos que disfrutes tu pedido.</p><p class="text-xs text-cyan-400 mt-3">✨ Aguadulce Express - Siempre contigo ✨</p></div>`, 
@@ -1546,16 +1558,11 @@ function actualizarInterfazSeguimiento(data) {
             timer: 4000, 
             timerProgressBar: true, 
             allowOutsideClick: true 
-        }).then(() => {
-            cerrarTodosLosPaneles();
-            if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
-            if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
-            if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-            pantallaStack = ['home'];
-            cesta = [];
-            actualizarCestaVisual();
-            renderHome();
-        });
+        }).then(cerrarYCerrarTodo);
+        
+        // ✅ Auto-cerrar el cajón a los 5s aunque el usuario no pulse nada
+        setTimeout(cerrarYCerrarTodo, 5000);
+        
         return;
     }
     
@@ -1700,36 +1707,51 @@ function cerrarTrackingPorRechazo() {
 }
 
 function abrirModalTracking() {
+    // ✅ Si no hay pedido activo, cerrar y volver al home
+    const pedidoId = localStorage.getItem('ae_pedido_activo');
+    if (!pedidoId) {
+        console.log('⚠️ No hay pedido activo. Cerrando cajón.');
+        cerrarTodosLosPaneles();
+        document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+        pantallaStack = ['home'];
+        renderHome();
+        return;
+    }
+    
     pushPantalla('tracking');
     document.getElementById('tracking-modal').style.display = 'block';
     document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
     setTimeout(() => agregarFooterLegal(), 100);
     
     // ✅ Reiniciar listener para que reciba cambios en tiempo real
-    const pedidoId = localStorage.getItem('ae_pedido_activo');
-    if (pedidoId) {
-        database.ref('pedidos/' + pedidoId).once('value').then(snap => {
-            if (snap.val()) {
-                actualizarInterfazSeguimiento(snap.val());
-            } else {
-                limpiarSeguimientoCompleto();
-            }
-        });
-        
-        if (trackingListenerRef) {
-            try { trackingListenerRef.off(); } catch(e) {}
-            trackingListenerRef = null;
+    database.ref('pedidos/' + pedidoId).once('value').then(snap => {
+        if (snap.val()) {
+            actualizarInterfazSeguimiento(snap.val());
+        } else {
+            // El pedido ya no existe en Firebase → limpiar y cerrar
+            localStorage.removeItem('ae_pedido_activo');
+            localStorage.removeItem('ae_tracking_id');
+            document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+            cerrarTodosLosPaneles();
+            pantallaStack = ['home'];
+            renderHome();
         }
-        trackingListenerRef = database.ref('pedidos/' + pedidoId);
-        trackingListenerRef.on('value', (snap) => {
-            if (snap.val()) {
-                actualizarInterfazSeguimiento(snap.val());
-            }
-        });
-        console.log('🔄 Listener de tracking reiniciado para:', pedidoId);
+    });
+    
+    if (trackingListenerRef) {
+        try { trackingListenerRef.off(); } catch(e) {}
+        trackingListenerRef = null;
     }
+    trackingListenerRef = database.ref('pedidos/' + pedidoId);
+    trackingListenerRef.on('value', (snap) => {
+        if (snap.val()) {
+            actualizarInterfazSeguimiento(snap.val());
+        }
+    });
+    console.log('🔄 Listener de tracking reiniciado para:', pedidoId);
 }
-async function mostrarCancelacionConContacto(pedidoId, deuda) {
+    
+    async function mostrarCancelacionConContacto(pedidoId, deuda) {
     const mensaje = `❌ PEDIDO CANCELADO POR AUSENCIA\n\n⚠️ No te presentaste a recibir tu pedido después de que el repartidor te avisó.\n\n💰 Deuda generada: ${deuda.toFixed(2)}€\n\n🚫 Tu cuenta ha sido BLOQUEADA temporalmente.\n\n📞 Para regularizar tu situación y volver a pedir, contacta con nuestro soporte:\n\n   ✉️ Email: soporteaguadulcexpress26@gmail.com\n   📞 Teléfono: 643 261 881 (solo llamadas)\n\n💡 Una vez regularizada la deuda, tu cuenta será reactivada automáticamente.\n\nGracias por tu comprensión.`;
     
     await database.ref(`mensajes/${pedidoId}`).push({ 

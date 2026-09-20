@@ -5287,7 +5287,7 @@ async function verDetalleBilletera(uid) {
                         </div>
                     </div>
                     
-                                      <!-- Movimientos -->
+                                                         <!-- Movimientos -->
                     <div style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid #334155;">
                         <div style="font-weight:bold;color:#f59e0b;font-size:12px;margin-bottom:8px;">📋 ÚLTIMOS MOVIMIENTOS</div>
                         <div style="max-height:300px;overflow-y:auto;">
@@ -5311,6 +5311,18 @@ async function verDetalleBilletera(uid) {
                                    🔒 Bloquear
                                </button>`
                         }
+                    </div>
+                    
+                    <!-- ✅ NUEVO: Resetear contadores + Ver historial -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                        <button onclick="abrirModalResetearContadores('${uid}')" 
+                                style="background:#f59e0b;color:black;padding:12px;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer;border:none;">
+                            🔄 Resetear contadores
+                        </button>
+                        <button onclick="verHistorialRegularizaciones('${uid}')" 
+                                style="background:#8b5cf6;color:white;padding:12px;border-radius:10px;font-weight:bold;font-size:13px;cursor:pointer;border:none;">
+                            📜 Historial
+                        </button>
                     </div>
                 </div>
             `,
@@ -5536,6 +5548,397 @@ async function toggleBloqueoRepartidor(uid, bloquear) {
 }
 
 // ============================================================
+
+// ============================================================
+// 🔄 RESETEAR CONTADORES DE LA BILLETERA
+// ============================================================
+async function abrirModalResetearContadores(uid) {
+    Swal.close();
+    
+    const repSnap = await database.ref(`repartidores/${uid}`).once('value');
+    const rep = repSnap.val() || {};
+    
+    const bilSnap = await database.ref(`repartidores/${uid}/billetera/datos`).once('value');
+    const bil = bilSnap.val() || {};
+    
+    const saldo = bil.saldo_pendiente || 0;
+    const efectivo = bil.total_efectivo || 0;
+    const digital = bil.total_digital || 0;
+    const entregas = bil.entregas_totales || 0;
+    const historico = bil.total_historico || 0;
+    
+    // ⚠️ Si tiene saldo pendiente, avisar primero
+    if (saldo > 0) {
+        const confirmar = await Swal.fire({
+            title: '⚠️ Saldo pendiente activo',
+            html: `
+                <div style="text-align:left;color:white;font-size:13px;">
+                    <p>El repartidor <strong>${escapeHTML(rep.nombre)}</strong> aún tiene:</p>
+                    <p style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:10px;padding:12px;margin-top:12px;text-align:center;">
+                        <span style="font-size:28px;font-weight:900;color:#ef4444;">${saldo.toFixed(2)}€</span>
+                        <br><span style="color:#94a3b8;font-size:11px;">pendiente de entregar</span>
+                    </p>
+                    <p style="margin-top:12px;color:#f59e0b;font-size:12px;">
+                        💡 <strong>Recomendación:</strong> primero usa <strong>"💵 Registrar entrega"</strong> para descontar lo que ha pagado, y cuando el saldo esté en 0, entonces resetea los contadores.
+                    </p>
+                    <p style="margin-top:12px;color:#94a3b8;font-size:11px;">
+                        El reseteo <strong>NO</strong> borra el saldo pendiente. Solo limpia efectivo/tarjeta/entregas/histórico.
+                    </p>
+                </div>
+            `,
+            icon: 'warning',
+            background: '#0f172a',
+            color: 'white',
+            showCancelButton: true,
+            confirmButtonText: '🔄 Continuar de todas formas',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#f59e0b',
+            cancelButtonColor: '#334155'
+        });
+        
+        if (!confirmar.isConfirmed) return;
+    }
+    
+    // Modal principal
+    const { value: formValues } = await Swal.fire({
+        title: '🔄 Resetear contadores',
+        html: `
+            <div style="text-align:left;color:white;font-size:13px;">
+                <p style="margin-bottom:12px;">Se van a <strong>poner a cero</strong> los acumulados del repartidor.</p>
+                
+                <div style="background:#0f172a;border-radius:12px;padding:14px;border:1px solid #334155;">
+                    <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">📊 SERÁN RESETEADOS:</div>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1e293b;">
+                        <span style="color:#94a3b8;">💵 Efectivo</span>
+                        <span style="font-weight:bold;color:#10b981;">${efectivo.toFixed(2)}€ → 0,00€</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1e293b;">
+                        <span style="color:#94a3b8;">💳 Tarjeta</span>
+                        <span style="font-weight:bold;color:#06b6d4;">${digital.toFixed(2)}€ → 0,00€</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1e293b;">
+                        <span style="color:#94a3b8;">📦 Entregas</span>
+                        <span style="font-weight:bold;color:#a855f7;">${entregas} → 0</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;">
+                        <span style="color:#94a3b8;">📊 Histórico</span>
+                        <span style="font-weight:bold;color:#f59e0b;">${historico.toFixed(2)}€ → 0,00€</span>
+                    </div>
+                </div>
+                
+                <div style="background:rgba(16,185,129,0.1);border:1px solid #10b981;border-radius:10px;padding:10px;margin-top:12px;">
+                    <p style="color:#10b981;font-size:12px;margin:0;">
+                        ✅ <strong>NO</strong> se toca el saldo pendiente (${saldo.toFixed(2)}€).<br>
+                        ✅ El registro de este reseteo se guarda en el historial.
+                    </p>
+                </div>
+                
+                <label style="display:block;font-size:12px;color:#94a3b8;margin-top:14px;margin-bottom:6px;">📝 Motivo *</label>
+                <select id="reset-motivo" style="width:100%;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:13px;">
+                    <option value="liquidacion_semanal">💰 Liquidación semanal</option>
+                    <option value="liquidacion_quincenal">💰 Liquidación quincenal</option>
+                    <option value="liquidacion_mensual">💰 Liquidación mensual</option>
+                    <option value="cierre_manual">🔧 Cierre manual</option>
+                    <option value="correccion_error">⚠️ Corrección de error</option>
+                    <option value="otro">📋 Otro</option>
+                </select>
+                
+                <label style="display:block;font-size:12px;color:#94a3b8;margin-top:12px;margin-bottom:6px;">📝 Nota (opcional)</label>
+                <input id="reset-nota" type="text" 
+                       style="width:100%;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:13px;" 
+                       placeholder="Ej: Pago semanal del 15-21 de septiembre">
+            </div>
+        `,
+        background: '#0f172a',
+        color: 'white',
+        width: '92%',
+        maxWidth: '500px',
+        showCancelButton: true,
+        confirmButtonText: '🔄 CONFIRMAR RESETEO',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#f59e0b',
+        cancelButtonColor: '#334155',
+        preConfirm: () => ({
+            motivo: document.getElementById('reset-motivo')?.value || 'otro',
+            nota: document.getElementById('reset-nota')?.value || ''
+        })
+    });
+    
+    if (!formValues) return;
+    
+    Swal.fire({
+        title: '⏳ Reseteando...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    try {
+        const user = auth.currentUser;
+        const ahora = Date.now();
+        const resetId = 'RST-' + ahora;
+        
+        // 1. Guardar snapshot ANTES de resetear
+        const snapshot = {
+            reset_id: resetId,
+            repartidor_uid: uid,
+            repartidor_nombre: rep.nombre || 'Repartidor',
+            repartidor_email: rep.email || '',
+            fecha_reseteo: ahora,
+            motivo: formValues.motivo,
+            nota: formValues.nota,
+            ejecutado_por: {
+                uid: user.uid,
+                email: user.email
+            },
+            datos_reseteados: {
+                total_efectivo: efectivo,
+                total_digital: digital,
+                entregas_totales: entregas,
+                total_historico: historico,
+                saldo_pendiente_al_resetear: saldo
+            }
+        };
+        
+        // Guardar en el repartidor + global
+        await database.ref(`repartidores/${uid}/billetera/historial_reseteos/${resetId}`).set(snapshot);
+        await database.ref(`billeteras_reseteos/${resetId}`).set(snapshot);
+        
+        // 2. Resetear SOLO los contadores (no el saldo_pendiente)
+        await database.ref(`repartidores/${uid}/billetera/datos`).update({
+            total_efectivo: 0,
+            total_digital: 0,
+            entregas_totales: 0,
+            total_historico: 0,
+            ultimo_reseteo: ahora,
+            ultimo_reseteo_id: resetId
+        });
+        
+        // 3. Log admin
+        await logAdmin('resetear_contadores_billetera', {
+            repartidor_uid: uid,
+            repartidor_nombre: rep.nombre,
+            reset_id: resetId,
+            motivo: formValues.motivo,
+            datos_reseteados: snapshot.datos_reseteados
+        });
+        
+        Swal.close();
+        Swal.fire({
+            title: '✅ Contadores reseteados',
+            html: `
+                <div style="text-align:center;color:white;font-size:13px;">
+                    <div style="font-size:60px;margin:10px 0;">🎉</div>
+                    <p style="font-size:15px;font-weight:bold;">Efectivo, tarjeta, entregas e histórico a cero</p>
+                    ${saldo > 0 ? `
+                        <p style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:10px;padding:10px;margin-top:12px;font-size:12px;color:#ef4444;">
+                            ⚠️ Recuerda: aún tiene <strong>${saldo.toFixed(2)}€</strong> pendiente de entregar.
+                            <br>Usa "💵 Registrar entrega" para descontarlo.
+                        </p>
+                    ` : `
+                        <p style="color:#10b981;margin-top:12px;font-size:12px;">✅ Billetera limpia al 100%</p>
+                    `}
+                    <p style="background:#0f172a;border-radius:8px;padding:8px;margin-top:12px;font-family:monospace;color:#f59e0b;font-size:11px;">${resetId}</p>
+                </div>
+            `,
+            icon: 'success',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#10b981'
+        });
+        
+        cargarBilleteras();
+        
+    } catch (error) {
+        console.error('Error reseteando:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+// 📜 VER HISTORIAL DE REGULARIZACIONES
+// ============================================================
+async function verHistorialRegularizaciones(uid) {
+    Swal.close();
+    
+    try {
+        const repSnap = await database.ref(`repartidores/${uid}/nombre`).once('value');
+        const nombre = repSnap.val() || 'Repartidor';
+        
+        const snap = await database.ref(`repartidores/${uid}/billetera/historial_reseteos`).once('value');
+        const reseteos = snap.val() || {};
+        
+        const ordenados = Object.values(reseteos)
+            .sort((a, b) => (b.fecha_reseteo || 0) - (a.fecha_reseteo || 0));
+        
+        let html = '';
+        
+        if (ordenados.length === 0) {
+            html = `
+                <div style="text-align:center;padding:30px 10px;color:#94a3b8;">
+                    <div style="font-size:50px;margin-bottom:12px;">📭</div>
+                    <p>No hay regularizaciones registradas</p>
+                    <p style="font-size:11px;margin-top:8px;">Cuando pulses "🔄 Resetear contadores", aparecerán aquí</p>
+                </div>
+            `;
+        } else {
+            let totalEfectivo = 0, totalDigital = 0, totalEntregas = 0, totalHistorico = 0;
+            ordenados.forEach(r => {
+                totalEfectivo += r.datos_reseteados?.total_efectivo || 0;
+                totalDigital += r.datos_reseteados?.total_digital || 0;
+                totalEntregas += r.datos_reseteados?.entregas_totales || 0;
+                totalHistorico += r.datos_reseteados?.total_historico || 0;
+            });
+            
+            html = `
+                <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #334155;text-align:center;">
+                    <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">TOTAL REGULARIZADO</div>
+                    <div style="font-size:26px;font-weight:900;color:#8b5cf6;">${totalHistorico.toFixed(2)}€</div>
+                    <div style="font-size:11px;color:#94a3b8;margin-top:4px;">en ${ordenados.length} regularizacion${ordenados.length !== 1 ? 'es' : ''}</div>
+                </div>
+            `;
+            
+            html += '<div style="max-height:400px;overflow-y:auto;">';
+            html += ordenados.map((r) => {
+                const fecha = new Date(r.fecha_reseteo).toLocaleString('es-ES', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                
+                const motivoTexto = {
+                    'liquidacion_semanal': '💰 Liquidación semanal',
+                    'liquidacion_quincenal': '💰 Liquidación quincenal',
+                    'liquidacion_mensual': '💰 Liquidación mensual',
+                    'cierre_manual': '🔧 Cierre manual',
+                    'correccion_error': '⚠️ Corrección de error',
+                    'otro': '📋 Otro'
+                }[r.motivo] || '📋 Otro';
+                
+                const datos = r.datos_reseteados || {};
+                
+                return `
+                    <div style="background:#0f172a;border-radius:12px;padding:12px;margin-bottom:8px;border:1px solid #334155;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:4px;">
+                            <span style="font-family:monospace;color:#8b5cf6;font-size:11px;font-weight:bold;">${r.reset_id || 'Sin ID'}</span>
+                            <span style="color:#94a3b8;font-size:10px;">${fecha}</span>
+                        </div>
+                        <div style="font-size:12px;color:#06b6d4;margin-bottom:6px;">${motivoTexto}</div>
+                        ${r.nota ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;font-style:italic;">📝 ${escapeHTML(r.nota)}</div>` : ''}
+                        
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;">
+                            <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                                <span style="color:#94a3b8;">💵 Efectivo:</span>
+                                <span style="font-weight:bold;color:#10b981;">${(datos.total_efectivo || 0).toFixed(2)}€</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                                <span style="color:#94a3b8;">💳 Tarjeta:</span>
+                                <span style="font-weight:bold;color:#06b6d4;">${(datos.total_digital || 0).toFixed(2)}€</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                                <span style="color:#94a3b8;">📦 Entregas:</span>
+                                <span style="font-weight:bold;color:#a855f7;">${datos.entregas_totales || 0}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                                <span style="color:#94a3b8;">📊 Total:</span>
+                                <span style="font-weight:bold;color:#f59e0b;">${(datos.total_historico || 0).toFixed(2)}€</span>
+                            </div>
+                        </div>
+                        
+                        <div style="font-size:10px;color:#64748b;margin-top:6px;padding-top:6px;border-top:1px solid #1e293b;">
+                            👤 ${escapeHTML(r.ejecutado_por?.email || 'N/A')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            html += '</div>';
+        }
+        
+        await Swal.fire({
+            title: `📜 Historial de ${escapeHTML(nombre)}`,
+            html: `<div style="text-align:left;color:white;font-size:13px;">${html}</div>`,
+            background: '#0f172a',
+            color: 'white',
+            width: '92%',
+            maxWidth: '600px',
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#8b5cf6'
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+// 📊 RESUMEN GLOBAL DE RESETEOS
+// ============================================================
+async function verTodosLosReseteos() {
+    try {
+        const snap = await database.ref('billeteras_reseteos').once('value');
+        const reseteos = snap.val() || {};
+        
+        const ordenados = Object.values(reseteos)
+            .sort((a, b) => (b.fecha_reseteo || 0) - (a.fecha_reseteo || 0))
+            .slice(0, 100);
+        
+        if (ordenados.length === 0) {
+            Swal.fire({
+                title: '📭 Sin reseteos',
+                text: 'No se ha realizado ningún reseteo',
+                icon: 'info',
+                background: '#0f172a',
+                color: 'white'
+            });
+            return;
+        }
+        
+        const porRepartidor = {};
+        ordenados.forEach(r => {
+            const key = r.repartidor_uid;
+            if (!porRepartidor[key]) {
+                porRepartidor[key] = { nombre: r.repartidor_nombre, cantidad: 0, total: 0 };
+            }
+            porRepartidor[key].cantidad++;
+            porRepartidor[key].total += r.datos_reseteados?.total_historico || 0;
+        });
+        
+        let html = `
+            <div style="text-align:left;color:white;font-size:13px;">
+                <div style="background:#0f172a;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid #334155;">
+                    <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">RESUMEN POR REPARTIDOR</div>
+        `;
+        
+        for (const data of Object.values(porRepartidor)) {
+            html += `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b;">
+                    <span style="color:#fff;">${escapeHTML(data.nombre)}</span>
+                    <span style="color:#f59e0b;font-weight:bold;">${data.total.toFixed(2)}€ (${data.cantidad})</span>
+                </div>
+            `;
+        }
+        
+        html += `</div></div>`;
+        
+        await Swal.fire({
+            title: '📊 Resumen de reseteos',
+            html,
+            background: '#0f172a',
+            color: 'white',
+            width: '92%',
+            maxWidth: '500px',
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#f59e0b'
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
     
 console.log('✅ Admin Pro iniciado correctamente');
 </script>

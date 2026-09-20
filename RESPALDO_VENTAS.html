@@ -202,6 +202,9 @@
                 <p id="tracking-mensaje" style="font-size:13px;color:rgba(255,255,255,0.6);font-weight:700;">Procesando tu pedido...</p>
             </div>
             
+            <!-- 🛵 CARD DEL REPARTIDOR (se muestra solo cuando está en camino) -->
+            <div id="tracking-card-repartidor" style="display:none;margin:25px 0;"></div>
+            
             <!-- ⏱️ TIMELINE VERTICAL -->
             <div id="tracking-timeline" style="margin:25px 0;"></div>
             
@@ -1504,10 +1507,37 @@ function actualizarInterfazSeguimiento(data) {
     document.getElementById('tracking-mensaje').innerText = config.msg;
     document.getElementById('tracking-emoji').innerText = config.emoji;
     
-    // ✅ GENERAR EL TIMELINE
+       // ✅ GENERAR EL TIMELINE
     const timeline = document.getElementById('tracking-timeline');
     if (timeline) {
         timeline.innerHTML = generarTimelineHTML(data, estado);
+    }
+    
+    // ✅ MOSTRAR CARD DEL REPARTIDOR (solo cuando está en camino o en puerta)
+    const cardRepartidor = document.getElementById('tracking-card-repartidor');
+    if (cardRepartidor) {
+        if ((estado === 'EN_REPARTO' || estado === 'EN_PUERTA') && data.uid_repartidor && data.repartidor_nombre) {
+            cardRepartidor.style.display = 'block';
+            cardRepartidor.innerHTML = generarCardRepartidorHTML(data);
+            
+            // ✅ Cargar el teléfono desde Firebase (async)
+            database.ref('repartidores/' + data.uid_repartidor + '/telefono').once('value').then(snap => {
+                const telefono = snap.val();
+                const btnLlamar = document.getElementById('btn-llamar-repartidor');
+                if (btnLlamar && telefono) {
+                    btnLlamar.href = 'tel:+34' + telefono.replace(/\s+/g, '');
+                    btnLlamar.style.opacity = '1';
+                    btnLlamar.style.pointerEvents = 'auto';
+                } else if (btnLlamar) {
+                    btnLlamar.style.opacity = '0.4';
+                    btnLlamar.style.pointerEvents = 'none';
+                    btnLlamar.title = 'Teléfono no disponible';
+                }
+            });
+        } else {
+            cardRepartidor.style.display = 'none';
+            cardRepartidor.innerHTML = '';
+        }
     }
     
     if (estado === 'RECHAZADO') {
@@ -1568,6 +1598,29 @@ function actualizarInterfazSeguimiento(data) {
     
     // Info normal del pedido
     document.getElementById('tracking-info').innerHTML = `<div style="display:grid; gap:8px;"><div><span style="color:#06b6d4;">📋 Pedido:</span> ${escapeHTML(data.id_pedido || data.id || '---')}</div><div><span style="color:#06b6d4;">👤 Cliente:</span> ${escapeHTML(data.cliente_nombre || '---')}</div><div><span style="color:#06b6d4;">💰 Total:</span> ${(data.total || 0).toFixed(2)}€</div><div><span style="color:#06b6d4;">📦 Estado:</span> ${config.txt}</div></div>`;
+}
+
+// ============================================================
+// 🛵 GENERADOR DE CARD DEL REPARTIDOR
+// ============================================================
+function generarCardRepartidorHTML(data) {
+    const nombre = escapeHTML(data.repartidor_nombre || 'Repartidor');
+    return `
+        <div style="background:linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.05)); border:1px solid rgba(6,182,212,0.3); border-radius:24px; padding:20px;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px;">
+                <div style="width:50px; height:50px; border-radius:50%; background:#06b6d4; display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:0 0 20px rgba(6,182,212,0.5);">
+                    🛵
+                </div>
+                <div style="flex:1;">
+                    <p style="font-size:10px; font-weight:900; text-transform:uppercase; color:#06b6d4; letter-spacing:1px; margin-bottom:2px;">Tu repartidor</p>
+                    <p style="font-size:16px; font-weight:900; color:white; margin:0;">${nombre}</p>
+                </div>
+            </div>
+            <a id="btn-llamar-repartidor" href="#" style="display:flex; align-items:center; justify-content:center; gap:8px; background:#06b6d4; color:#020617; text-decoration:none; padding:14px; border-radius:16px; font-weight:900; font-size:14px; text-transform:uppercase; letter-spacing:0.5px; opacity:0.5; pointer-events:none; transition:all 0.2s;">
+                📞 Llamar al repartidor
+            </a>
+        </div>
+    `;
 }
 
 // ============================================================

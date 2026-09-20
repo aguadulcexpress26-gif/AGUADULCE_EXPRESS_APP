@@ -373,7 +373,7 @@
         
         <!-- ==================== BANNERS ==================== -->
         <div id="seccion-banners" class="seccion hidden">
-            <div class="flex justify-between items-center mb-6"><h2 class="text-2xl font-bold">📢 Banners</h2><button onclick="mostrarModal('modalBanner')" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Banner</button></div>
+            <div class="flex justify-between items-center mb-6"><h2 class="text-2xl font-bold">📢 Banners</h2><button onclick="abrirModalNuevoBanner()" class="bg-amber-500 text-black px-4 py-2 rounded-xl font-bold">➕ Nuevo Banner</button></div>
             <div id="listaBanners" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
         
@@ -885,12 +885,38 @@
 <!-- ==================== MODAL: BANNER ==================== -->
 <div id="modalBanner" class="modal">
     <div>
-        <h3 class="text-xl font-bold mb-4">📢 Banner</h3>
-        <input type="text" id="bannerTitulo" placeholder="Título" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="url" id="bannerImagen" placeholder="URL Imagen" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="url" id="bannerLink" placeholder="Link (opcional)" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <input type="number" id="bannerOrden" placeholder="Orden" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 mb-3">
-        <div class="flex gap-3"><button onclick="guardarBanner()" class="flex-1 bg-amber-500 text-black py-2 rounded-xl font-bold">Guardar</button><button onclick="cerrarModal('modalBanner')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button></div>
+        <h3 class="text-xl font-bold mb-4" id="modalBannerTitulo">📢 Nuevo Banner</h3>
+        <input type="hidden" id="bannerEditId" value="">
+        
+        <div class="mb-3">
+            <label class="block text-sm text-white/70 mb-1">Título *</label>
+            <input type="text" id="bannerTitulo" placeholder="Ej: Comida Asiática" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+        </div>
+        
+        <div class="mb-3">
+            <label class="block text-sm text-white/70 mb-1">URL de la imagen *</label>
+            <input type="url" id="bannerImagen" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+        </div>
+        
+        <div class="mb-3">
+            <label class="block text-sm text-white/70 mb-1">Link al hacer clic (opcional)</label>
+            <input type="url" id="bannerLink" placeholder="https://..." class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+        </div>
+        
+        <div class="mb-3">
+            <label class="block text-sm text-white/70 mb-1">Orden (menor = primero)</label>
+            <input type="number" id="bannerOrden" value="0" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
+        </div>
+        
+        <div class="mb-4 flex items-center gap-3">
+            <input type="checkbox" id="bannerActivo" checked class="w-5 h-5 accent-amber-500">
+            <label for="bannerActivo" class="text-sm text-white/70">Banner activo (visible en la web)</label>
+        </div>
+        
+        <div class="flex gap-3">
+            <button onclick="guardarBanner()" class="flex-1 bg-amber-500 text-black py-3 rounded-xl font-bold hover:bg-amber-400 transition">💾 Guardar</button>
+            <button onclick="cerrarModal('modalBanner')" class="flex-1 bg-slate-700 py-3 rounded-xl hover:bg-slate-600 transition">Cancelar</button>
+        </div>
     </div>
 </div>
 
@@ -4010,23 +4036,178 @@ async function cargarBanners() {
     const snapshot = await database.ref('banners').once('value');
     const banners = snapshot.val() || {};
     const container = document.getElementById('listaBanners');
-    container.innerHTML = '';
-    for (const [id, data] of Object.entries(banners)) {
-        container.innerHTML += `<div class="card bg-slate-800 rounded-2xl overflow-hidden"><img src="${data.imagen}" class="w-full h-32 object-cover" onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'"><div class="p-4"><p class="font-bold">${escapeHTML(data.titulo)}</p><p class="text-white/50 text-sm">Orden: ${data.orden || 0}</p><div class="flex gap-2 mt-3"><button onclick="eliminarBanner('${id}')" class="flex-1 bg-red-600/20 text-red-400 py-2 rounded-xl text-sm">🗑️ Eliminar</button></div></div></div>`;
+    
+    if (Object.keys(banners).length === 0) {
+        container.innerHTML = '<p class="text-white/50 p-10 text-center">No hay banners. Pulsa "➕ Nuevo Banner" para crear el primero.</p>';
+        return;
     }
-    if (Object.keys(banners).length === 0) container.innerHTML = '<p class="text-white/50">No hay banners</p>';
+    
+    // Ordenar por 'orden'
+    const bannersArray = Object.entries(banners)
+        .map(([id, data]) => ({ id, ...data }))
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    
+    let html = '';
+    for (const banner of bannersArray) {
+        const activo = banner.activo !== false;
+        const estadoBadge = activo 
+            ? '<span class="absolute top-2 left-2 bg-green-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">🟢 ACTIVO</span>'
+            : '<span class="absolute top-2 left-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">🔴 INACTIVO</span>';
+        
+        html += `
+            <div class="card bg-slate-800 rounded-2xl overflow-hidden border ${activo ? 'border-green-500/20' : 'border-red-500/20'}">
+                <div class="relative">
+                    <img src="${banner.imagen}" class="w-full h-32 object-cover" 
+                         onerror="this.src='https://placehold.co/600x400/1e293b/ffffff?text=Sin+Imagen'">
+                    ${estadoBadge}
+                </div>
+                <div class="p-4">
+                    <p class="font-bold text-white">${escapeHTML(banner.titulo || 'Sin título')}</p>
+                    <p class="text-white/50 text-xs mt-1">📊 Orden: ${banner.orden || 0}</p>
+                    ${banner.link ? `<p class="text-cyan-400 text-xs mt-1 truncate">🔗 ${escapeHTML(banner.link)}</p>` : ''}
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="editarBanner('${banner.id}')" 
+                                class="flex-1 bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 py-2 rounded-xl text-sm font-bold transition">
+                            ✏️ Editar
+                        </button>
+                        <button onclick="toggleBannerActivo('${banner.id}', ${!activo})" 
+                                class="flex-1 ${activo ? 'bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-400' : 'bg-green-600/20 hover:bg-green-600/40 text-green-400'} py-2 rounded-xl text-sm font-bold transition">
+                            ${activo ? '👁️ Ocultar' : '👁️ Mostrar'}
+                        </button>
+                        <button onclick="eliminarBanner('${banner.id}')" 
+                                class="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-4 py-2 rounded-xl text-sm font-bold transition">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
 }
 
 async function guardarBanner() {
+    const editId = document.getElementById('bannerEditId').value;
     const titulo = document.getElementById('bannerTitulo').value.trim();
     const imagen = document.getElementById('bannerImagen').value.trim();
     const link = document.getElementById('bannerLink').value.trim();
     const orden = parseInt(document.getElementById('bannerOrden').value) || 0;
-    if (!titulo || !imagen) { Swal.fire('Error', 'Título e imagen obligatorios', 'error', '#0f172a'); return; }
-    await database.ref(`banners/${Date.now()}`).set({ titulo, imagen, link: link || '', orden, activo: true, creado_en: Date.now() });
-    await logAdmin('crear_banner', { titulo });
-    cerrarModal('modalBanner');
-    cargarBanners();
+    const activo = document.getElementById('bannerActivo').checked;
+    
+    if (!titulo || !imagen) {
+        Swal.fire('Error', 'Título e imagen son obligatorios', 'error', '#0f172a');
+        return;
+    }
+    
+    try {
+        if (editId) {
+            // ✏️ EDITAR banner existente
+            await database.ref(`banners/${editId}`).update({
+                titulo,
+                imagen,
+                link: link || '',
+                orden,
+                activo,
+                actualizado_en: Date.now()
+            });
+            await logAdmin('editar_banner', { id: editId, titulo });
+            Swal.fire({
+                title: '✅ Banner actualizado',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+        } else {
+            // ➕ CREAR banner nuevo
+            const nuevoId = 'banner_' + Date.now();
+            await database.ref(`banners/${nuevoId}`).set({
+                titulo,
+                imagen,
+                link: link || '',
+                orden,
+                activo,
+                creado_en: Date.now()
+            });
+            await logAdmin('crear_banner', { id: nuevoId, titulo });
+            Swal.fire({
+                title: '✅ Banner creado',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#0f172a',
+                color: 'white'
+            });
+        }
+        
+        cerrarModal('modalBanner');
+        cargarBanners();
+        
+    } catch (error) {
+        console.error('Error guardando banner:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+// ✏️ EDITAR BANNER
+// ============================================================
+async function editarBanner(id) {
+    try {
+        const snap = await database.ref(`banners/${id}`).once('value');
+        const banner = snap.val();
+        
+        if (!banner) {
+            Swal.fire('Error', 'Banner no encontrado', 'error', '#0f172a');
+            return;
+        }
+        
+        // Rellenar el modal con los datos actuales
+        document.getElementById('bannerEditId').value = id;
+        document.getElementById('bannerTitulo').value = banner.titulo || '';
+        document.getElementById('bannerImagen').value = banner.imagen || '';
+        document.getElementById('bannerLink').value = banner.link || '';
+        document.getElementById('bannerOrden').value = banner.orden || 0;
+        document.getElementById('bannerActivo').checked = banner.activo !== false;
+        
+        // Cambiar el título del modal
+        document.getElementById('modalBannerTitulo').textContent = '✏️ Editar Banner';
+        
+        mostrarModal('modalBanner');
+        
+    } catch (error) {
+        console.error('Error cargando banner:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+// 👁️ ACTIVAR / DESACTIVAR BANNER
+// ============================================================
+async function toggleBannerActivo(id, activo) {
+    try {
+        await database.ref(`banners/${id}/activo`).set(activo);
+        await logAdmin('toggle_banner', { id, activo });
+        cargarBanners();
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+}
+
+// ============================================================
+// ➕ ABRIR MODAL NUEVO BANNER (limpio)
+// ============================================================
+function abrirModalNuevoBanner() {
+    document.getElementById('bannerEditId').value = '';
+    document.getElementById('bannerTitulo').value = '';
+    document.getElementById('bannerImagen').value = '';
+    document.getElementById('bannerLink').value = '';
+    document.getElementById('bannerOrden').value = 0;
+    document.getElementById('bannerActivo').checked = true;
+    document.getElementById('modalBannerTitulo').textContent = '📢 Nuevo Banner';
+    mostrarModal('modalBanner');
 }
 
 async function eliminarBanner(id) { 

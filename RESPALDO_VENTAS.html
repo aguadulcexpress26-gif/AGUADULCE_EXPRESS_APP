@@ -1650,23 +1650,22 @@ function mostrarMensajeRepartidor(mensaje) {
 
 // ✅ FUNCIÓN CORREGIDA: Cierra el modal SIN borrar el pedido activo
 function cerrarModalTracking() {
-    if (trackingListenerRef) { try { trackingListenerRef.off(); } catch(e) {} trackingListenerRef = null; }
-    if (window.mensajesListenerRef) { try { window.mensajesListenerRef.off(); } catch(e) {} window.mensajesListenerRef = null; }
-    if (mensajesGlobalListener) { try { mensajesGlobalListener.off(); } catch(e) {} mensajesGlobalListener = null; }
-    if (alarmaInterval) { clearInterval(alarmaInterval); alarmaInterval = null; }
-
+    // ✅ NO apagamos los listeners: siguen escuchando aunque el cajón esté cerrado
+    // ✅ Solo cerramos el modal y mostramos el botón flotante
+    console.log('🔒 Cajón cerrado (listeners siguen activos)');
+    
     cerrarTodosLosPaneles();
-
-    // ✅ NO borramos ae_pedido_activo ni ae_tracking_id
-    // ✅ Mostramos el botón flotante para volver al seguimiento
+    
+    // ✅ Mostrar el botón flotante si hay pedido activo
     const btnReabrir = document.getElementById('btn-reabrir-seguimiento');
     if (btnReabrir && localStorage.getItem('ae_pedido_activo')) {
         btnReabrir.style.display = 'flex';
     }
-
+    
     pantallaStack = ['home'];
     renderHome();
 }
+    
 // ✅ FUNCIÓN CORREGIDA: Cierra el modal de éxito y vuelve al home
 function cerrarModalExito() {
     document.getElementById('modal-exito').style.display = 'none';
@@ -1707,10 +1706,10 @@ function cerrarTrackingPorRechazo() {
 }
 
 function abrirModalTracking() {
-    // ✅ Si no hay pedido activo, cerrar y volver al home
+    // ✅ 1. Comprobar que hay pedido activo
     const pedidoId = localStorage.getItem('ae_pedido_activo');
     if (!pedidoId) {
-        console.log('⚠️ No hay pedido activo. Cerrando cajón.');
+        console.log('⚠️ No hay pedido activo. Volviendo al home.');
         cerrarTodosLosPaneles();
         document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
         pantallaStack = ['home'];
@@ -1718,37 +1717,67 @@ function abrirModalTracking() {
         return;
     }
     
-    pushPantalla('tracking');
-    document.getElementById('tracking-modal').style.display = 'block';
-    document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
-    setTimeout(() => agregarFooterLegal(), 100);
-    
-    // ✅ Reiniciar listener para que reciba cambios en tiempo real
+    // ✅ 2. Consultar Firebase para saber el estado real
     database.ref('pedidos/' + pedidoId).once('value').then(snap => {
-        if (snap.val()) {
-            actualizarInterfazSeguimiento(snap.val());
-        } else {
-            // El pedido ya no existe en Firebase → limpiar y cerrar
+        const pedido = snap.val();
+        
+        if (!pedido) {
+            console.log('⚠️ Pedido no encontrado. Limpiando.');
             localStorage.removeItem('ae_pedido_activo');
             localStorage.removeItem('ae_tracking_id');
             document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
             cerrarTodosLosPaneles();
             pantallaStack = ['home'];
             renderHome();
+            return;
+        }
+        
+        const estado = (pedido.estado || '').toString().trim().toUpperCase();
+        
+        if (estado === 'ENTREGADO' || estado === 'RECHAZADO' || estado === 'CANCELADO_POR_AUSENCIA') {
+            console.log('✅ Pedido ya finalizado (' + estado + '). Cerrando.');
+            localStorage.removeItem('ae_pedido_activo');
+            localStorage.removeItem('ae_tracking_id');
+            window._entregadoYaProcesado = false;
+            document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+            cerrarTodosLosPaneles();
+            pantallaStack = ['home'];
+            renderHome();
+            return;
+        }
+        
+        // ✅ 3. El pedido está ACTIVO → abrir cajón
+        console.log('📖 Abriendo cajón:', pedidoId, '| estado:', estado);
+        pushPantalla('tracking');
+        document.getElementById('tracking-modal').style.display = 'block';
+        document.getElementById('btn-reabrir-seguimiento').style.display = 'none';
+        setTimeout(() => agregarFooterLegal(), 100);
+        
+        // Pintar el estado actual
+        actualizarInterfazSeguimiento(pedido);
+        
+        // ✅ 4. Crear listener SOLO si no existe uno para este mismo pedido
+        const listenerActualId = trackingListenerRef ? trackingListenerRef.toString().split('/').pop() : null;
+        
+        if (listenerActualId !== pedidoId) {
+            // Es un pedido diferente o no hay listener → crear uno
+            console.log('🆕 Creando listener NUEVO para:', pedidoId);
+            
+            if (trackingListenerRef) {
+                try { trackingListenerRef.off(); } catch(e) {}
+                trackingListenerRef = null;
+            }
+            
+            trackingListenerRef = database.ref('pedidos/' + pedidoId);
+            trackingListenerRef.on('value', (snap2) => {
+                if (snap2.val()) {
+                    actualizarInterfazSeguimiento(snap2.val());
+                }
+            });
+        } else {
+            console.log('♻️ Reutilizando listener existente para:', pedidoId);
         }
     });
-    
-    if (trackingListenerRef) {
-        try { trackingListenerRef.off(); } catch(e) {}
-        trackingListenerRef = null;
-    }
-    trackingListenerRef = database.ref('pedidos/' + pedidoId);
-    trackingListenerRef.on('value', (snap) => {
-        if (snap.val()) {
-            actualizarInterfazSeguimiento(snap.val());
-        }
-    });
-    console.log('🔄 Listener de tracking reiniciado para:', pedidoId);
 }
     
     async function mostrarCancelacionConContacto(pedidoId, deuda) {

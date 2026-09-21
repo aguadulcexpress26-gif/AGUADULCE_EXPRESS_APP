@@ -1726,26 +1726,33 @@ function formatearItemTexto(item, conTildes = true) {
     const cant = item.cantidad || 1;
     lineas.push(`${cant}x ${item.nombre || 'Producto'}`);
 
+    // Opciones elegidas por el cliente (con " + " como viñeta)
     const opciones = obtenerOpcionesItem(item);
     for (const op of opciones) {
-        lineas.push(`   • ${op.grupo}: ${op.valores.join(', ')}`);
+        lineas.push(`  + ${op.grupo}: ${op.valores.join(', ')}`);
     }
 
-    if (item.extras_precio && item.extras_precio > 0) {
-        lineas.push(`   • Extras: +${item.extras_precio.toFixed(2)}€`);
+    // Base del plato (siempre visible)
+    const base = item.precio_unitario || 0;
+    lineas.push(`  Base: ${base.toFixed(2)} EUR`);
+
+    // Extras y Subtotal (solo si tiene extras)
+    const extras = item.extras_precio || 0;
+    if (extras > 0) {
+        const subtotal = base + extras;
+        lineas.push(`  Extras: ${extras.toFixed(2)} EUR`);
+        lineas.push(`  Subtotal: ${subtotal.toFixed(2)} EUR`);
     }
-    if (item.total && item.total > 0) {
-        lineas.push(`   Subtotal: ${item.total.toFixed(2)}€`);
-    }
+
+    // Nota del cliente (sin emoji)
     if (item.nota_cliente && item.nota_cliente.trim()) {
-        lineas.push(`   📝 Nota: ${item.nota_cliente.trim()}`);
+        lineas.push(`  Nota: ${item.nota_cliente.trim()}`);
     }
 
     let texto = lineas.join('\n');
     if (!conTildes) texto = quitarTildes(texto);
     return texto;
 }
-
 function quitarTildes(txt) {
     if (!txt) return '';
     return txt
@@ -2050,7 +2057,7 @@ function generarTextoComanda(data, nombreRestaurante, pedidoId) {
     texto += '-------------------------------\n';
     texto += '   PRODUCTOS:\n';
 
-    if (data.items && data.items.length > 0) {
+          if (data.items && data.items.length > 0) {
         const itemsArray = Array.isArray(data.items) ? data.items : Object.values(data.items);
         for (const item of itemsArray) {
             const itemTexto = formatearItemTexto(item, false); // sin tildes para térmica
@@ -2058,7 +2065,7 @@ function generarTextoComanda(data, nombreRestaurante, pedidoId) {
             for (const linea of lineas) {
                 const envueltas = envolverTexto(linea, 30);
                 for (const l of envueltas) {
-                    texto += `     ${l}\n`;
+                    texto += `   ${l}\n`;
                 }
             }
             texto += '\n';
@@ -2069,7 +2076,8 @@ function generarTextoComanda(data, nombreRestaurante, pedidoId) {
 
     texto += '-------------------------------\n';
     texto += '\x1B\x45\x01';
-    const totalStr = (data.total || 0).toFixed(2);
+    // ✅ El ticket de cocina muestra el SUBTOTAL del restaurante (sin envío ni comisión)
+    const totalStr = (data.subtotal || 0).toFixed(2);
     texto += `   TOTAL: ${totalStr} EUR\n`;
     texto += '\x1B\x45\x00';
     texto += '===============================\n';

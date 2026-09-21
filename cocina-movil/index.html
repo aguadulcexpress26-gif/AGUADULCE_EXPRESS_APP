@@ -1672,597 +1672,685 @@
                 }
             };
 
-            // ============================================
-            // 10. CONFIGURACIÓN IMPRESORA
-            // ============================================
-            let impresoraConectada = null;
-            let impresoraDevice = null;
-            let impresoraCharacteristic = null;
+          // ============================================
+// 10. CONFIGURACIÓN IMPRESORA
+// ============================================
+let impresoraConectada = null;
+let impresoraDevice = null;
+let impresoraCharacteristic = null;
 
-            async function cargarConfiguracionImpresora() {
-                try {
-                    const snap = await db.ref(`restaurantes/${restauranteId}/impresora`).once('value');
-                    const config = snap.val();
-                    if (config && config.activo) {
-                        impresoraConfigurada = true;
-                        nombreImpresora = config.nombre || 'Impresora Bluetooth';
-                        window._impresoraDeviceId = config.deviceId || null;
-                        
-                        const estadoEl = document.getElementById('estado-impresora');
-                        if (estadoEl) {
-                            estadoEl.textContent = '🟢';
-                            estadoEl.title = `Impresora: ${nombreImpresora}`;
-                        }
-                        
-                        localStorage.setItem('impresora_nombre', nombreImpresora);
-                        localStorage.setItem('impresora_id', config.deviceId || '');
-                        
-                        setTimeout(() => {
-                            conectarImpresoraAutomaticamente();
-                        }, 2000);
-                        
-                    } else {
-                        impresoraConfigurada = false;
-                        nombreImpresora = '';
-                        window._impresoraDeviceId = null;
-                        
-                        const estadoEl = document.getElementById('estado-impresora');
-                        if (estadoEl) {
-                            estadoEl.textContent = '⭕';
-                            estadoEl.title = 'No hay impresora configurada';
-                        }
-                        
-                        localStorage.removeItem('impresora_nombre');
-                        localStorage.removeItem('impresora_id');
-                    }
-                } catch (error) { 
-                    console.error('Error cargando impresora:', error);
-                    impresoraConfigurada = false;
-                    const estadoEl = document.getElementById('estado-impresora');
-                    if (estadoEl) estadoEl.textContent = '⭕';
-                }
+// ============================================
+// HELPERS PARA FORMATEAR OPCIONES Y NOTAS
+// ============================================
+
+function parsearOpcionesDetalle(raw) {
+    if (!raw) return [];
+    const out = [];
+    const entries = Array.isArray(raw) ? raw : Object.values(raw);
+    for (const item of entries) {
+        if (!item || !item.grupo) continue;
+        let valores = [];
+        if (Array.isArray(item.valores)) {
+            valores = item.valores.filter(v => v);
+        } else if (item.valores && typeof item.valores === 'object') {
+            valores = Object.values(item.valores).filter(v => v);
+        } else if (typeof item.valores === 'string') {
+            valores = [item.valores];
+        }
+        if (valores.length === 0) continue;
+        out.push({ grupo: item.grupo, valores });
+    }
+    return out;
+}
+
+function parsearOpcionesString(opcionesStr) {
+    if (!opcionesStr || typeof opcionesStr !== 'string') return [];
+    const etiquetas = ['Acompañantes', 'Bebidas', 'Tamaño', 'Extras'];
+    const grupos = opcionesStr.split('|').map(s => s.trim()).filter(Boolean);
+    return grupos.map((valores, idx) => ({
+        grupo: etiquetas[idx] || `Opción ${idx + 1}`,
+        valores: valores.split(',').map(v => v.trim()).filter(Boolean)
+    }));
+}
+
+function obtenerOpcionesItem(item) {
+    if (item.opciones_detalle) {
+        const det = parsearOpcionesDetalle(item.opciones_detalle);
+        if (det.length > 0) return det;
+    }
+    return parsearOpcionesString(item.opciones);
+}
+
+function formatearItemTexto(item, conTildes = true) {
+    const lineas = [];
+    const cant = item.cantidad || 1;
+    lineas.push(`${cant}x ${item.nombre || 'Producto'}`);
+
+    const opciones = obtenerOpcionesItem(item);
+    for (const op of opciones) {
+        lineas.push(`   • ${op.grupo}: ${op.valores.join(', ')}`);
+    }
+
+    if (item.extras_precio && item.extras_precio > 0) {
+        lineas.push(`   • Extras: +${item.extras_precio.toFixed(2)}€`);
+    }
+    if (item.total && item.total > 0) {
+        lineas.push(`   Subtotal: ${item.total.toFixed(2)}€`);
+    }
+    if (item.nota_cliente && item.nota_cliente.trim()) {
+        lineas.push(`   📝 Nota: ${item.nota_cliente.trim()}`);
+    }
+
+    let texto = lineas.join('\n');
+    if (!conTildes) texto = quitarTildes(texto);
+    return texto;
+}
+
+function quitarTildes(txt) {
+    if (!txt) return '';
+    return txt
+        .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i')
+        .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/Á/g, 'A')
+        .replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O')
+        .replace(/Ú/g, 'U').replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+        .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+        .replace(/•/g, '+');
+}
+
+function envolverTexto(texto, ancho) {
+    if (!texto) return [''];
+    const palabras = texto.split(' ');
+    const lineas = [];
+    let actual = '';
+    for (const palabra of palabras) {
+        if ((actual + ' ' + palabra).trim().length > ancho) {
+            if (actual) lineas.push(actual.trim());
+            actual = palabra;
+        } else {
+            actual = (actual + ' ' + palabra).trim();
+        }
+    }
+    if (actual) lineas.push(actual.trim());
+    return lineas.length ? lineas : [''];
+}
+
+// ============================================
+// ACTUALIZAR ICONO DE IMPRESORA EN NAV
+// ============================================
+function actualizarIconoImpresora() {
+    const estadoEl = document.getElementById('estado-impresora');
+    if (!estadoEl) return;
+
+    if (!impresoraConfigurada) {
+        estadoEl.textContent = '⭕';
+        estadoEl.title = 'No hay impresora configurada';
+        return;
+    }
+
+    if (impresoraConectada && impresoraConectada.device && impresoraConectada.device.gatt && impresoraConectada.device.gatt.connected) {
+        estadoEl.textContent = '🟢';
+        estadoEl.title = `Impresora conectada: ${nombreImpresora}`;
+    } else {
+        estadoEl.textContent = '🟡';
+        estadoEl.title = `Impresora autorizada (${nombreImpresora}). Pulsa imprimir para reconectar.`;
+    }
+}
+
+// ============================================
+// CARGA Y CONEXIÓN DE IMPRESORA
+// ============================================
+async function cargarConfiguracionImpresora() {
+    try {
+        const snap = await db.ref(`restaurantes/${restauranteId}/impresora`).once('value');
+        const config = snap.val();
+        if (config && config.activo) {
+            impresoraConfigurada = true;
+            nombreImpresora = config.nombre || 'Impresora Bluetooth';
+            window._impresoraDeviceId = config.deviceId || null;
+            localStorage.setItem('impresora_nombre', nombreImpresora);
+            localStorage.setItem('impresora_id', config.deviceId || '');
+            // ✅ Marcamos como autorizada para futuras sesiones
+            localStorage.setItem('impresora_autorizada', 'true');
+        } else {
+            impresoraConfigurada = false;
+            nombreImpresora = '';
+            window._impresoraDeviceId = null;
+            localStorage.removeItem('impresora_nombre');
+            localStorage.removeItem('impresora_id');
+            localStorage.removeItem('impresora_autorizada');
+        }
+        actualizarIconoImpresora();
+    } catch (error) {
+        console.error('Error cargando impresora:', error);
+        impresoraConfigurada = false;
+        actualizarIconoImpresora();
+    }
+}
+
+async function conectarYGuardarImpresora(device) {
+    try {
+        if (impresoraConectada) {
+            try { await impresoraConectada.server.disconnect(); } catch(e) {}
+            impresoraConectada = null;
+            impresoraCharacteristic = null;
+        }
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+        const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+
+        impresoraConectada = { device, server, service, characteristic };
+        impresoraDevice = device;
+        impresoraCharacteristic = characteristic;
+
+        return impresoraConectada;
+    } catch (error) {
+        console.error('❌ Error conectando:', error);
+        throw error;
+    }
+}
+
+// ✅ Reintentar conexión silenciosa (necesita gesto previo del usuario en muchas versiones de Chrome)
+async function conectarImpresoraGuardada() {
+    if (impresoraConectada && impresoraCharacteristic) {
+        try {
+            if (impresoraConectada.device.gatt.connected) {
+                return impresoraConectada;
+            } else {
+                impresoraConectada = null;
+                impresoraCharacteristic = null;
             }
+        } catch(e) {
+            impresoraConectada = null;
+            impresoraCharacteristic = null;
+        }
+    }
 
-            async function conectarImpresoraAutomaticamente() {
-                if (!impresoraConfigurada || !navigator.bluetooth) return;
-                
-                try {
-                    const device = await navigator.bluetooth.requestDevice({
-                        filters: [
-                            { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
-                            { name: nombreImpresora }
-                        ],
-                        optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
-                    });
-                    
-                    if (device) {
+    if (!impresoraConfigurada || !navigator.bluetooth) return null;
+
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [
+                { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
+                { name: nombreImpresora }
+            ],
+            optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+        });
+
+        if (device) {
+            const connection = await conectarYGuardarImpresora(device);
+            actualizarIconoImpresora();
+            return connection;
+        }
+        return null;
+
+    } catch (error) {
+        console.warn('⚠️ Error conectando:', error);
+        actualizarIconoImpresora();
+        return null;
+    }
+}
+
+// ============================================
+// CONFIGURAR IMPRESORA (modal)
+// ============================================
+window.configurarImpresora = function() {
+    if (!navigator.bluetooth) {
+        Swal.fire({
+            title: '❌ No soportado',
+            text: 'Este navegador no soporta Bluetooth. Usa Chrome en Android.',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        });
+        return;
+    }
+
+    Swal.fire({
+        title: '🖨️ Configurar Impresora',
+        html: `
+            <div style="text-align:left;color:white;">
+                <p>🔍 Buscando impresoras Bluetooth...</p>
+                <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Asegúrate de que la impresora esté encendida</p>
+                <div id="impresoras-lista" style="margin-top:12px;max-height:200px;overflow-y:auto;">
+                    <div style="color:#94a3b8;text-align:center;padding:12px;">⏳ Buscando...</div>
+                </div>
+                <div id="impresora-estado" style="margin-top:8px;font-size:11px;color:#64748b;"></div>
+                <div style="margin-top:12px;font-size:11px;color:#64748b;border-top:1px solid #334155;padding-top:8px;">
+                    💡 La impresora quedará guardada y conectada para futuras impresiones.
+                </div>
+                <div style="margin-top:8px;font-size:11px;color:#64748b;">
+                    🔄 Si ya tienes una impresora configurada, <a href="#" onclick="window.desvincularImpresora(); return false;" style="color:#ef4444;text-decoration:underline;">desvincular</a>
+                </div>
+            </div>
+        `,
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#f59e0b',
+        confirmButtonText: '✅ Cerrar',
+        showCancelButton: true,
+        cancelButtonText: 'Cancelar',
+        didOpen: async () => {
+            try {
+                const lista = document.getElementById('impresoras-lista');
+                const estado = document.getElementById('impresora-estado');
+
+                estado.textContent = '🔍 Escaneando...';
+
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [
+                        { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
+                        { namePrefix: 'Printer' },
+                        { namePrefix: 'POS' },
+                        { namePrefix: 'Blue' },
+                        { namePrefix: 'BT' },
+                        { namePrefix: 'XPrinter' },
+                        { namePrefix: 'MP' }
+                    ],
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+                });
+
+                if (device) {
+                    lista.innerHTML = `
+                        <div style="background:#1a2234;padding:12px;border-radius:8px;border:1px solid #10b981;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <div style="font-weight:600;color:white;">${device.name || 'Impresora Bluetooth'}</div>
+                                    <div style="font-size:11px;color:#94a3b8;">ID: ${device.id}</div>
+                                </div>
+                                <div style="color:#10b981;">✅ Conectada</div>
+                            </div>
+                        </div>
+                    `;
+                    estado.textContent = '✅ Conectando...';
+                    estado.style.color = '#f59e0b';
+
+                    try {
                         await conectarYGuardarImpresora(device);
-                        const estadoEl = document.getElementById('estado-impresora');
-                        if (estadoEl) {
-                            estadoEl.textContent = '🟢';
-                            estadoEl.title = `Impresora conectada: ${nombreImpresora}`;
-                        }
-                    }
-                } catch (error) {
-                    console.warn('⚠️ No se pudo conectar automáticamente:', error.message);
-                }
-            }
 
-            async function conectarYGuardarImpresora(device) {
-                try {
-                    if (impresoraConectada) {
-                        try { await impresoraConectada.server.disconnect(); } catch(e) {}
-                        impresoraConectada = null;
-                        impresoraCharacteristic = null;
-                    }
-                    
-                    const server = await device.gatt.connect();
-                    const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
-                    const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
-                    
-                    impresoraConectada = { device, server, service, characteristic };
-                    impresoraDevice = device;
-                    impresoraCharacteristic = characteristic;
-                    
-                    return impresoraConectada;
-                } catch (error) {
-                    console.error('❌ Error conectando:', error);
-                    throw error;
-                }
-            }
+                        estado.textContent = '✅ Impresora conectada y guardada correctamente';
+                        estado.style.color = '#10b981';
 
-            window.configurarImpresora = function() {
-                if (!navigator.bluetooth) {
-                    Swal.fire({
-                        title: '❌ No soportado',
-                        text: 'Este navegador no soporta Bluetooth. Usa Chrome en Android.',
-                        icon: 'error',
-                        background: '#0f172a',
-                        color: 'white',
-                        confirmButtonColor: '#f59e0b'
-                    });
-                    return;
-                }
-                
-                Swal.fire({
-                    title: '🖨️ Configurar Impresora',
-                    html: `
-                        <div style="text-align:left;color:white;">
-                            <p>🔍 Buscando impresoras Bluetooth...</p>
-                            <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Asegúrate de que la impresora esté encendida</p>
-                            <div id="impresoras-lista" style="margin-top:12px;max-height:200px;overflow-y:auto;">
-                                <div style="color:#94a3b8;text-align:center;padding:12px;">⏳ Buscando...</div>
-                            </div>
-                            <div id="impresora-estado" style="margin-top:8px;font-size:11px;color:#64748b;"></div>
-                            <div style="margin-top:12px;font-size:11px;color:#64748b;border-top:1px solid #334155;padding-top:8px;">
-                                💡 La impresora quedará guardada y conectada para futuras impresiones.
-                            </div>
-                            <div style="margin-top:8px;font-size:11px;color:#64748b;">
-                                🔄 Si ya tienes una impresora configurada, <a href="#" onclick="window.desvincularImpresora(); return false;" style="color:#ef4444;text-decoration:underline;">desvincular</a>
-                            </div>
-                        </div>
-                    `,
-                    background: '#0f172a',
-                    color: 'white',
-                    confirmButtonColor: '#f59e0b',
-                    confirmButtonText: '✅ Cerrar',
-                    showCancelButton: true,
-                    cancelButtonText: 'Cancelar',
-                    didOpen: async () => {
-                        try {
-                            const lista = document.getElementById('impresoras-lista');
-                            const estado = document.getElementById('impresora-estado');
-                            
-                            estado.textContent = '🔍 Escaneando...';
-                            
-                            const device = await navigator.bluetooth.requestDevice({
-                                filters: [
-                                    { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
-                                    { namePrefix: 'Printer' },
-                                    { namePrefix: 'POS' },
-                                    { namePrefix: 'Blue' },
-                                    { namePrefix: 'BT' },
-                                    { namePrefix: 'XPrinter' },
-                                    { namePrefix: 'MP' }
-                                ],
-                                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
-                            });
-                            
-                            if (device) {
-                                lista.innerHTML = `
-                                    <div style="background:#1a2234;padding:12px;border-radius:8px;border:1px solid #10b981;">
-                                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                                            <div>
-                                                <div style="font-weight:600;color:white;">${device.name || 'Impresora Bluetooth'}</div>
-                                                <div style="font-size:11px;color:#94a3b8;">ID: ${device.id}</div>
-                                            </div>
-                                            <div style="color:#10b981;">✅ Conectada</div>
-                                        </div>
-                                    </div>
-                                `;
-                                estado.textContent = '✅ Conectando...';
-                                estado.style.color = '#f59e0b';
-                                
-                                try {
-                                    await conectarYGuardarImpresora(device);
-                                    
-                                    estado.textContent = '✅ Impresora conectada y guardada correctamente';
-                                    estado.style.color = '#10b981';
-                                    
-                                    await db.ref(`restaurantes/${restauranteId}/impresora`).set({
-                                        activo: true,
-                                        nombre: device.name || 'Impresora Bluetooth',
-                                        deviceId: device.id,
-                                        tipo: 'bluetooth',
-                                        timestamp: Date.now()
-                                    });
-                                    
-                                    impresoraConfigurada = true;
-                                    nombreImpresora = device.name || 'Impresora Bluetooth';
-                                    window._impresoraDeviceId = device.id;
-                                    
-                                    localStorage.setItem('impresora_nombre', nombreImpresora);
-                                    localStorage.setItem('impresora_id', device.id);
-                                    
-                                    const estadoEl = document.getElementById('estado-impresora');
-                                    if (estadoEl) {
-                                        estadoEl.textContent = '🟢';
-                                        estadoEl.title = `Impresora conectada: ${nombreImpresora}`;
-                                    }
-                                    
-                                    showToast(`✅ Impresora "${nombreImpresora}" conectada y guardada`, 'success');
-                                    
-                                } catch (connError) {
-                                    console.error('❌ Error conectando:', connError);
-                                    estado.textContent = '❌ Error al conectar: ' + connError.message;
-                                    estado.style.color = '#ef4444';
-                                    showToast('❌ Error al conectar la impresora', 'error');
-                                }
-                            }
-                            
-                        } catch (error) {
-                            console.error('Error Bluetooth:', error);
-                            const lista = document.getElementById('impresoras-lista');
-                            const estado = document.getElementById('impresora-estado');
-                            
-                            if (error.message && error.message.includes('cancelled')) {
-                                lista.innerHTML = `<div style="color:#94a3b8;text-align:center;padding:12px;">⏹️ Búsqueda cancelada</div>`;
-                                estado.textContent = '⏹️ Cancelado por el usuario';
-                            } else {
-                                lista.innerHTML = `
-                                    <div style="color:#ef4444;text-align:center;padding:12px;">
-                                        ❌ ${error.message || 'No se encontraron impresoras'}
-                                    </div>
-                                `;
-                                estado.textContent = '❌ Error: ' + (error.message || 'No se encontró la impresora');
-                                estado.style.color = '#ef4444';
-                            }
-                        }
-                    }
-                });
-            };
-
-            async function conectarImpresoraGuardada() {
-                if (impresoraConectada && impresoraCharacteristic) {
-                    try {
-                        if (impresoraConectada.device.gatt.connected) {
-                            return impresoraConectada;
-                        } else {
-                            impresoraConectada = null;
-                            impresoraCharacteristic = null;
-                        }
-                    } catch(e) {
-                        impresoraConectada = null;
-                        impresoraCharacteristic = null;
-                    }
-                }
-                
-                if (!impresoraConfigurada || !navigator.bluetooth) return null;
-                
-                try {
-                    const device = await navigator.bluetooth.requestDevice({
-                        filters: [
-                            { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
-                            { name: nombreImpresora }
-                        ],
-                        optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
-                    });
-                    
-                    if (device) {
-                        const connection = await conectarYGuardarImpresora(device);
-                        
-                        const estadoEl = document.getElementById('estado-impresora');
-                        if (estadoEl) {
-                            estadoEl.textContent = '🟢';
-                            estadoEl.title = `Impresora conectada: ${nombreImpresora}`;
-                        }
-                        
-                        return connection;
-                    }
-                    return null;
-                    
-                } catch (error) {
-                    console.warn('⚠️ Error conectando:', error);
-                    const estadoEl = document.getElementById('estado-impresora');
-                    if (estadoEl) {
-                        estadoEl.textContent = '🟡';
-                        estadoEl.title = `Error de conexión: ${error.message}`;
-                    }
-                    return null;
-                }
-            }
-
-            function generarTextoComanda(data, nombreRestaurante, pedidoId) {
-                let texto = '';
-                
-                texto += '\x1B\x40';
-                texto += '\x1B\x61\x01';
-                texto += '\x1B\x45\x01';
-                texto += '\x1B\x21\x10';
-                texto += '  AGUADULCE\n';
-                texto += '   EXPRESS\n';
-                texto += '\x1B\x21\x00';
-                texto += '\x1B\x45\x00';
-                texto += '\x1B\x61\x00';
-                
-                texto += '\x1B\x45\x01';
-                texto += '===============================\n';
-                texto += '\x1B\x45\x00';
-                texto += `   Ticket #${data.id_pedido || pedidoId.substring(0,8)}\n`;
-                texto += `   Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
-                texto += '-------------------------------\n';
-                texto += `   Cliente: ${data.cliente_nombre || 'Sin nombre'}\n`;
-                texto += `   Telefono: ${data.cliente_telefono || 'Sin telefono'}\n`;
-                texto += `   Direccion: ${data.direccion || 'Sin direccion'}\n`;
-                texto += '-------------------------------\n';
-                texto += '   PRODUCTOS:\n';
-                
-                if (data.items && data.items.length > 0) {
-                    for (const item of data.items) {
-                        const cantidad = item.cantidad || 1;
-                        const nombre = item.nombre || 'Producto';
-                        texto += `     ${cantidad}x ${nombre}\n`;
-                    }
-                } else {
-                    texto += '   Sin productos\n';
-                }
-                
-                texto += '-------------------------------\n';
-                texto += '\x1B\x45\x01';
-                const totalStr = (data.total || 0).toFixed(2);
-                texto += `   TOTAL: ${totalStr} EUR\n`;
-                texto += '\x1B\x45\x00';
-                texto += '===============================\n';
-                texto += '\x1B\x45\x01';
-                texto += `   ${nombreRestaurante}\n`;
-                texto += '\x1B\x45\x00';
-                texto += '   Gracias por su pedido!\n';
-                texto += '===============================\n';
-                texto += '\x1B\x69';
-                texto += '\n\n\n\n\n\n\n\n';
-                
-                return texto;
-            }
-
-            window.imprimirComandaConImpresora = function(pedidoId) {
-                if (!impresoraConfigurada) {
-                    Swal.fire({
-                        title: '⚠️ Sin impresora',
-                        text: 'No hay una impresora configurada. ¿Quieres configurar una ahora?',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: '✅ Configurar',
-                        cancelButtonText: 'Cancelar',
-                        background: '#0f172a',
-                        color: 'white',
-                        confirmButtonColor: '#f59e0b'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            window.configurarImpresora();
-                        }
-                    });
-                    return;
-                }
-                
-                if (!navigator.bluetooth) {
-                    Swal.fire({
-                        title: '❌ No soportado',
-                        text: 'Este navegador no soporta Bluetooth. Usa Chrome en Android.',
-                        icon: 'error',
-                        background: '#0f172a',
-                        color: 'white',
-                        confirmButtonColor: '#f59e0b'
-                    });
-                    return;
-                }
-                
-                Promise.all([
-                    db.ref(`pedidos/${pedidoId}`).once('value'),
-                    db.ref(`restaurantes/${restauranteId}`).once('value')
-                ]).then(async ([pedidoSnap, restauranteSnap]) => {
-                    const data = pedidoSnap.val();
-                    const restaurante = restauranteSnap.val();
-                    
-                    if (!data) { 
-                        showToast('❌ Pedido no encontrado', 'error'); 
-                        return; 
-                    }
-                    
-                    const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
-                    const texto = generarTextoComanda(data, nombreRestaurante, pedidoId);
-                    
-                    try {
-                        let connection = impresoraConectada;
-                        
-                        if (!connection || !connection.characteristic) {
-                            connection = await conectarImpresoraGuardada();
-                        }
-                        
-                        if (!connection) {
-                            throw new Error('No se pudo conectar a la impresora');
-                        }
-                        
-                        const encoder = new TextEncoder('utf-8');
-                        const dataBytes = encoder.encode(texto);
-                        
-                        const chunkSize = 20;
-                        for (let i = 0; i < dataBytes.length; i += chunkSize) {
-                            const chunk = dataBytes.slice(i, i + chunkSize);
-                            await connection.characteristic.writeValue(chunk);
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                        }
-                        
-                        showToast(`🖨️ Ticket enviado a ${connection.device.name}`, 'success');
-                        
-                        const estadoEl = document.getElementById('estado-impresora');
-                        if (estadoEl) {
-                            estadoEl.textContent = '🟢';
-                            estadoEl.title = `Impresora conectada: ${nombreImpresora}`;
-                        }
-                        
-                    } catch (bluetoothError) {
-                        console.warn('⚠️ Error en Bluetooth:', bluetoothError);
-                        
-                        const estadoEl = document.getElementById('estado-impresora');
-                        if (estadoEl) {
-                            estadoEl.textContent = '🟡';
-                            estadoEl.title = `Reconectando...`;
-                        }
-                        
-                        try {
-                            impresoraConectada = null;
-                            impresoraCharacteristic = null;
-                            const newConnection = await conectarImpresoraGuardada();
-                            
-                            if (newConnection) {
-                                const encoder = new TextEncoder('utf-8');
-                                const dataBytes = encoder.encode(texto);
-                                
-                                const chunkSize = 20;
-                                for (let i = 0; i < dataBytes.length; i += chunkSize) {
-                                    const chunk = dataBytes.slice(i, i + chunkSize);
-                                    await newConnection.characteristic.writeValue(chunk);
-                                    await new Promise(resolve => setTimeout(resolve, 50));
-                                }
-                                
-                                showToast('🖨️ Ticket enviado (reconexión exitosa)', 'success');
-                                return;
-                            }
-                        } catch (retryError) {
-                            console.error('❌ Error en reconexión:', retryError);
-                        }
-                        
-                        const textoPreview = texto
-                            .replace(/\x1B/g, '').replace(/\x40/g, '')
-                            .replace(/\x61/g, '').replace(/\x45/g, '')
-                            .replace(/\x69/g, '').replace(/\x21/g, '');
-                        
-                        Swal.fire({
-                            title: '🧾 Ticket de Cocina',
-                            html: `
-                                <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
-${textoPreview}
-                                </div>
-                                <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
-                                    ⚠️ No se pudo conectar con la impresora.<br>
-                                    Impresora: <strong style="color:#f59e0b;">${nombreImpresora}</strong>
-                                </div>
-                            `,
-                            confirmButtonText: '📄 Vista previa',
-                            showCancelButton: true,
-                            cancelButtonText: 'Cancelar',
-                            background: '#0f172a',
-                            color: 'white',
-                            confirmButtonColor: '#f59e0b',
-                            cancelButtonColor: '#334155',
-                            width: '92%'
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                window.imprimirComanda(pedidoId);
-                            }
+                        await db.ref(`restaurantes/${restauranteId}/impresora`).set({
+                            activo: true,
+                            nombre: device.name || 'Impresora Bluetooth',
+                            deviceId: device.id,
+                            tipo: 'bluetooth',
+                            timestamp: Date.now()
                         });
-                    }
-                    
-                }).catch((error) => { 
-                    console.error('Error al obtener datos:', error); 
-                    showToast('❌ Error al imprimir', 'error'); 
-                });
-            };
 
-            window.imprimirComanda = function(pedidoId) {
-                Promise.all([
-                    db.ref(`pedidos/${pedidoId}`).once('value'),
-                    db.ref(`restaurantes/${restauranteId}`).once('value')
-                ]).then(([pedidoSnap, restauranteSnap]) => {
-                    const data = pedidoSnap.val();
-                    const restaurante = restauranteSnap.val();
-                    
-                    if (!data) { 
-                        showToast('❌ Pedido no encontrado', 'error'); 
-                        return; 
-                    }
-                    
-                    const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
-                    
-                    const ventana = window.open('', '_blank', 'width=400,height=600');
-                    if (!ventana) { 
-                        showToast('⚠️ Permite ventanas emergentes', 'warning'); 
-                        return; 
-                    }
-                    
-                    let productos = '';
-                    if (data.items && data.items.length > 0) {
-                        productos = data.items.map(item => `${item.cantidad || 1}x ${item.nombre}`).join('\n');
-                    } else { 
-                        productos = 'Sin productos'; 
-                    }
-                    
-                    ventana.document.write(`
-                        <!DOCTYPE html><html><head><title>Comanda</title>
-                        <style>
-                            body{font-family:'Courier New',monospace;padding:20px;background:white;color:black;font-size:14px;}
-                            .header{text-align:center;border-bottom:2px dashed #333;padding-bottom:10px;}
-                            .producto{padding:4px 0;border-bottom:1px dotted #ddd;}
-                            .total{font-weight:bold;font-size:18px;text-align:right;border-top:2px solid #333;padding-top:10px;margin-top:10px;}
-                            .footer{text-align:center;margin-top:15px;font-size:12px;color:#666;border-top:1px dashed #333;padding-top:10px;}
-                        </style>
-                        </head><body>
-                        <div class="header">
-                            <h2>AGUADULCE EXPRESS</h2>
-                            <p>Comanda #${data.id_pedido || pedidoId.substring(0,8)}</p>
-                            <p>${new Date(data.timestamp).toLocaleString()}</p>
-                        </div>
-                        <div>
-                            <p><strong>Cliente:</strong> ${data.cliente_nombre || 'Sin nombre'}</p>
-                            <p><strong>Direccion:</strong> ${data.direccion || 'Sin direccion'}</p>
-                        </div>
-                        <div>${productos.split('\n').map(p => `<div class="producto">${p}</div>`).join('')}</div>
-                        <div class="total">TOTAL: ${(data.total || 0).toFixed(2)}€</div>
-                        <div class="footer">
-                            <strong>Preparado por: ${nombreRestaurante}</strong><br>
-                            Gracias por su pedido!
-                        </div>
-                        <script>
-                            setTimeout(()=>{
-                                window.print();
-                                setTimeout(()=>window.close(),500);
-                            },500);
-                        <\/script>
-                        </body></html>
-                    `);
-                    ventana.document.close();
-                    
-                }).catch((error) => { 
-                    console.error('Error:', error); 
-                    showToast('❌ Error', 'error'); 
-                });
-            };
+                        impresoraConfigurada = true;
+                        nombreImpresora = device.name || 'Impresora Bluetooth';
+                        window._impresoraDeviceId = device.id;
 
-            window.desvincularImpresora = function() {
-                Swal.fire({
-                    title: '⚠️ Desvincular Impresora',
-                    text: '¿Seguro que quieres desvincular la impresora configurada?',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'Sí, desvincular',
-                    cancelButtonText: 'Cancelar',
-                    background: '#0f172a',
-                    color: 'white',
-                    confirmButtonColor: '#ef4444',
-                    cancelButtonColor: '#334155'
-                }).then(async (result) => {
-                    if (result.isConfirmed) {
-                        try {
-                            if (impresoraConectada) {
-                                try { await impresoraConectada.server.disconnect(); } catch(e) {}
-                                impresoraConectada = null;
-                                impresoraCharacteristic = null;
-                                impresoraDevice = null;
-                            }
-                            
-                            await db.ref(`restaurantes/${restauranteId}/impresora`).remove();
-                            impresoraConfigurada = false;
-                            nombreImpresora = '';
-                            window._impresoraDeviceId = null;
-                            
-                            localStorage.removeItem('impresora_nombre');
-                            localStorage.removeItem('impresora_id');
-                            
-                            const estadoEl = document.getElementById('estado-impresora');
-                            if (estadoEl) {
-                                estadoEl.textContent = '⭕';
-                                estadoEl.title = 'No hay impresora configurada';
-                            }
-                            
-                            showToast('🖨️ Impresora desvinculada', 'info');
-                        } catch (error) {
-                            console.error('Error al desvincular:', error);
-                            showToast('❌ Error al desvincular impresora', 'error');
-                        }
-                    }
-                });
-            };
+                        localStorage.setItem('impresora_nombre', nombreImpresora);
+                        localStorage.setItem('impresora_id', device.id);
+                        // ✅ Marca de autorizada (ya no hace falta reconfigurar)
+                        localStorage.setItem('impresora_autorizada', 'true');
 
+                        actualizarIconoImpresora();
+                        showToast(`✅ Impresora "${nombreImpresora}" conectada y guardada`, 'success');
+
+                    } catch (connError) {
+                        console.error('❌ Error conectando:', connError);
+                        estado.textContent = '❌ Error al conectar: ' + connError.message;
+                        estado.style.color = '#ef4444';
+                        showToast('❌ Error al conectar la impresora', 'error');
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error Bluetooth:', error);
+                const lista = document.getElementById('impresoras-lista');
+                const estado = document.getElementById('impresora-estado');
+
+                if (error.message && error.message.includes('cancelled')) {
+                    lista.innerHTML = `<div style="color:#94a3b8;text-align:center;padding:12px;">⏹️ Búsqueda cancelada</div>`;
+                    estado.textContent = '⏹️ Cancelado por el usuario';
+                } else {
+                    lista.innerHTML = `
+                        <div style="color:#ef4444;text-align:center;padding:12px;">
+                            ❌ ${error.message || 'No se encontraron impresoras'}
+                        </div>
+                    `;
+                    estado.textContent = '❌ Error: ' + (error.message || 'No se encontró la impresora');
+                    estado.style.color = '#ef4444';
+                }
+            }
+        }
+    });
+};
+
+// ============================================
+// GENERAR TEXTO DEL TICKET (BLUETOOTH TÉRMICA)
+// ============================================
+function generarTextoComanda(data, nombreRestaurante, pedidoId) {
+    let texto = '';
+
+    texto += '\x1B\x40';
+    texto += '\x1B\x61\x01';
+    texto += '\x1B\x45\x01';
+    texto += '\x1B\x21\x10';
+    texto += '  AGUADULCE\n';
+    texto += '   EXPRESS\n';
+    texto += '\x1B\x21\x00';
+    texto += '\x1B\x45\x00';
+    texto += '\x1B\x61\x00';
+
+    texto += '\x1B\x45\x01';
+    texto += '===============================\n';
+    texto += '\x1B\x45\x00';
+    texto += `   Ticket #${data.id_pedido || pedidoId.substring(0,8)}\n`;
+    texto += `   Fecha: ${new Date(data.timestamp).toLocaleString()}\n`;
+    texto += '-------------------------------\n';
+    texto += `   Cliente: ${data.cliente_nombre || 'Sin nombre'}\n`;
+    texto += `   Telefono: ${data.cliente_telefono || 'Sin telefono'}\n`;
+    texto += `   Direccion: ${data.direccion || 'Sin direccion'}\n`;
+    texto += '-------------------------------\n';
+    texto += '   PRODUCTOS:\n';
+
+    if (data.items && data.items.length > 0) {
+        const itemsArray = Array.isArray(data.items) ? data.items : Object.values(data.items);
+        for (const item of itemsArray) {
+            const itemTexto = formatearItemTexto(item, false); // sin tildes para térmica
+            const lineas = itemTexto.split('\n');
+            for (const linea of lineas) {
+                const envueltas = envolverTexto(linea, 30);
+                for (const l of envueltas) {
+                    texto += `     ${l}\n`;
+                }
+            }
+            texto += '\n';
+        }
+    } else {
+        texto += '   Sin productos\n';
+    }
+
+    texto += '-------------------------------\n';
+    texto += '\x1B\x45\x01';
+    const totalStr = (data.total || 0).toFixed(2);
+    texto += `   TOTAL: ${totalStr} EUR\n`;
+    texto += '\x1B\x45\x00';
+    texto += '===============================\n';
+    texto += '\x1B\x45\x01';
+    texto += `   ${nombreRestaurante}\n`;
+    texto += '\x1B\x45\x00';
+    texto += '   Gracias por su pedido!\n';
+    texto += '===============================\n';
+    texto += '\x1B\x69';
+    texto += '\n\n\n\n\n\n\n\n';
+
+    return texto;
+}
+
+// ============================================
+// IMPRIMIR EN IMPRESORA BLUETOOTH
+// ============================================
+window.imprimirComandaConImpresora = function(pedidoId) {
+    if (!impresoraConfigurada) {
+        Swal.fire({
+            title: '⚠️ Sin impresora',
+            text: 'No hay una impresora configurada. ¿Quieres configurar una ahora?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '✅ Configurar',
+            cancelButtonText: 'Cancelar',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.configurarImpresora();
+            }
+        });
+        return;
+    }
+
+    if (!navigator.bluetooth) {
+        Swal.fire({
+            title: '❌ No soportado',
+            text: 'Este navegador no soporta Bluetooth. Usa Chrome en Android.',
+            icon: 'error',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#f59e0b'
+        });
+        return;
+    }
+
+    Promise.all([
+        db.ref(`pedidos/${pedidoId}`).once('value'),
+        db.ref(`restaurantes/${restauranteId}`).once('value')
+    ]).then(async ([pedidoSnap, restauranteSnap]) => {
+        const data = pedidoSnap.val();
+        const restaurante = restauranteSnap.val();
+
+        if (!data) {
+            showToast('❌ Pedido no encontrado', 'error');
+            return;
+        }
+
+        const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
+        const texto = generarTextoComanda(data, nombreRestaurante, pedidoId);
+
+        try {
+            let connection = impresoraConectada;
+
+            if (!connection || !connection.characteristic) {
+                connection = await conectarImpresoraGuardada();
+            }
+
+            if (!connection) {
+                throw new Error('No se pudo conectar a la impresora');
+            }
+
+            const encoder = new TextEncoder('utf-8');
+            const dataBytes = encoder.encode(texto);
+
+            const chunkSize = 20;
+            for (let i = 0; i < dataBytes.length; i += chunkSize) {
+                const chunk = dataBytes.slice(i, i + chunkSize);
+                await connection.characteristic.writeValue(chunk);
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+
+            showToast(`🖨️ Ticket enviado a ${connection.device.name}`, 'success');
+            actualizarIconoImpresora();
+
+        } catch (bluetoothError) {
+            console.warn('⚠️ Error en Bluetooth:', bluetoothError);
+
+            const estadoEl = document.getElementById('estado-impresora');
+            if (estadoEl) {
+                estadoEl.textContent = '🟡';
+                estadoEl.title = `Reconectando...`;
+            }
+
+            try {
+                impresoraConectada = null;
+                impresoraCharacteristic = null;
+                const newConnection = await conectarImpresoraGuardada();
+
+                if (newConnection) {
+                    const encoder = new TextEncoder('utf-8');
+                    const dataBytes = encoder.encode(texto);
+
+                    const chunkSize = 20;
+                    for (let i = 0; i < dataBytes.length; i += chunkSize) {
+                        const chunk = dataBytes.slice(i, i + chunkSize);
+                        await newConnection.characteristic.writeValue(chunk);
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+
+                    showToast('🖨️ Ticket enviado (reconexión exitosa)', 'success');
+                    actualizarIconoImpresora();
+                    return;
+                }
+            } catch (retryError) {
+                console.error('❌ Error en reconexión:', retryError);
+            }
+
+            const textoPreview = texto
+                .replace(/\x1B/g, '').replace(/\x40/g, '')
+                .replace(/\x61/g, '').replace(/\x45/g, '')
+                .replace(/\x69/g, '').replace(/\x21/g, '')
+                .replace(/\x10/g, '').replace(/\x00/g, '');
+
+            Swal.fire({
+                title: '🧾 Ticket de Cocina',
+                html: `
+                    <div style="text-align:left;color:white;background:#0f172a;border-radius:12px;padding:16px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;border:1px solid #2a3a5a;">
+${textoPreview}
+                    </div>
+                    <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center;">
+                        ⚠️ No se pudo conectar con la impresora.<br>
+                        Impresora: <strong style="color:#f59e0b;">${nombreImpresora}</strong>
+                    </div>
+                `,
+                confirmButtonText: '📄 Vista previa',
+                showCancelButton: true,
+                cancelButtonText: 'Cancelar',
+                background: '#0f172a',
+                color: 'white',
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#334155',
+                width: '92%'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.imprimirComanda(pedidoId);
+                }
+            });
+        }
+
+    }).catch((error) => {
+        console.error('Error al obtener datos:', error);
+        showToast('❌ Error al imprimir', 'error');
+    });
+};
+
+// ============================================
+// IMPRIMIR EN VENTANA DEL NAVEGADOR
+// ============================================
+window.imprimirComanda = function(pedidoId) {
+    Promise.all([
+        db.ref(`pedidos/${pedidoId}`).once('value'),
+        db.ref(`restaurantes/${restauranteId}`).once('value')
+    ]).then(([pedidoSnap, restauranteSnap]) => {
+        const data = pedidoSnap.val();
+        const restaurante = restauranteSnap.val();
+
+        if (!data) {
+            showToast('❌ Pedido no encontrado', 'error');
+            return;
+        }
+
+        const nombreRestaurante = restaurante?.NOMBRE_RESTAURANTE || restaurante?.nombre || 'Restaurante';
+
+        const ventana = window.open('', '_blank', 'width=400,height=600');
+        if (!ventana) {
+            showToast('⚠️ Permite ventanas emergentes', 'warning');
+            return;
+        }
+
+        let productosHTML = '';
+        if (data.items && data.items.length > 0) {
+            const itemsArray = Array.isArray(data.items) ? data.items : Object.values(data.items);
+            productosHTML = itemsArray.map(item => {
+                const itemTexto = formatearItemTexto(item, true);
+                const lineas = itemTexto.split('\n').map(l =>
+                    `<div style="padding:2px 0;">${l.replace(/^\s+/, m => '&nbsp;'.repeat(m.length))}</div>`
+                ).join('');
+                return `<div style="border-bottom:1px dotted #ddd;padding:6px 0;">${lineas}</div>`;
+            }).join('');
+        } else {
+            productosHTML = '<div class="producto">Sin productos</div>';
+        }
+
+        ventana.document.write(`
+            <!DOCTYPE html><html><head><title>Comanda</title>
+            <style>
+                body{font-family:'Courier New',monospace;padding:20px;background:white;color:black;font-size:14px;}
+                .header{text-align:center;border-bottom:2px dashed #333;padding-bottom:10px;}
+                .producto{padding:4px 0;border-bottom:1px dotted #ddd;}
+                .total{font-weight:bold;font-size:18px;text-align:right;border-top:2px solid #333;padding-top:10px;margin-top:10px;}
+                .footer{text-align:center;margin-top:15px;font-size:12px;color:#666;border-top:1px dashed #333;padding-top:10px;}
+            </style>
+            </head><body>
+            <div class="header">
+                <h2>AGUADULCE EXPRESS</h2>
+                <p>Comanda #${data.id_pedido || pedidoId.substring(0,8)}</p>
+                <p>${new Date(data.timestamp).toLocaleString()}</p>
+            </div>
+            <div>
+                <p><strong>Cliente:</strong> ${data.cliente_nombre || 'Sin nombre'}</p>
+                <p><strong>Direccion:</strong> ${data.direccion || 'Sin direccion'}</p>
+            </div>
+            <div>${productosHTML}</div>
+            <div class="total">TOTAL: ${(data.total || 0).toFixed(2)}€</div>
+            <div class="footer">
+                <strong>Preparado por: ${nombreRestaurante}</strong><br>
+                Gracias por su pedido!
+            </div>
+            <script>
+                setTimeout(()=>{
+                    window.print();
+                    setTimeout(()=>window.close(),500);
+                },500);
+            <\/script>
+            </body></html>
+        `);
+        ventana.document.close();
+
+    }).catch((error) => {
+        console.error('Error:', error);
+        showToast('❌ Error', 'error');
+    });
+};
+
+// ============================================
+// DESVINCULAR IMPRESORA
+// ============================================
+window.desvincularImpresora = function() {
+    Swal.fire({
+        title: '⚠️ Desvincular Impresora',
+        text: '¿Seguro que quieres desvincular la impresora configurada?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, desvincular',
+        cancelButtonText: 'Cancelar',
+        background: '#0f172a',
+        color: 'white',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                if (impresoraConectada) {
+                    try { await impresoraConectada.server.disconnect(); } catch(e) {}
+                    impresoraConectada = null;
+                    impresoraCharacteristic = null;
+                    impresoraDevice = null;
+                }
+
+                await db.ref(`restaurantes/${restauranteId}/impresora`).remove();
+                impresoraConfigurada = false;
+                nombreImpresora = '';
+                window._impresoraDeviceId = null;
+
+                localStorage.removeItem('impresora_nombre');
+                localStorage.removeItem('impresora_id');
+                localStorage.removeItem('impresora_autorizada');
+
+                actualizarIconoImpresora();
+                showToast('🖨️ Impresora desvinculada', 'info');
+            } catch (error) {
+                console.error('Error al desvincular:', error);
+                showToast('❌ Error al desvincular impresora', 'error');
+            }
+        }
+    });
+};
             // ============================================
             // 11. ESCUCHAR PEDIDOS
             // ============================================

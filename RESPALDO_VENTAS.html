@@ -139,7 +139,21 @@
             </div>
             <div id="modal-precio-base" class="bg-cyan-400 text-black px-4 py-2 rounded-xl font-black text-lg">0€</div>
         </div>
-        <div id="contenedor-pasos" class="space-y-8"></div>
+       <div id="contenedor-pasos" class="space-y-8"></div>
+
+<!-- ✅ NUEVO: Nota del cliente para este plato -->
+<div class="grupo-opciones" style="margin-top:20px;">
+    <div class="grupo-titulo">
+        📝 Nota para el restaurante
+        <span class="opcion-opcional">(Opcional)</span>
+    </div>
+    <textarea id="nota-plato-input" 
+              rows="2"
+              maxlength="200"
+              placeholder="Ej: Sin cebolla, poco hecha, salsa aparte..."
+              style="width:100%;padding:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:white;font-size:13px;resize:vertical;outline:none;font-family:inherit;"></textarea>
+    <p style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:6px;">💡 Se lo mostraremos al restaurante</p>
+</div>
     </div>
     <div class="fixed bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-[#020617] via-[#020617]">
         <div class="flex items-center justify-center gap-6 mb-4 bg-white/5 py-3 rounded-2xl border border-white/10">
@@ -291,17 +305,17 @@
                 <input type="text" id="reg-cp" placeholder="04740" maxlength="5" class="w-full p-3 rounded-xl bg-slate-700 border border-slate-600">
                 <p class="text-white/40 text-[9px] mt-1">📌 Solo realizamos entregas en Roquetas de Mar (04740)</p>
             </div>
-            <div class="legal-notice flex items-start gap-3 mb-6">
-                <input type="checkbox" id="reg-edad" class="w-5 h-5 accent-cyan-400 mt-0.5 flex-shrink-0">
-                <label class="text-[11px] text-gray-300 leading-tight text-left block">🍺 Declaro ser <strong>mayor de 18 años</strong>.</label>
+                        <div class="legal-notice flex items-start gap-3 mb-6">
+                <input type="checkbox" id="reg-acepto" class="w-5 h-5 accent-cyan-400 mt-0.5 flex-shrink-0">
+                <label for="reg-acepto" class="text-[11px] text-gray-300 leading-tight text-left block">
+                    <strong>Declaro ser mayor de 18 años</strong> y he leído y acepto los
+                    <button type="button" onclick="verTerminos('terminos')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">Términos de Servicio</button>,
+                    la
+                    <button type="button" onclick="verTerminos('privacidad')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">Política de Privacidad</button>
+                    y el
+                    <button type="button" onclick="verTerminos('aviso')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">Aviso Legal</button>.
+                </label>
             </div>
-            <div class="legal-notice flex items-start gap-3 mb-6">
-                <input type="checkbox" id="reg-legal" class="w-5 h-5 accent-cyan-400 mt-0.5 flex-shrink-0">
-                <label class="text-[11px] text-gray-300 leading-tight text-left block">Acepto los <button type="button" onclick="verTerminos('terminos')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">términos</button> y <button type="button" onclick="verTerminos('privacidad')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">política de privacidad</button>.</label>
-            </div>
-            <button onclick="registrarCliente()" class="w-full bg-cyan-400 text-black font-black py-4 rounded-2xl uppercase italic">Registrarme</button>
-            <button onclick="cerrarRegistro()" class="w-full text-white/50 text-xs py-3 mt-2">Volver al inicio</button>
-        </div>
     </div>
 </div>
 
@@ -415,29 +429,79 @@ const ZONAS_ROQUETAS = {
     descuentoPorcentaje: 0.10
 };
 
-// ✅ Cloud Function de Firebase (igual que cocina-movil)
+// ✅ Cloud Function de Firebase (con fetch directo para APK)
 async function calcularDistanciaGoogleMaps(direccionCliente, direccionRestaurante) {
     if (!direccionCliente || !direccionRestaurante) return null;
     
+    const urlFunction = 'https://us-central1-aguadulce-express-v2.cloudfunctions.net/calcularDistancia';
+    
     try {
         console.log('🛰️ Llamando Cloud Function calcularDistancia...');
-        const calcularFn = firebase.functions().httpsCallable('calcularDistancia');
-        const result = await calcularFn({
-            origen: direccionRestaurante,
-            destino: direccionCliente
-        });
         
-        if (result.data && result.data.success) {
-            console.log(`✅ Distancia calculada: ${result.data.distanciaKm.toFixed(2)} km (${result.data.tiempo})`);
+        // ✅ Intentar primero con el SDK (funciona en web)
+        let resultado = null;
+        let usarFetch = false;
+        
+        try {
+            const calcularFn = firebase.functions().httpsCallable('calcularDistancia');
+            const result = await calcularFn({
+                origen: direccionRestaurante,
+                destino: direccionCliente
+            });
+            resultado = result.data;
+            console.log('✅ SDK Firebase: respuesta recibida');
+        } catch (sdkError) {
+            console.warn('⚠️ SDK Firebase falló, usando fetch directo...');
+            usarFetch = true;
+        }
+        
+        // ✅ Si el SDK falló (típico en APK), usar fetch directo
+        if (usarFetch) {
+            // Obtener token de autenticación del usuario actual
+            const user = firebase.auth().currentUser;
+            let idToken = '';
+            if (user) {
+                idToken = await user.getIdToken();
+            }
+            
+            // Formato de Firebase Callable Functions: { data: { ... } }
+            const response = await fetch(urlFunction, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(idToken ? { 'Authorization': 'Bearer ' + idToken } : {})
+                },
+                body: JSON.stringify({
+                    data: {
+                        origen: direccionRestaurante,
+                        destino: direccionCliente
+                    }
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const json = await response.json();
+            // Firebase Callable responde con { result: { ... } }
+            resultado = json.result || json;
+            console.log('✅ Fetch directo: respuesta recibida');
+        }
+        
+        // ✅ Procesar el resultado
+        if (resultado && resultado.success) {
+            console.log(`✅ Distancia calculada: ${resultado.distanciaKm.toFixed(2)} km (${resultado.tiempo || resultado.duracion})`);
             return {
-                km: result.data.distanciaKm,
-                tiempo: result.data.tiempo,
-                metros: result.data.metros
+                km: resultado.distanciaKm,
+                tiempo: resultado.tiempo || resultado.duracion,
+                metros: resultado.metros
             };
         } else {
-            console.warn('⚠️ Cloud Function devolvió error:', result.data?.error);
+            console.warn('⚠️ Cloud Function devolvió error:', resultado?.error || 'sin success');
             return null;
         }
+        
     } catch (error) {
         console.error('❌ Error llamando Cloud Function:', error.message || error);
         return null;
@@ -590,18 +654,110 @@ function mostrarPoliticaCancelacion() {
 }
 
 async function verTerminos(tipo = 'terminos') {
+    // 📌 DATOS DEL TITULAR (fijos, no cambian)
+    const DATOS_TITULAR = {
+        nombre: 'Juan José Saveri Díaz',
+        nie: 'Z3294818G',
+        direccion: 'Calle San Isidro Labrador nº 30, 6º 6, El Parador de las Hortichuelas, 04740 Roquetas de Mar (Almería)',
+        email: 'soporteaguadulcexpress26@gmail.com',
+        telefono: '603 397 520'
+    };
+
+    const fecha = '23 de Septiembre de 2026';
     let titulo = '', contenido = '';
+
     if (tipo === 'terminos') {
         titulo = '📋 TÉRMINOS DE SERVICIO';
-        contenido = `1. ACEPTACIÓN\nAl registrar sus datos y realizar un pedido a través de Aguadulce Express, el cliente acepta expresamente todas las condiciones aquí establecidas.\n\n2. PROCESO DE PEDIDO\nUna vez confirmado el pedido, recibirás un comprobante con el número de seguimiento. El tiempo de entrega estimado se muestra al finalizar la compra.\n\n3. POLÍTICA DE CANCELACIÓN Y DEUDA POR AUSENCIA\n⚠️ IMPORTANTE: Una vez confirmado el pedido, NO podrás cancelarlo.\n\nCuando el repartidor llega al domicilio indicado por el cliente, esperará un máximo de 5 (cinco) minutos en la puerta.\n\nSi transcurrido ese tiempo el cliente no se presenta para recibir el pedido:\n\n🔴 El pedido será CANCELADO AUTOMÁTICAMENTE.\n💰 Se generará una DEUDA por el importe TOTAL del pedido.\n📋 El cliente quedará registrado en la LISTA DE MOROSOS.\n🚫 El cliente NO podrá realizar nuevos pedidos hasta que regularice su situación.\n\nPara salir de la lista de morosos y poder seguir utilizando la plataforma, el cliente deberá:\n• Contactar con atención al cliente: soporteaguadulcexpress26@gmail.com\n• Regularizar la deuda pendiente.\n• Solicitar su reincorporación a la plataforma.\n\n4. RESPONSABILIDAD DEL CLIENTE\nEl cliente es el único responsable de proporcionar una dirección y número de teléfono correctos.\n\n5. DERECHO DE ADMISIÓN\nAguadulce Express se reserva el derecho de rechazar o cancelar pedidos en caso de deuda pendiente o uso fraudulento.\n\n6. MODIFICACIONES\nAguadulce Express podrá modificar estos términos en cualquier momento.\n\nAl marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado todas las condiciones aquí establecidas.`;
+        contenido = `
+            <p style="font-weight:bold;margin-bottom:0.8rem;">Última actualización: ${fecha}</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">1. OBJETO DEL SERVICIO</h4>
+            <p>Aguadulce Express es una plataforma digital que actúa como intermediaria entre restaurantes locales y clientes para la compra y entrega de comida a domicilio en Roquetas de Mar (C.P. 04740).</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">2. REQUISITOS DEL USUARIO</h4>
+            <p>Para registrarse y utilizar el servicio, el usuario declara ser <strong>mayor de 18 años</strong>. Esta plataforma ofrece la posibilidad de adquirir bebidas alcohólicas, por lo que la verificación de la edad es un requisito indispensable y obligatorio.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">3. VENTA DE ALCOHOL Y VERIFICACIÓN DE EDAD</h4>
+            <p><strong>Aviso importante:</strong> La venta de bebidas alcohólicas está prohibida a menores de 18 años. Al realizar un pedido que contenga alcohol, el repartidor podrá <strong>solicitar la presentación del DNI o documento oficial</strong> que acredite la mayoría de edad del cliente en el momento de la entrega. Si el cliente no puede demostrar su mayoría de edad, el pedido <strong>no será entregado</strong> y se aplicará la política de cancelación.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">4. POLÍTICA DE CANCELACIÓN Y AUSENCIA</h4>
+            <p>Una vez confirmado el pedido, el cliente no podrá cancelarlo. Si el repartidor acude a la dirección indicada y el cliente no está presente, el repartidor <strong>esperará un máximo de 5 minutos</strong>.</p>
+            <p>Transcurrido ese tiempo, el pedido será <strong>cancelado automáticamente</strong> y se generará una <strong>deuda por el importe total del pedido</strong>. El cliente será añadido a una lista de morosos y no podrá realizar nuevos pedidos hasta regularizar su situación.</p>
+            <p>Para regularizar la situación, debe contactar con: <strong>${DATOS_TITULAR.email}</strong></p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">5. RESPONSABILIDAD</h4>
+            <p>Aguadulce Express no es responsable de la calidad de los alimentos (responsabilidad del restaurante) ni de errores en las direcciones proporcionadas por el cliente.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">6. LEGISLACIÓN APLICABLE</h4>
+            <p>Estos términos se rigen por la legislación española. Cualquier disputa será competencia de los Juzgados y Tribunales de Almería.</p>
+        `;
     } else if (tipo === 'privacidad') {
         titulo = '🔒 POLÍTICA DE PRIVACIDAD';
-        contenido = '1. RESPONSABLE DEL TRATAMIENTO\nAguadulce Express\n\n2. FINALIDAD DEL TRATAMIENTO\nGestionar los pedidos de comida a domicilio, incluyendo:\n- Procesamiento de pagos\n- Comunicación sobre el estado del pedido\n- Gestión de entregas\n\n3. DATOS RECOGIDOS\n- Nombre completo\n- Teléfono\n- Dirección de entrega\n- Código postal\n\n4. PLAZO DE CONSERVACIÓN\nLos datos se conservarán durante el tiempo que el cliente mantenga una cuenta activa, o hasta 2 años después del último pedido.\n\n5. DERECHOS DEL USUARIO\nPuede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad enviando un correo a soporte@aguadulceexpress.com\n\n6. SEGURIDAD\nImplementamos medidas técnicas y organizativas para garantizar la seguridad de sus datos.\n\n7. ACEPTACIÓN\nAl marcar la casilla de aceptación, el cliente declara haber leído, entendido y aceptado la presente política de privacidad.';
+        contenido = `
+            <p style="font-weight:bold;margin-bottom:0.8rem;">Última actualización: ${fecha}</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">1. RESPONSABLE DEL TRATAMIENTO</h4>
+            <p>El responsable del tratamiento de sus datos es <strong>${DATOS_TITULAR.nombre}</strong>, con NIE <strong>${DATOS_TITULAR.nie}</strong>, con domicilio en ${DATOS_TITULAR.direccion}. Email de contacto: <strong>${DATOS_TITULAR.email}</strong>.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">2. FINALIDAD DEL TRATAMIENTO</h4>
+            <p>Sus datos personales serán tratados para las siguientes finalidades:</p>
+            <ul style="margin-left:1.2rem;list-style-type:disc;margin-top:0.5rem;">
+                <li>Gestión del registro de usuario y de su cuenta.</li>
+                <li>Gestión y tramitación de los pedidos realizados a través de la plataforma.</li>
+                <li>Comunicación sobre el estado del pedido (notificaciones push, SMS o email).</li>
+                <li>Gestión de incidencias, cancelaciones y deudas generadas por ausencia.</li>
+            </ul>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">3. BASE LEGAL</h4>
+            <p>El tratamiento de sus datos se basa en:</p>
+            <ul style="margin-left:1.2rem;list-style-type:disc;margin-top:0.5rem;">
+                <li><strong>Ejecución de un contrato:</strong> Para la gestión de su registro y la tramitación de sus pedidos.</li>
+                <li><strong>Consentimiento explícito:</strong> Para el envío de notificaciones push y para el tratamiento de datos necesarios para la verificación de mayoría de edad (venta de alcohol).</li>
+                <li><strong>Interés legítimo:</strong> Para la prevención del fraude y la gestión de morosidad.</li>
+            </ul>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">4. DATOS RECOGIDOS</h4>
+            <p>Recogemos: Nombre, Teléfono, Dirección de entrega, Email, Histórico de pedidos y un identificador de dispositivo (huella digital) para prevención de fraude.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">5. DESTINATARIOS</h4>
+            <p>Sus datos serán comunicados a:</p>
+            <ul style="margin-left:1.2rem;list-style-type:disc;margin-top:0.5rem;">
+                <li><strong>Restaurantes:</strong> Datos necesarios para la preparación del pedido.</li>
+                <li><strong>Repartidores:</strong> Nombre, dirección y teléfono para realizar la entrega.</li>
+                <li><strong>Proveedores tecnológicos:</strong> Firebase (Google) y Formspree, que actúan como encargados del tratamiento.</li>
+            </ul>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">6. CONSERVACIÓN DE DATOS</h4>
+            <p>Sus datos se conservarán mientras mantenga su cuenta activa y, posteriormente, durante los plazos legalmente exigidos (máximo 5 años para obligaciones fiscales). Los datos de deudas se conservarán hasta su regularización.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">7. TRANSFERENCIAS INTERNACIONALES</h4>
+            <p>Al utilizar Firebase (Google), sus datos pueden ser transferidos a servidores ubicados en Estados Unidos. Google cumple con el Marco de Privacidad de Datos UE-EE.UU., ofreciendo garantías adecuadas para la protección de sus datos.</p>
+
+            <h4 style="font-weight:900;color:#0f172a;margin-top:1rem;margin-bottom:0.5rem;">8. DERECHOS DEL USUARIO</h4>
+            <p>Puede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad enviando un correo a <strong>${DATOS_TITULAR.email}</strong>, adjuntando copia de su DNI. También puede reclamar ante la Agencia Española de Protección de Datos (www.aepd.es).</p>
+        `;
     } else if (tipo === 'aviso') {
         titulo = '⚖️ AVISO LEGAL';
-        contenido = '1. IDENTIFICACIÓN DEL TITULAR\nTitular: Aguadulce Express\nEmail: soporte@aguadulceexpress.com\n\n2. ACTIVIDAD\nAgregador de restaurantes y supermercados para pedidos a domicilio.\n\n3. PROPIEDAD INTELECTUAL E INDUSTRIAL\nTodos los contenidos de esta aplicación (textos, logotipos, imágenes, diseño) son propiedad de Aguadulce Express o de sus respectivos titulares.\n\n4. RESPONSABILIDAD\nNo nos hacemos responsables de:\n- Retrasos en las entregas causados por circunstancias ajenas a nuestra voluntad\n- La calidad de los alimentos preparados por los restaurantes\n- Errores en las direcciones proporcionadas por el cliente\n\n5. LEY APLICABLE Y JURISDICCIÓN\nEstas condiciones se rigen por la ley española.\n\n6. CONTACTO\nPara cualquier consulta o reclamación, puede contactar a través del email soporte@aguadulceexpress.com.';
+        contenido = `
+            <p><strong>Titular:</strong> ${DATOS_TITULAR.nombre}</p>
+            <p><strong>NIE:</strong> ${DATOS_TITULAR.nie}</p>
+            <p><strong>Domicilio:</strong> ${DATOS_TITULAR.direccion}</p>
+            <p><strong>Email:</strong> ${DATOS_TITULAR.email}</p>
+            <p><strong>Teléfono:</strong> ${DATOS_TITULAR.telefono}</p>
+            <p style="margin-top:1rem;">Esta plataforma es un servicio de intermediación. El titular no se hace responsable del uso indebido de la plataforma ni de los contenidos de terceros enlazados.</p>
+        `;
     }
-    await Swal.fire({ title: titulo, html: `<div style="text-align:left;max-height:60vh;overflow-y:auto;padding:20px;background:#0f172a;border-radius:16px;font-size:14px;line-height:1.6;color:#e2e8f0;white-space:pre-wrap;">${contenido}</div>`, background: '#020617', color: 'white', confirmButtonColor: '#06b6d4', confirmButtonText: 'ENTENDIDO' });
+
+    await Swal.fire({
+        title: titulo,
+        html: `<div style="text-align:left;max-height:60vh;overflow-y:auto;padding:20px;background:#0f172a;border-radius:16px;font-size:14px;line-height:1.6;color:#e2e8f0;">${contenido}</div>`,
+        background: '#020617',
+        color: 'white',
+        confirmButtonColor: '#06b6d4',
+        confirmButtonText: 'ENTENDIDO',
+        width: '92%',
+        maxWidth: '750px'
+    });
 }
 
 function agregarFooterLegal() {
@@ -612,7 +768,14 @@ function agregarFooterLegal() {
     const footer = document.createElement('div');
     footer.id = 'legal-footer-container';
     footer.className = 'legal-footer';
-    footer.innerHTML = `<div><a href="#" onclick="verTerminos('terminos'); return false;">📋 Términos de Servicio</a><a href="#" onclick="verTerminos('privacidad'); return false;">🔒 Política de Privacidad</a><a href="#" onclick="verTerminos('aviso'); return false;">⚖️ Aviso Legal</a></div><p>© 2026 Aguadulce Express | Comida a domicilio</p>`;
+    footer.innerHTML = `
+        <div>
+            <a href="#" onclick="verTerminos('terminos'); return false;">📋 Términos de Servicio</a>
+            <a href="#" onclick="verTerminos('privacidad'); return false;">🔒 Política de Privacidad</a>
+            <a href="#" onclick="verTerminos('aviso'); return false;">⚖️ Aviso Legal</a>
+        </div>
+        <p>© 2026 Aguadulce Express | Comida a domicilio</p>
+    `;
     main.appendChild(footer);
 }
 
@@ -718,7 +881,7 @@ async function loginCliente() {
         const perfil = perfilSnap.val();
         if (perfil) { perfil.uid = uid; localStorage.setItem('ae_cliente', JSON.stringify(perfil)); }
         cerrarModal('modal-login');
-                // 🆕 Regenerar token al iniciar sesión
+        // 🆕 Regenerar token al iniciar sesión (esperar 5s para que FCM esté listo)
         setTimeout(async () => {
             try {
                 console.log('🔄 Regenerando token FCM tras login...');
@@ -726,7 +889,7 @@ async function loginCliente() {
             } catch (e) {
                 console.warn('⚠️ No se pudo regenerar token:', e.message);
             }
-        }, 2000);
+        }, 5000);
         Swal.fire({ title: '✅ Bienvenido', text: `Hola ${perfil?.nombre || email}`, icon: 'success', timer: 1500, showConfirmButton: false, background: '#0f172a', color: 'white' });
         renderHome();
     } catch (error) { alertaError("Error", error.message); }
@@ -742,83 +905,114 @@ async function registrarCliente() {
     const puerta = document.getElementById('reg-puerta').value.trim();
     const instrucciones = document.getElementById('reg-instrucciones').value.trim();
     const cp = document.getElementById('reg-cp').value.trim();
-    const legal = document.getElementById('reg-legal').checked;
-    const edad = document.getElementById('reg-edad').checked;
-    
-    if (!nombre || !email || !telefono || !password || !calle || !cp) { alertaError("Error", "Completa todos los campos obligatorios"); return; }
-    if (!esEmailValido(email)) { alertaError("Email inválido", "El email debe ser real (Gmail, Yahoo, Hotmail, etc.)"); return; }
-    if (!/^\d{5}$/.test(cp)) { alertaError("CP inválido", "Debe tener 5 dígitos"); return; }
-    if (!ZONAS_PERMITIDAS.includes(cp)) { alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)"); return; }
-    if (!legal) { alertaError("Acepta términos", "Debes aceptar los términos"); return; }
-    if (!edad) { alertaError("Mayor de edad", "Debes ser mayor de 18 años para registrarte"); return; }
-    
+    const acepto = document.getElementById('reg-acepto').checked;
+
+    if (!nombre || !email || !telefono || !password || !calle || !cp) {
+        alertaError("Error", "Completa todos los campos obligatorios");
+        return;
+    }
+    if (!esEmailValido(email)) {
+        alertaError("Email inválido", "El email debe ser real (Gmail, Yahoo, Hotmail, etc.)");
+        return;
+    }
+    if (!/^\d{5}$/.test(cp)) {
+        alertaError("CP inválido", "Debe tener 5 dígitos");
+        return;
+    }
+    if (!ZONAS_PERMITIDAS.includes(cp)) {
+        alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)");
+        return;
+    }
+    if (!acepto) {
+        alertaError(
+            "Consentimiento requerido",
+            "Debes declarar que eres mayor de 18 años y aceptar los Términos de Servicio, la Política de Privacidad y el Aviso Legal."
+        );
+        return;
+    }
+
     if (huellaDigitalTerminal) {
         const huellaUnica = await verificarHuellaUnica(huellaDigitalTerminal, email);
-        if (!huellaUnica) { alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono."); return; }
+        if (!huellaUnica) {
+            alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono.");
+            return;
+        }
     }
-    
+
     // 🔔 PEDIR PERMISO DE NOTIFICACIONES OBLIGATORIO
     const permisoOk = await pedirPermisoNotificacionesObligatorio();
     if (!permisoOk) {
         console.log('🚫 Registro cancelado: el cliente no aceptó las notificaciones');
         return;
     }
-    
+
     try {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
         await userCredential.user.sendEmailVerification();
-        
+
         const direccionCompleta = `${calle}${edificio ? ', ' + edificio : ''}${puerta ? ', ' + puerta : ''}, ${cp}`;
-        const perfilCliente = { 
-            uid, 
-            nombre, 
-            email, 
-            telefono, 
-            calle, 
-            edificio: edificio || '', 
-            puerta: puerta || '', 
-            instrucciones: instrucciones || '', 
-            cp, 
-            direccion_completa: direccionCompleta, 
-            mayorEdad: edad, 
-            creado_en: Date.now(), 
-            moroso: false, 
-            deuda_total: 0, 
-            huella: huellaDigitalTerminal || '' 
+
+        const perfilCliente = {
+            uid,
+            nombre,
+            email,
+            telefono,
+            calle,
+            edificio: edificio || '',
+            puerta: puerta || '',
+            instrucciones: instrucciones || '',
+            cp,
+            direccion_completa: direccionCompleta,
+            mayorEdad: true,
+            creado_en: Date.now(),
+            moroso: false,
+            deuda_total: 0,
+            huella: huellaDigitalTerminal || '',
+
+            // ✅ PRUEBA LEGAL DE CONSENTIMIENTO (RGPD)
+            aceptacion_legal: {
+                fecha_aceptacion: Date.now(),
+                version_terminos: "v1",
+                version_privacidad: "v1",
+                version_aviso: "v1",
+                declara_mayor_edad: true,
+                ip_dispositivo: huellaDigitalTerminal || "no-detectada",
+                user_agent: navigator.userAgent
+            }
         };
-        
+
         await database.ref(`clientes/${uid}`).set(perfilCliente);
         localStorage.setItem('ae_cliente', JSON.stringify(perfilCliente));
-        
-                // 🆕 GUARDAR TOKEN DE NOTIFICACIONES (con espera para que FCM autentique)
-        console.log('⏳ Esperando 2 segundos antes de generar token FCM...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
+        // 🆕 GUARDAR TOKEN DE NOTIFICACIONES (con espera para que FCM autentique)
+        console.log('⏳ Esperando 5 segundos antes de generar token FCM...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
         try {
             await generarYGuardarTokenCliente(uid);
         } catch (tokenError) {
             console.warn('⚠️ No se pudo generar token en el registro:', tokenError);
             // No bloqueamos el registro si falla el token
         }
-        
+
         cerrarRegistro();
-        
-        await Swal.fire({ 
-            title: '📧 Verifica tu email', 
-            text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam. Puedes seguir usando la app mientras tanto.`, 
-            icon: 'info', 
-            timer: 5000, 
-            showConfirmButton: true, 
-            background: '#020617', 
-            color: 'white' 
+
+        await Swal.fire({
+            title: '📧 Verifica tu email',
+            text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam. Puedes seguir usando la app mientras tanto.`,
+            icon: 'info',
+            timer: 5000,
+            showConfirmButton: true,
+            background: '#020617',
+            color: 'white'
         });
-        
+
         renderHome();
-        
-    } catch (error) { 
-        console.error('❌ Error en registro:', error); 
-        
+
+    } catch (error) {
+        console.error('❌ Error en registro:', error);
+
         let mensajeAmigable = error.message;
         if (error.code === 'auth/email-already-in-use') {
             mensajeAmigable = 'Este email ya está registrado. Prueba a iniciar sesión o usa otro email.';
@@ -827,10 +1021,11 @@ async function registrarCliente() {
         } else if (error.code === 'auth/weak-password') {
             mensajeAmigable = 'La contraseña es muy débil (mínimo 6 caracteres).';
         }
-        
-        alertaError("Error al registrarte", mensajeAmigable); 
+
+        alertaError("Error al registrarte", mensajeAmigable);
     }
 }
+
 function mostrarRegistro() { cerrarModal('modal-login'); document.getElementById('modal-registro').style.display = 'flex'; }
 function cerrarRegistro() { document.getElementById('modal-registro').style.display = 'none'; document.getElementById('modal-login').style.display = 'flex'; }
 function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; document.getElementById('panel-revision').style.display = 'block'; }
@@ -1085,7 +1280,12 @@ function abrirDetalle(p) {
     modalImg.src = fotoPlato;
     modalImg.onerror = function() { this.src = 'https://placehold.co/400x400/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'; };
     modalImg.onclick = function() { let lb = document.getElementById('lightbox'); if (!lb) { lb = document.createElement('div'); lb.id = 'lightbox'; lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:20000;display:flex;align-items:center;justify-content:center;'; document.body.appendChild(lb); } lb.innerHTML = '<div class="w-[90%] max-w-md relative"><img src="' + fotoPlato + '" class="w-full rounded-2xl" onerror="this.src=\'https://placehold.co/400x400/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F\'"><button onclick="document.body.removeChild(document.getElementById(\'lightbox\'))" class="absolute -top-12 right-2 bg-white/10 text-white w-8 h-8 rounded-full">✕</button></div>'; };
-    renderizarOpciones(p); document.getElementById('cant-plato-modal').innerText = "1"; actualizarTotalModal(); document.getElementById('modal-plato').style.display = 'block';
+    renderizarOpciones(p);document.getElementById('cant-plato-modal').innerText = "1"; 
+// ✅ Limpiar la nota al abrir un plato nuevo
+const notaInput = document.getElementById('nota-plato-input');
+if (notaInput) notaInput.value = '';
+actualizarTotalModal(); 
+document.getElementById('modal-plato').style.display = 'block';
 }
 
 function renderizarOpciones(p) {
@@ -1137,11 +1337,60 @@ function validarObligatorios() {
 }
 function añadirAlCarritoConOpciones() {
     if (!validarObligatorios()) { mostrarToast("⚠️ Completa las opciones obligatorias", "⚠️"); return; }
-    const totalUnitario = itemActual.precioBase + itemActual.precioOpciones; const totalProducto = totalUnitario * itemActual.cantidad;
-    let opcionesTexto = ''; for (const selec of Object.values(itemActual.opcionesSeleccionadas)) { if (selec.length) opcionesTexto += `${selec.join(', ')} | `; } opcionesTexto = opcionesTexto.slice(0, -3);
-    cesta.push({ id: Date.now(), nombre: itemActual.data.PLATO, foto: obtenerFotoPlato(itemActual.data), cantidad: itemActual.cantidad, precio_unitario: itemActual.precioBase, opciones: opcionesTexto, extras_precio: itemActual.precioOpciones, total: totalProducto, restaurante_id: restauranteActivo.id, restaurante_nombre: restauranteActivo.nombre, categoria: itemActual.data.CATEGORIA });
-    cerrarModalPlato(); actualizarCestaVisual(); mostrarToast(`${itemActual.data.PLATO} x${itemActual.cantidad} añadido`, "🍽️");
+    
+    const totalUnitario = itemActual.precioBase + itemActual.precioOpciones; 
+    const totalProducto = totalUnitario * itemActual.cantidad;
+    
+    // ✅ Construir opciones string (compatibilidad) Y opciones_detalle (nuevo formato)
+    let opcionesTexto = '';
+    const opcionesDetalle = [];
+    
+    // Detectar los grupos reales del plato para saber sus nombres
+    const extrasParseados = itemActual.data.EXTRAS_PARSEADOS || itemActual.data.EXTRAS || itemActual.data.extras || [];
+    
+    for (const [gid, selec] of Object.entries(itemActual.opcionesSeleccionadas)) {
+        if (!selec || !selec.length) continue;
+        
+        // Nombre real del grupo (con fallback si no se encuentra)
+        const grupoReal = extrasParseados[parseInt(gid)];
+        const nombreGrupo = grupoReal?.nombre || `Opción ${parseInt(gid) + 1}`;
+        
+        // Añadir al string (compatibilidad)
+        opcionesTexto += `${selec.join(', ')} | `;
+        
+        // Añadir al detalle estructurado
+        opcionesDetalle.push({
+            grupo: nombreGrupo,
+            valores: [...selec]
+        });
+    }
+    opcionesTexto = opcionesTexto.slice(0, -3);
+    
+    // ✅ Leer la nota del cliente (si escribió algo)
+    const notaInput = document.getElementById('nota-plato-input');
+    const notaCliente = notaInput ? notaInput.value.trim() : '';
+    
+    cesta.push({ 
+        id: Date.now(), 
+        nombre: itemActual.data.PLATO, 
+        foto: obtenerFotoPlato(itemActual.data), 
+        cantidad: itemActual.cantidad, 
+        precio_unitario: itemActual.precioBase, 
+        opciones: opcionesTexto,                    // string (compatibilidad)
+        opciones_detalle: opcionesDetalle,          // ✅ NUEVO: array estructurado
+        nota_cliente: notaCliente,                  // ✅ NUEVO: nota libre del cliente
+        extras_precio: itemActual.precioOpciones, 
+        total: totalProducto, 
+        restaurante_id: restauranteActivo.id, 
+        restaurante_nombre: restauranteActivo.nombre, 
+        categoria: itemActual.data.CATEGORIA 
+    });
+    
+    cerrarModalPlato(); 
+    actualizarCestaVisual(); 
+    mostrarToast(`${itemActual.data.PLATO} x${itemActual.cantidad} añadido`, "🍽️");
 }
+
 function cerrarModalPlato() { document.getElementById('modal-plato').style.display = 'none'; }
 
 function abrirRevision() {
@@ -1149,7 +1398,7 @@ function abrirRevision() {
     if (cesta.length === 0) { mostrarToast("Carrito vacío", "🛒"); return; }
     pushPantalla('revision');
     const container = document.getElementById('items-revision');
-    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover" onerror="this.src='https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.opciones ? `<p class="text-[10px] text-white/50">${escapeHTML(item.opciones)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
+    container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover" onerror="this.src='https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.nota_cliente ? `<p class="text-[10px] text-yellow-400/70">📝 ${escapeHTML(item.nota_cliente)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
     document.getElementById('panel-revision').style.display = 'block'; agregarFooterLegal();
 }
 
@@ -1205,13 +1454,17 @@ async function abrirCheckout() {
         window._subtotalActual = subtotal;
 
         if (contenedorProductos) {
-            contenedorProductos.innerHTML = cesta.map(item => `
-                <div class="flex justify-between text-sm py-2 border-b border-white/10">
-                    <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
-                    <span class="font-bold text-cyan-400">${euros(item.total)}</span>
-                </div>
-            `).join('');
-        }
+    contenedorProductos.innerHTML = cesta.map(item => `
+        <div class="py-2 border-b border-white/10">
+            <div class="flex justify-between text-sm">
+                <span>${item.cantidad}x ${escapeHTML(item.nombre)}</span>
+                <span class="font-bold text-cyan-400">${euros(item.total)}</span>
+            </div>
+            ${item.opciones ? `<p class="text-[10px] text-white/50 mt-1 pl-3">${escapeHTML(item.opciones)}</p>` : ''}
+            ${item.nota_cliente ? `<p class="text-[10px] text-yellow-400/80 mt-1 pl-3">📝 ${escapeHTML(item.nota_cliente)}</p>` : ''}
+        </div>
+    `).join('');
+}
 
         if (contenedorDesglose) {
             contenedorDesglose.innerHTML = `
@@ -1399,13 +1652,15 @@ async function nuevoProcesarPedido() {
             direccion: cliente.direccion_completa, 
             cp: cliente.cp,
             items: cesta.map(item => ({ 
-                nombre: item.nombre, 
-                cantidad: item.cantidad, 
-                precio_unitario: item.precio_unitario, 
-                opciones: item.opciones || "", 
-                extras_precio: item.extras_precio || 0, 
-                total: item.total 
-            })),
+    nombre: item.nombre, 
+    cantidad: item.cantidad, 
+    precio_unitario: item.precio_unitario, 
+    opciones: item.opciones || "", 
+    opciones_detalle: item.opciones_detalle || [],   // ✅ NUEVO
+    nota_cliente: item.nota_cliente || "",           // ✅ NUEVO
+    extras_precio: item.extras_precio || 0, 
+    total: item.total 
+})),
             subtotal, 
             envio, 
             usoYServicios, 
@@ -2176,9 +2431,39 @@ async function initPushNotificationsNativo(uid) {
             console.log('🎯 Token guardado en Firebase');
         });
         
-        // 3. Errores
-        PN.addListener('registrationError', (err) => {
-            console.error('❌ Error registro push:', err);
+               // 3. Errores (con reintentos automáticos si SERVICE_NOT_AVAILABLE)
+        let reintentosRestantes = 5;
+        let reintentoEnCurso = false;
+        
+        PN.addListener('registrationError', async (err) => {
+            const errStr = JSON.stringify(err);
+            console.warn('⚠️ Error registro push:', errStr);
+            
+            // ✅ Si es SERVICE_NOT_AVAILABLE, reintentar automáticamente
+            if (errStr.includes('SERVICE_NOT_AVAILABLE') && reintentosRestantes > 0 && !reintentoEnCurso) {
+                reintentoEnCurso = true;
+                console.log(`🔄 SERVICE_NOT_AVAILABLE detectado. Reintentos restantes: ${reintentosRestantes}`);
+                
+                while (reintentosRestantes > 0) {
+                    reintentosRestantes--;
+                    const espera = 5000 * (5 - reintentosRestantes); // 5s, 10s, 15s, 20s, 25s
+                    console.log(`⏳ Esperando ${espera/1000}s antes de reintentar... (quedan ${reintentosRestantes})`);
+                    await new Promise(r => setTimeout(r, espera));
+                    
+                    try {
+                        console.log(`🔁 Reintentando PN.register()...`);
+                        await PN.register();
+                        // El listener 'registration' capturará el token si tiene éxito
+                        reintentoEnCurso = false;
+                        return;
+                    } catch (e) {
+                        console.warn(`⚠️ Reintento falló:`, e.message || e);
+                    }
+                }
+                
+                reintentoEnCurso = false;
+                console.error('❌ Todos los reintentos fallaron. El token se generará en el próximo login.');
+            }
         });
         
         // 4. Notificación recibida con la app ABIERTA

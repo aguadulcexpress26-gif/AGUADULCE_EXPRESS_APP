@@ -314,8 +314,11 @@
                     <button type="button" onclick="verTerminos('privacidad')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">Política de Privacidad</button>
                     y el
                     <button type="button" onclick="verTerminos('aviso')" class="text-cyan-400 underline font-bold" style="background:none;border:none;padding:0;cursor:pointer;">Aviso Legal</button>.
-                </label>
+                               </label>
             </div>
+            <button id="btn-registrar" onclick="registrarCliente()" class="w-full bg-cyan-400 text-black font-black py-4 rounded-2xl uppercase italic transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2">Registrarme</button>
+            <button onclick="cerrarRegistro()" class="w-full text-white/50 text-xs py-3 mt-2">Volver al inicio</button>
+        </div>
     </div>
 </div>
 
@@ -896,57 +899,75 @@ async function loginCliente() {
 }
 
 async function registrarCliente() {
-    const nombre = document.getElementById('reg-nombre').value.trim();
-    const email = document.getElementById('reg-email').value.trim();
-    const telefono = document.getElementById('reg-telf').value.trim();
-    const password = document.getElementById('reg-password').value;
-    const calle = document.getElementById('reg-calle').value.trim();
-    const edificio = document.getElementById('reg-edificio').value.trim();
-    const puerta = document.getElementById('reg-puerta').value.trim();
-    const instrucciones = document.getElementById('reg-instrucciones').value.trim();
-    const cp = document.getElementById('reg-cp').value.trim();
-    const acepto = document.getElementById('reg-acepto').checked;
+    const btn = document.getElementById('btn-registrar');
 
-    if (!nombre || !email || !telefono || !password || !calle || !cp) {
-        alertaError("Error", "Completa todos los campos obligatorios");
-        return;
-    }
-    if (!esEmailValido(email)) {
-        alertaError("Email inválido", "El email debe ser real (Gmail, Yahoo, Hotmail, etc.)");
-        return;
-    }
-    if (!/^\d{5}$/.test(cp)) {
-        alertaError("CP inválido", "Debe tener 5 dígitos");
-        return;
-    }
-    if (!ZONAS_PERMITIDAS.includes(cp)) {
-        alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)");
-        return;
-    }
-    if (!acepto) {
-        alertaError(
-            "Consentimiento requerido",
-            "Debes declarar que eres mayor de 18 años y aceptar los Términos de Servicio, la Política de Privacidad y el Aviso Legal."
-        );
-        return;
+    // 🛡️ BLOQUEAR BOTÓN INMEDIATAMENTE
+    if (btn) {
+        btn.disabled = true;
+        if (!btn.dataset.textoOriginal) btn.dataset.textoOriginal = btn.textContent;
+        btn.textContent = 'Registrando...';
     }
 
-    if (huellaDigitalTerminal) {
-        const huellaUnica = await verificarHuellaUnica(huellaDigitalTerminal, email);
-        if (!huellaUnica) {
-            alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono.");
-            return;
+    // Función auxiliar para restaurar el botón en caso de error
+    const restaurarBoton = () => {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.textoOriginal || 'Registrarme';
         }
-    }
-
-    // 🔔 PEDIR PERMISO DE NOTIFICACIONES OBLIGATORIO
-    const permisoOk = await pedirPermisoNotificacionesObligatorio();
-    if (!permisoOk) {
-        console.log('🚫 Registro cancelado: el cliente no aceptó las notificaciones');
-        return;
-    }
+    };
 
     try {
+        const nombre = document.getElementById('reg-nombre').value.trim();
+        const email = document.getElementById('reg-email').value.trim();
+        const telefono = document.getElementById('reg-telf').value.trim();
+        const password = document.getElementById('reg-password').value;
+        const calle = document.getElementById('reg-calle').value.trim();
+        const edificio = document.getElementById('reg-edificio').value.trim();
+        const puerta = document.getElementById('reg-puerta').value.trim();
+        const instrucciones = document.getElementById('reg-instrucciones').value.trim();
+        const cp = document.getElementById('reg-cp').value.trim();
+        const acepto = document.getElementById('reg-acepto').checked;
+
+        if (!nombre || !email || !telefono || !password || !calle || !cp) {
+            alertaError("Error", "Completa todos los campos obligatorios");
+            restaurarBoton(); return;
+        }
+        if (!esEmailValido(email)) {
+            alertaError("Email inválido", "El email debe ser real (Gmail, Yahoo, Hotmail, etc.)");
+            restaurarBoton(); return;
+        }
+        if (!/^\d{5}$/.test(cp)) {
+            alertaError("CP inválido", "Debe tener 5 dígitos");
+            restaurarBoton(); return;
+        }
+        if (!ZONAS_PERMITIDAS.includes(cp)) {
+            alertaError("Fuera de zona", "Solo entregamos en Roquetas de Mar (04740)");
+            restaurarBoton(); return;
+        }
+        if (!acepto) {
+            alertaError(
+                "Consentimiento requerido",
+                "Debes declarar que eres mayor de 18 años y aceptar los Términos de Servicio, la Política de Privacidad y el Aviso Legal."
+            );
+            restaurarBoton(); return;
+        }
+
+        if (huellaDigitalTerminal) {
+            const huellaUnica = await verificarHuellaUnica(huellaDigitalTerminal, email);
+            if (!huellaUnica) {
+                alertaError("Dispositivo registrado", "Ya existe una cuenta con este dispositivo. Solo puedes tener una cuenta por teléfono.");
+                restaurarBoton(); return;
+            }
+        }
+
+        // 🔔 PEDIR PERMISO DE NOTIFICACIONES OBLIGATORIO
+        const permisoOk = await pedirPermisoNotificacionesObligatorio();
+        if (!permisoOk) {
+            console.log('🚫 Registro cancelado: el cliente no aceptó las notificaciones');
+            restaurarBoton(); return;
+        }
+
+        // 🆕 Crear usuario en Firebase
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
         await userCredential.user.sendEmailVerification();
@@ -969,8 +990,6 @@ async function registrarCliente() {
             moroso: false,
             deuda_total: 0,
             huella: huellaDigitalTerminal || '',
-
-            // ✅ PRUEBA LEGAL DE CONSENTIMIENTO (RGPD)
             aceptacion_legal: {
                 fecha_aceptacion: Date.now(),
                 version_terminos: "v1",
@@ -985,20 +1004,19 @@ async function registrarCliente() {
         await database.ref(`clientes/${uid}`).set(perfilCliente);
         localStorage.setItem('ae_cliente', JSON.stringify(perfilCliente));
 
-        // 🆕 GUARDAR TOKEN DE NOTIFICACIONES (con espera para que FCM autentique)
-        console.log('⏳ Esperando 5 segundos antes de generar token FCM...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        try {
-            await generarYGuardarTokenCliente(uid);
-        } catch (tokenError) {
-            console.warn('⚠️ No se pudo generar token en el registro:', tokenError);
-            // No bloqueamos el registro si falla el token
-        }
-
+        // ✅ Registro completado. Cerramos modal y mostramos mensaje INMEDIATAMENTE
         cerrarRegistro();
+        restaurarBoton();
 
-        await Swal.fire({
+        // 🔔 Token FCM en segundo plano con 2s de retardo (sin bloquear la UI)
+        setTimeout(() => {
+            generarYGuardarTokenCliente(uid)
+                .then(() => console.log('✅ Token FCM generado en segundo plano'))
+                .catch(err => console.warn('⚠️ Token FCM falló:', err));
+        }, 2000);
+
+        // ✅ Mensaje de éxito inmediato
+        Swal.fire({
             title: '📧 Verifica tu email',
             text: `Hemos enviado un enlace de verificación a ${email}. Revisa tu bandeja de entrada y spam. Puedes seguir usando la app mientras tanto.`,
             icon: 'info',
@@ -1023,9 +1041,9 @@ async function registrarCliente() {
         }
 
         alertaError("Error al registrarte", mensajeAmigable);
+        restaurarBoton(); // 🛡️ Restaurar botón si hubo error
     }
 }
-
 function mostrarRegistro() { cerrarModal('modal-login'); document.getElementById('modal-registro').style.display = 'flex'; }
 function cerrarRegistro() { document.getElementById('modal-registro').style.display = 'none'; document.getElementById('modal-login').style.display = 'flex'; }
 function cerrarCheckout() { document.getElementById('panel-checkout').style.display = 'none'; document.getElementById('panel-revision').style.display = 'block'; }

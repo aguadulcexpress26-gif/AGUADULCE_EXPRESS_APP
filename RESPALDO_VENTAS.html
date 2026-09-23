@@ -373,8 +373,7 @@ if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 const auth = firebase.auth();
 
-let db = { menu: [], restaurantes: [], anuncios: [], legal: "", config: {}, horariosPorDia: {} };
-let cesta = [];
+let db = { menu: [], restaurantes: [], anuncios: [], legal: "", config: {}, horariosPorDia: {}, menuAgotados: {} };let cesta = [];
 let restauranteActivo = { id: null, nombre: "", foto: "" };
 let itemActual = { data: null, cantidad: 1, precioBase: 0, precioOpciones: 0, opcionesSeleccionadas: {}, obligatorioOk: true };
 let pantallaStack = ['home'];
@@ -1081,17 +1080,20 @@ async function cargarBaseDatos() {
             return nombreA.localeCompare(nombreB); 
         });
 
-        // Carga inicial del menú
-        const menuSnap = await database.ref('menu_general').once('value'); 
-        db.menu = menuSnap.val() ? Object.values(menuSnap.val()) : [];
+              // Carga inicial del menú (✅ conservando la clave de Firebase como ID_PLATO)
+        const menuSnap = await database.ref('menu_general').once('value');
+        const menuRaw = menuSnap.val() || {};
+        db.menu = Object.entries(menuRaw).map(([id, data]) => ({ ...data, ID_PLATO: id }));
 
         // ✅ Carga inicial de platos agotados
         const agotadosSnap = await database.ref('menu_agotados').once('value');
         db.menuAgotados = agotadosSnap.val() || {};
+        console.log('🔍 [DEBUG] menu_agotados inicial:', JSON.stringify(db.menuAgotados));
 
         // ✅ Suscribirse a cambios en tiempo real del menú
         database.ref('menu_general').on('value', (snap) => {
-            db.menu = snap.val() ? Object.values(snap.val()) : [];
+            const raw = snap.val() || {};
+            db.menu = Object.entries(raw).map(([id, data]) => ({ ...data, ID_PLATO: id }));
             console.log('🔄 Menú actualizado en tiempo real:', db.menu.length, 'platos');
             if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
                 renderMenu();
@@ -1100,8 +1102,11 @@ async function cargarBaseDatos() {
 
         // ✅ Suscribirse a cambios en tiempo real de platos agotados
         database.ref('menu_agotados').on('value', (snap) => {
-            db.menuAgotados = snap.val() || {};
-            console.log('🔄 Platos agotados actualizados');
+            const raw = snap.val() || {};
+            db.menuAgotados = raw;
+            console.log('🔍 [DEBUG] menu_agotados actualizado:', JSON.stringify(db.menuAgotados));
+            console.log('🔍 [DEBUG] restauranteActivo.id:', restauranteActivo.id);
+            console.log('🔍 [DEBUG] agotados de este restaurante:', JSON.stringify(raw[restauranteActivo.id] || {}));
             if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
                 renderMenu();
             }

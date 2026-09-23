@@ -438,8 +438,8 @@
                 </div>
             </div>
 
-            <!-- 6 Tarjetas de resumen -->
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <!-- 7 Tarjetas de resumen -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
                 <div class="stats-card">
                     <div class="icon">📦</div>
                     <div class="value text-cyan-400" id="contableTotalPedidos">0</div>
@@ -455,6 +455,17 @@
                     <div class="value text-yellow-400" id="contableTotalComision">0.00€</div>
                     <div class="label">Comisión</div>
                 </div>
+                <div class="stats-card" style="border-color:#f59e0b;background:linear-gradient(135deg, rgba(245,158,11,0.1), rgba(245,158,11,0.02));">
+                    <div class="icon">📊</div>
+                    <div class="value" style="color:#f59e0b;" id="contableTotalIvaComision">0.00€</div>
+                    <div class="label">IVA s/Comisión (21%)</div>
+                </div>
+                <div class="stats-card" style="border-color:#06b6d4;background:linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.02));">
+                    <div class="icon">📋</div>
+                    <div class="value" style="color:#06b6d4;" id="contableTotalFacturaPlataforma">0.00€</div>
+                    <div class="label">Factura Plataforma</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Comisión + IVA</div>
+                </div>
                 <div class="stats-card" style="border-color:#ef4444;">
                     <div class="icon">⏱️</div>
                     <div class="value" style="color:#ef4444;" id="contableTotalDemoras">-0.00€</div>
@@ -465,11 +476,22 @@
                     <div class="value" style="color:#8b5cf6;" id="contableTotalRepartos">-0.00€</div>
                     <div class="label">Repartos <span id="contableTotalRepartosCant" style="font-size:10px;color:#94a3b8;"></span></div>
                 </div>
-                <div class="stats-card" style="border-color:#10b981;background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.1));">
-                    <div class="icon">💵</div>
-                    <div class="value" style="color:#10b981;font-size:22px;" id="contableTotalLiquidar">0.00€</div>
-                    <div class="label">PENDIENTE LIQUIDAR</div>
-                    <div style="font-size:11px;color:#06b6d4;margin-top:4px;">Liquidado: <span id="contableTotalLiquidado">0.00€</span></div>
+            </div>
+
+            <!-- Tarjeta grande: PENDIENTE LIQUIDAR -->
+            <div class="stats-card mb-6" style="border-color:#10b981;background:linear-gradient(135deg, rgba(16,185,129,0.15), rgba(59,130,246,0.15));padding:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="font-size:36px;">💵</div>
+                        <div style="text-align:left;">
+                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">Pendiente Liquidar</div>
+                            <div style="font-size:28px;font-weight:900;color:#10b981;" id="contableTotalLiquidar">0.00€</div>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">Ya Liquidado</div>
+                        <div style="font-size:22px;font-weight:700;color:#06b6d4;" id="contableTotalLiquidado">0.00€</div>
+                    </div>
                 </div>
             </div>
 
@@ -484,9 +506,10 @@
                             <th class="text-right p-2">Pedidos</th>
                             <th class="text-right p-2">Base</th>
                             <th class="text-right p-2">Comisión</th>
+                            <th class="text-right p-2">IVA</th>
                             <th class="text-right p-2">Demoras</th>
                             <th class="text-right p-2">Repartos</th>
-                            <th class="text-right p-2">A Liquidar</th>
+                            <th class="text-right p-2">A Transferir</th>
                             <th class="text-right p-2">Liquidado</th>
                             <th class="text-center p-2">Estado</th>
                             <th class="text-center p-2">Acciones</th>
@@ -2287,25 +2310,34 @@ async function cargarContableRestaurante() {
             rest.liquidar += liquidar;
         }
         
-        // ✅ Calcular liquidado y repartos de cada restaurante
+              // ✅ Calcular liquidado y repartos de cada restaurante
+        const IVA_COMISION = 0.21;  // 21% de IVA sobre la comisión
+
         for (const rest of Object.values(porRestaurante)) {
             const liqData = await calcularLiquidadoPeriodo(rest.id, rango);
             rest.liquidado = liqData.total;
             rest.liquidadoCantidad = liqData.cantidad;
-            
-            // Fórmula final: Base - Comisión - Demoras - Repartos
-            rest.liquidar = rest.base - rest.comisionMonto - rest.descuentoDemora - rest.repartosMonto;
+
+            // ✅ IVA sobre la comisión
+            rest.ivaComisionMonto = rest.comisionMonto * IVA_COMISION;
+            rest.totalFacturaPlataforma = rest.comisionMonto + rest.ivaComisionMonto;
+
+            // Fórmula final: Base - Comisión - IVA s/Comisión - Demoras - Repartos
+            rest.liquidar = rest.base - rest.comisionMonto - rest.ivaComisionMonto - rest.descuentoDemora - rest.repartosMonto;
             rest.pendienteLiquidar = Math.max(0, rest.liquidar - rest.liquidado);
         }
-        
+
         // Sumar totales
-        let totalPedidos = 0, totalBase = 0, totalComision = 0, totalDemoras = 0, totalDescDemora = 0;
+        let totalPedidos = 0, totalBase = 0, totalComision = 0, totalIvaComision = 0, totalFacturaPlataforma = 0;
+        let totalDemoras = 0, totalDescDemora = 0;
         let totalRepartosCant = 0, totalRepartosMonto = 0, totalLiquidar = 0, totalLiquidado = 0, totalPendiente = 0;
-        
+
         for (const rest of Object.values(porRestaurante)) {
             totalPedidos += rest.totalPedidos;
             totalBase += rest.base;
             totalComision += rest.comisionMonto;
+            totalIvaComision += rest.ivaComisionMonto || 0;
+            totalFacturaPlataforma += rest.totalFacturaPlataforma || 0;
             totalDemoras += rest.demoraMinutos;
             totalDescDemora += rest.descuentoDemora;
             totalRepartosCant += rest.repartosCantidad;
@@ -2314,44 +2346,49 @@ async function cargarContableRestaurante() {
             totalLiquidado += rest.liquidado;
             totalPendiente += rest.pendienteLiquidar;
         }
-        
+
         // Actualizar tarjetas
         document.getElementById('contableTotalPedidos').textContent = totalPedidos;
         document.getElementById('contableTotalBase').textContent = totalBase.toFixed(2) + '€';
         document.getElementById('contableTotalComision').textContent = totalComision.toFixed(2) + '€';
         document.getElementById('contableTotalDemoras').textContent = '-' + totalDescDemora.toFixed(2) + '€';
         document.getElementById('contableTotalDemorasMin').textContent = `(${totalDemoras} min)`;
-        
-        // Tarjeta Repartos (nueva)
+
+        // Tarjeta Repartos
         const elRepartos = document.getElementById('contableTotalRepartos');
         if (elRepartos) elRepartos.textContent = '-' + totalRepartosMonto.toFixed(2) + '€';
         const elRepartosCant = document.getElementById('contableTotalRepartosCant');
         if (elRepartosCant) elRepartosCant.textContent = `(${totalRepartosCant})`;
-        
+
         // Tarjeta Liquidar (pendiente)
         document.getElementById('contableTotalLiquidar').textContent = totalPendiente.toFixed(2) + '€';
-        
-        // Tarjeta Liquidado (nueva)
+
+        // Tarjeta Liquidado
         const elLiquidado = document.getElementById('contableTotalLiquidado');
         if (elLiquidado) elLiquidado.textContent = totalLiquidado.toFixed(2) + '€';
-        
+
         contableDataCache = {
             porRestaurante,
             rango,
             periodo,
-            totales: { totalPedidos, totalBase, totalComision, totalDemoras, totalDescDemora, totalRepartosCant, totalRepartosMonto, totalLiquidar, totalLiquidado, totalPendiente }
+            totales: {
+                totalPedidos, totalBase, totalComision, totalIvaComision, totalFacturaPlataforma,
+                totalDemoras, totalDescDemora,
+                totalRepartosCant, totalRepartosMonto,
+                totalLiquidar, totalLiquidado, totalPendiente
+            }
         };
-        
+
         renderizarTablaContable();
-        
+
         if (restSeleccionado && porRestaurante[restSeleccionado]) {
             renderizarDetalleRestaurante(porRestaurante[restSeleccionado], rango);
         } else {
             document.getElementById('contableDetalleRestaurante').innerHTML = '';
         }
-        
+
         await cargarHistorialLiquidacionesAdmin();
-        
+
     } catch (error) {
         console.error('Error cargando contabilidad:', error);
         if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="text-center p-4 text-red-400">❌ Error: ${error.message}</td></tr>`;
@@ -2597,6 +2634,11 @@ async function abrirLiquidacionModal(restId) {
     const numeroOperacion = await generarNumeroOperacion();
     const rango = contableDataCache.rango;
     
+    // ✅ IVA sobre la comisión (21%)
+    const IVA_COMISION = 0.21;
+    const ivaComision = rest.comisionMonto * IVA_COMISION;
+    const totalFactura = rest.comisionMonto + ivaComision;
+    
     Swal.fire({
         title: '💰 Confirmar Liquidación',
         html: `
@@ -2618,6 +2660,9 @@ async function abrirLiquidacionModal(restId) {
                         <span>🏪 Comisión (${rest.comision}%)</span><span style="font-weight:700;color:#f59e0b;">-${rest.comisionMonto.toFixed(2)}€</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b;">
+                        <span>📊 IVA s/Comisión (21%)</span><span style="font-weight:700;color:#f59e0b;">-${ivaComision.toFixed(2)}€</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b;">
                         <span>⏱️ Demoras (${rest.demoraMinutos}min)</span><span style="font-weight:700;color:#ef4444;">-${rest.descuentoDemora.toFixed(2)}€</span>
                     </div>
                     ${rest.repartosCantidad > 0 ? `
@@ -2625,6 +2670,9 @@ async function abrirLiquidacionModal(restId) {
                         <span>📦 Repartos (${rest.repartosCantidad})</span><span style="font-weight:700;color:#8b5cf6;">-${rest.repartosMonto.toFixed(2)}€</span>
                     </div>
                     ` : ''}
+                    <div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:8px;border-top:2px solid #334155;background:rgba(6,182,212,0.08);border-radius:8px;padding-left:8px;padding-right:8px;">
+                        <span style="font-weight:700;color:#06b6d4;">📋 Factura plataforma</span><span style="font-weight:900;color:#06b6d4;">${totalFactura.toFixed(2)}€</span>
+                    </div>
                     <div style="display:flex;justify-content:space-between;padding:12px 0;margin-top:8px;border-top:2px solid #334155;font-size:16px;">
                         <span style="font-weight:700;">💵 Subtotal</span><span style="font-weight:900;color:#10b981;">${rest.liquidar.toFixed(2)}€</span>
                     </div>
@@ -2634,7 +2682,7 @@ async function abrirLiquidacionModal(restId) {
                     </div>
                     ` : ''}
                     <div style="display:flex;justify-content:space-between;padding:12px 0;margin-top:8px;border-top:2px solid #8b5cf6;font-size:18px;">
-                        <span style="font-weight:700;">✅ A LIQUIDAR</span><span style="font-weight:900;color:#8b5cf6;">${rest.pendienteLiquidar.toFixed(2)}€</span>
+                        <span style="font-weight:700;">✅ A TRANSFERIR</span><span style="font-weight:900;color:#8b5cf6;">${rest.pendienteLiquidar.toFixed(2)}€</span>
                     </div>
                 </div>
                 <div style="margin-top:16px;">

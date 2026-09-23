@@ -4435,7 +4435,7 @@ window.desvincularImpresora = function() {
                 });
             };
 
-            window.cargarGanancias = function() {
+          window.cargarGanancias = function() {
                 const content = document.getElementById('ganancias-contenido');
                 const filtro = document.getElementById('filtro-ganancias');
                 if (!content) return;
@@ -4446,6 +4446,7 @@ window.desvincularImpresora = function() {
                 const comisionPorcentaje = comisionGlobal || 10;
                 const comisionTipo = comisionTipoGlobal || 'porcentaje';
                 const costoDemora = costoDemoraPorMinuto || 0.50;
+                const IVA_COMISION = 0.21;      // ✅ 21% de IVA sobre la comisión
                 
                 db.ref('pedidos').once('value').then(snap => {
                     const pedidos = snap.val();
@@ -4486,55 +4487,45 @@ window.desvincularImpresora = function() {
                     
                     let totalPedidos = 0;
                     let totalRepartos = 0;
-                    let totalVentas = 0;              // ← Base acumulada de pedidos NORMALES
+                    let totalVentas = 0;
                     let totalComisiones = 0;
                     let totalDemoras = 0;
                     let totalDescuentoDemora = 0;
-                    let totalRepartosMonto = 0;       // ← Acumulador APARTE de repartos
+                    let totalRepartosMonto = 0;
                     let pedidosDetalle = [];
                     
-                  for (const [id, data] of Object.entries(pedidos)) {
-    const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
-    if (restId !== restauranteId) continue;
-    
-    // ✅ Excluir pedidos ya liquidados (evita doble conteo)
-    if (data.liquidado === true) continue;
-    
-    const fecha = new Date(data.fecha || data.timestamp || 0);
-    if (fecha < fechaInicio) continue;
-    // ...
+                    for (const [id, data] of Object.entries(pedidos)) {
+                        const restId = data.restauranteId || data.restaurante_id || data.uid_restaurante;
+                        if (restId !== restauranteId) continue;
+                        if (data.liquidado === true) continue;
+                        
+                        const fecha = new Date(data.fecha || data.timestamp || 0);
+                        if (fecha < fechaInicio) continue;
                         
                         if (data.estado === 'ENTREGADO' || data.estado === 'LISTO') {
                             
-                            // ✅ Detectar si es un reparto personal
                             const esReparto = data.tipo === 'reparto_personal' || data.es_reparto_personal === true;
                             
                             if (esReparto) {
-                                // Reparto personal: NO suma a la base.
-                                // Su monto se acumula APARTE y se RESTA al final.
                                 const montoReparto = parseFloat(data.envio || data.monto_reparto || data.total || 0);
-                                
                                 totalRepartos++;
                                 totalRepartosMonto += montoReparto;
-                                
                                 pedidosDetalle.push({
                                     id: data.id_pedido || id.substring(0, 8),
                                     cliente: data.cliente_nombre || 'Reparto Personal',
-                                    base: 0,                          // ← NO aporta a la base
+                                    base: 0,
                                     envio: montoReparto,
                                     comision: 0,
                                     demoraMinutos: 0,
                                     descuentoDemora: 0,
-                                    liquidar: -montoReparto,          // ← negativo (se resta)
+                                    liquidar: -montoReparto,
                                     fecha: fecha,
                                     esReparto: true,
                                     montoReparto: montoReparto
                                 });
-                                
                                 continue;
                             }
                             
-                            // ----- Pedido normal -----
                             totalPedidos++;
                             
                             let montoBase = data.base || data.subtotal || 0;
@@ -4586,9 +4577,10 @@ window.desvincularImpresora = function() {
                         }
                     }
                     
-                    // ✅ FÓRMULA FINAL
-                    // TOTAL A LIQUIDAR = Base - Comisión - Demoras - Repartos Personales
-                    const totalLiquidar = totalVentas - totalComisiones - totalDescuentoDemora - totalRepartosMonto;
+                    // ✅ CÁLCULOS CON IVA
+                    const ivaComisionTotal = totalComisiones * IVA_COMISION;              // 21% sobre la comisión
+                    const totalFacturaPlataforma = totalComisiones + ivaComisionTotal;    // comisión + IVA
+                    const totalTransferir = totalVentas - totalFacturaPlataforma - totalDescuentoDemora - totalRepartosMonto;
                     
                     totalGanancias = totalVentas;
                     
@@ -4611,6 +4603,10 @@ window.desvincularImpresora = function() {
                                 <div class="label">🏪 Comisión (${comisionPorcentaje}%)</div>
                                 <div class="value blue">-${totalComisiones.toFixed(2)}€</div>
                             </div>
+                            <div class="resumen-card" style="border-color:#f59e0b; background:rgba(245,158,11,0.08);">
+                                <div class="label">📊 IVA s/Comisión (21%)</div>
+                                <div class="value" style="color:#f59e0b;">-${ivaComisionTotal.toFixed(2)}€</div>
+                            </div>
                             <div class="resumen-card demora-card">
                                 <div class="label">⏱️ Demoras (${totalDemoras} min)</div>
                                 <div class="value red">-${totalDescuentoDemora.toFixed(2)}€</div>
@@ -4621,17 +4617,32 @@ window.desvincularImpresora = function() {
                                 <div class="value" style="color:var(--accent-purple);">-${totalRepartosMonto.toFixed(2)}€</div>
                             </div>
                             ` : ''}
-                            <div class="resumen-card liquidar-card">
-                                <div class="label">💵 TOTAL A LIQUIDAR</div>
-                                <div class="value purple">${totalLiquidar.toFixed(2)}€</div>
-                                <div class="sub-label">Base - Comisión - Demoras${totalRepartos > 0 ? ' - Repartos' : ''}</div>
+                            <div class="resumen-card" style="border-color:#06b6d4; background:rgba(6,182,212,0.08);">
+                                <div class="label">📋 FACTURA PLATAFORMA</div>
+                                <div class="value" style="color:#06b6d4;">${totalFacturaPlataforma.toFixed(2)}€</div>
+                                <div class="sub-label">Comisión + IVA</div>
+                            </div>
+                            <div class="resumen-card liquidar-card" style="grid-column: span 2;">
+                                <div class="label">💵 TOTAL A TRANSFERIR</div>
+                                <div class="value purple">${totalTransferir.toFixed(2)}€</div>
+                                <div class="sub-label">Base - Factura - Demoras${totalRepartos > 0 ? ' - Repartos' : ''}</div>
                             </div>
                         </div>
                         
                         <div style="text-align:center;font-size:0.5rem;color:var(--text-muted);margin-bottom:0.3rem;">
                             ⚙️ Comisión: ${comisionTipo === 'porcentaje' ? comisionPorcentaje + '%' : comisionPorcentaje + '€ fijo'}
+                            · 📊 IVA s/Comisión: 21%
                             · 💰 Costo demora: ${costoDemora.toFixed(2)}€/min
                             · 📦 ${totalRepartos} reparto${totalRepartos !== 1 ? 's' : ''} personal${totalRepartos !== 1 ? 'es' : ''}
+                        </div>
+                        
+                        <div style="background:var(--bg-card);border-radius:var(--radius-sm);padding:0.5rem 0.7rem;border:1px solid var(--border-color);margin:0.5rem 0;font-size:0.6rem;">
+                            <div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--text-muted);">💰 Base (Neto)</span><span style="color:var(--accent-green);font-weight:700;">${totalVentas.toFixed(2)}€</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--text-muted);">🏪 Comisión (${comisionPorcentaje}%)</span><span style="color:var(--accent-blue);font-weight:700;">-${totalComisiones.toFixed(2)}€</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--text-muted);">📊 IVA s/Comisión (21%)</span><span style="color:#f59e0b;font-weight:700;">-${ivaComisionTotal.toFixed(2)}€</span></div>
+                            ${totalDescuentoDemora > 0 ? `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--text-muted);">⏱️ Demoras (${totalDemoras} min)</span><span style="color:var(--accent-red);font-weight:700;">-${totalDescuentoDemora.toFixed(2)}€</span></div>` : ''}
+                            ${totalRepartosMonto > 0 ? `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--text-muted);">📦 Repartos personales (${totalRepartos})</span><span style="color:var(--accent-purple);font-weight:700;">-${totalRepartosMonto.toFixed(2)}€</span></div>` : ''}
+                            <div style="border-top:1px solid var(--border-color);margin-top:0.3rem;padding-top:0.3rem;display:flex;justify-content:space-between;font-size:0.8rem;"><span style="font-weight:900;color:var(--accent-purple);">💵 TOTAL A TRANSFERIR</span><span style="font-weight:900;color:var(--accent-purple);">${totalTransferir.toFixed(2)}€</span></div>
                         </div>
                     `;
                     
@@ -4653,7 +4664,6 @@ window.desvincularImpresora = function() {
                             const tieneDemora = p.demoraMinutos > 0;
                             
                             if (p.esReparto) {
-                                // Fila de reparto personal → se RESTA
                                 html += `
                                     <div class="ganancias-detalle-item" style="background:rgba(139,92,246,0.08);border-left:3px solid var(--accent-purple);">
                                         <div class="col-pedido">
@@ -4667,7 +4677,6 @@ window.desvincularImpresora = function() {
                                     </div>
                                 `;
                             } else {
-                                // Fila de pedido normal
                                 html += `
                                     <div class="ganancias-detalle-item ${tieneDemora ? 'con-demora' : ''}">
                                         <div class="col-pedido">
@@ -4734,10 +4743,12 @@ window.desvincularImpresora = function() {
                         totalRepartos: totalRepartos,
                         totalVentas: totalVentas,
                         totalComisiones: totalComisiones,
+                        ivaComisionTotal: ivaComisionTotal,
+                        totalFacturaPlataforma: totalFacturaPlataforma,
                         totalDemoras: totalDemoras,
                         totalDescuentoDemora: totalDescuentoDemora,
                         totalRepartosMonto: totalRepartosMonto,
-                        totalLiquidar: totalLiquidar,
+                        totalTransferir: totalTransferir,
                         detalle: pedidosDetalle,
                         comisionPorcentaje: comisionPorcentaje,
                         comisionTipo: comisionTipo,
@@ -4749,11 +4760,10 @@ window.desvincularImpresora = function() {
                     content.innerHTML = `<div class="empty"><div class="icon">❌</div><div>Error al cargar datos: ${error.message}</div></div>`;
                 });
             };
-
             // ============================================
             // EXPORTAR GANANCIAS EXCEL - CON DEMORAS Y REPARTOS
             // ============================================
-            window.exportarGananciasExcel = function() {
+           window.exportarGananciasExcel = function() {
                 const data = window._gananciasData;
                 if (!data || data.detalle.length === 0) {
                     Swal.fire({
@@ -4766,25 +4776,28 @@ window.desvincularImpresora = function() {
                     return;
                 }
                 
-                let csv = "Pedido,Cliente,Tipo,Base (Neto),Comisión,Demora (min),Descuento Demora,A Liquidar,Fecha\n";
+                let csv = "Pedido,Cliente,Tipo,Base (Neto),Comisión,IVA s/Comisión,Demora (min),Descuento Demora,A Transferir,Fecha\n";
                 for (const p of data.detalle) {
                     const fechaStr = p.fecha ? p.fecha.toLocaleDateString() : 'Sin fecha';
                     const tipo = p.esReparto ? 'Reparto Personal' : 'Pedido';
                     const liquidarFila = p.esReparto ? -p.montoReparto : p.liquidar;
-                    csv += `"${p.id}","${p.cliente}","${tipo}",${p.base.toFixed(2)},${p.comision.toFixed(2)},${p.demoraMinutos},${p.descuentoDemora.toFixed(2)},${liquidarFila.toFixed(2)},"${fechaStr}"\n`;
+                    const ivaFila = p.esReparto ? 0 : (p.comision * 0.21);
+                    csv += `"${p.id}","${p.cliente}","${tipo}",${p.base.toFixed(2)},${p.comision.toFixed(2)},${ivaFila.toFixed(2)},${p.demoraMinutos},${p.descuentoDemora.toFixed(2)},${liquidarFila.toFixed(2)},"${fechaStr}"\n`;
                 }
                 
-                csv += `\n"RESUMEN","","","","","","","",""\n`;
-                csv += `"Total Pedidos",${data.totalPedidos},"","","","","","",""\n`;
-                csv += `"Total Repartos",${data.totalRepartos || 0},"","","","","","",""\n`;
-                csv += `"Total Base",${data.totalVentas.toFixed(2)}€,"","","","","","",""\n`;
-                csv += `"Total Comisiones",-${data.totalComisiones.toFixed(2)}€,"","","","","","",""\n`;
-                csv += `"Total Demoras (min)",${data.totalDemoras},"","","","","","",""\n`;
-                csv += `"Total Descuento Demoras",-${data.totalDescuentoDemora.toFixed(2)}€,"","","","","","",""\n`;
+                csv += `\n"RESUMEN","","","","","","","","",""\n`;
+                csv += `"Total Pedidos",${data.totalPedidos},"","","","","","","",""\n`;
+                csv += `"Total Repartos",${data.totalRepartos || 0},"","","","","","","",""\n`;
+                csv += `"Total Base",${data.totalVentas.toFixed(2)}€,"","","","","","","",""\n`;
+                csv += `"Total Comisiones",-${data.totalComisiones.toFixed(2)}€,"","","","","","","",""\n`;
+                csv += `"Total IVA s/Comisión (21%)",-${(data.ivaComisionTotal || 0).toFixed(2)}€,"","","","","","","",""\n`;
+                csv += `"TOTAL FACTURA PLATAFORMA",${(data.totalFacturaPlataforma || 0).toFixed(2)}€,"","","","","","","",""\n`;
+                csv += `"Total Demoras (min)",${data.totalDemoras},"","","","","","","",""\n`;
+                csv += `"Total Descuento Demoras",-${data.totalDescuentoDemora.toFixed(2)}€,"","","","","","","",""\n`;
                 if (data.totalRepartos > 0) {
-                    csv += `"Total Repartos Personales",-${(data.totalRepartosMonto || 0).toFixed(2)}€,"","","","","","",""\n`;
+                    csv += `"Total Repartos Personales",-${(data.totalRepartosMonto || 0).toFixed(2)}€,"","","","","","","",""\n`;
                 }
-                csv += `"TOTAL A LIQUIDAR",${data.totalLiquidar.toFixed(2)}€,"","","","","","",""\n`;
+                csv += `"TOTAL A TRANSFERIR",${(data.totalTransferir || 0).toFixed(2)}€,"","","","","","","",""\n`;
                 
                 const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
                 const link = document.createElement("a");
@@ -4806,6 +4819,7 @@ window.desvincularImpresora = function() {
                     color: 'white'
                 });
             };
+            
             // ============================================
             // 28. MENÚ NAVEGACIÓN
             // ============================================

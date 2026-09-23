@@ -2055,9 +2055,15 @@ function generarTextoComanda(data, nombreRestaurante, pedidoId) {
     texto += `   Telefono: ${data.cliente_telefono || 'Sin telefono'}\n`;
     texto += `   Direccion: ${data.direccion || 'Sin direccion'}\n`;
     texto += '-------------------------------\n';
+    texto += '\x1B\x45\x01';
+    // ✅ FORMA DE PAGO (destacada en negrita)
+    const metodoPago = (data.metodo_pago || 'EFECTIVO').toUpperCase();
+    texto += `   FORMA DE PAGO: ${metodoPago}\n`;
+    texto += '\x1B\x45\x00';
+    texto += '-------------------------------\n';
     texto += '   PRODUCTOS:\n';
 
-          if (data.items && data.items.length > 0) {
+    if (data.items && data.items.length > 0) {
         const itemsArray = Array.isArray(data.items) ? data.items : Object.values(data.items);
         for (const item of itemsArray) {
             const itemTexto = formatearItemTexto(item, false); // sin tildes para térmica
@@ -2091,7 +2097,6 @@ function generarTextoComanda(data, nombreRestaurante, pedidoId) {
 
     return texto;
 }
-
 // ============================================
 // IMPRIMIR EN IMPRESORA BLUETOOTH
 // ============================================
@@ -2961,25 +2966,113 @@ window.desvincularImpresora = function() {
                 });
             }
 
-            function agregarPedidoAColumna(id, data) {
-                let estado = data.estado || 'pendiente';
-                if (estado === 'recibido') estado = 'pendiente';
-                
-                let columnaId = estado === 'pendiente' ? 'col-pendiente' : 'col-coccion';
-                const container = document.getElementById(columnaId);
-                if (!container) return;
+           function agregarPedidoAColumna(id, data) {
+    let estado = data.estado || 'pendiente';
+    if (estado === 'recibido') estado = 'pendiente';
 
-                const idPedido = data.id_pedido || data.id || id.substring(0, 8);
-                const tarjetasExistentes = container.querySelectorAll('.order-card');
-                for (const tarjeta of tarjetasExistentes) {
-                    const idElement = tarjeta.querySelector('.id');
-                    if (idElement) {
-                        const idTexto = idElement.textContent.replace('#', '');
-                        if (idTexto === idPedido) {
-                            return;
-                        }
-                    }
-                }
+    let columnaId = estado === 'pendiente' ? 'col-pendiente' : 'col-coccion';
+    const container = document.getElementById(columnaId);
+    if (!container) return;
+
+    const idPedido = data.id_pedido || data.id || id.substring(0, 8);
+    const tarjetasExistentes = container.querySelectorAll('.order-card');
+    for (const tarjeta of tarjetasExistentes) {
+        const idElement = tarjeta.querySelector('.id');
+        if (idElement) {
+            const idTexto = idElement.textContent.replace('#', '');
+            if (idTexto === idPedido) {
+                return;
+            }
+        }
+    }
+
+    const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
+    const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';
+    const direccion = data.direccion || 'Sin dirección';
+    const total = data.total || 0;
+    const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+
+    const tiempoInicio = data.timestamp_inicio || data.timestamp || Date.now();
+    const tiempoActual = Date.now();
+    const tiempoTranscurrido = Math.floor((tiempoActual - tiempoInicio) / 60000);
+    const tiempoLimite = data.tiempo_limite || tiempoElaboracionRestaurante || TIEMPO_ELABORACION_DEFAULT;
+    const tiempoRestante = Math.max(0, tiempoLimite - tiempoTranscurrido);
+    const enDemora = tiempoTranscurrido > tiempoLimite;
+
+    let tiempoDisplay = '', badgeDemora = '';
+    let idClass = estado === 'pendiente' ? 'pendiente' : 'coccion';
+
+    if (estado === 'pendiente') {
+        tiempoDisplay = '⏳ Esperando';
+    } else if (estado === 'coccion') {
+        if (enDemora) {
+            tiempoDisplay = `⏱️ ${tiempoTranscurrido} min DEMORA`;
+            badgeDemora = `<span style="background:var(--accent-red);color:white;padding:1px 4px;border-radius:9999px;font-size:7px;font-weight:700;">🔴</span>`;
+        } else {
+            tiempoDisplay = `⏱️ ${tiempoTranscurrido} min (${tiempoRestante})`;
+        }
+    }
+
+    let productosHtml = '';
+    if (data.items && data.items.length > 0) {
+        productosHtml = data.items.slice(0, 3).map(item =>
+            `<span>${item.cantidad || 1}x ${item.nombre}</span>`
+        ).join('');
+        if (data.items.length > 3) {
+            productosHtml += `<span style="font-size:0.4rem;color:var(--text-muted);">+${data.items.length-3}</span>`;
+        }
+    } else {
+        productosHtml = '<span>Sin productos</span>';
+    }
+
+    // ✅ BADGE DE FORMA DE PAGO
+    const metodoPago = (data.metodo_pago || 'Efectivo').toLowerCase();
+    let badgePago = '';
+    if (metodoPago === 'tarjeta') {
+        badgePago = `<span style="background:rgba(59,130,246,0.2);color:#3b82f6;border:1px solid #3b82f6;padding:2px 8px;border-radius:50px;font-size:0.55rem;font-weight:800;">💳 TARJETA</span>`;
+    } else {
+        badgePago = `<span style="background:rgba(16,185,129,0.2);color:#10b981;border:1px solid #10b981;padding:2px 8px;border-radius:50px;font-size:0.55rem;font-weight:800;">💵 EFECTIVO</span>`;
+    }
+
+    let botones = '';
+    if (estado === 'pendiente') {
+        botones = `
+            <button class="btn btn-success" onclick="aceptarPedido('${id}')">✅ Aceptar</button>
+            <button class="btn btn-danger" onclick="rechazarPedido('${id}')">❌ Rechazar</button>
+        `;
+    } else if (estado === 'coccion') {
+        botones = `
+            <button class="btn btn-success" onclick="marcarListo('${id}')">✅ Listo</button>
+            <button class="btn btn-secondary" onclick="verDetallePedido('${id}')">📋</button>
+            <button class="btn btn-primary" onclick="imprimirComandaConImpresora('${id}')">🖨️</button>
+        `;
+    }
+
+    const card = document.createElement('div');
+    card.className = `order-card${enDemora && estado === 'coccion' ? ' delayed' : ''}`;
+    card.innerHTML = `
+        <div class="top">
+            <span class="id ${idClass}">#${idPedido}</span>
+            <span class="time">${timestamp}</span>
+        </div>
+        <div class="cliente">${escapeHTML(clienteNombre)}</div>
+        <div class="direccion">${escapeHTML(direccion)}</div>
+        <div class="telefono">📞 ${escapeHTML(telefono)}</div>
+        <div class="timer">
+            <span class="label">${estado === 'coccion' ? '⏱️' : '📌'}</span>
+            <span class="value${enDemora && estado === 'coccion' ? ' delayed' : ''}">${tiempoDisplay}</span>
+            ${badgeDemora}
+        </div>
+        <div class="productos">${productosHtml}</div>
+        <div class="footer">
+            <span class="precio">$${total.toFixed(2)}</span>
+            ${badgePago}
+            <span class="badge-estado ${estado}">${estado === 'pendiente' ? 'Pendiente' : 'Cocción'}</span>
+        </div>
+        <div class="actions">${botones}</div>
+    `;
+    container.appendChild(card);
+}
 
                 const clienteNombre = data.cliente_nombre || data.clienteNombre || 'Cliente';
                 const telefono = data.cliente_telefono || data.telefono || 'Sin teléfono';

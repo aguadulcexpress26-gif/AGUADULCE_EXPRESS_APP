@@ -1080,10 +1080,10 @@ async function cargarBaseDatos() {
             return nombreA.localeCompare(nombreB); 
         });
 
-              // Carga inicial del menú (✅ conservando la clave de Firebase como ID_PLATO)
+        // Carga inicial del menú (✅ conservando ID_PLATO original Y la clave del nodo)
         const menuSnap = await database.ref('menu_general').once('value');
         const menuRaw = menuSnap.val() || {};
-        db.menu = Object.entries(menuRaw).map(([id, data]) => ({ ...data, ID_PLATO: id }));
+        db.menu = Object.entries(menuRaw).map(([key, data]) => ({ ...data, _key: key }));
 
         // ✅ Carga inicial de platos agotados
         const agotadosSnap = await database.ref('menu_agotados').once('value');
@@ -1093,7 +1093,7 @@ async function cargarBaseDatos() {
         // ✅ Suscribirse a cambios en tiempo real del menú
         database.ref('menu_general').on('value', (snap) => {
             const raw = snap.val() || {};
-            db.menu = Object.entries(raw).map(([id, data]) => ({ ...data, ID_PLATO: id }));
+            db.menu = Object.entries(raw).map(([key, data]) => ({ ...data, _key: key }));
             console.log('🔄 Menú actualizado en tiempo real:', db.menu.length, 'platos');
             if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
                 renderMenu();
@@ -1105,8 +1105,6 @@ async function cargarBaseDatos() {
             const raw = snap.val() || {};
             db.menuAgotados = raw;
             console.log('🔍 [DEBUG] menu_agotados actualizado:', JSON.stringify(db.menuAgotados));
-            console.log('🔍 [DEBUG] restauranteActivo.id:', restauranteActivo.id);
-            console.log('🔍 [DEBUG] agotados de este restaurante:', JSON.stringify(raw[restauranteActivo.id] || {}));
             if (pantallaStack[pantallaStack.length - 1] === 'restaurante') {
                 renderMenu();
             }
@@ -1308,7 +1306,7 @@ function renderMenu() {
     
     // ✅ Agotados del restaurante actual
     const agotadosRest = (db.menuAgotados && db.menuAgotados[restauranteActivo.id]) || {};
-    const estaAgotado = (platoId) => agotadosRest[platoId] === true;
+    const estaAgotado = (plato) => agotadosRest[plato._key] === true || agotadosRest[plato.ID_PLATO] === true;
     
     let html = `<div class="flex items-center gap-4 mb-6"><button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-black/40 border border-white/10 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate">${escapeHTML(restauranteActivo.nombre)}</h2></div>`;
     if (!alcoholActivo) html += `<div class="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-center text-xs text-red-400">${HORARIO_ALCOHOL.mensaje}</div>`;
@@ -1333,7 +1331,7 @@ function renderMenu() {
     
     platosOrdenados.forEach(plato => {
         const deshabilitadoPorAlcohol = CATEGORIAS_ALCOHOL.includes(plato.CATEGORIA || "General") && !alcoholActivo;
-        const agotado = estaAgotado(plato.ID_PLATO);
+        if (agotadosRest[p._key] === true || agotadosRest[p.ID_PLATO] === true) {
         const fotoPlato = obtenerFotoPlato(plato);
         const deshabilitado = deshabilitadoPorAlcohol || agotado;
         

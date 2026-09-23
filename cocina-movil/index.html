@@ -2592,10 +2592,10 @@ window.desvincularImpresora = function() {
                     return;
                 }
                 
-                if (liq.leida !== true) {
+               if (liq.leida !== true) {
                     try {
+                        // ✅ Solo escribimos en el nodo del propio restaurante (donde SÍ tenemos permiso)
                         await db.ref(`restaurantes/${restauranteId}/liquidaciones_recibidas/${numeroOperacion}/leida`).set(true);
-                        await db.ref(`liquidaciones/${numeroOperacion}/notificacion_leida`).set(true);
                         liquidacionesRecibidas[numeroOperacion].leida = true;
                         let noLeidas = 0;
                         for (const l of Object.values(liquidacionesRecibidas)) {
@@ -2717,7 +2717,7 @@ window.desvincularImpresora = function() {
                 }
             };
 
-            async function confirmarRecepcionLiquidacion(numeroOperacion) {
+           async function confirmarRecepcionLiquidacion(numeroOperacion) {
                 try {
                     const user = auth.currentUser;
                     const ahora = Date.now();
@@ -2732,6 +2732,7 @@ window.desvincularImpresora = function() {
                         didOpen: () => Swal.showLoading()
                     });
                     
+                    // ✅ Solo escribimos en el nodo del propio restaurante (donde SÍ tenemos permiso)
                     await db.ref(`restaurantes/${restauranteId}/liquidaciones_recibidas/${numeroOperacion}`).update({
                         confirmada: true,
                         fecha_confirmacion: ahora,
@@ -2740,22 +2741,7 @@ window.desvincularImpresora = function() {
                         leida: true
                     });
                     
-                    await db.ref(`liquidaciones/${numeroOperacion}`).update({
-                        confirmado_cocina: true,
-                        fecha_confirmacion: ahora,
-                        confirmado_por: {
-                            uid: uidEjecutor,
-                            email: emailEjecutor
-                        }
-                    });
-                    
-                    await db.ref(`liquidaciones/${numeroOperacion}/historial_confirmaciones`).push({
-                        uid: uidEjecutor,
-                        email: emailEjecutor,
-                        timestamp: ahora,
-                        accion: 'confirmada_por_cocina'
-                    });
-                    
+                    // ✅ Log local (con catch para no romper si falla)
                     await db.ref(`logs_cocina`).push({
                         tipo: 'confirmar_liquidacion',
                         numero_operacion: numeroOperacion,

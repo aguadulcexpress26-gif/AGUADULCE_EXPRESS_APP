@@ -2347,13 +2347,21 @@ async function cargarContableRestaurante() {
             totalPendiente += rest.pendienteLiquidar;
         }
 
-        // Actualizar tarjetas
+               // Actualizar tarjetas
         document.getElementById('contableTotalPedidos').textContent = totalPedidos;
         document.getElementById('contableTotalBase').textContent = totalBase.toFixed(2) + '€';
         document.getElementById('contableTotalComision').textContent = totalComision.toFixed(2) + '€';
+        
+        // ✅ Tarjeta IVA s/Comisión
+        const elIva = document.getElementById('contableTotalIvaComision');
+        if (elIva) elIva.textContent = '-' + totalIvaComision.toFixed(2) + '€';
+        
+        // ✅ Tarjeta Factura Plataforma
+        const elFactura = document.getElementById('contableTotalFacturaPlataforma');
+        if (elFactura) elFactura.textContent = totalFacturaPlataforma.toFixed(2) + '€';
+        
         document.getElementById('contableTotalDemoras').textContent = '-' + totalDescDemora.toFixed(2) + '€';
         document.getElementById('contableTotalDemorasMin').textContent = `(${totalDemoras} min)`;
-
         // Tarjeta Repartos
         const elRepartos = document.getElementById('contableTotalRepartos');
         if (elRepartos) elRepartos.textContent = '-' + totalRepartosMonto.toFixed(2) + '€';
@@ -2403,7 +2411,7 @@ function renderizarTablaContable() {
     const restaurantes = Object.values(porRestaurante);
     
     if (restaurantes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center p-4 text-white/50">No hay datos en este período</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center p-4 text-white/50">No hay datos en este período</td></tr>';
         return;
     }
     
@@ -2414,6 +2422,7 @@ function renderizarTablaContable() {
         const tieneDemora = rest.demoraMinutos > 0;
         const tieneRepartos = rest.repartosCantidad > 0;
         const tieneLiquidado = rest.liquidado > 0;
+        const ivaComision = rest.ivaComisionMonto || 0;
         
         let estadoBadge = '';
         if (rest.pendienteLiquidar <= 0 && rest.liquidado > 0) {
@@ -2430,6 +2439,7 @@ function renderizarTablaContable() {
                 <td class="text-right p-2">${rest.totalPedidos}</td>
                 <td class="text-right p-2">${rest.base.toFixed(2)}€</td>
                 <td class="text-right p-2 text-yellow-400">-${rest.comisionMonto.toFixed(2)}€ <span class="text-xs text-white/40">(${rest.comision}%)</span></td>
+                <td class="text-right p-2 text-orange-400">-${ivaComision.toFixed(2)}€ <span class="text-xs text-white/40">(21%)</span></td>
                 <td class="text-right p-2 ${tieneDemora ? 'text-red-400 font-bold' : 'text-white/40'}">
                     ${tieneDemora ? `-${rest.descuentoDemora.toFixed(2)}€ <span class="text-xs">(${rest.demoraMinutos}min)</span>` : '—'}
                 </td>
@@ -2450,7 +2460,7 @@ function renderizarTablaContable() {
     }
     tbody.innerHTML = html;
 }
-
+    
 function verDetalleContableRest(restId) {
     const select = document.getElementById('contableRestauranteSelect');
     if (select) {
@@ -2742,10 +2752,13 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
                 etiqueta: rango.etiqueta,
                 tipo: contableDataCache.periodo
             },
-            montos: {
+                       montos: {
                 base: rest.base,
                 comision: rest.comisionMonto,
                 comision_porcentaje: rest.comision,
+                iva_comision: rest.ivaComisionMonto || 0,
+                iva_porcentaje: 21,
+                factura_plataforma: rest.totalFacturaPlataforma || 0,
                 demoras_minutos: rest.demoraMinutos,
                 demoras_monto: rest.descuentoDemora,
                 repartos_cantidad: rest.repartosCantidad,
@@ -2771,7 +2784,7 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
         
         await database.ref(`liquidaciones/${numeroOperacion}`).set(liquidacion);
         
-        await database.ref(`restaurantes/${restId}/liquidaciones_recibidas/${numeroOperacion}`).set({
+               await database.ref(`restaurantes/${restId}/liquidaciones_recibidas/${numeroOperacion}`).set({
             numero_operacion: numeroOperacion,
             restaurante_nombre: rest.nombre,
             fecha: fechaEjecucion,
@@ -2779,6 +2792,9 @@ async function ejecutarLiquidacion(restId, rest, numeroOperacion, rango, opcione
             base: rest.base,
             comision: rest.comisionMonto,
             comision_porcentaje: rest.comision,
+            iva_comision: rest.ivaComisionMonto || 0,
+            iva_porcentaje: 21,
+            factura_plataforma: rest.totalFacturaPlataforma || 0,
             demoras_minutos: rest.demoraMinutos,
             demoras_monto: rest.descuentoDemora,
             repartos_cantidad: rest.repartosCantidad,

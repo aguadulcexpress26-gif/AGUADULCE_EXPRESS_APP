@@ -1311,36 +1311,35 @@ function renderMenu() {
     let html = `<div class="flex items-center gap-4 mb-6"><button onclick="volverHome()" class="w-10 h-10 rounded-xl bg-black/40 border border-white/10 text-cyan-400">←</button><h2 class="text-lg font-black uppercase italic truncate">${escapeHTML(restauranteActivo.nombre)}</h2></div>`;
     if (!alcoholActivo) html += `<div class="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-center text-xs text-red-400">${HORARIO_ALCOHOL.mensaje}</div>`;
     html += `<div class="flex overflow-x-auto gap-2 mb-6 no-scrollbar"><div class="cat-chip active" onclick="filtrarCategoria('TODOS', this)">TODOS</div>`;
-    categorias.forEach(cat => { 
-        const deshabilitada = CATEGORIAS_ALCOHOL.includes(cat) && !alcoholActivo; 
-        html += `<div class="cat-chip ${deshabilitada ? 'disabled' : ''}" data-categoria="${cat}" onclick="${!deshabilitada ? `filtrarCategoria('${cat}', this)` : ''}">${escapeHTML(cat)}${deshabilitada ? ' 🔒' : ''}</div>`; 
+    categorias.forEach(cat => {
+        const deshabilitada = CATEGORIAS_ALCOHOL.includes(cat) && !alcoholActivo;
+        html += `<div class="cat-chip ${deshabilitada ? 'disabled' : ''}" data-categoria="${cat}" onclick="${!deshabilitada ? `filtrarCategoria('${cat}', this)` : ''}">${escapeHTML(cat)}${deshabilitada ? ' 🔒' : ''}</div>`;
     });
     html += `</div><div id="lista-platos" class="space-y-3">`;
     
-    // ✅ Ordenar platos: primero los disponibles, luego los agotados (dentro de cada categoría)
+    // ✅ Ordenar platos: disponibles primero, agotados después (dentro de cada categoría)
     const platosOrdenados = [...platos].sort((a, b) => {
         const catA = a.CATEGORIA || "General";
         const catB = b.CATEGORIA || "General";
         if (catA !== catB) return catA.localeCompare(catB);
-        // Misma categoría: disponibles primero, agotados después
-        const agotadoA = estaAgotado(a.ID_PLATO) ? 1 : 0;
-        const agotadoB = estaAgotado(b.ID_PLATO) ? 1 : 0;
+        const agotadoA = estaAgotado(a) ? 1 : 0;
+        const agotadoB = estaAgotado(b) ? 1 : 0;
         if (agotadoA !== agotadoB) return agotadoA - agotadoB;
         return 0;
     });
     
     platosOrdenados.forEach(plato => {
         const deshabilitadoPorAlcohol = CATEGORIAS_ALCOHOL.includes(plato.CATEGORIA || "General") && !alcoholActivo;
-        if (agotadosRest[p._key] === true || agotadosRest[p.ID_PLATO] === true) {
+        const agotado = estaAgotado(plato);
         const fotoPlato = obtenerFotoPlato(plato);
         const deshabilitado = deshabilitadoPorAlcohol || agotado;
         
-        // ✅ Estilos según estado
+        // Estilos según estado
         let clases = 'plato-card';
         if (agotado) clases += ' agotado';
         else if (deshabilitadoPorAlcohol) clases += ' disabled';
         
-        // ✅ Etiqueta visual del plato
+        // Etiqueta y precio
         let etiquetaAgotado = '';
         let precioHTML = `<p class="text-cyan-400 font-black text-xs">${euros(plato.PRECIO)}</p>`;
         
@@ -1351,7 +1350,7 @@ function renderMenu() {
             etiquetaAgotado = ' 🔒';
         }
         
-                // ✅ Solo permitir onclick si el plato NO está agotado ni deshabilitado
+        // Onclick solo si NO está deshabilitado
         let onclickAttr = '';
         if (!deshabilitado) {
             onclickAttr = "onclick='abrirDetalle(" + JSON.stringify(plato).replace(/'/g, "&apos;") + ")'";
@@ -1365,8 +1364,8 @@ function renderMenu() {
             <img src="${fotoPlato}" class="w-16 h-16 rounded-xl object-cover" onerror="this.src='https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'">
         </div>`;
     });
-    html += `</div>`; 
-    app.innerHTML = html; 
+    html += `</div>`;
+    app.innerHTML = html;
     agregarFooterLegal();
 }
 

@@ -2909,13 +2909,31 @@ async function cargarHistorialLiquidacionesAdmin() {
             return;
         }
         
+        // ✅ Leer todas las confirmaciones de cocina de una vez
+        const confirmacionesCache = {};
+        await Promise.all(ordenadas.map(async (liq) => {
+            if (!liq.restaurante_id || !liq.numero_operacion) return;
+            try {
+                const confSnap = await database.ref(`restaurantes/${liq.restaurante_id}/liquidaciones_recibidas/${liq.numero_operacion}/confirmada`).once('value');
+                confirmacionesCache[liq.numero_operacion] = confSnap.val() === true;
+            } catch (e) {
+                confirmacionesCache[liq.numero_operacion] = false;
+            }
+        }));
+        
         let html = '';
         for (const liq of ordenadas) {
             const fecha = new Date(liq.fecha_ejecucion).toLocaleString();
-            const confirmada = liq.confirmado_cocina ? '✅' : '⏳';
-            const confirmadaColor = liq.confirmado_cocina ? 'text-emerald-400' : 'text-yellow-400';
+            const confirmada = confirmacionesCache[liq.numero_operacion] === true;
+            const confirmadaIcon = confirmada ? '✅' : '⏳';
+            const confirmadaColor = confirmada ? 'text-emerald-400' : 'text-yellow-400';
             const anulada = liq.anulada === true;
             const anuladaBadge = anulada ? '<span class="px-2 py-0.5 rounded text-xs bg-red-600/20 text-red-400 ml-2">🚫 Anulada</span>' : '';
+            
+            // ✅ Calcular IVA y factura desde montos guardados
+            const comision = liq.montos?.comision || 0;
+            const ivaComision = liq.montos?.iva_comision || (comision * 0.21);
+            const factura = liq.montos?.factura_plataforma || (comision + ivaComision);
             
             html += `
                 <div class="bg-slate-900/50 rounded-xl p-3 border border-white/10 hover:border-amber-500/30 transition ${anulada ? 'opacity-60' : ''}">
@@ -2924,7 +2942,7 @@ async function cargarHistorialLiquidacionesAdmin() {
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="font-mono text-sm font-bold text-amber-400">${liq.numero_operacion}</span>
                                 <span class="text-xs text-white/50">${fecha}</span>
-                                <span class="text-xs ${confirmadaColor}">${confirmada} ${liq.confirmado_cocina ? 'Confirmada' : 'Sin confirmar'}</span>
+                                <span class="text-xs ${confirmadaColor}">${confirmadaIcon} ${confirmada ? 'Confirmada' : 'Sin confirmar'}</span>
                                 ${anuladaBadge}
                             </div>
                             <div class="text-sm text-white/70 mt-1">🏪 ${escapeHTML(liq.restaurante_nombre)}</div>
@@ -2935,10 +2953,12 @@ async function cargarHistorialLiquidacionesAdmin() {
                         <div class="text-right">
                             <div class="text-lg font-bold ${anulada ? 'text-white/40 line-through' : 'text-purple-400'}">${(liq.montos?.total_liquidar || 0).toFixed(2)}€</div>
                             <div class="text-xs text-white/40">Base: ${(liq.montos?.base || 0).toFixed(2)}€</div>
-                            <div class="text-xs text-yellow-400">Com: -${(liq.montos?.comision || 0).toFixed(2)}€</div>
+                            <div class="text-xs text-yellow-400">Com: -${comision.toFixed(2)}€</div>
+                            <div class="text-xs text-orange-400">IVA: -${ivaComision.toFixed(2)}€</div>
+                            <div class="text-xs text-cyan-400">Factura: ${factura.toFixed(2)}€</div>
                             <div class="text-xs text-red-400">Dem: -${(liq.montos?.demoras_monto || 0).toFixed(2)}€</div>
                             ${(liq.montos?.repartos_monto || 0) > 0 ? `<div class="text-xs text-purple-400">Rep: -${(liq.montos.repartos_monto).toFixed(2)}€</div>` : ''}
-                            ${!anulada && liq.confirmado_cocina !== true ? `
+                            ${!anulada && !confirmada ? `
                                 <button onclick="anularLiquidacion('${liq.numero_operacion}')" class="mt-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-2 py-1 rounded text-xs">🚫 Anular</button>
                             ` : ''}
                         </div>

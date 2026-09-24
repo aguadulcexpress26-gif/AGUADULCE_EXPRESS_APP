@@ -927,9 +927,14 @@
                         <p class="text-cyan-400 font-bold text-sm">🎯 GRUPOS DE OPCIONES</p>
                         <p class="text-white/50 text-xs mt-1">Ej: "Tipo de masa", "Extras", "Salsas", "Bebida"</p>
                     </div>
-                    <button onclick="agregarSeleccionProducto()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition">
-                        ➕ Agregar Grupo
-                    </button>
+                   <div class="flex gap-2">
+    <button onclick="abrirSelectorPlantillas()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition">
+        📦 Usar Plantilla
+    </button>
+    <button onclick="agregarSeleccionProducto()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition">
+        ➕ Agregar Grupo
+    </button>
+</div>
                 </div>
                 <div id="listaSeleccionesProducto"></div>
             </div>
@@ -4187,7 +4192,181 @@ function toggleOpcionesProducto() {
         seccion.style.display = 'none';
     }
 }
+    
+// ============================================================
+// 📦 APLICAR PLANTILLAS A UN PRODUCTO
+// ============================================================
+window.abrirSelectorPlantillas = async function() {
+    try {
+        Swal.fire({ 
+            title: '⏳ Cargando plantillas...', 
+            allowOutsideClick: false, 
+            didOpen: () => Swal.showLoading(), 
+            background: '#0f172a', 
+            color: 'white' 
+        });
+        
+        const snap = await database.ref('configuracion_global/plantillas_opciones').once('value');
+        const plantillas = snap.val() || {};
+        
+        Swal.close();
+        
+        if (Object.keys(plantillas).length === 0) {
+            const result = await Swal.fire({
+                title: '📦 No hay plantillas',
+                html: `
+                    <div class="text-left text-sm text-white/80">
+                        <p class="mb-3">Todavía no has creado ninguna plantilla.</p>
+                        <p class="text-xs text-white/60">Las plantillas son grupos de opciones reutilizables que puedes aplicar a cualquier plato.</p>
+                    </div>
+                `,
+                icon: 'info',
+                background: '#0f172a',
+                color: 'white',
+                showCancelButton: true,
+                confirmButtonText: '📦 Ir a Plantillas',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#06b6d4',
+                cancelButtonColor: '#334155'
+            });
+            
+            if (result.isConfirmed) {
+                cerrarModal('modalProductoOpciones');
+                cambiarTabMenu('plantillas');
+            }
+            return;
+        }
+        
+        // Ordenar por 'orden'
+        const arr = Object.entries(plantillas)
+            .map(([id, p]) => ({ id, ...p }))
+            .sort((a, b) => {
+                const ordenA = a.orden ?? 999;
+                const ordenB = b.orden ?? 999;
+                if (ordenA !== ordenB) return ordenA - ordenB;
+                return (a.nombre || '').localeCompare(b.nombre || '');
+            });
+        
+        // Construir opciones con info visual
+        let opcionesHTML = '';
+        for (const p of arr) {
+            const opcionesArray = Array.isArray(p.opciones) ? p.opciones : Object.values(p.opciones || {});
+            const totalOps = opcionesArray.length;
+            const tipoIcono = p.tipo === 'radio' ? '🔘' : '☑️';
+            const reqIcono = p.required ? ' 🔴' : '';
+            
+            opcionesHTML += `
+                <option value="${p.id}">
+                    ${tipoIcono} ${escapeHTML(p.nombre || 'Sin nombre')}${reqIcono} — ${totalOps} opciones (máx ${p.max || 1})
+                </option>
+            `;
+        }
+        
+        const { value: plantillaId } = await Swal.fire({
+            title: '📦 Usar Plantilla',
+            html: `
+                <div style="text-align:left;color:white;font-size:13px;">
+                    <p style="color:#94a3b8;font-size:12px;margin-bottom:12px;">
+                        Se añadirá el grupo completo como una nueva sección de opciones dentro de este plato.
+                    </p>
+                    <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:6px;">Selecciona una plantilla:</label>
+                    <select id="selector-plantilla" style="width:100%;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:white;font-size:14px;">
+                        <option value="">— Selecciona —</option>
+                        ${opcionesHTML}
+                    </select>
+                    <p style="color:#f59e0b;font-size:11px;margin-top:12px;">
+                        💡 Después podrás editar este grupo (cambiar precios, quitar opciones, etc.) sin afectar a la plantilla original.
+                    </p>
+                </div>
+            `,
+            background: '#0f172a',
+            color: 'white',
+            width: '92%',
+            maxWidth: '500px',
+            showCancelButton: true,
+            confirmButtonText: '✅ Aplicar Plantilla',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#8b5cf6',
+            cancelButtonColor: '#334155',
+            preConfirm: () => {
+                const val = document.getElementById('selector-plantilla')?.value;
+                if (!val) {
+                    Swal.showValidationMessage('❌ Debes seleccionar una plantilla');
+                    return false;
+                }
+                return val;
+            }
+        });
+        
+        if (!plantillaId) return;
+        
+        await aplicarPlantillaAlProducto(plantillaId);
+        
+    } catch (error) {
+        console.error('Error abriendo selector de plantillas:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+};
 
+window.aplicarPlantillaAlProducto = async function(plantillaId) {
+    try {
+        const snap = await database.ref(`configuracion_global/plantillas_opciones/${plantillaId}`).once('value');
+        const plantilla = snap.val();
+        
+        if (!plantilla) {
+            Swal.fire('❌ Error', 'Plantilla no encontrada', 'error', '#0f172a');
+            return;
+        }
+        
+        const opcionesArray = Array.isArray(plantilla.opciones) 
+            ? plantilla.opciones 
+            : Object.values(plantilla.opciones || {});
+        
+        if (opcionesArray.length === 0) {
+            Swal.fire('⚠️ Plantilla vacía', 'Esta plantilla no tiene opciones', 'warning', '#0f172a');
+            return;
+        }
+        
+        // Copiar profunda para no modificar la original
+        const grupoNuevo = {
+            nombre: plantilla.nombre || 'Sin nombre',
+            tipo: plantilla.tipo || 'checkbox',
+            max: plantilla.max || 1,
+            required: plantilla.required === true,
+            opciones: JSON.parse(JSON.stringify(opcionesArray))
+        };
+        
+        opcionesProductoActuales.push(grupoNuevo);
+        renderizarSeleccionesProducto();
+        
+        Swal.fire({
+            title: '✅ Plantilla aplicada',
+            html: `
+                <div style="color:white;font-size:13px;text-align:center;">
+                    <p style="font-size:15px;font-weight:bold;color:#8b5cf6;">
+                        ${escapeHTML(grupoNuevo.nombre)}
+                    </p>
+                    <p style="color:#94a3b8;font-size:12px;margin-top:6px;">
+                        ${grupoNuevo.opciones.length} opciones añadidas al plato
+                    </p>
+                    <p style="color:#f59e0b;font-size:11px;margin-top:10px;">
+                        💡 Puedes editarla libremente sin afectar la plantilla original
+                    </p>
+                </div>
+            `,
+            icon: 'success',
+            timer: 2500,
+            showConfirmButton: false,
+            background: '#0f172a',
+            color: 'white'
+        });
+        
+    } catch (error) {
+        console.error('Error aplicando plantilla:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+};
+    
 function agregarSeleccionProducto() {
     opcionesProductoActuales.push({
         nombre: '',

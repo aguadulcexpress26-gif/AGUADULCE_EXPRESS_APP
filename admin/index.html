@@ -239,6 +239,7 @@
                 <button onclick="crearConfiguracionGlobal()" class="bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-emerald-500 transition">🚀 Crear Configuración Global</button>
                 <button onclick="crearNodosRestaurante()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-blue-500 transition">🏪 Crear Nodos Restaurante</button>
                 <button onclick="limpiarHistorialAdmin()" class="bg-red-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-red-500 transition">🗑️ Limpiar Historial</button>
+                <button onclick="purgarPasswordsEnTextoPlano()" class="bg-red-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-red-500 transition">🔐 Purgar Contraseñas en Texto Plano</button>
             </div>
         </div>
         
@@ -1177,7 +1178,113 @@ function loginAdmin() {
             Swal.fire({ title: '❌ Error', text: error.message, icon: 'error', background: '#0f172a', color: 'white' });
         });
 }
-
+    
+// ============================================================
+// 🔐 SEGURIDAD — PURGAR CONTRASEÑAS EN TEXTO PLANO
+// ============================================================
+window.purgarPasswordsEnTextoPlano = async function() {
+    const confirm = await Swal.fire({
+        title: '🔐 Purga de contraseñas',
+        html: `
+            <div style="text-align:left;color:white;font-size:13px;">
+                <p style="margin-bottom:12px;">Esta acción va a <strong>eliminar las contraseñas en texto plano</strong> de:</p>
+                <ul style="margin-left:20px;line-height:1.8;color:#cbd5e1;">
+                    <li>/usuarios/{uid}/password</li>
+                    <li>/repartidores/{uid}/password</li>
+                    <li>/restaurantes/{uid}/password</li>
+                    <li>/cocina/{uid}/password</li>
+                    <li>/admins/{uid}/password</li>
+                    <li>/usuarios_admin/{uid}/password</li>
+                    <li>/usuarios_cocina/{uid}/password</li>
+                    <li>/usuarios_restaurante/{uid}/password</li>
+                </ul>
+                <p style="margin-top:12px;color:#10b981;font-size:12px;">✅ Firebase Auth seguirá gestionando el login.</p>
+                <p style="margin-top:8px;color:#ef4444;font-size:12px;">⚠️ ¿Has exportado el backup JSON antes?</p>
+            </div>
+        `,
+        icon: 'warning',
+        background: '#0f172a',
+        color: 'white',
+        showCancelButton: true,
+        confirmButtonText: '🔐 PURGAR CONTRASEÑAS',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155'
+    });
+    
+    if (!confirm.isConfirmed) return;
+    
+    Swal.fire({ 
+        title: '⏳ Purgando...', 
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading(),
+        background: '#0f172a',
+        color: 'white'
+    });
+    
+    try {
+        const nodos = [
+            'usuarios', 
+            'repartidores', 
+            'restaurantes', 
+            'cocina', 
+            'admins',
+            'usuarios_admin',
+            'usuarios_cocina',
+            'usuarios_restaurante'
+        ];
+        let totalEliminadas = 0;
+        const resumen = {};
+        
+        for (const nodo of nodos) {
+            const snap = await database.ref(nodo).once('value');
+            const datos = snap.val() || {};
+            let eliminadasNodo = 0;
+            
+            for (const [uid, data] of Object.entries(datos)) {
+                if (data && data.password) {
+                    await database.ref(`${nodo}/${uid}/password`).remove();
+                    eliminadasNodo++;
+                    totalEliminadas++;
+                    console.log(`✅ Eliminada password de ${nodo}/${uid}`);
+                }
+            }
+            
+            resumen[nodo] = eliminadasNodo;
+        }
+        
+        await logAdmin('purgar_passwords', { total: totalEliminadas, resumen });
+        
+        Swal.close();
+        Swal.fire({
+            title: '✅ Purga completada',
+            html: `
+                <div style="color:white;font-size:13px;text-align:left;">
+                    <p style="text-align:center;font-size:32px;color:#10b981;font-weight:900;margin:10px 0;">${totalEliminadas}</p>
+                    <p style="text-align:center;margin-bottom:16px;">contraseñas eliminadas</p>
+                    <div style="background:#0f172a;border-radius:12px;padding:12px;border:1px solid #334155;">
+                        ${Object.entries(resumen).map(([nodo, cant]) => 
+                            `<div style="display:flex;justify-content:space-between;padding:4px 0;">
+                                <span style="color:#94a3b8;">/${nodo}</span>
+                                <span style="font-weight:700;color:${cant > 0 ? '#10b981' : '#64748b'};">${cant}</span>
+                            </div>`
+                        ).join('')}
+                    </div>
+                    <p style="font-size:12px;color:#94a3b8;margin-top:12px;text-align:center;">Firebase Auth sigue gestionando el login.</p>
+                </div>
+            `,
+            icon: 'success',
+            background: '#0f172a',
+            color: 'white',
+            confirmButtonColor: '#10b981'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error en purga:', error);
+        Swal.fire('❌ Error', error.message, 'error', '#0f172a');
+    }
+};
+    
 function logoutAdmin() {
     auth.signOut().then(() => {
         localStorage.removeItem('admin_logged');

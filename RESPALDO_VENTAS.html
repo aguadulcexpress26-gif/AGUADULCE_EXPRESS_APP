@@ -1513,7 +1513,53 @@ function abrirRevision() {
     container.innerHTML = cesta.map(item => `<div class="flex items-center gap-3 bg-white/5 p-3 rounded-xl"><img src="${item.foto}" class="w-12 h-12 rounded-lg object-cover" onerror="this.src='https://placehold.co/200x200/1e293b/06b6d4?text=%F0%9F%8D%BD%EF%B8%8F'"><div class="flex-1 text-left"><p class="font-black text-sm">${escapeHTML(item.nombre)}</p>${item.nota_cliente ? `<p class="text-[10px] text-yellow-400/70">📝 ${escapeHTML(item.nota_cliente)}</p>` : ''}<p class="text-cyan-400 text-xs">x${item.cantidad} - ${euros(item.total)}</p></div><button onclick="eliminarDeCesta(${item.id})" class="text-red-400 text-xl">🗑️</button></div>`).join('');
     document.getElementById('panel-revision').style.display = 'block'; agregarFooterLegal();
 }
-
+	
+// ============================================================
+// 📍 VERIFICAR SI UNA DIRECCIÓN ESTÁ EN LA ZONA DE REPARTO
+// ============================================================
+async function verificarDireccionEnZona(direccion) {
+    if (!direccion || direccion.trim().length < 5) {
+        return { dentro: false, mensaje: 'Dirección no válida', zonaNombre: '' };
+    }
+    
+    try {
+        const calcularFn = firebase.functions().httpsCallable('calcularDistancia');
+        const resultado = await calcularFn({
+            origen: obtenerDireccionRestaurante(),
+            destino: direccion
+        });
+        
+        const data = resultado.data || {};
+        
+        // Si la Cloud Function devolvió un error de geocodificación
+        if (data.success === false && data.error === 'GEOCODE_FAILED') {
+            return {
+                dentro: false,
+                mensaje: 'No pudimos encontrar tu dirección. Revísala o cámbiala.',
+                zonaNombre: '',
+                error: 'geocode'
+            };
+        }
+        
+        return {
+            dentro: data.dentro === true,
+            distanciaKm: data.distanciaKm || null,
+            duracion: data.duracion || null,
+            mensaje: data.mensaje || '',
+            zonaNombre: data.zonaNombre || 'Roquetas de Mar'
+        };
+    } catch (error) {
+        console.error('❌ Error verificando zona:', error);
+        // Modo permisivo: si falla la red, permitir el pedido
+        return {
+            dentro: true,
+            mensaje: '',
+            zonaNombre: '',
+            error: 'network'
+        };
+    }
+}
+	
 // ============================================================
 // 💳 CAJÓN DE PAGO
 // ============================================================
@@ -1580,6 +1626,20 @@ async function abrirCheckout() {
 
         if (contenedorDesglose) {
             contenedorDesglose.innerHTML = `
+                <!-- ✅ AVISO DE FUERA DE ZONA (oculto por defecto) -->
+                <div id="aviso-fuera-zona" style="display:none;" class="mb-4 p-4 bg-red-500/15 border-2 border-red-500/50 rounded-2xl">
+                    <div class="flex items-start gap-3">
+                        <div class="text-3xl">🚫</div>
+                        <div class="flex-1">
+                            <p class="font-black text-red-400 text-sm uppercase mb-1">Fuera de la zona de reparto</p>
+                            <p class="text-white/80 text-xs mb-3" id="aviso-fuera-zona-texto">Lo sentimos, no entregamos en esta dirección.</p>
+                            <button onclick="cambiarDireccionCliente()" class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-red-600 transition">
+                                📝 Cambiar dirección
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-slate-800/50 rounded-2xl p-4 border border-white/10 mb-4 flex justify-between items-start">
                     <div>
                         <p class="text-cyan-400 text-xs font-black uppercase mb-1">Entregar a:</p>
@@ -1636,7 +1696,7 @@ async function abrirCheckout() {
                 </div>
 
                 <div class="mt-8">
-                    <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all">
+                    <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                         💳 PROCESAR ORDEN
                     </button>
                     <div class="flex flex-wrap justify-center gap-2 mt-3 text-[10px] text-white/30">
@@ -1650,6 +1710,26 @@ async function abrirCheckout() {
             `;
         }
         agregarFooterLegal();
+
+        // ✅ VERIFICAR ZONA DE REPARTO
+        const resultadoZona = await verificarDireccionEnZona(cliente.direccion_completa);
+        window._zonaVerificada = resultadoZona;
+        
+        if (!resultadoZona.dentro) {
+            const aviso = document.getElementById('aviso-fuera-zona');
+            const avisoTexto = document.getElementById('aviso-fuera-zona-texto');
+            const btnProcesar = document.getElementById('btn-procesar-orden');
+            
+            if (aviso) aviso.style.display = 'block';
+            if (avisoTexto) {
+                avisoTexto.textContent = resultadoZona.mensaje || 'Lo sentimos, esta dirección está fuera de nuestra zona de reparto.';
+            }
+            if (btnProcesar) {
+                btnProcesar.disabled = true;
+                btnProcesar.style.opacity = '0.4';
+                btnProcesar.style.cursor = 'not-allowed';
+            }
+        }
 
         // ✅ Actualización en segundo plano con Google Maps
         setTimeout(async () => {
@@ -1667,7 +1747,7 @@ async function abrirCheckout() {
 
                     console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
                 }
-            } catch (e) { /* Silencioso, el plan B ya está activo */ }
+            } catch (e) { /* Silencioso */ }
         }, 100);
 
         console.log("✅ Cajón dibujado y visible correctamente.");
@@ -1712,13 +1792,18 @@ async function nuevoProcesarPedido() {
 
         const uid = user.uid; const email = cliente.email; const telefono = cliente.telefono;
 
+               // 📍 VALIDACIÓN: DIRECCIÓN EN ZONA DE REPARTO
+        const resultadoZona = await verificarDireccionEnZona(cliente.direccion_completa);
+        if (!resultadoZona.dentro) {
+            throw new Error("La dirección de entrega está fuera de la zona de reparto. Cambia la dirección o contacta con soporte.");
+        }
+
         // 💳 VALIDAR FORMA DE PAGO (OBLIGATORIA)
         const radioSeleccionado = document.querySelector('input[name="metodo-pago-radio"]:checked');
         if (!radioSeleccionado) {
             throw new Error("Debes seleccionar una forma de pago antes de continuar.");
         }
         const metodo = radioSeleccionado.value; // "Efectivo" o "Tarjeta"
-
         // 🔎 ESCÁNER DE SEGURIDAD CRUZADO
         const pedidosSnap = await database.ref('pedidos').once('value');
         const todosLosPedidos = pedidosSnap.val() || {};
@@ -1892,6 +1977,38 @@ async function cambiarDireccionCliente() {
     });
 
     if (nuevaDireccion) {
+        // ✅ Verificar que la nueva dirección está en la zona
+        Swal.fire({
+            title: '🔍 Verificando dirección...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+            background: '#020617',
+            color: 'white'
+        });
+        
+        const resultado = await verificarDireccionEnZona(nuevaDireccion);
+        Swal.close();
+        
+        if (!resultado.dentro) {
+            await Swal.fire({
+                title: '🚫 Fuera de zona',
+                html: `
+                    <div class="text-center">
+                        <p class="text-white mb-2">Lo sentimos, no entregamos en:</p>
+                        <p class="text-cyan-400 font-bold text-sm mb-4">${escapeHTML(nuevaDireccion)}</p>
+                        <p class="text-white/60 text-xs">Zona de reparto: <strong>${resultado.zonaNombre || 'Roquetas de Mar'}</strong></p>
+                    </div>
+                `,
+                icon: 'error',
+                background: '#020617',
+                color: 'white',
+                confirmButtonColor: '#06b6d4',
+                confirmButtonText: 'Entendido'
+            });
+            return;
+        }
+        
+        // ✅ Está dentro de la zona: guardar
         const cliente = obtenerCliente();
         cliente.direccion_completa = nuevaDireccion;
         guardarCliente(cliente);

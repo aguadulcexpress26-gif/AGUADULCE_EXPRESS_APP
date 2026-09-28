@@ -1823,7 +1823,7 @@ async function nuevoProcesarPedido() {
             }
         }
 
-        if (tienePedidoActivo) {
+       if (tienePedidoActivo) {
             const intentosRef = database.ref(`clientes/${uid}/intentos_duplicados`);
             const intentosSnap = await intentosRef.once('value');
             let intentos = intentosSnap.val() || 0;
@@ -1831,16 +1831,10 @@ async function nuevoProcesarPedido() {
             await intentosRef.set(intentos);
 
             if (intentos >= 3) {
-                const emailSanitizado = sanitizarEmail(email);
-                await database.ref(`clientes_morosos/${emailSanitizado}`).set({
-                    email_original: email,
-                    nombre: cliente.nombre,
-                    motivo: `Intentos repetidos de pedido duplicado (3 intentos). Pedido activo #${pedidoActivoId}`,
-                    deuda: 0,
-                    fecha: Date.now(),
-                    activo: true
-                });
-                throw new Error("🚫 Tu cuenta ha sido bloqueada por intentos repetidos de pedidos duplicados. Contacta con soporte.");
+                // TODO ITEM #10: Mover a Cloud Function bloquearClientePorIntentosDuplicados()
+                // Por ahora NO escribimos en /clientes_morosos desde el cliente (reglas Firebase lo bloquean)
+                console.warn('⚠️ Cliente con 3 intentos duplicados. Bloqueo en BD pendiente de ITEM #10');
+                throw new Error("🚫 Has alcanzado el límite de intentos de pedido duplicado. Contacta con soporte para desbloquearte.");
             } else {
                 const mensaje = `⚠️ Ya tienes una orden en curso (Intento ${intentos}/3). Espera a que finalice para hacer una nueva compra.`;
                 await Swal.fire({

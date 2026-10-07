@@ -1597,19 +1597,22 @@ async function abrirCheckout() {
         let subtotal = 0;
         cesta.forEach(item => subtotal += parseFloat(item.total) || 0);
 
-        let envio = 2.50;
-        let descuentoAplicado = false;
-        let mensajeDescuento = '';
-        let envioCalculado = calcularCostoEnvio(null, subtotal);
-        envio = envioCalculado.envio || 2.50;
+        // ✅ FIX Hallazgo #19: no mostrar 2.50€ provisional. Marcamos como "calculando"
+		let envio = null;
+		let descuentoAplicado = false;
+		let mensajeDescuento = '';
+		let envioCalculado = calcularCostoEnvio(null, subtotal);
+		// NO asignamos envio aquí, se calculará en background
+		const envioInicial = envioCalculado.envio || 2.50;
         descuentoAplicado = envioCalculado.descuentoAplicado;
         mensajeDescuento = envioCalculado.mensaje || '';
         const usoPlataforma = 0.99;
-        const total = subtotal + envio + usoPlataforma;
+        const total = subtotal + envioInicial + usoPlataforma;
 
-        window._costoEnvioActual = envio;
-        window._usoPlataformaActual = usoPlataforma;
-        window._subtotalActual = subtotal;
+		window._costoEnvioActual = null;              // ⚠️ null = todavía no calculado por Cloud Function
+		window._envioInicialVisual = envioInicial;    // ⚠️ solo para mostrar provisional
+		window._usoPlataformaActual = usoPlataforma;
+		window._subtotalActual = subtotal;
 
         if (contenedorProductos) {
             contenedorProductos.innerHTML = cesta.map(item => `
@@ -1654,9 +1657,14 @@ async function abrirCheckout() {
 
                 <div class="mt-2 p-4 bg-slate-800/50 rounded-2xl space-y-2 border border-white/10">
                     <div class="flex justify-between text-sm"><span class="text-white/70">Subtotal</span><span>${euros(subtotal)}</span></div>
-                    ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span>- ${euros(envioCalculado.envio - envio)}</span></div>` : ''}
+                    ${descuentoAplicado ? `<div class="flex justify-between text-sm text-green-400 font-bold border-b border-white/10 pb-2 mb-1"><span>🎉 ${mensajeDescuento}</span><span id="valor-descuento">- ${euros(envioCalculado.envio - envioInicial)}</span></div>` : ''}
                     <div class="flex justify-between text-sm"><span class="text-white/70">📱 Uso de plataforma</span><span>${euros(usoPlataforma)}</span></div>
-                    <div class="flex justify-between text-sm" id="linea-envio"><span class="text-white/70">🚚 Envío</span><span id="valor-envio">${euros(envio)}</span></div>
+                 	<div class="flex justify-between text-sm" id="linea-envio">
+   				  	<span class="text-white/70">🚚 Envío</span>
+  				  	<span id="valor-envio">
+     	         	<span class="text-yellow-400 italic">Calculando...</span>
+  			     	</span>
+					</div>
                     <div class="border-t border-white/20 my-2 pt-2"></div>
                     <div class="flex justify-between text-xl font-black">
                         <span>TOTAL</span>
@@ -1696,9 +1704,9 @@ async function abrirCheckout() {
                 </div>
 
                 <div class="mt-8">
-                    <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                        💳 PROCESAR ORDEN
-                    </button>
+                   <button id="btn-procesar-orden" onclick="nuevoProcesarPedido()" disabled class="w-full py-5 bg-cyan-400 text-black font-black text-lg italic uppercase rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:bg-cyan-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+    					🔄 CALCULANDO ENVÍO...
+					</button>
                     <div class="flex flex-wrap justify-center gap-2 mt-3 text-[10px] text-white/30">
                         <button onclick="mostrarPoliticaCancelacion()" class="underline hover:text-white/60">📋 Política de cancelación</button>
                         <span>•</span>
@@ -1715,40 +1723,87 @@ async function abrirCheckout() {
         const resultadoZona = await verificarDireccionEnZona(cliente.direccion_completa);
         window._zonaVerificada = resultadoZona;
         
-        if (!resultadoZona.dentro) {
-            const aviso = document.getElementById('aviso-fuera-zona');
-            const avisoTexto = document.getElementById('aviso-fuera-zona-texto');
-            const btnProcesar = document.getElementById('btn-procesar-orden');
+       if (!resultadoZona.dentro) {
+    const aviso = document.getElementById('aviso-fuera-zona');
+    const avisoTexto = document.getElementById('aviso-fuera-zona-texto');
+    const btnProcesar = document.getElementById('btn-procesar-orden');
+    
+    if (aviso) aviso.style.display = 'block';
+    if (avisoTexto) {
+        avisoTexto.textContent = resultadoZona.mensaje || 'Lo sentimos, esta dirección está fuera de nuestra zona de reparto.';
+    }
+    if (btnProcesar) {
+        btnProcesar.disabled = true;
+        btnProcesar.innerHTML = '🚫 FUERA DE ZONA DE REPARTO';
+        btnProcesar.style.opacity = '0.4';
+        btnProcesar.style.cursor = 'not-allowed';
+        // ✅ FIX #18: marcar para que habilitarBoton() no lo reactive
+        btnProcesar.dataset.bloqueadoPorZona = 'true';
+    }
+}
+
+        // ✅ FIX Hallazgos #18 y #19: actualización con habilitación del botón + gestión de errores
+const btnProcesarRef = document.getElementById('btn-procesar-orden');
+
+const habilitarBoton = () => {
+    if (!btnProcesarRef) return;
+    // Si está bloqueado por "fuera de zona", NO habilitar
+    if (btnProcesarRef.dataset.bloqueadoPorZona === 'true') return;
+    btnProcesarRef.disabled = false;
+    btnProcesarRef.innerHTML = '💳 PROCESAR ORDEN';
+    btnProcesarRef.style.opacity = '1';
+    btnProcesarRef.style.cursor = 'pointer';
+};
+
+const mostrarErrorEnvio = (mensaje) => {
+    const elEnvio = document.getElementById('valor-envio');
+    if (elEnvio) {
+        elEnvio.innerHTML = `<span class="text-red-400">Error al calcular</span>`;
+    }
+    if (btnProcesarRef) {
+        btnProcesarRef.disabled = true;
+        btnProcesarRef.innerHTML = '❌ NO SE PUDO CALCULAR ENVÍO';
+        btnProcesarRef.style.opacity = '0.4';
+        btnProcesarRef.style.cursor = 'not-allowed';
+    }
+    alertaError("Error al calcular envío", mensaje || "No pudimos calcular el costo de envío. Intenta de nuevo.");
+};
+
+setTimeout(async () => {
+    try {
+        const envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
+        
+        if (envioData && envioData.km !== null) {
+            const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
+            window._costoEnvioActual = nuevoCalculo.envio || 2.50;
+
+            const totalActual = subtotal + window._costoEnvioActual + usoPlataforma;
+            const elEnvio = document.getElementById('valor-envio');
+            const elTotal = document.getElementById('valor-total');
+            const elDescuento = document.getElementById('valor-descuento');
             
-            if (aviso) aviso.style.display = 'block';
-            if (avisoTexto) {
-                avisoTexto.textContent = resultadoZona.mensaje || 'Lo sentimos, esta dirección está fuera de nuestra zona de reparto.';
+            if (elEnvio) elEnvio.innerText = euros(window._costoEnvioActual);
+            if (elTotal) elTotal.innerText = euros(totalActual);
+            
+            // ✅ Actualizar el descuento si aplica (para que refleje el envío real)
+            if (elDescuento && nuevoCalculo.descuentoAplicado) {
+                const descuentoReal = envioInicial - window._costoEnvioActual;
+                elDescuento.innerText = `- ${euros(Math.abs(descuentoReal))}`;
             }
-            if (btnProcesar) {
-                btnProcesar.disabled = true;
-                btnProcesar.style.opacity = '0.4';
-                btnProcesar.style.cursor = 'not-allowed';
-            }
+
+            console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
+            
+            // ✅ FIX #18: habilitar botón SOLO cuando el cálculo ha llegado
+            habilitarBoton();
+        } else {
+            console.warn("⚠️ Cloud Function no devolvió distancia. Mostrando error.");
+            mostrarErrorEnvio("No se pudo calcular la distancia a tu dirección. Verifica tu dirección o contacta con soporte.");
         }
-
-        // ✅ Actualización en segundo plano con Google Maps
-        setTimeout(async () => {
-            try {
-                const envioData = await calcularEnvioTiempoReal(cliente.direccion_completa);
-                if (envioData && envioData.km !== null) {
-                    const nuevoCalculo = calcularCostoEnvio(envioData.km, subtotal);
-                    window._costoEnvioActual = nuevoCalculo.envio || 2.50;
-
-                    const totalActual = subtotal + window._costoEnvioActual + usoPlataforma;
-                    const elEnvio = document.getElementById('valor-envio');
-                    const elTotal = document.getElementById('valor-total');
-                    if (elEnvio) elEnvio.innerText = euros(window._costoEnvioActual);
-                    if (elTotal) elTotal.innerText = euros(totalActual);
-
-                    console.log("✅ Costo de envío actualizado en pantalla a:", window._costoEnvioActual);
-                }
-            } catch (e) { /* Silencioso */ }
-        }, 100);
+    } catch (e) {
+        console.error("❌ Error calculando envío:", e);
+        mostrarErrorEnvio("Hubo un problema al calcular el envío.");
+    }
+}, 100);
 
         console.log("✅ Cajón dibujado y visible correctamente.");
 
@@ -1858,11 +1913,16 @@ async function nuevoProcesarPedido() {
         }
         if (cesta.length === 0) throw new Error("El carrito está vacío.");
 
-        // 📊 CÁLCULOS FINALES
-        let subtotal = 0; cesta.forEach(item => subtotal += item.total || 0);
-        const envio = window._costoEnvioActual || 2.50;
-        const usoYServicios = window._usoPlataformaActual || 0.99;
-        const total = subtotal + envio + usoYServicios;
+       // ✅ FIX #18 (defensa en profundidad): verificar que el envío YA fue calculado
+if (window._costoEnvioActual === null || window._costoEnvioActual === undefined) {
+    throw new Error("⏳ Aún estamos calculando el costo de envío. Espera un momento e inténtalo de nuevo.");
+}
+
+// 📊 CÁLCULOS FINALES
+let subtotal = 0; cesta.forEach(item => subtotal += item.total || 0);
+const envio = window._costoEnvioActual;
+const usoYServicios = window._usoPlataformaActual || 0.99;
+const total = subtotal + envio + usoYServicios;
 
         // 💵 LEER MONTO SI ES EFECTIVO
         let montoPaga = null;

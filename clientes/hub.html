@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#121212">
+    <title>Vector Cero — Marketplace</title>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --negro: #121212;
+            --gris-oscuro: #1e1e1e;
+            --gris-claro: #2a2a2a;
+            --dorado: #D4AF37;
+            --azul: #0A58CA;
+            --blanco: #ffffff;
+            --texto-gris: #a0a0a0;
+            --font-titulo: 'Playfair Display', serif;
+            --font-cuerpo: 'Inter', sans-serif;
+            --radio: 16px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: var(--font-cuerpo);
+            background-color: var(--negro);
+            color: var(--blanco);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* HEADER DEL HUB */
+        .hub-header {
+            background: linear-gradient(180deg, rgba(18,18,18,0.9) 0%, rgba(18,18,18,1) 100%);
+            padding: 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid var(--gris-claro);
+            backdrop-filter: blur(10px);
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .hub-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--blanco);
+        }
+
+        .hub-logo img {
+            height: 40px;
+        }
+
+        .hub-logo-text {
+            font-family: var(--font-titulo);
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+
+        .hub-logo-text span {
+            color: var(--dorado);
+        }
+
+        /* BUSCADOR */
+        .buscador-container {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .buscador-input {
+            width: 100%;
+            padding: 14px 20px 14px 50px;
+            border-radius: 50px;
+            border: 2px solid var(--gris-claro);
+            background: var(--gris-oscuro);
+            color: var(--blanco);
+            font-family: var(--font-cuerpo);
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .buscador-input:focus {
+            border-color: var(--dorado);
+            background: var(--negro);
+            box-shadow: 0 0 0 4px rgba(212,175,55,0.1);
+        }
+
+        .buscador-icon {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 18px;
+            color: var(--texto-gris);
+        }
+
+        /* CATEGORÍAS */
+        .categorias-hub {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            scrollbar-width: none;
+        }
+        .categorias-hub::-webkit-scrollbar { display: none; }
+
+        .cat-btn {
+            padding: 10px 20px;
+            border-radius: 50px;
+            background: var(--gris-oscuro);
+            color: var(--texto-gris);
+            border: 1px solid var(--gris-claro);
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cat-btn:hover, .cat-btn.active {
+            background: var(--dorado);
+            color: var(--negro);
+            border-color: var(--dorado);
+        }
+
+        /* GRID DE TIENDAS */
+        .marketplace-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 24px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto 60px;
+        }
+
+        .tienda-card {
+            background: var(--gris-oscuro);
+            border-radius: var(--radio);
+            overflow: hidden;
+            border: 1px solid var(--gris-claro);
+            text-decoration: none;
+            color: var(--blanco);
+            transition: all 0.3s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tienda-card:hover {
+            transform: translateY(-6px);
+            border-color: var(--dorado);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+        }
+
+        .tienda-banner {
+            height: 140px;
+            width: 100%;
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+
+        .tienda-banner::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, transparent 0%, var(--gris-oscuro) 100%);
+        }
+
+        .tienda-logo-wrapper {
+            position: absolute;
+            bottom: -30px;
+            left: 20px;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: var(--negro);
+            border: 3px solid var(--dorado);
+            padding: 4px;
+            z-index: 2;
+        }
+
+        .tienda-logo-wrapper img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .tienda-info {
+            padding: 40px 20px 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tienda-nombre {
+            font-family: var(--font-titulo);
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .tienda-tipo {
+            font-size: 12px;
+            color: var(--dorado);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .tienda-desc {
+            font-size: 13px;
+            color: var(--texto-gris);
+            line-height: 1.5;
+            margin-bottom: 20px;
+            flex: 1;
+        }
+
+        .tienda-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 15px;
+            border-top: 1px solid var(--gris-claro);
+        }
+
+        .tienda-estado {
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tienda-estado.abierto { color: #22c55e; }
+        .tienda-estado.cerrado { color: #ef4444; }
+
+        .tienda-estado .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .btn-ver {
+            background: var(--azul);
+            color: var(--blanco);
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 800;
+            transition: background 0.2s;
+        }
+
+        .tienda-card:hover .btn-ver {
+            background: var(--dorado);
+            color: var(--negro);
+        }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--texto-gris);
+        }
+
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* LOADER */
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: var(--negro);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--dorado);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .hub-logo-text { font-size: 20px; }
+            .buscador-container { order: 3; max-width: 100%; margin-top: 10px; }
+            .marketplace-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <p style="color: var(--dorado); font-weight: 800; letter-spacing: 2px;">VECTOR CERO</p>
+</div>
+
+<header class="hub-header">
+    <div class="header-inner">
+        <a href="#" class="hub-logo">
+            <div class="hub-logo-text">VECTOR <span>CERO</span></div>
+        </a>
+
+        <div class="buscador-container">
+            <span class="buscador-icon">🔍</span>
+            <input type="text" id="buscador" class="buscador-input" placeholder="Busca un restaurante o tienda..." oninput="filtrarTiendas()">
+        </div>
+    </div>
+</header>
+
+<div class="categorias-hub" id="categorias-hub">
+    <!-- Se llena con JS -->
+</div>
+
+<div class="marketplace-grid" id="grid-tiendas">
+    <!-- Se llena con JS -->
+</div>
+
+<script>
+// ============================================================
+// 🔥 CONFIGURACIÓN DE FIREBASE
+// ============================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyBm8EDPc8_3Pe22dxOnKfEtgDAZ0DORMpo",
+    authDomain: "proyecto-piccola-italia.firebaseapp.com",
+    databaseURL: "https://proyecto-piccola-italia-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "proyecto-piccola-italia",
+    storageBucket: "proyecto-piccola-italia.firebasestorage.app",
+    messagingSenderId: "938171222995",
+    appId: "1:938171222995:web:830d21457f001531377d26"
+};
+
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// ============================================================
+// 📌 ESTADO GLOBAL
+// ============================================================
+let tiendasGlobal = [];
+let categoriaActual = 'Todos';
+let textoBusqueda = '';
+
+// ============================================================
+// 🚀 INICIO
+// ============================================================
+document.addEventListener('DOMContentLoaded', async () => {
+    await cargarTiendas();
+});
+
+async function cargarTiendas() {
+    try {
+        // 1. Leemos la lista de IDs de restaurantes (solo las llaves)
+        const snapIds = await database.ref('restaurantes').shallow().once('value');
+        const ids = snapIds.val() || {};
+        
+        const tiendasPromesas = Object.keys(ids).map(async (id) => {
+            // 2. Para cada ID, leemos SOLO su configuración pública
+            const snapConfig = await database.ref(`restaurantes/${id}/config`).once('value');
+            const config = snapConfig.val() || {};
+            
+            return {
+                id: id,
+                nombre: config.nombre || id,
+                tipo_servicio: config.tipo_servicio || 'propio',
+                tipo_negocio: config.tipo_negocio || 'restaurante',
+                logo: config.LOGO_URL || 'https://cdn-icons-png.flaticon.com/512/2662/2662503.png',
+                banner: config.BANNER_URL || 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=600&q=80',
+                descripcion: config.descripcion || 'Descubre nuestro catálogo y pide online.',
+                activo: config.activo !== false && config.local_cerrado !== true
+            };
+        });
+
+        tiendasGlobal = await Promise.all(tiendasPromesas);
+
+        // Filtrar tiendas inactivas
+        tiendasGlobal = tiendasGlobal.filter(t => t.activo);
+
+        renderizarCategorias();
+        renderizarTiendas();
+
+    } catch (e) {
+        console.error('Error cargando tiendas:', e);
+    } finally {
+        document.getElementById('loader').classList.add('hidden');
+    }
+}
+
+function renderizarCategorias() {
+    const cont = document.getElementById('categorias-hub');
+    
+    // Extraer categorías únicas de tipo_servicio o tipo_negocio
+    const categorias = ['Todos', ...new Set(tiendasGlobal.map(t => {
+        if (t.tipo_negocio === 'restaurante') return 'Comida';
+        if (t.tipo_negocio === 'supermercado') return 'Supermercado';
+        if (t.tipo_negocio === 'zapateria') return 'Zapatos';
+        return 'Otros';
+    }))];
+
+    cont.innerHTML = categorias.map(cat => `
+        <button class="cat-btn ${cat === categoriaActual ? 'active' : ''}" onclick="cambiarCategoria('${cat}')">
+            ${cat === 'Todos' ? '🌐 Todos' : cat === 'Comida' ? '🍔 Comida' : cat === 'Supermercado' ? '🛒 Supermercado' : cat === 'Zapatos' ? '👟 Zapatos' : '📦 Otros'}
+        </button>
+    `).join('');
+}
+
+function cambiarCategoria(cat) {
+    categoriaActual = cat;
+    renderizarCategorias();
+    renderizarTiendas();
+}
+
+function filtrarTiendas() {
+    textoBusqueda = document.getElementById('buscador').value.toLowerCase().trim();
+    renderizarTiendas();
+}
+
+function renderizarTiendas() {
+    const grid = document.getElementById('grid-tiendas');
+    
+    let filtradas = tiendasGlobal;
+
+    // Filtro por categoría
+    if (categoriaActual !== 'Todos') {
+        filtradas = filtradas.filter(t => {
+            if (categoriaActual === 'Comida') return t.tipo_negocio === 'restaurante';
+            if (categoriaActual === 'Supermercado') return t.tipo_negocio === 'supermercado';
+            if (categoriaActual === 'Zapatos') return t.tipo_negocio === 'zapateria';
+            return t.tipo_negocio !== 'restaurante' && t.tipo_negocio !== 'supermercado' && t.tipo_negocio !== 'zapateria';
+        });
+    }
+
+    // Filtro por texto de búsqueda
+    if (textoBusqueda) {
+        filtradas = filtradas.filter(t => 
+            t.nombre.toLowerCase().includes(textoBusqueda) || 
+            t.descripcion.toLowerCase().includes(textoBusqueda)
+        );
+    }
+
+    if (filtradas.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">🔍</div>
+                <div style="font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 8px;">No encontramos nada</div>
+                <div>Prueba con otra búsqueda o categoría.</div>
+            </div>
+        `;
+        return;
+    }
+
+    grid.innerHTML = filtradas.map(t => {
+        const tipoLabel = t.tipo_negocio === 'restaurante' ? 'Restaurante' : t.tipo_negocio === 'supermercado' ? 'Supermercado' : t.tipo_negocio === 'zapateria' ? 'Zapatería' : 'Tienda';
+        const isAbierto = t.activo;
+        
+        return `
+            <a href="ventas.html?rest=${t.id}" target="_blank" class="tienda-card">
+                <div class="tienda-banner" style="background-image: url('${t.banner}');">
+                    <div class="tienda-logo-wrapper">
+                        <img src="${t.logo}" alt="${t.nombre}" onerror="this.src='https://cdn-icons-png.flaticon.com/512/2662/2662503.png'">
+                    </div>
+                </div>
+                <div class="tienda-info">
+                    <div class="tienda-nombre">${t.nombre}</div>
+                    <div class="tienda-tipo">${tipoLabel}</div>
+                    <div class="tienda-desc">${t.descripcion}</div>
+                    <div class="tienda-footer">
+                        <div class="tienda-estado ${isAbierto ? 'abierto' : 'cerrado'}">
+                            <span class="dot"></span> ${isAbierto ? 'Abierto' : 'Cerrado'}
+                        </div>
+                        <div class="btn-ver">Ver tienda →</div>
+                    </div>
+                </div>
+            </a>
+        `;
+    }).join('');
+}
+</script>
+
+</body>
+</html>

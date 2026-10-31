@@ -391,15 +391,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function cargarTiendas() {
     try {
-        // 1. Leemos la lista de IDs de restaurantes (solo las llaves)
-        const snapIds = await database.ref('restaurantes').shallow().once('value');
-        const ids = snapIds.val() || {};
+        // Leemos los datos de los restaurantes
+        const snap = await database.ref('restaurantes').once('value');
+        const raw = snap.val() || {};
         
-        const tiendasPromesas = Object.keys(ids).map(async (id) => {
-            // 2. Para cada ID, leemos SOLO su configuración pública
-            const snapConfig = await database.ref(`restaurantes/${id}/config`).once('value');
-            const config = snapConfig.val() || {};
-            
+        tiendasGlobal = Object.entries(raw).map(([id, data]) => {
+            const config = data.config || {};
             return {
                 id: id,
                 nombre: config.nombre || id,
@@ -411,8 +408,6 @@ async function cargarTiendas() {
                 activo: config.activo !== false && config.local_cerrado !== true
             };
         });
-
-        tiendasGlobal = await Promise.all(tiendasPromesas);
 
         // Filtrar tiendas inactivas
         tiendasGlobal = tiendasGlobal.filter(t => t.activo);
